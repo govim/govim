@@ -1,0 +1,3 @@
+vim redraw
+vim ex 'w test'
+exists test
