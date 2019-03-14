@@ -4,7 +4,7 @@ set nobackup
 set nowritebackup
 set noswapfile
 
-" Useful for logging
+" Useful for debugging
 " call ch_logfile("/tmp/log.out", "a")
 
 let s:channel = ""
@@ -20,6 +20,7 @@ function s:define(channel, msg)
   " type is function, command or autocmd
   try
     let l:id = a:msg[0]
+    let l:resp = ["callback", l:id, [""]]
     if a:msg[1] == "function"
       " define a function
       let l:name = a:msg[2]
@@ -52,13 +53,25 @@ function s:define(channel, msg)
     elseif a:msg[1] == "ex"
       let l:expr = a:msg[2]
       execute l:expr
+    elseif a:msg[1] == "normal"
+      let l:expr = a:msg[2]
+      execute "normal ".l:expr
+    elseif a:msg[1] == "expr"
+      let l:expr = a:msg[2]
+      let l:res = eval(l:expr)
+      call add(l:resp[2], l:res)
+    elseif a:msg[1] == "call"
+      let l:fn = a:msg[2]
+      let F= function(l:fn, a:msg[3:-1])
+      let l:res = F()
+      call add(l:resp[2], l:res)
     else
-      throw "unknown definition type ".a:msg[0]
+      throw "unknown callback function type ".a:msg[1]
     endif
-    " success
-    call ch_sendexpr(a:channel, ["callback", l:id, ""])
   catch
-    call ch_sendexpr(a:channel, ["callback", l:id, string(v:exception)])
+    let l:resp[2][0] = string(v:exception)
+  finally
+    call ch_sendexpr(a:channel, l:resp)
   endtry
 endfunction
 
@@ -66,6 +79,10 @@ let opts = {"in_mode": "json", "out_mode": "json", "err_mode": "json", "callback
 if $GOVIMTEST_SOCKET != ""
   let s:channel = ch_open($GOVIMTEST_SOCKET, opts)
 else
-  let job = job_start(["gobin", "-m", "-run", "github.com/myitcv/govim/cmd/govim"], opts)
+  let start = $GOVIM_RUNCMD
+  if start == ""
+    let start = ["gobin", "-run", "github.com/myitcv/govim/cmd/govim"]
+  endif
+  let job = job_start(start, opts)
   let s:channel = job_getchannel(job)
 endif

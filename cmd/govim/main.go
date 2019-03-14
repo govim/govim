@@ -74,6 +74,11 @@ func hello(args ...json.RawMessage) (interface{}, error) {
 	return "World", nil
 }
 
+type callbackResp struct {
+	errString string
+	val       json.RawMessage
+}
+
 type govim struct {
 	in  *json.Decoder
 	out *json.Encoder
@@ -85,7 +90,7 @@ type govim struct {
 	// callCallbackNextID represents the next ID to use in a call to the Vim
 	// channel handler. This then allows us to direct the response.
 	callCallbackNextID int
-	callbackResps      map[int]chan string
+	callbackResps      map[int]chan callbackResp
 	callbackRespsLock  sync.Mutex
 
 	// channelCmdNextID reprents the next ID to use for a channel command
@@ -109,7 +114,7 @@ func newGoVim(in io.Reader, out io.Writer) (*govim, error) {
 		funcHandlers: make(map[string]interface{}),
 
 		callCallbackNextID: 1,
-		callbackResps:      make(map[int]chan string),
+		callbackResps:      make(map[int]chan callbackResp),
 	}, nil
 }
 
@@ -144,10 +149,15 @@ func (g *govim) run() {
 		switch typ {
 		case "callback":
 			// This case is a "return" from a call to callCallback. Format of args
-			// will be [id, string]
+			// will be [id, [string, val]]
 			id := g.parseInt(args[0])
-			msg := g.parseString(args[1])
-			g.logf("got a callback response: [%v, %v]\n", id, msg)
+			resp := g.parseJSONArgSlice(args[1])
+			msg := g.parseString(resp[0])
+			var val json.RawMessage
+			if len(resp) == 2 {
+				val = resp[1]
+			}
+			g.logf("got a callback response: [%v, %s]\n", id, args[1])
 			g.callbackRespsLock.Lock()
 			ch, ok := g.callbackResps[id]
 			delete(g.callbackResps, id)
@@ -156,7 +166,10 @@ func (g *govim) run() {
 				g.errProto("run: received response for callback %v, but not response chan defined", id)
 			}
 			go func() {
-				ch <- msg
+				ch <- callbackResp{
+					errString: msg,
+					val:       val,
+				}
 			}()
 		case "function":
 			fname := g.parseString(args[0])
@@ -214,15 +227,15 @@ func (g *govim) DefineFunction(name string, params []string, f vimFunction) erro
 		params = []string{"..."}
 	}
 	args := []interface{}{name, params}
-	var ch chan string
+	var ch chan callbackResp
 	err = g.doProto(func() {
 		ch = g.callCallback("function", args...)
 	})
 	if err != nil {
 		return err
 	}
-	if err := <-ch; err != "" {
-		return fmt.Errorf("failed to define %q in Vim: %v", name, err)
+	if resp := <-ch; resp.errString != "" {
+		return fmt.Errorf("failed to define %q in Vim: %v", name, resp.errString)
 	}
 	return nil
 }
@@ -235,34 +248,88 @@ func (g *govim) ChannelRedraw(force bool) error {
 	if force {
 		sForce = "force"
 	}
-	var ch chan string
+	var ch chan callbackResp
 	err = g.doProto(func() {
 		ch = g.callCallback("redraw", sForce)
 	})
 	if err != nil {
 		return err
 	}
-	if err := <-ch; err != "" {
-		return fmt.Errorf("failed to redraw (force = %v) in Vim: %v", force, err)
+	if resp := <-ch; resp.errString != "" {
+		return fmt.Errorf("failed to redraw (force = %v) in Vim: %v", force, resp.errString)
 	}
 	return nil
 }
 
-// ChannelEx performs a redraw in Vim
+// ChannelEx executes a ex command in Vim
 func (g *govim) ChannelEx(expr string) error {
 	g.logf("ChannelEx: %v\n", expr)
 	var err error
-	var ch chan string
+	var ch chan callbackResp
 	err = g.doProto(func() {
 		ch = g.callCallback("ex", expr)
 	})
 	if err != nil {
 		return err
 	}
-	if err := <-ch; err != "" {
-		return fmt.Errorf("failed to ex(%v) in Vim: %v", expr, err)
+	if resp := <-ch; resp.errString != "" {
+		return fmt.Errorf("failed to ex(%v) in Vim: %v", expr, resp.errString)
 	}
 	return nil
+}
+
+// ChannelNormal run a command in normal mode in Vim
+func (g *govim) ChannelNormal(expr string) error {
+	g.logf("ChannelNormal: %v\n", expr)
+	var err error
+	var ch chan callbackResp
+	err = g.doProto(func() {
+		ch = g.callCallback("normal", expr)
+	})
+	if err != nil {
+		return err
+	}
+	if resp := <-ch; resp.errString != "" {
+		return fmt.Errorf("failed to normal(%v) in Vim: %v", expr, resp.errString)
+	}
+	return nil
+}
+
+// ChannelExpr evaluates and returns the result of expr in Vim
+func (g *govim) ChannelExpr(expr string) (interface{}, error) {
+	g.logf("ChannelExpr: %v\n", expr)
+	var err error
+	var ch chan callbackResp
+	err = g.doProto(func() {
+		ch = g.callCallback("expr", expr)
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp := <-ch
+	if resp.errString != "" {
+		return nil, fmt.Errorf("failed to expr(%v) in Vim: %v", expr, resp.errString)
+	}
+	return resp.val, nil
+}
+
+// ChannelCall evaluates and returns the result of call in Vim
+func (g *govim) ChannelCall(fn string, args ...interface{}) (interface{}, error) {
+	args = append([]interface{}{fn}, args...)
+	g.logf("ChannelCall: %v\n", args...)
+	var err error
+	var ch chan callbackResp
+	err = g.doProto(func() {
+		ch = g.callCallback("call", args...)
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp := <-ch
+	if resp.errString != "" {
+		return nil, fmt.Errorf("failed to call(%v) in Vim: %v", args, resp.errString)
+	}
+	return resp.val, nil
 }
 
 // doProto is used as a wrapper around function calls that jump the "interface"
@@ -292,11 +359,11 @@ func (g *govim) doProto(f func()) (err error) {
 // defined handler in Vim. The Vim handler switches on typ. The Vim handler does
 // not return a value, instead we acknowledge success by sending a zero-length
 // string.
-func (g *govim) callCallback(typ string, vs ...interface{}) chan string {
+func (g *govim) callCallback(typ string, vs ...interface{}) chan callbackResp {
 	g.callbackRespsLock.Lock()
 	id := g.callCallbackNextID
 	g.callCallbackNextID++
-	ch := make(chan string)
+	ch := make(chan callbackResp)
 	g.callbackResps[id] = ch
 	g.callbackRespsLock.Unlock()
 	args := []interface{}{id, typ}
