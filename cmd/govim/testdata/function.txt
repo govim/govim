@@ -1,0 +1,6 @@
+vim normal '"=Hello()p'
+vim ex 'w test'
+cmp test test.golden
+
+-- test.golden --
+World

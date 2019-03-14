@@ -27,6 +27,8 @@ GOVIM_RUNCMD="gobin -m -run github.com/myitcv/govim/cmd/govim"
 
 to run the main-module local version.
 
+Tested against Vim 8.1. Untested/unexpected to (currently) work with Neovim.
+
 ### Tests
 
 Tests are written using [`testscript`](https://godoc.org/github.com/rogpeppe/go-internal/testscript) scripts. For each
@@ -49,3 +51,13 @@ vim normal h
 # cause vim to redraw
 vim redraw
 ```
+
+See the scripts in [`testdata`](testdata) for more ideas/examples.
+
+### TODO
+
+* Implement support for defining:
+  * range-based functions
+  * commands
+  * auto-cmds
+* More tests

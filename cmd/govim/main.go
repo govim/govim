@@ -55,6 +55,7 @@ func mainerr() error {
 		return fmt.Errorf("failed to create govim instance: %v", err)
 	}
 
+	// TODO define proper init sequence for govim
 	go func() {
 		if err := g.DefineFunction("Hello", []string{}, hello); err != nil {
 			g.errorf("failed to DefineFunction: %v", err)
