@@ -172,6 +172,13 @@ func (d *driver) listenGovim() {
 
 	go d.listenDriver()
 
+	// TODO need to properly define an init sequence
+	go func() {
+		if err := g.DefineFunction("Hello", []string{}, hello); err != nil {
+			d.errorf("failed to DefineFunction %q: %v", "Hello", err)
+		}
+	}()
+
 	if err := g.Run(); err != nil {
 		select {
 		case <-d.quitGovim:
