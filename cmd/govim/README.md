@@ -1,36 +1,24 @@
 ## `github.com/myitcv/govim/cmd/govim`
 
-`govim` is a Vim8 channel-based plugin, written in Go, to support the writing of Go code in Vim. WIP; still lots
+`govim` is a Vim8 channel-based plugin, written in Go, to support the writing of Go code in Vim8. WIP; still lots
 [TODO](https://github.com/myitcv/govim/wiki/TODO).
 
-Instructions below use [`gobin`](https://github.com/myitcv/gobin):
+Instructions below assume you have [`gobin`](https://github.com/myitcv/gobin) on your PATH.
 
-```
-gobin github.com/myitcv/govim/cmd/govim
-vi -u run.vim
-```
-
-Then within Vim:
-
-```
-:echo Hello()
-```
-
-should result in:
-
-```
-World
-```
-
-If you are working on `github.com/myitcv/govim/cmd/govim` locally, then set the environment variable:
-
-```
-GOVIM_RUNCMD="gobin -m -run github.com/myitcv/govim/cmd/govim"
-```
-
-to run the main-module local version of `govim`.
+* [Vim 8 packages](http://vimhelp.appspot.com/repeat.txt.html#packages)
+  * `git clone https://github.com/myitcv/govim.git ~/.vim/pack/plugins/start/govim`
+* [Pathogen](https://github.com/tpope/vim-pathogen)
+  * `git clone https://github.com/myitcv/govim.git ~/.vim/bundle/govim`
+* [vim-plug](https://github.com/junegunn/vim-plug)
+  * `Plug 'myitcv/govim'`
+* [Vundle](https://github.com/VundleVim/Vundle.vim)
+  * `Plugin 'myitcv/govim'`
 
 Tested against Vim 8.1. Untested/unexpected to (currently) work with Neovim.
+
+### What can `govim` do?
+
+See [`govim` plugin API](https://github.com/myitcv/govim/wiki/govim-plugin-API)
 
 ### Tests
 
