@@ -1,11 +1,5 @@
-" TODO work out why we need to set this
-set nocompatible
-set nobackup
-set nowritebackup
-set noswapfile
-
 " Useful for debugging
-" call ch_logfile("/tmp/log.out", "a")
+call ch_logfile("/tmp/log.out", "a")
 
 let s:channel = ""
 
@@ -81,8 +75,9 @@ if $GOVIMTEST_SOCKET != ""
 else
   let start = $GOVIM_RUNCMD
   if start == ""
-    let start = ["gobin", "-run", "github.com/myitcv/govim/cmd/govim"]
+    let start = ["gobin", "-m", "-run", "github.com/myitcv/govim/cmd/govim"]
   endif
+  let opts.cwd = expand(expand("<sfile>:h"))
   let job = job_start(start, opts)
   let s:channel = job_getchannel(job)
 endif
