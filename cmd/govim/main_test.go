@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -200,7 +201,7 @@ func (d *driver) listenDriver() {
 				d.errorf("failed to read command for driver: %v", err)
 			}
 			cmd := args[0]
-			var res interface{}
+			res := []interface{}{""}
 			switch cmd {
 			case "redraw":
 				var force string
@@ -210,13 +211,30 @@ func (d *driver) listenDriver() {
 				if err := d.govim.ChannelRedraw(force == "force"); err != nil {
 					d.errorf("failed to execute %v: %v", cmd, err)
 				}
-				res = true
 			case "ex":
 				expr := args[1].(string)
 				if err := d.govim.ChannelEx(expr); err != nil {
-					d.errorf("failed to execute %v: %v", cmd, err)
+					d.errorf("failed to ChannelEx %v: %v", cmd, err)
 				}
-				res = true
+			case "normal":
+				expr := args[1].(string)
+				if err := d.govim.ChannelNormal(expr); err != nil {
+					d.errorf("failed to ChannelNormal %v: %v", cmd, err)
+				}
+			case "expr":
+				expr := args[1].(string)
+				resp, err := d.govim.ChannelExpr(expr)
+				if err != nil {
+					d.errorf("failed to ChannelExpr %v: %v", cmd, err)
+				}
+				res = append(res, resp)
+			case "call":
+				fn := args[1].(string)
+				resp, err := d.govim.ChannelCall(fn, args[2:]...)
+				if err != nil {
+					d.errorf("failed to ChannelCall %v: %v", cmd, err)
+				}
+				res = append(res, resp)
 			default:
 				d.errorf("don't yet know how to handle %v", cmd)
 			}
@@ -253,7 +271,7 @@ func vim() (exitCode int) {
 	var jsonArgs []string
 	for i, a := range args {
 		if i <= 1 {
-			jsonArgs = append(jsonArgs, "\""+a+"\"")
+			jsonArgs = append(jsonArgs, strconv.Quote(a))
 		} else {
 			jsonArgs = append(jsonArgs, a)
 		}
@@ -275,7 +293,7 @@ func vim() (exitCode int) {
 		default:
 			ef("redraw has a single optional argument: force; we saw %v", l)
 		}
-	case "ex", "normal", "expr", "exprResp":
+	case "ex", "normal", "expr":
 		switch l := len(args[1:]); l {
 		case 1:
 			if _, ok := i[1].(string); !ok {
@@ -284,7 +302,7 @@ func vim() (exitCode int) {
 		default:
 			ef("%v takes a single argument: we saw %v", fn, l)
 		}
-	case "call", "callResp":
+	case "call":
 		switch l := len(args[1:]); l {
 		case 2:
 			if _, ok := i[1].(string); !ok {
@@ -306,14 +324,19 @@ func vim() (exitCode int) {
 		ef("failed to send command %q to driver on: %v", jsonArgString, err)
 	}
 	dec := json.NewDecoder(conn)
-	var resp interface{}
+	var resp []interface{}
 	if err := dec.Decode(&resp); err != nil {
 		ef("failed to decode response: %v", err)
 	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	if err := enc.Encode(resp); err != nil {
-		ef("failed to format output of JSON: %v", err)
+	if resp[0] != "" {
+		ef("got error response: %v", resp[0])
+	}
+	if len(resp) == 2 {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(resp[1]); err != nil {
+			ef("failed to format output of JSON: %v", err)
+		}
 	}
 	conn.Close()
 	return 0

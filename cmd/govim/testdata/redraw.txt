@@ -1,3 +1,2 @@
 vim redraw
-vim ex 'w test'
-exists test
+vim redraw force

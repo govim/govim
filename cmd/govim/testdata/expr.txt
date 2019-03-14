@@ -1,0 +1,9 @@
+vim expr '[1, 2, line("$")]'
+cmp stdout out.golden
+
+-- out.golden --
+[
+  1,
+  2,
+  1
+]
