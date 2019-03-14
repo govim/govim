@@ -1,4 +1,4 @@
-vim normal '"=Hello()p'
+vim normal '\"=Hello()\u000dp'
 vim ex 'w test'
 cmp test test.golden
 

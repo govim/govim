@@ -37,10 +37,10 @@ command. For example:
 
 ```bash
 # get the line number of the last line
-vim call line '["$"]'
+vim call line '[\"$\"]'
 
 # evaluate expressions
-vim expr '[1, 2, line("$")]'
+vim expr '[1, 2, line(\"$\")]'
 
 # run ex commands
 vim ex 'w test'
@@ -51,6 +51,9 @@ vim normal h
 # cause vim to redraw
 vim redraw
 ```
+
+All arguments to `vim` should be Go double-quote escaped (https://godoc.org/strconv#Quote) string literals, after
+`testscript` word handling, variable expansion etc.
 
 See the scripts in [`testdata`](testdata) for more ideas/examples.
 
