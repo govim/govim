@@ -1,2 +1,2 @@
-vim call line '["$"]'
+vim call line '[\"$\"]'
 stdout 0

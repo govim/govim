@@ -1,4 +1,4 @@
-vim expr '[1, 2, line("$")]'
+vim expr '[1, 2, line(\"$\")]'
 cmp stdout out.golden
 
 -- out.golden --
