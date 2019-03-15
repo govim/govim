@@ -6,7 +6,11 @@ let s:channel = ""
 function s:callbackFunction(args)
   let l:args = ["function"]
   call extend(l:args, a:args)
-  return ch_evalexpr(s:channel, l:args)
+  let l:resp = ch_evalexpr(s:channel, l:args)
+  if l:resp[0] != ""
+    echoerr l:resp[0]
+  endif
+  return l:resp[1]
 endfunction
 
 function s:define(channel, msg)

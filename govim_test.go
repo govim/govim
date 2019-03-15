@@ -31,12 +31,7 @@ func TestScripts(t *testing.T) {
 			Dir: "testdata",
 			Setup: func(e *testscript.Env) error {
 				wg.Add(1)
-				d, err := testdriver.NewDriver(e, errCh, func(g *govim.Govim) error {
-					if err := g.DefineFunction("Hello", []string{}, hello); err != nil {
-						return fmt.Errorf("failed to DefineFunction %q: %v", "Hello", err)
-					}
-					return nil
-				})
+				d, err := testdriver.NewDriver(e, errCh, initDriver)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
@@ -60,6 +55,20 @@ func TestScripts(t *testing.T) {
 	}
 }
 
+func initDriver(g *govim.Govim) error {
+	if err := g.DefineFunction("Hello", []string{}, hello); err != nil {
+		return fmt.Errorf("failed to DefineFunction %q: %v", "Hello", err)
+	}
+	if err := g.DefineFunction("Bad", []string{}, bad); err != nil {
+		return fmt.Errorf("failed to DefineFunction %q: %v", "Bad", err)
+	}
+	return nil
+}
+
 func hello(args ...json.RawMessage) (interface{}, error) {
 	return "World", nil
+}
+
+func bad(args ...json.RawMessage) (interface{}, error) {
+	return nil, fmt.Errorf("this is a bad function")
 }

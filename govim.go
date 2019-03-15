@@ -135,12 +135,15 @@ func (g *Govim) run() {
 				}
 			}
 			go func() {
-				if resp, err := call(); err != nil {
-					g.errorf("got error whilst handling %v: %v", fname, err)
-					g.sendJSONMsg(id, ERROR)
+				resp := [2]interface{}{"", ""}
+				if res, err := call(); err != nil {
+					errStr := fmt.Sprintf("got error whilst handling %v: %v", fname, err)
+					g.errorf(errStr)
+					resp[0] = errStr
 				} else {
-					g.sendJSONMsg(id, resp)
+					resp[1] = res
 				}
+				g.sendJSONMsg(id, resp)
 			}()
 		}
 	}
@@ -391,12 +394,9 @@ func (g *Govim) errProto(format string, args ...interface{}) {
 // errorf is a means of raising an error that will be logged. i.e. it does not
 // represent a protocol error, and Vim + govim _might_ be able to recover from
 // this situation.
-//
-// TODO tighten up the implementation and semantics here
 func (g *Govim) errorf(format string, args ...interface{}) {
 	defer func() {
 		fmt.Fprintln(g.err, recover())
-		os.Exit(1)
 	}()
 	panic(fmt.Errorf(format, args...))
 }
