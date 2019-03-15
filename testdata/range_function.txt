@@ -1,0 +1,13 @@
+vim ex 'r input | 0d_'
+vim ex 'w output'
+cmp output input
+vim ex '1,2call Echo()'
+! stdout .+
+! stderr .+
+vim expr 'v:statusmsg'
+stdout '^\Q"Hello\nGophers"\E$'
+! stderr .+
+
+-- input --
+Hello
+Gophers

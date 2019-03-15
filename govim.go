@@ -72,8 +72,8 @@ func (g *Govim) funcHandler(name string) interface{} {
 	return f
 }
 
-type vimFunction func(args ...json.RawMessage) (interface{}, error)
-type vimRangeFunction func(line1, line2 int, args ...json.RawMessage) (interface{}, error)
+type VimFunction func(args ...json.RawMessage) (interface{}, error)
+type VimRangeFunction func(line1, line2 int, args ...json.RawMessage) (interface{}, error)
 
 // Run is a user-friendly run wrapper
 func (g *Govim) Run() error {
@@ -122,14 +122,14 @@ func (g *Govim) run() {
 			var line1, line2 int
 			var call func() (interface{}, error)
 			switch f := f.(type) {
-			case vimRangeFunction:
+			case VimRangeFunction:
 				line1 = g.parseInt(fargs[0])
 				line2 = g.parseInt(fargs[1])
 				fargs = fargs[2:]
 				call = func() (interface{}, error) {
 					return f(line1, line2, fargs...)
 				}
-			case vimFunction:
+			case VimFunction:
 				call = func() (interface{}, error) {
 					return f(fargs...)
 				}
@@ -152,8 +152,20 @@ func (g *Govim) run() {
 // DefineFunction defines the named function in Vim. name must begin with a capital
 // letter. params is the parameters that will be used in the Vim function delcaration.
 // If params is nil, then "..." is assumed.
-func (g *Govim) DefineFunction(name string, params []string, f vimFunction) error {
+func (g *Govim) DefineFunction(name string, params []string, f VimFunction) error {
 	g.logf("DefineFunction: %v, %v\n", name, params)
+	return g.defineFunction(false, name, params, f)
+}
+
+// DefineRangeFunction defines the named function as range-based in Vim. name
+// must begin with a capital letter. params is the parameters that will be used
+// in the Vim function delcaration.  If params is nil, then "..." is assumed.
+func (g *Govim) DefineRangeFunction(name string, params []string, f VimRangeFunction) error {
+	g.logf("DefineRangeFunction: %v, %v\n", name, params)
+	return g.defineFunction(true, name, params, f)
+}
+
+func (g *Govim) defineFunction(isRange bool, name string, params []string, f interface{}) error {
 	var err error
 	if name == "" {
 		return fmt.Errorf("function name must not be empty")
@@ -173,9 +185,13 @@ func (g *Govim) DefineFunction(name string, params []string, f vimFunction) erro
 		params = []string{"..."}
 	}
 	args := []interface{}{name, params}
+	callbackTyp := "function"
+	if isRange {
+		callbackTyp = "rangefunction"
+	}
 	var ch chan callbackResp
 	err = g.DoProto(func() {
-		ch = g.callCallback("function", args...)
+		ch = g.callCallback(callbackTyp, args...)
 	})
 	if err != nil {
 		return err
@@ -184,6 +200,7 @@ func (g *Govim) DefineFunction(name string, params []string, f vimFunction) erro
 		return fmt.Errorf("failed to define %q in Vim: %v", name, resp.errString)
 	}
 	return nil
+
 }
 
 // ChannelRedraw performs a redraw in Vim
@@ -242,7 +259,7 @@ func (g *Govim) ChannelNormal(expr string) error {
 }
 
 // ChannelExpr evaluates and returns the result of expr in Vim
-func (g *Govim) ChannelExpr(expr string) (interface{}, error) {
+func (g *Govim) ChannelExpr(expr string) (json.RawMessage, error) {
 	g.logf("ChannelExpr: %v\n", expr)
 	var err error
 	var ch chan callbackResp
