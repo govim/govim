@@ -133,9 +133,6 @@ func (d *Driver) Close() {
 }
 
 func (d *Driver) errorf(format string, args ...interface{}) {
-	err := fmt.Errorf(format, args...)
-	panic(err)
-	fmt.Printf("%v\n", err)
 	d.errCh <- fmt.Errorf(format, args...)
 }
 
@@ -194,39 +191,38 @@ func (d *Driver) listenDriver() {
 			}
 			cmd := args[0]
 			res := []interface{}{""}
+			add := func(err error, is ...interface{}) {
+				toAdd := []interface{}{""}
+				if err != nil {
+					toAdd[0] = err.Error()
+				} else {
+					for _, i := range is {
+						toAdd = append(toAdd, i)
+					}
+				}
+				res = append(res, toAdd)
+			}
 			switch cmd {
 			case "redraw":
 				var force string
 				if len(args) == 2 {
 					force = args[1].(string)
 				}
-				if err := d.govim.ChannelRedraw(force == "force"); err != nil {
-					d.errorf("failed to execute %v: %v", cmd, err)
-				}
+				add(d.govim.ChannelRedraw(force == "force"))
 			case "ex":
 				expr := args[1].(string)
-				if err := d.govim.ChannelEx(expr); err != nil {
-					d.errorf("failed to ChannelEx %v: %v", cmd, err)
-				}
+				add(d.govim.ChannelEx(expr))
 			case "normal":
 				expr := args[1].(string)
-				if err := d.govim.ChannelNormal(expr); err != nil {
-					d.errorf("failed to ChannelNormal %v: %v", cmd, err)
-				}
+				add(d.govim.ChannelNormal(expr))
 			case "expr":
 				expr := args[1].(string)
 				resp, err := d.govim.ChannelExpr(expr)
-				if err != nil {
-					d.errorf("failed to ChannelExpr %v: %v", cmd, err)
-				}
-				res = append(res, resp)
+				add(err, resp)
 			case "call":
 				fn := args[1].(string)
 				resp, err := d.govim.ChannelCall(fn, args[2:]...)
-				if err != nil {
-					d.errorf("failed to ChannelCall %v: %v", cmd, err)
-				}
-				res = append(res, resp)
+				add(err, resp)
 			default:
 				d.errorf("don't yet know how to handle %v", cmd)
 			}
@@ -326,12 +322,19 @@ func Vim() (exitCode int) {
 		ef("failed to decode response: %v", err)
 	}
 	if resp[0] != "" {
+		// this is a protocol-level error
 		ef("got error response: %v", resp[0])
 	}
-	if len(resp) == 2 {
+	// resp[1] will be a []intferface{} where the first
+	// element will be a Vim-level error
+	vimResp := resp[1].([]interface{})
+	if err := vimResp[0].(string); err != "" {
+		fmt.Fprintln(os.Stderr, err)
+	}
+	if len(vimResp) == 2 {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		if err := enc.Encode(resp[1]); err != nil {
+		if err := enc.Encode(vimResp[1]); err != nil {
 			ef("failed to format output of JSON: %v", err)
 		}
 	}

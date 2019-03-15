@@ -2,5 +2,9 @@ vim normal '\"=Hello()\u000dp'
 vim ex 'w test'
 cmp test test.golden
 
+vim expr 'Bad()'
+! stdout .+
+stderr '^\Qfailed to expr(Bad()) in Vim: ''Vim(echoerr):got error whilst handling Bad: this is a bad function''\E'
+
 -- test.golden --
 World
