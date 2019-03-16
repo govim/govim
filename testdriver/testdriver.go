@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -112,6 +114,9 @@ func (d *Driver) Run() {
 	if err != nil {
 		d.errorf("failed to start %v: %v", strings.Join(d.cmd.Args, " "), err)
 	}
+	go func() {
+		io.Copy(ioutil.Discard, thepty)
+	}()
 	go func() {
 		if err := d.cmd.Wait(); err != nil {
 			select {
