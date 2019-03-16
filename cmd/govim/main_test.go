@@ -6,6 +6,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -28,7 +29,7 @@ func TestScripts(t *testing.T) {
 			Dir: "testdata",
 			Setup: func(e *testscript.Env) error {
 				wg.Add(1)
-				d, err := testdriver.NewDriver(e, errCh, govimInit)
+				d, err := testdriver.NewDriver(filepath.Base(e.WorkDir), e, errCh, govimInit)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}

@@ -3,8 +3,18 @@ call ch_logfile("/tmp/log.out", "a")
 
 let s:channel = ""
 
-function s:callbackFunction(args)
-  let l:args = ["function"]
+function s:callbackFunction(name, args)
+  let l:args = ["function", a:name]
+  call extend(l:args, a:args)
+  let l:resp = ch_evalexpr(s:channel, l:args)
+  if l:resp[0] != ""
+    echoerr l:resp[0]
+  endif
+  return l:resp[1]
+endfunction
+
+function s:callbackRangeFunction(name, first, last, args)
+  let l:args = ["function", a:name, a:first, a:last]
   call extend(l:args, a:args)
   let l:resp = ch_evalexpr(s:channel, l:args)
   if l:resp[0] != ""
@@ -21,26 +31,9 @@ function s:define(channel, msg)
     let l:resp = ["callback", l:id, [""]]
     if a:msg[1] == "function"
       " define a function
-      let l:name = a:msg[2]
-      let l:fargs = a:msg[3]
-      let l:params = join(l:fargs, ", ")
-      if len(l:fargs) == 0
-        let l:args = "let l:args = [\"".l:name."\"]\n"
-      else
-        let l:args = "let l:args = [\"".l:name.", "
-        for i in l:fargs
-          if i == "..."
-            let l:args = l:args."a:000"
-          else
-            let l:args = l:args."a:".i
-          endif
-        endfor
-        let l:args = l:args."]\n"
-      endif
-      execute "function! "  . l:name . "(" . l:params . ")\n" .
-            \ l:args .
-            \ "return s:callbackFunction(l:args)\n" .
-            \ "endfunction\n"
+      call s:defineFunction(a:msg[2], a:msg[3], 0)
+    elseif a:msg[1] == "rangefunction"
+      call s:defineFunction(a:msg[2], a:msg[3], 1)
     elseif a:msg[1] == "redraw"
       let l:force = a:msg[2]
       let l:args = ""
@@ -71,6 +64,33 @@ function s:define(channel, msg)
   finally
     call ch_sendexpr(a:channel, l:resp)
   endtry
+endfunction
+
+func s:defineFunction(name, argsStr, range)
+  let l:params = join(a:argsStr, ", ")
+  let l:args = "let l:args = []\n"
+  if len(a:argsStr) > 0
+    let l:args = "let l:args = ["
+    for i in a:argsStr
+      if i == "..."
+        let l:args = l:args."a:000"
+      else
+        let l:args = l:args."a:".i
+      endif
+    endfor
+    let l:args = l:args."]"
+  endif
+  if a:range == 1
+    let l:range = " range"
+    let l:ret = "return s:callbackRangeFunction(\"" . a:name . "\", a:firstline, a:lastline, l:args)"
+  else
+    let l:range = ""
+    let l:ret = "return s:callbackFunction(\"" . a:name . "\", l:args)"
+  endif
+  execute "function! "  . a:name . "(" . l:params . ") " . l:range . "\n" .
+        \ l:args . "\n" .
+        \ l:ret . "\n" .
+        \ "endfunction\n"
 endfunction
 
 let opts = {"in_mode": "json", "out_mode": "json", "err_mode": "json", "callback": function("s:define")}

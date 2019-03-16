@@ -24,6 +24,8 @@ type Driver struct {
 
 	cmd *exec.Cmd
 
+	name string
+
 	init func(*govim.Govim) error
 
 	quitVim    chan bool
@@ -39,7 +41,7 @@ type Driver struct {
 	errCh chan error
 }
 
-func NewDriver(env *testscript.Env, errCh chan error, init func(*govim.Govim) error) (*Driver, error) {
+func NewDriver(name string, env *testscript.Env, errCh chan error, init func(*govim.Govim) error) (*Driver, error) {
 	res := &Driver{
 		quitVim:    make(chan bool),
 		quitGovim:  make(chan bool),
@@ -48,6 +50,8 @@ func NewDriver(env *testscript.Env, errCh chan error, init func(*govim.Govim) er
 		doneQuitVim:    make(chan bool),
 		doneQuitGovim:  make(chan bool),
 		doneQuitDriver: make(chan bool),
+
+		name: name,
 
 		doneInit: make(chan bool),
 
@@ -104,18 +108,20 @@ func findLocalVimrc() (string, error) {
 
 func (d *Driver) Run() {
 	go d.listenGovim()
-	if _, err := pty.Start(d.cmd); err != nil {
+	thepty, err := pty.Start(d.cmd)
+	if err != nil {
 		d.errorf("failed to start %v: %v", strings.Join(d.cmd.Args, " "), err)
 	}
 	go func() {
 		if err := d.cmd.Wait(); err != nil {
 			select {
 			case <-d.quitVim:
-				close(d.doneQuitVim)
 			default:
 				d.errorf("vim exited: %v", err)
 			}
 		}
+		thepty.Close()
+		close(d.doneQuitVim)
 	}()
 	<-d.doneInit
 }
@@ -133,7 +139,9 @@ func (d *Driver) Close() {
 }
 
 func (d *Driver) errorf(format string, args ...interface{}) {
-	d.errCh <- fmt.Errorf(format, args...)
+	err := fmt.Errorf(d.name+": "+format, args...)
+	// fmt.Println(err)
+	d.errCh <- err
 }
 
 func (d *Driver) listenGovim() {
@@ -161,14 +169,15 @@ func (d *Driver) listenGovim() {
 }
 
 func (d *Driver) doInit() {
-	if d.init != nil {
-		go func() {
-			if err := d.init(d.govim); err != nil {
-				d.errorf("failed to run init: %v", err)
-			}
-		}()
+	if d.init == nil {
+		close(d.doneInit)
 	}
-	close(d.doneInit)
+	go func() {
+		if err := d.init(d.govim); err != nil {
+			d.errorf("failed to run init: %v", err)
+		}
+		close(d.doneInit)
+	}()
 }
 
 func (d *Driver) listenDriver() {
