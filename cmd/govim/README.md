@@ -22,7 +22,7 @@ See [`govim` plugin API](https://github.com/myitcv/govim/wiki/govim-plugin-API)
 
 ### Tests
 
-See [`govim` command tests](https://github.com/myitcv/govim/wiki/govim-command-tests).
+See [`govim` tests](https://github.com/myitcv/govim/wiki/govim-tests).
 
 ### TODO
 
