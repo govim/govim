@@ -1,0 +1,7 @@
+# no bang
+vim ex 'Hello'
+! stdout .+
+! stderr .+
+vim expr 'v:statusmsg'
+stdout '^\Q"Hello from command"\E$'
+! stderr .+

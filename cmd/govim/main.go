@@ -81,16 +81,22 @@ func (d *driver) init(g *govim.Govim) error {
 	d.Govim = g
 	return d.Do(func() error {
 		d.DefineFunction("Hello", []string{}, d.hello)
-		d.DefineCommand("HelloComm", d.helloComm)
+		d.DefineCommand("Hello", d.helloComm)
+		d.DefineAutoCommand("", govim.Events{govim.EventBufRead}, govim.Patterns{"*.go"}, false, d.goBufRead)
 		return nil
 	})
 }
 
 func (d *driver) hello(args ...json.RawMessage) (interface{}, error) {
-	return "World", nil
+	return "Hello from function", nil
 }
 
 func (d *driver) helloComm(flags govim.CommandFlags, args ...string) error {
-	d.ChannelEx(`echom "Hello world"`)
+	d.ChannelEx(`echom "Hello from command"`)
+	return nil
+}
+
+func (d *driver) goBufRead() error {
+	d.ChannelEx(`echom "Just read a .go file"`)
 	return nil
 }

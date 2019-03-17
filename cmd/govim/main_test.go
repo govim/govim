@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/myitcv/govim/internal/plugin"
 	"github.com/myitcv/govim/testdriver"
 	"github.com/rogpeppe/go-internal/testscript"
 )
@@ -30,12 +31,16 @@ func TestScripts(t *testing.T) {
 			Dir: "testdata",
 			Setup: func(e *testscript.Env) error {
 				wg.Add(1)
-				d := new(driver)
+				d := &driver{Driver: new(plugin.Driver)}
 				td, err := testdriver.NewDriver(filepath.Base(e.WorkDir), e, errCh, d.init)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
-				td.Run()
+				if err := td.Run(); err != nil {
+					td.Close()
+					wg.Done()
+					return err
+				}
 				e.Defer(func() {
 					td.Close()
 					wg.Done()
