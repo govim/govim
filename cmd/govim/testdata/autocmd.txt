@@ -1,0 +1,8 @@
+vim ex 'e main.go'
+vim expr 'v:statusmsg'
+stdout '^\Q"Just read a .go file"\E$'
+! stderr .+
+
+-- main.go --
+// command special
+package main
