@@ -115,6 +115,12 @@ func (d *Driver) DefineCommand(name string, f govim.VimCommandFunction, attrs ..
 	}
 }
 
+func (d *Driver) DefineAutoCommand(group string, events govim.Events, patts govim.Patterns, nested bool, f govim.VimAutoCommandFunction) {
+	if err := d.Govim.DefineAutoCommand(group, events, patts, nested, f); err != nil {
+		d.Errorf("failed to DefineAutoCommand: %v", err)
+	}
+}
+
 type ErrDriver struct {
 	Underlying error
 }

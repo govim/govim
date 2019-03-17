@@ -40,7 +40,11 @@ func TestScripts(t *testing.T) {
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
-				td.Run()
+				if err := td.Run(); err != nil {
+					td.Close()
+					wg.Done()
+					return err
+				}
 				e.Defer(func() {
 					td.Close()
 					wg.Done()
@@ -89,8 +93,14 @@ func (d *driver) init(g *govim.Govim) error {
 		d.DefineFunction("Bad", []string{}, d.bad)
 		d.DefineRangeFunction("Echo", []string{}, d.echo)
 		d.DefineCommand("HelloComm", d.helloComm, govim.AttrBang)
+		d.DefineAutoCommand("", govim.Events{govim.EventBufRead}, govim.Patterns{"*.go"}, false, d.bufRead)
 		return nil
 	})
+}
+
+func (d *driver) bufRead() error {
+	d.ChannelEx(`echom "Hello from BufRead"`)
+	return nil
 }
 
 func (d *driver) helloComm(flags govim.CommandFlags, args ...string) error {
