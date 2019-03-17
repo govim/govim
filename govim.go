@@ -7,13 +7,18 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"unicode"
 	"unicode/utf8"
 )
 
 const (
-	ERROR = "ERROR"
+	funcHandlePref     = "function:"
+	commHandlePref     = "command:"
+	autoCommHandlePref = "autocommand:"
 )
 
 type callbackResp struct {
@@ -62,18 +67,55 @@ func NewGoVim(in io.Reader, out io.Writer) (*Govim, error) {
 }
 
 // funcHandler returns the
-func (g *Govim) funcHandler(name string) interface{} {
+func (g *Govim) funcHandler(name string) (string, interface{}) {
 	g.funcHandlersLock.Lock()
 	defer g.funcHandlersLock.Unlock()
 	f, ok := g.funcHandlers[name]
 	if !ok {
 		g.errProto("tried to invoke %v but no function defined", name)
 	}
-	return f
+	return strings.TrimPrefix(name, funcHandlePref), f
+}
+
+type CommandFlags struct {
+	Line1 *int
+	Line2 *int
+	Range *int
+	Count *int
+	Bang  *bool
+	Reg   *string
+}
+
+func (c *CommandFlags) UnmarshalJSON(b []byte) error {
+	// panic(fmt.Sprintf("%s", b))
+	var v struct {
+		Line1 *int    `json:"line1"`
+		Line2 *int    `json:"line2"`
+		Range *int    `json:"range"`
+		Count *int    `json:"count"`
+		Bang  *string `json:"bang"`
+		Reg   *string `json:"reg"`
+	}
+
+	if err := json.Unmarshal(b, &v); err != nil {
+		return err
+	}
+
+	c.Line1 = v.Line1
+	c.Line2 = v.Line2
+	c.Range = v.Range
+	c.Count = v.Count
+	if v.Bang != nil {
+		b := *v.Bang == "!"
+		c.Bang = &b
+	}
+
+	return nil
 }
 
 type VimFunction func(args ...json.RawMessage) (interface{}, error)
 type VimRangeFunction func(line1, line2 int, args ...json.RawMessage) (interface{}, error)
+type VimCommandFunction func(flags CommandFlags, args ...string) error
 
 // Run is a user-friendly run wrapper
 func (g *Govim) Run() error {
@@ -118,7 +160,7 @@ func (g *Govim) run() {
 			fname := g.parseString(args[0])
 			fargs := args[1:]
 			g.logf("got a function call: %v, %v\n", fname, fargs)
-			f := g.funcHandler(fname)
+			fname, f := g.funcHandler(fname)
 			var line1, line2 int
 			var call func() (interface{}, error)
 			switch f := f.(type) {
@@ -133,6 +175,19 @@ func (g *Govim) run() {
 				call = func() (interface{}, error) {
 					return f(fargs...)
 				}
+			case VimCommandFunction:
+				var flagVals CommandFlags
+				g.decodeJSON(fargs[0], &flagVals)
+				var args []string
+				for _, f := range fargs[1:] {
+					args = append(args, g.parseString(f))
+				}
+				call = func() (interface{}, error) {
+					err := f(flagVals, args...)
+					return nil, err
+				}
+			default:
+				panic(fmt.Errorf("unknown function type %T", f))
 			}
 			go func() {
 				resp := [2]interface{}{"", ""}
@@ -174,12 +229,13 @@ func (g *Govim) defineFunction(isRange bool, name string, params []string, f int
 	if !unicode.IsUpper(r) {
 		return fmt.Errorf("function name %q must begin with a capital letter", name)
 	}
+	funcHandle := funcHandlePref + name
 	g.funcHandlersLock.Lock()
-	if _, ok := g.funcHandlers[name]; ok {
+	if _, ok := g.funcHandlers[funcHandle]; ok {
 		g.funcHandlersLock.Unlock()
 		return fmt.Errorf("function already defined with name %q", name)
 	}
-	g.funcHandlers[name] = f
+	g.funcHandlers[funcHandle] = f
 	g.funcHandlersLock.Unlock()
 	if params == nil {
 		params = []string{"..."}
@@ -200,8 +256,251 @@ func (g *Govim) defineFunction(isRange bool, name string, params []string, f int
 		return fmt.Errorf("failed to define %q in Vim: %v", name, resp.errString)
 	}
 	return nil
-
 }
+
+func (g *Govim) DefineCommand(name string, f VimCommandFunction, attrs ...CommAttr) error {
+	var err error
+	if name == "" {
+		return fmt.Errorf("command name must not be empty")
+	}
+	r, _ := utf8.DecodeRuneInString(name)
+	if !unicode.IsUpper(r) {
+		return fmt.Errorf("command name %q must begin with a capital letter", name)
+	}
+	funcHandle := commHandlePref + name
+	g.funcHandlersLock.Lock()
+	if _, ok := g.funcHandlers[funcHandle]; ok {
+		g.funcHandlersLock.Unlock()
+		return fmt.Errorf("command already defined with name %q", name)
+	}
+	g.funcHandlers[funcHandle] = f
+	g.funcHandlersLock.Unlock()
+	var nargsFlag *NArgs
+	var rangeFlag *Range
+	var rangeNFlag *RangeN
+	var countNFlag *CountN
+	var completeFlag *CommAttr
+	genAttrs := make(map[CommAttr]bool)
+	for _, iattr := range attrs {
+		switch attr := iattr.(type) {
+		case NArgs:
+			switch attr {
+			case NArgs0, NArgs1, NArgsZeroOrMore, NArgsZeroOrOne, NArgsOneOrMore:
+			default:
+				return fmt.Errorf("unknown NArgs value")
+			}
+			if nargsFlag != nil && attr != *nargsFlag {
+				return fmt.Errorf("multiple nargs flags")
+			}
+			nargsFlag = &attr
+		case Range:
+			switch attr {
+			case RangeLine, RangeFile:
+			default:
+				return fmt.Errorf("unknown Range value")
+			}
+			if rangeFlag != nil && *rangeFlag != attr || rangeNFlag != nil {
+				return fmt.Errorf("multiple range flags")
+			}
+			if countNFlag != nil {
+				return fmt.Errorf("range and count flags are mutually exclusive")
+			}
+			rangeFlag = &attr
+		case RangeN:
+			if rangeNFlag != nil && *rangeNFlag != attr || rangeFlag != nil {
+				return fmt.Errorf("multiple range flags")
+			}
+			if countNFlag != nil {
+				return fmt.Errorf("range and count flags are mutually exclusive")
+			}
+			rangeNFlag = &attr
+		case CountN:
+			if countNFlag != nil && *countNFlag != attr {
+				return fmt.Errorf("multiple count flags")
+			}
+			if rangeFlag != nil || rangeNFlag != nil {
+				return fmt.Errorf("range and count flags are mutually exclusive")
+			}
+			countNFlag = &attr
+		case Complete:
+			if completeFlag != nil && *completeFlag != attr {
+				return fmt.Errorf("multiple complete flags")
+			}
+			completeFlag = &iattr
+		case CompleteCustom:
+			if completeFlag != nil && *completeFlag != attr {
+				return fmt.Errorf("multiple complete flags")
+			}
+			completeFlag = &iattr
+		case CompleteCustomList:
+			if completeFlag != nil && *completeFlag != attr {
+				return fmt.Errorf("multiple complete flags")
+			}
+			completeFlag = &iattr
+		case GenAttr:
+			switch attr {
+			case AttrBang, AttrRegister, AttrBuffer, AttrBar:
+				genAttrs[attr] = true
+			default:
+				return fmt.Errorf("unknown GenAttr value")
+			}
+		}
+	}
+	attrMap := make(map[string]interface{})
+	if nargsFlag != nil {
+		attrMap["nargs"] = nargsFlag.String()
+	}
+	if rangeFlag != nil {
+		attrMap["range"] = rangeFlag.String()
+	}
+	if rangeNFlag != nil {
+		attrMap["range"] = rangeNFlag.String()
+	}
+	if countNFlag != nil {
+		attrMap["count"] = countNFlag.String()
+	}
+	if completeFlag != nil {
+		attrMap["complete"] = (*completeFlag).String()
+	}
+	if len(genAttrs) > 0 {
+		var attrs []string
+		for k := range genAttrs {
+			attrs = append(attrs, k.String())
+		}
+		sort.Strings(attrs)
+		attrMap["general"] = attrs
+	}
+	args := []interface{}{name, attrMap}
+	var ch chan callbackResp
+	err = g.DoProto(func() {
+		ch = g.callCallback("command", args...)
+	})
+	if err != nil {
+		return err
+	}
+	if resp := <-ch; resp.errString != "" {
+		return fmt.Errorf("failed to define %q in Vim: %v", name, resp.errString)
+	}
+	return nil
+}
+
+type CommAttr interface {
+	fmt.Stringer
+	isCommAttr()
+}
+
+type GenAttr uint
+
+func (g GenAttr) isCommAttr() {}
+
+//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=GenAttr -linecomment -output gen_genattr_stringer.go
+
+const (
+	AttrBang     GenAttr = iota // -bang
+	AttrBar                     // -bar
+	AttrRegister                // -register
+	AttrBuffer                  // -buffer
+)
+
+type Complete uint
+
+func (c Complete) isCommAttr() {}
+
+//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=Complete -linecomment -output gen_complete_stringer.go
+
+const (
+	CompleteArglist      Complete = iota // -complete=arglist
+	CompleteAugroup                      // -complete=augroup
+	CompleteBuffer                       // -complete=buffer
+	CompleteBehave                       // -complete=behave
+	CompleteColor                        // -complete=color
+	CompleteCommand                      // -complete=command
+	CompleteCompiler                     // -complete=compiler
+	CompleteCscope                       // -complete=cscope
+	CompleteDir                          // -complete=dir
+	CompleteEnvironment                  // -complete=environment
+	CompleteEvent                        // -complete=event
+	CompleteExpression                   // -complete=expression
+	CompleteFile                         // -complete=file
+	CompleteFileInPath                   // -complete=file_in_path
+	CompleteFiletype                     // -complete=filetype
+	CompleteFunction                     // -complete=function
+	CompleteHelp                         // -complete=help
+	CompleteHighlight                    // -complete=highlight
+	CompleteHistory                      // -complete=history
+	CompleteLocale                       // -complete=locale
+	CompleteMapclear                     // -complete=mapclear
+	CompleteMapping                      // -complete=mapping
+	CompleteMenu                         // -complete=menu
+	CompleteMessages                     // -complete=messages
+	CompleteOption                       // -complete=option
+	CompletePackadd                      // -complete=packadd
+	CompleteShellCmd                     // -complete=shellcmd
+	CompleteSign                         // -complete=sign
+	CompleteSyntax                       // -complete=syntax
+	CompleteSyntime                      // -complete=syntime
+	CompleteTag                          // -complete=tag
+	CompleteTagListFiles                 // -complete=tag_listfiles
+	CompleteUser                         // -complete=user
+	CompleteVar                          // -complete=var
+)
+
+type CompleteCustom string
+
+func (c CompleteCustom) isCommAttr() {}
+
+func (c CompleteCustom) String() string {
+	return "-complete=custom," + string(c)
+}
+
+type CompleteCustomList string
+
+func (c CompleteCustomList) isCommAttr() {}
+
+func (c CompleteCustomList) String() string {
+	return "-complete=customlist," + string(c)
+}
+
+type RangeN int
+
+func (r RangeN) isCommAttr() {}
+
+func (r RangeN) String() string {
+	return strconv.Itoa(int(r))
+}
+
+type CountN int
+
+func (c CountN) isCommAttr() {}
+
+func (c CountN) String() string {
+	return strconv.Itoa(int(c))
+}
+
+type Range uint
+
+func (r Range) isCommAttr() {}
+
+//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=Range -linecomment -output gen_range_stringer.go
+
+const (
+	RangeLine Range = iota // -range
+	RangeFile              // -range=%
+)
+
+type NArgs uint
+
+func (n NArgs) isCommAttr() {}
+
+//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=NArgs -linecomment -output gen_nargs_stringer.go
+
+const (
+	NArgs0          NArgs = iota // -nargs=0
+	NArgs1                       // -nargs=1
+	NArgsZeroOrMore              // -nargs=*
+	NArgsZeroOrOne               // -nargs=?
+	NArgsOneOrMore               // -nargs=+
+)
 
 // ChannelRedraw performs a redraw in Vim
 func (g *Govim) ChannelRedraw(force bool) error {

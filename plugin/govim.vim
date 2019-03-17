@@ -1,10 +1,9 @@
 " Useful for debugging
-call ch_logfile("/tmp/log.out", "a")
-
+call ch_logfile("/tmp/vimchannel.out", "a")
 let s:channel = ""
 
 function s:callbackFunction(name, args)
-  let l:args = ["function", a:name]
+  let l:args = ["function", "function:".a:name]
   call extend(l:args, a:args)
   let l:resp = ch_evalexpr(s:channel, l:args)
   if l:resp[0] != ""
@@ -14,8 +13,18 @@ function s:callbackFunction(name, args)
 endfunction
 
 function s:callbackRangeFunction(name, first, last, args)
-  let l:args = ["function", a:name, a:first, a:last]
+  let l:args = ["function", "function:".a:name, a:first, a:last]
   call extend(l:args, a:args)
+  let l:resp = ch_evalexpr(s:channel, l:args)
+  if l:resp[0] != ""
+    echoerr l:resp[0]
+  endif
+  return l:resp[1]
+endfunction
+
+function s:callbackCommand(name, flags, ...)
+  let l:args = ["function", "command:".a:name, a:flags]
+  call extend(l:args, a:000)
   let l:resp = ch_evalexpr(s:channel, l:args)
   if l:resp[0] != ""
     echoerr l:resp[0]
@@ -34,6 +43,8 @@ function s:define(channel, msg)
       call s:defineFunction(a:msg[2], a:msg[3], 0)
     elseif a:msg[1] == "rangefunction"
       call s:defineFunction(a:msg[2], a:msg[3], 1)
+    elseif a:msg[1] == "command"
+      call s:defineCommand(a:msg[2], a:msg[3])
     elseif a:msg[1] == "redraw"
       let l:force = a:msg[2]
       let l:args = ""
@@ -60,10 +71,50 @@ function s:define(channel, msg)
       throw "unknown callback function type ".a:msg[1]
     endif
   catch
-    let l:resp[2][0] = string(v:exception)
+    let l:resp[2][0] = 'Caught ' . string(v:exception) . ' in ' . v:throwpoint
   finally
     call ch_sendexpr(a:channel, l:resp)
   endtry
+endfunction
+
+func s:defineCommand(name, attrs)
+  let l:def = "command! "
+  let l:args = ""
+  let l:flags = ['"mods": split("<mods>", ",")']
+  " let l:flags = []
+  if has_key(a:attrs, "nargs")
+    let l:def .= " ". a:attrs["nargs"]
+    if a:attrs["nargs"] != "-nargs=0"
+      let l:args = ", <f-args>"
+    endif
+  endif
+  if has_key(a:attrs, "range")
+    let l:def .= " ".a:attrs["range"]
+    call add(l:flags, '"line1": <line1>')
+    call add(l:flags, '"line2": <line2>')
+    call add(l:flags, '"range": <range>')
+  endif
+  if has_key(a:attrs, "count")
+    let l:def .= " ". a:attrs["count"]
+    call add(l:flags, '"count": <count>')
+  endif
+  if has_key(a:attrs, "complete")
+    let l:def .= " ". a:attrs["complete"]
+  endif
+  if has_key(a:attrs, "general")
+    for l:a in a:attrs["general"]
+      let l:def .= " ". l:a
+      if l:a == "-bang"
+        call add(l:flags, '"bang": "<bang>"')
+      endif
+      if l:a == "-register"
+        call add(l:flags, '"register": "<reg>"')
+      endif
+    endfor
+  endif
+  let l:flagsStr = "{" . join(l:flags, ", ") . "}"
+  let l:def .= " " . a:name . " call s:callbackCommand(\"". a:name . "\", " . l:flagsStr . l:args . ")"
+  execute l:def
 endfunction
 
 func s:defineFunction(name, argsStr, range)

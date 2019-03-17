@@ -7,6 +7,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -29,13 +30,14 @@ func TestScripts(t *testing.T) {
 			Dir: "testdata",
 			Setup: func(e *testscript.Env) error {
 				wg.Add(1)
-				d, err := testdriver.NewDriver(filepath.Base(e.WorkDir), e, errCh, govimInit)
+				d := new(driver)
+				td, err := testdriver.NewDriver(filepath.Base(e.WorkDir), e, errCh, d.init)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
-				d.Run()
+				td.Run()
 				e.Defer(func() {
-					d.Close()
+					td.Close()
 					wg.Done()
 				})
 				return nil
@@ -43,12 +45,29 @@ func TestScripts(t *testing.T) {
 		})
 	})
 
+	errsDone := make(chan bool)
+
+	var errs []error
+
+	go func() {
+		for err, ok := <-errCh; ok; {
+			errs = append(errs, err)
+		}
+		close(errsDone)
+	}()
+
 	go func() {
 		wg.Wait()
 		close(errCh)
 	}()
 
-	if err, ok := <-errCh; ok {
-		t.Fatal(err)
+	<-errsDone
+
+	if len(errs) > 0 {
+		var msgs []string
+		for _, e := range errs {
+			msgs = append(msgs, e.Error())
+		}
+		t.Fatalf("got some errors:\n%v\n", strings.Join(msgs, "\n"))
 	}
 }

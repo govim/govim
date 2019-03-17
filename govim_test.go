@@ -87,8 +87,14 @@ func (d *driver) init(g *govim.Govim) error {
 		d.DefineFunction("Hello", []string{}, d.hello)
 		d.DefineFunction("Bad", []string{}, d.bad)
 		d.DefineRangeFunction("Echo", []string{}, d.echo)
+		d.DefineCommand("HelloComm", d.helloComm, govim.AttrBang)
 		return nil
 	})
+}
+
+func (d *driver) helloComm(flags govim.CommandFlags, args ...string) error {
+	d.ChannelExf(`echom "Hello world (%v)"`, *flags.Bang)
+	return nil
 }
 
 func (d *driver) hello(args ...json.RawMessage) (interface{}, error) {
@@ -210,6 +216,12 @@ func (d *driver) DefineFunction(name string, args []string, f govim.VimFunction)
 func (d *driver) DefineRangeFunction(name string, args []string, f govim.VimRangeFunction) {
 	if err := d.Govim.DefineRangeFunction(name, args, d.doRangeFunction(f)); err != nil {
 		d.errorf("failed to DefineRangeFunction %q: %v", name, err)
+	}
+}
+
+func (d *driver) DefineCommand(name string, f govim.VimCommandFunction, attrs ...govim.CommAttr) {
+	if err := d.Govim.DefineCommand(name, f, attrs...); err != nil {
+		d.errorf("failed to DefineCommand %q: %v", name, err)
 	}
 }
 

@@ -38,8 +38,6 @@ type Driver struct {
 	doneQuitGovim  chan bool
 	doneQuitDriver chan bool
 
-	doneInit chan bool
-
 	errCh chan error
 }
 
@@ -54,8 +52,6 @@ func NewDriver(name string, env *testscript.Env, errCh chan error, init func(*go
 		doneQuitDriver: make(chan bool),
 
 		name: name,
-
-		doneInit: make(chan bool),
 
 		init: init,
 
@@ -108,15 +104,16 @@ func findLocalVimrc() (string, error) {
 	return filepath.Join(dir, "test.vim"), nil
 }
 
-func (d *Driver) Run() {
-	go d.listenGovim()
+func (d *Driver) Run() error {
+	go d.runVim()
+	return d.listenGovim()
+}
+
+func (d *Driver) runVim() {
 	thepty, err := pty.Start(d.cmd)
 	if err != nil {
 		d.errorf("failed to start %v: %v", strings.Join(d.cmd.Args, " "), err)
 	}
-	go func() {
-		io.Copy(ioutil.Discard, thepty)
-	}()
 	go func() {
 		if err := d.cmd.Wait(); err != nil {
 			select {
@@ -128,7 +125,7 @@ func (d *Driver) Run() {
 		thepty.Close()
 		close(d.doneQuitVim)
 	}()
-	<-d.doneInit
+	io.Copy(ioutil.Discard, thepty)
 }
 
 func (d *Driver) Close() {
@@ -145,25 +142,32 @@ func (d *Driver) Close() {
 
 func (d *Driver) errorf(format string, args ...interface{}) {
 	err := fmt.Errorf(d.name+": "+format, args...)
-	// fmt.Println(err)
+	fmt.Println(err)
 	d.errCh <- err
 }
 
-func (d *Driver) listenGovim() {
+func (d *Driver) listenGovim() error {
 	conn, err := d.govimListener.Accept()
 	if err != nil {
-		d.errorf("failed to accept connection on %v: %v", d.govimListener.Addr(), err)
+		return fmt.Errorf("failed to accept connection on %v: %v", d.govimListener.Addr(), err)
 	}
 	g, err := govim.NewGoVim(conn, conn)
 	if err != nil {
-		d.errorf("failed to create govim: %v", err)
+		return fmt.Errorf("failed to create govim: %v", err)
 	}
 	d.govim = g
 
-	d.doInit()
 	go d.listenDriver()
+	go d.runGovim()
 
-	if err := g.Run(); err != nil {
+	if d.init == nil {
+		return nil
+	}
+	return d.init(d.govim)
+}
+
+func (d *Driver) runGovim() {
+	if err := d.govim.Run(); err != nil {
 		select {
 		case <-d.quitGovim:
 		default:
@@ -171,18 +175,6 @@ func (d *Driver) listenGovim() {
 		}
 	}
 	close(d.doneQuitGovim)
-}
-
-func (d *Driver) doInit() {
-	if d.init == nil {
-		close(d.doneInit)
-	}
-	go func() {
-		if err := d.init(d.govim); err != nil {
-			d.errorf("failed to run init: %v", err)
-		}
-		close(d.doneInit)
-	}()
 }
 
 func (d *Driver) listenDriver() {

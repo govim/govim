@@ -1,0 +1,15 @@
+# no bang
+vim ex 'HelloComm'
+! stdout .+
+! stderr .+
+vim expr 'v:statusmsg'
+stdout '^\Q"Hello world (false)"\E$'
+! stderr .+
+
+# bang
+vim ex 'HelloComm!'
+! stdout .+
+! stderr .+
+vim expr 'v:statusmsg'
+stdout '^\Q"Hello world (true)"\E$'
+! stderr .+
