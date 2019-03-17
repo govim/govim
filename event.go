@@ -1,0 +1,112 @@
+package govim
+
+type Pattern string
+type Patterns []Pattern
+
+type Event uint
+type Events []Event
+
+//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=Event -linecomment -output gen_event_stringer.go
+
+const (
+	EventBufNewFile           Event = iota // BufNewFile
+	EventBufReadPre                        // BufReadPre
+	EventBufRead                           // BufRead
+	EventBufReadPost                       // BufReadPost
+	EventBufReadCmd                        // BufReadCmd
+	EventFileReadPre                       // FileReadPre
+	EventFileReadPost                      // FileReadPost
+	EventFileReadCmd                       // FileReadCmd
+	EventFilterReadPre                     // FilterReadPre
+	EventFilterReadPost                    // FilterReadPost
+	EventStdinReadPre                      // StdinReadPre
+	EventStdinReadPost                     // StdinReadPost
+	EventBufWrite                          // BufWrite
+	EventBufWritePre                       // BufWritePre
+	EventBufWritePost                      // BufWritePost
+	EventBufWriteCmd                       // BufWriteCmd
+	EventFileWritePre                      // FileWritePre
+	EventFileWritePost                     // FileWritePost
+	EventFileWriteCmd                      // FileWriteCmd
+	EventFileAppendPre                     // FileAppendPre
+	EventFileAppendPost                    // FileAppendPost
+	EventFileAppendCmd                     // FileAppendCmd
+	EventFilterWritePre                    // FilterWritePre
+	EventFilterWritePost                   // FilterWritePost
+	EventBufAdd                            // BufAdd
+	EventBufCreate                         // BufCreate
+	EventBufDelete                         // BufDelete
+	EventBufWipeout                        // BufWipeout
+	EventTerminalOpen                      // TerminalOpen
+	EventBufFilePre                        // BufFilePre
+	EventBufFilePost                       // BufFilePost
+	EventBufEnter                          // BufEnter
+	EventBufLeave                          // BufLeave
+	EventBufWinEnter                       // BufWinEnter
+	EventBufWinLeave                       // BufWinLeave
+	EventBufUnload                         // BufUnload
+	EventBufHidden                         // BufHidden
+	EventBufNew                            // BufNew
+	EventSwapExists                        // SwapExists
+	EventFileType                          // FileType
+	EventSyntax                            // Syntax
+	EventEncodingChanged                   // EncodingChanged
+	EventTermChanged                       // TermChanged
+	EventOptionSet                         // OptionSet
+	EventVimEnter                          // VimEnter
+	EventGUIEnter                          // GUIEnter
+	EventGUIFailed                         // GUIFailed
+	EventTermResponse                      // TermResponse
+	EventQuitPre                           // QuitPre
+	EventExitPre                           // ExitPre
+	EventVimLeavePre                       // VimLeavePre
+	EventVimLeave                          // VimLeave
+	EventFileChangedShell                  // FileChangedShell
+	EventFileChangedShellPost              // FileChangedShellPost
+	EventFileChangedRO                     // FileChangedRO
+	EventDiffUpdated                       // DiffUpdated
+	EventDirChanged                        // DirChanged
+	EventShellCmdPost                      // ShellCmdPost
+	EventShellFilterPost                   // ShellFilterPost
+	EventCmdUndefined                      // CmdUndefined
+	EventFuncUndefined                     // FuncUndefined
+	EventSpellFileMissing                  // SpellFileMissing
+	EventSourcePre                         // SourcePre
+	EventSourcePost                        // SourcePost
+	EventSourceCmd                         // SourceCmd
+	EventVimResized                        // VimResized
+	EventFocusGained                       // FocusGained
+	EventFocusLost                         // FocusLost
+	EventCursorHold                        // CursorHold
+	EventCursorHoldI                       // CursorHoldI
+	EventCursorMoved                       // CursorMoved
+	EventCursorMovedI                      // CursorMovedI
+	EventWinNew                            // WinNew
+	EventTabNew                            // TabNew
+	EventTabClosed                         // TabClosed
+	EventWinEnter                          // WinEnter
+	EventWinLeave                          // WinLeave
+	EventTabEnter                          // TabEnter
+	EventTabLeave                          // TabLeave
+	EventCmdwinEnter                       // CmdwinEnter
+	EventCmdwinLeave                       // CmdwinLeave
+	EventCmdlineChanged                    // CmdlineChanged
+	EventCmdlineEnter                      // CmdlineEnter
+	EventCmdlineLeave                      // CmdlineLeave
+	EventInsertEnter                       // InsertEnter
+	EventInsertChange                      // InsertChange
+	EventInsertLeave                       // InsertLeave
+	EventInsertCharPre                     // InsertCharPre
+	EventTextChanged                       // TextChanged
+	EventTextChangedI                      // TextChangedI
+	EventTextChangedP                      // TextChangedP
+	EventTextYankPost                      // TextYankPost
+	EventColorSchemePre                    // ColorSchemePre
+	EventColorScheme                       // ColorScheme
+	EventRemoteReply                       // RemoteReply
+	EventQuickFixCmdPre                    // QuickFixCmdPre
+	EventQuickFixCmdPost                   // QuickFixCmdPost
+	EventSessionLoadPost                   // SessionLoadPost
+	EventMenuPopup                         // MenuPopup
+	EventCompleteDone                      // CompleteDone
+)

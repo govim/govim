@@ -45,6 +45,8 @@ type Govim struct {
 	channelCmdNextID int
 	channelCmds      map[int]chan json.RawMessage
 	channelCmdsLock  sync.Mutex
+
+	autocmdNextID int
 }
 
 func NewGoVim(in io.Reader, out io.Writer) (*Govim, error) {
@@ -116,6 +118,7 @@ func (c *CommandFlags) UnmarshalJSON(b []byte) error {
 type VimFunction func(args ...json.RawMessage) (interface{}, error)
 type VimRangeFunction func(line1, line2 int, args ...json.RawMessage) (interface{}, error)
 type VimCommandFunction func(flags CommandFlags, args ...string) error
+type VimAutoCommandFunction func() error
 
 // Run is a user-friendly run wrapper
 func (g *Govim) Run() error {
@@ -184,6 +187,11 @@ func (g *Govim) run() {
 				}
 				call = func() (interface{}, error) {
 					err := f(flagVals, args...)
+					return nil, err
+				}
+			case VimAutoCommandFunction:
+				call = func() (interface{}, error) {
+					err := f()
 					return nil, err
 				}
 			default:
@@ -258,6 +266,59 @@ func (g *Govim) defineFunction(isRange bool, name string, params []string, f int
 	return nil
 }
 
+// DefineAutoCommand defines an autocmd for events for files matching patterns.
+func (g *Govim) DefineAutoCommand(group string, events Events, patts Patterns, nested bool, f VimAutoCommandFunction) error {
+	var err error
+	g.funcHandlersLock.Lock()
+	funcHandle := fmt.Sprintf("%v%v", autoCommHandlePref, g.autocmdNextID)
+	g.autocmdNextID++
+	if _, ok := g.funcHandlers[funcHandle]; ok {
+		g.funcHandlersLock.Unlock()
+		return fmt.Errorf("function already defined with handler %q", funcHandle)
+	}
+	g.funcHandlers[funcHandle] = f
+	g.funcHandlersLock.Unlock()
+	var def strings.Builder
+	w := func(s string) {
+		def.WriteString(" " + s)
+	}
+	if group != "" {
+		w(group)
+	}
+	var strEvents []string
+	for _, e := range events {
+		strEvents = append(strEvents, e.String())
+	}
+	sort.Strings(strEvents)
+	w(strings.Join(strEvents, ","))
+	// TODO validate patterns
+	var strPatts []string
+	for _, p := range patts {
+		strPatts = append(strPatts, string(p))
+	}
+	sort.Strings(strPatts)
+	w(strings.Join(strPatts, ","))
+	if nested {
+		w("nested")
+	}
+	args := []interface{}{funcHandle, def.String()}
+	callbackTyp := "autocmd"
+	var ch chan callbackResp
+	err = g.DoProto(func() {
+		ch = g.callCallback(callbackTyp, args...)
+	})
+	if err != nil {
+		return err
+	}
+	if resp := <-ch; resp.errString != "" {
+		return fmt.Errorf("failed to define autocmd %q in Vim: %v", def.String(), resp.errString)
+	}
+	return nil
+}
+
+// DefineCommand defines the named command in Vim. name must begin with a
+// capital letter. attrs is a series of attributes for the command; see :help
+// E174 in Vim for more details.
 func (g *Govim) DefineCommand(name string, f VimCommandFunction, attrs ...CommAttr) error {
 	var err error
 	if name == "" {

@@ -32,6 +32,15 @@ function s:callbackCommand(name, flags, ...)
   return l:resp[1]
 endfunction
 
+function s:callbackAutoCommand(name)
+  let l:args = ["function", a:name]
+  let l:resp = ch_evalexpr(s:channel, l:args)
+  if l:resp[0] != ""
+    echoerr l:resp[0]
+  endif
+  return l:resp[1]
+endfunction
+
 function s:define(channel, msg)
   " format is [type, ...]
   " type is function, command or autocmd
@@ -45,6 +54,8 @@ function s:define(channel, msg)
       call s:defineFunction(a:msg[2], a:msg[3], 1)
     elseif a:msg[1] == "command"
       call s:defineCommand(a:msg[2], a:msg[3])
+    elseif a:msg[1] == "autocmd"
+      call s:defineAutoCommand(a:msg[2], a:msg[3])
     elseif a:msg[1] == "redraw"
       let l:force = a:msg[2]
       let l:args = ""
@@ -75,6 +86,10 @@ function s:define(channel, msg)
   finally
     call ch_sendexpr(a:channel, l:resp)
   endtry
+endfunction
+
+func s:defineAutoCommand(name, def)
+  execute "autocmd! " . a:def . " call s:callbackAutoCommand(\"" . a:name . "\")"
 endfunction
 
 func s:defineCommand(name, attrs)
