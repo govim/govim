@@ -1,6 +1,9 @@
 " Useful for debugging
-call ch_logfile("/tmp/vimchannel.out", "a")
+" call ch_logfile("/tmp/vimchannel.out", "a")
 let s:channel = ""
+
+syntax on
+au BufRead *.go setlocal syntax=off
 
 function s:callbackFunction(name, args)
   let l:args = ["function", "function:".a:name]
@@ -89,7 +92,7 @@ function s:define(channel, msg)
 endfunction
 
 func s:defineAutoCommand(name, def)
-  execute "autocmd! " . a:def . " call s:callbackAutoCommand(\"" . a:name . "\")"
+  execute "autocmd " . a:def . " call s:callbackAutoCommand(\"" . a:name . "\")"
 endfunction
 
 func s:defineCommand(name, attrs)

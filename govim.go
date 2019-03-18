@@ -637,7 +637,7 @@ func (g *Govim) ChannelExpr(expr string) (json.RawMessage, error) {
 }
 
 // ChannelCall evaluates and returns the result of call in Vim
-func (g *Govim) ChannelCall(fn string, args ...interface{}) (interface{}, error) {
+func (g *Govim) ChannelCall(fn string, args ...interface{}) (json.RawMessage, error) {
 	args = append([]interface{}{fn}, args...)
 	g.logf("ChannelCall: %v\n", args...)
 	var err error

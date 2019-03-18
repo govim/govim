@@ -46,7 +46,7 @@ func mainerr() error {
 	} else {
 		in, out = os.Stdin, os.Stdout
 	}
-	d := &driver{Driver: new(plugin.Driver)}
+	d := newDriver()
 	g, err := govim.NewGoVim(in, out)
 	if err != nil {
 		return fmt.Errorf("failed to create govim instance: %v", err)
@@ -75,6 +75,16 @@ func mainerr() error {
 
 type driver struct {
 	*plugin.Driver
+
+	// TODO does this need some sort of locking?
+	buffSyntax map[int]*synGenerator
+}
+
+func newDriver() *driver {
+	return &driver{
+		Driver:     plugin.NewDriver("GOVIM"),
+		buffSyntax: make(map[int]*synGenerator),
+	}
 }
 
 func (d *driver) init(g *govim.Govim) error {
@@ -82,7 +92,10 @@ func (d *driver) init(g *govim.Govim) error {
 	return d.Do(func() error {
 		d.DefineFunction("Hello", []string{}, d.hello)
 		d.DefineCommand("Hello", d.helloComm)
-		d.DefineAutoCommand("", govim.Events{govim.EventBufRead}, govim.Patterns{"*.go"}, false, d.goBufRead)
+		d.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventCursorMoved, govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, d.highlight)
+
+		// is this the correct hack for the fact the plugin is loaded async?
+		d.ChannelEx("doau BufReadPost *.go")
 		return nil
 	})
 }
@@ -93,10 +106,5 @@ func (d *driver) hello(args ...json.RawMessage) (interface{}, error) {
 
 func (d *driver) helloComm(flags govim.CommandFlags, args ...string) error {
 	d.ChannelEx(`echom "Hello from command"`)
-	return nil
-}
-
-func (d *driver) goBufRead() error {
-	d.ChannelEx(`echom "Just read a .go file"`)
 	return nil
 }
