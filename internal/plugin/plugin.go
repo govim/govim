@@ -9,6 +9,14 @@ import (
 
 type Driver struct {
 	*govim.Govim
+
+	prefix string
+}
+
+func NewDriver(name string) *Driver {
+	return &Driver{
+		prefix: name,
+	}
 }
 
 func (d *Driver) Do(f func() error) (err error) {
@@ -67,9 +75,23 @@ func (d *Driver) ChannelExpr(expr string) json.RawMessage {
 	return i
 }
 
+func (d *Driver) ChannelCall(name string, args ...interface{}) json.RawMessage {
+	i, err := d.Govim.ChannelCall(name, args...)
+	if err != nil {
+		d.Errorf("ChannelCall(%q) failed: %v", name, err)
+	}
+	return i
+}
+
 func (d *Driver) ChannelEx(expr string) {
 	if err := d.Govim.ChannelEx(expr); err != nil {
 		d.Errorf("ChannelEx(%q) failed: %v", expr, err)
+	}
+}
+
+func (d *Driver) Parse(j json.RawMessage, i interface{}) {
+	if err := json.Unmarshal(j, i); err != nil {
+		d.Errorf("failed to parse from %q: %v", j, err)
 	}
 }
 
@@ -89,6 +111,14 @@ func (d *Driver) ParseInt(j json.RawMessage) int {
 	return v
 }
 
+func (d *Driver) ParseUint(j json.RawMessage) uint {
+	var v uint
+	if err := json.Unmarshal(j, &v); err != nil {
+		d.Errorf("failed to parse int from %q: %v", j, err)
+	}
+	return v
+}
+
 func (d *Driver) ChannelExprf(format string, args ...interface{}) json.RawMessage {
 	return d.ChannelExpr(fmt.Sprintf(format, args...))
 }
@@ -98,19 +128,19 @@ func (d *Driver) ChannelExf(format string, args ...interface{}) {
 }
 
 func (d *Driver) DefineFunction(name string, args []string, f govim.VimFunction) {
-	if err := d.Govim.DefineFunction(name, args, d.DoFunction(f)); err != nil {
+	if err := d.Govim.DefineFunction(d.prefix+name, args, d.DoFunction(f)); err != nil {
 		d.Errorf("failed to DefineFunction %q: %v", name, err)
 	}
 }
 
 func (d *Driver) DefineRangeFunction(name string, args []string, f govim.VimRangeFunction) {
-	if err := d.Govim.DefineRangeFunction(name, args, d.DoRangeFunction(f)); err != nil {
+	if err := d.Govim.DefineRangeFunction(d.prefix+name, args, d.DoRangeFunction(f)); err != nil {
 		d.Errorf("failed to DefineRangeFunction %q: %v", name, err)
 	}
 }
 
 func (d *Driver) DefineCommand(name string, f govim.VimCommandFunction, attrs ...govim.CommAttr) {
-	if err := d.Govim.DefineCommand(name, f, attrs...); err != nil {
+	if err := d.Govim.DefineCommand(d.prefix+name, f, attrs...); err != nil {
 		d.Errorf("failed to DefineCommand %q: %v", name, err)
 	}
 }

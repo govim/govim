@@ -1,5 +1,5 @@
 # no bang
-vim ex 'Hello'
+vim ex 'GOVIMHello'
 ! stdout .+
 ! stderr .+
 vim expr 'v:statusmsg'
