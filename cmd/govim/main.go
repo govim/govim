@@ -92,10 +92,10 @@ func (d *driver) init(g *govim.Govim) error {
 	return d.Do(func() error {
 		d.DefineFunction("Hello", []string{}, d.hello)
 		d.DefineCommand("Hello", d.helloComm)
-		d.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventCursorMoved, govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, d.highlight)
+		d.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, d.highlight)
 
 		// is this the correct hack for the fact the plugin is loaded async?
-		d.ChannelEx("doau BufReadPost *.go")
+		d.ChannelEx(`bufdo execute "if expand('%:e') == 'go' | doau BufRead *.go | endif"`)
 		return nil
 	})
 }

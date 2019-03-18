@@ -3,7 +3,7 @@
 let s:channel = ""
 
 syntax on
-au BufRead *.go setlocal syntax=off
+au BufRead *.go setlocal filetype=off
 
 function s:callbackFunction(name, args)
   let l:args = ["function", "function:".a:name]
