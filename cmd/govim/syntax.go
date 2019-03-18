@@ -17,7 +17,7 @@ type highlighArgs struct {
 	ColEnd    int
 }
 
-func (d *driver) highlight() error {
+func (d *driver) parseAndHighlight() error {
 	var args highlighArgs
 	d.Parse(d.ChannelExpr(`{`+
 		`"Buffer": join(getline(0, "$"), "\n"),`+
@@ -53,6 +53,43 @@ func (d *driver) highlight() error {
 	// generate our highlight positions
 	ast.Walk(sg, f)
 	for _, c := range f.Comments {
+		ast.Walk(sg, c)
+	}
+
+	// set the highlights
+	sg.sweepMap()
+
+	return nil
+}
+
+func (d *driver) highlight() error {
+	var args highlighArgs
+	d.Parse(d.ChannelExpr(`{`+
+		`"BufName": bufname("%"),`+
+		`"BufNr": bufnr(bufname("%")),`+
+		`"LineStart": winsaveview()['topline'],`+
+		`"LineEnd": winsaveview()['topline'] + winheight('%'),`+
+		`"ColStart": winsaveview()['leftcol'],`+
+		`"ColEnd": winsaveview()['leftcol'] + winwidth('%')`+
+		`}`), &args)
+
+	if args.BufNr == -1 {
+		return fmt.Errorf("got unknown buffer")
+	}
+
+	sg, ok := d.buffSyntax[args.BufNr]
+	if !ok {
+		return d.parseAndHighlight()
+	}
+
+	sg.LineStart = args.LineStart
+	sg.LineEnd = args.LineEnd
+	sg.ColStart = args.ColStart
+	sg.ColEnd = args.ColEnd
+
+	// generate our highlight positions
+	ast.Walk(sg, sg.file)
+	for _, c := range sg.file.Comments {
 		ast.Walk(sg, c)
 	}
 
@@ -140,10 +177,9 @@ func (s *synGenerator) sweepMap() {
 func (s *synGenerator) addNode(t nodetype, l int, _p token.Pos) {
 	p := s.fset.Position(_p)
 
-	// TODO re-enable when we can accurately capture the Vim viewport
-	// if p.Line < s.LineStart || p.Line > s.LineEnd {
-	// 	return
-	// }
+	if p.Line < s.LineStart || p.Line > s.LineEnd {
+		return
+	}
 
 	pos := position{t: t, l: l, line: p.Line, col: p.Column}
 	if m, ok := s.nodes[pos]; ok {
