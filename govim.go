@@ -5,20 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/myitcv/govim/internal/queue"
+	"gopkg.in/tomb.v2"
 )
 
 const (
 	funcHandlePref     = "function:"
 	commHandlePref     = "command:"
 	autoCommHandlePref = "autocommand:"
+
+	sysFuncPref = "govim:"
 )
 
 type callbackResp struct {
@@ -29,7 +33,7 @@ type callbackResp struct {
 type Govim struct {
 	in  *json.Decoder
 	out *json.Encoder
-	err *os.File
+	log io.Writer
 
 	funcHandlers     map[string]interface{}
 	funcHandlersLock sync.Mutex
@@ -47,25 +51,52 @@ type Govim struct {
 	channelCmdsLock  sync.Mutex
 
 	autocmdNextID int
+
+	loaded chan bool
+
+	currViewport             Viewport
+	viewportLock             sync.Mutex
+	onViewportChangeSubs     []*OnViewportChangeSub
+	onViewportChangeSubsLock sync.Mutex
+
+	tomb tomb.Tomb
 }
 
-func NewGoVim(in io.Reader, out io.Writer) (*Govim, error) {
-	// TODO fix this
-	log, err := os.OpenFile(filepath.Join(os.TempDir(), "govim.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open log file: %v", err)
-	}
-
-	return &Govim{
+func NewGoVim(in io.Reader, out io.Writer, log io.Writer) (*Govim, error) {
+	g := &Govim{
 		in:  json.NewDecoder(in),
 		out: json.NewEncoder(out),
-		err: log,
+		log: log,
 
 		funcHandlers: make(map[string]interface{}),
 
+		loaded: make(chan bool),
+
 		callCallbackNextID: 1,
 		callbackResps:      make(map[int]chan callbackResp),
-	}, nil
+	}
+
+	g.tomb.Go(g.load)
+
+	return g, nil
+}
+
+func (g *Govim) load() error {
+	// g.sendJSONMsg("call", "s:something", []interface{}{}, 15)
+	g.funcHandlersLock.Lock()
+	g.funcHandlers[sysFuncOnViewportChange] = VimFunction(g.onViewportChange)
+	g.funcHandlersLock.Unlock()
+	select {
+	case <-g.tomb.Dying():
+		// we are already dying, nothing to report
+		return g.tomb.Err()
+	case resp := <-g.callCallback("loaded"):
+		if resp.errString != "" {
+			return fmt.Errorf("failed to signal loaded to Vim: %v", resp.errString)
+		}
+	}
+	close(g.loaded)
+	return nil
 }
 
 // funcHandler returns the
@@ -89,7 +120,6 @@ type CommandFlags struct {
 }
 
 func (c *CommandFlags) UnmarshalJSON(b []byte) error {
-	// panic(fmt.Sprintf("%s", b))
 	var v struct {
 		Line1 *int    `json:"line1"`
 		Line2 *int    `json:"line2"`
@@ -122,15 +152,23 @@ type VimAutoCommandFunction func() error
 
 // Run is a user-friendly run wrapper
 func (g *Govim) Run() error {
-	return g.DoProto(g.run)
+	err := g.DoProto(g.run)
+	g.tomb.Kill(err)
+	return g.tomb.Wait()
 }
 
 // run is the main loop that handles call from Vim
 func (g *Govim) run() {
+	userQ := queue.NewQueue(g.tomb.Dying())
+
+	g.tomb.Go(userQ.Run)
+
+	// the read loop
 	for {
-		g.logf("run: waiting to read a JSON message\n")
+		g.Logf("run: waiting to read a JSON message\n")
 		id, msg := g.readJSONMsg()
-		g.logf("run: got a message: %v: %s\n", id, msg)
+		fmt.Printf("got msg: %v %s\n", id, msg)
+		g.Logf("run: got a message: %v: %s\n", id, msg)
 		args := g.parseJSONArgSlice(msg)
 		typ := g.parseString(args[0])
 		args = args[1:]
@@ -145,7 +183,7 @@ func (g *Govim) run() {
 			if len(resp) == 2 {
 				val = resp[1]
 			}
-			g.logf("got a callback response: [%v, %s]\n", id, args[1])
+			g.Logf("got a callback response: [%v, %s]\n", id, args[1])
 			g.callbackRespsLock.Lock()
 			ch, ok := g.callbackResps[id]
 			delete(g.callbackResps, id)
@@ -153,19 +191,28 @@ func (g *Govim) run() {
 			if !ok {
 				g.errProto("run: received response for callback %v, but not response chan defined", id)
 			}
-			go func() {
-				ch <- callbackResp{
+			g.tomb.Go(func() error {
+				resp := callbackResp{
 					errString: msg,
 					val:       val,
 				}
-			}()
+				select {
+				case ch <- resp:
+				case <-g.tomb.Dying():
+					return g.tomb.Err()
+				}
+				return nil
+			})
 		case "function":
 			fname := g.parseString(args[0])
 			fargs := args[1:]
-			g.logf("got a function call: %v, %v\n", fname, fargs)
+			g.Logf("got a function call: %v(%s)\n", fname, fargs)
 			fname, f := g.funcHandler(fname)
 			var line1, line2 int
 			var call func() (interface{}, error)
+
+			theQueue := userQ
+
 			switch f := f.(type) {
 			case VimRangeFunction:
 				line1 = g.parseInt(fargs[0])
@@ -195,19 +242,27 @@ func (g *Govim) run() {
 					return nil, err
 				}
 			default:
-				panic(fmt.Errorf("unknown function type %T", f))
+				g.Errorf("unknown function type for %v %T", fname, f)
 			}
-			go func() {
+			theQueue.Add(func() {
 				resp := [2]interface{}{"", ""}
 				if res, err := call(); err != nil {
 					errStr := fmt.Sprintf("got error whilst handling %v: %v", fname, err)
-					g.errorf(errStr)
+					g.Logf(errStr)
 					resp[0] = errStr
 				} else {
 					resp[1] = res
 				}
 				g.sendJSONMsg(id, resp)
-			}()
+			})
+		case "log":
+			var is []interface{}
+			for _, a := range args {
+				var i interface{}
+				g.decodeJSON(a, &i)
+				is = append(is, i)
+			}
+			fmt.Fprintln(g.log, is...)
 		}
 	}
 }
@@ -216,7 +271,8 @@ func (g *Govim) run() {
 // letter. params is the parameters that will be used in the Vim function delcaration.
 // If params is nil, then "..." is assumed.
 func (g *Govim) DefineFunction(name string, params []string, f VimFunction) error {
-	g.logf("DefineFunction: %v, %v\n", name, params)
+	<-g.loaded
+	g.Logf("DefineFunction: %v, %v\n", name, params)
 	return g.defineFunction(false, name, params, f)
 }
 
@@ -224,7 +280,8 @@ func (g *Govim) DefineFunction(name string, params []string, f VimFunction) erro
 // must begin with a capital letter. params is the parameters that will be used
 // in the Vim function delcaration.  If params is nil, then "..." is assumed.
 func (g *Govim) DefineRangeFunction(name string, params []string, f VimRangeFunction) error {
-	g.logf("DefineRangeFunction: %v, %v\n", name, params)
+	<-g.loaded
+	g.Logf("DefineRangeFunction: %v, %v\n", name, params)
 	return g.defineFunction(true, name, params, f)
 }
 
@@ -268,6 +325,7 @@ func (g *Govim) defineFunction(isRange bool, name string, params []string, f int
 
 // DefineAutoCommand defines an autocmd for events for files matching patterns.
 func (g *Govim) DefineAutoCommand(group string, events Events, patts Patterns, nested bool, f VimAutoCommandFunction) error {
+	<-g.loaded
 	var err error
 	g.funcHandlersLock.Lock()
 	funcHandle := fmt.Sprintf("%v%v", autoCommHandlePref, g.autocmdNextID)
@@ -320,6 +378,7 @@ func (g *Govim) DefineAutoCommand(group string, events Events, patts Patterns, n
 // capital letter. attrs is a series of attributes for the command; see :help
 // E174 in Vim for more details.
 func (g *Govim) DefineCommand(name string, f VimCommandFunction, attrs ...CommAttr) error {
+	<-g.loaded
 	var err error
 	if name == "" {
 		return fmt.Errorf("command name must not be empty")
@@ -565,7 +624,8 @@ const (
 
 // ChannelRedraw performs a redraw in Vim
 func (g *Govim) ChannelRedraw(force bool) error {
-	g.logf("ChannelRedraw: %v\n", force)
+	<-g.loaded
+	g.Logf("ChannelRedraw: %v\n", force)
 	var err error
 	var sForce string
 	if force {
@@ -586,7 +646,8 @@ func (g *Govim) ChannelRedraw(force bool) error {
 
 // ChannelEx executes a ex command in Vim
 func (g *Govim) ChannelEx(expr string) error {
-	g.logf("ChannelEx: %v\n", expr)
+	<-g.loaded
+	g.Logf("ChannelEx: %v\n", expr)
 	var err error
 	var ch chan callbackResp
 	err = g.DoProto(func() {
@@ -603,7 +664,8 @@ func (g *Govim) ChannelEx(expr string) error {
 
 // ChannelNormal run a command in normal mode in Vim
 func (g *Govim) ChannelNormal(expr string) error {
-	g.logf("ChannelNormal: %v\n", expr)
+	<-g.loaded
+	g.Logf("ChannelNormal: %v\n", expr)
 	var err error
 	var ch chan callbackResp
 	err = g.DoProto(func() {
@@ -620,7 +682,8 @@ func (g *Govim) ChannelNormal(expr string) error {
 
 // ChannelExpr evaluates and returns the result of expr in Vim
 func (g *Govim) ChannelExpr(expr string) (json.RawMessage, error) {
-	g.logf("ChannelExpr: %v\n", expr)
+	<-g.loaded
+	g.Logf("ChannelExpr: %v\n", expr)
 	var err error
 	var ch chan callbackResp
 	err = g.DoProto(func() {
@@ -638,8 +701,9 @@ func (g *Govim) ChannelExpr(expr string) (json.RawMessage, error) {
 
 // ChannelCall evaluates and returns the result of call in Vim
 func (g *Govim) ChannelCall(fn string, args ...interface{}) (json.RawMessage, error) {
+	<-g.loaded
 	args = append([]interface{}{fn}, args...)
-	g.logf("ChannelCall: %v\n", args...)
+	g.Logf("ChannelCall: %v\n", args...)
 	var err error
 	var ch chan callbackResp
 	err = g.DoProto(func() {
@@ -663,7 +727,7 @@ func (g *Govim) DoProto(f func()) (err error) {
 			switch r := r.(type) {
 			case errProto:
 				if r.underlying == io.EOF {
-					g.logf("closing connection\n")
+					g.Logf("closing connection\n")
 					return
 				}
 				err = r
@@ -703,6 +767,7 @@ func (g *Govim) readJSONMsg() (int, json.RawMessage) {
 	var msg [2]json.RawMessage
 	if err := g.in.Decode(&msg); err != nil {
 		if err == io.EOF {
+			// explicitly setting underlying here
 			panic(errProto{underlying: err})
 		}
 		g.errProto("failed to read JSON msg: %v", err)
@@ -737,9 +802,11 @@ func (g *Govim) parseInt(m json.RawMessage) int {
 
 // sendJSONMsg is a low-level protocol primitive for sending a JSON msg that will be
 // understood by Vim. See https://vimhelp.org/channel.txt.html#channel-use
-func (g *Govim) sendJSONMsg(p1, p2 interface{}) {
-	g.logf("sendJSONMsg: [%v, %v]\n", p1, p2)
-	msg := [2]interface{}{p1, p2}
+func (g *Govim) sendJSONMsg(p1, p2 interface{}, ps ...interface{}) {
+	msg := []interface{}{p1, p2}
+	msg = append(msg, ps...)
+	fmt.Printf("sendJSONMsg(%v)\n", msg)
+	g.Logf("sendJSONMsg: %v\n", msg)
 	if err := g.out.Encode(msg); err != nil {
 		g.errProto("failed to send msg: %v", err)
 	}
@@ -768,18 +835,18 @@ func (g *Govim) errProto(format string, args ...interface{}) {
 	})
 }
 
-// errorf is a means of raising an error that will be logged. i.e. it does not
-// represent a protocol error, and Vim + govim _might_ be able to recover from
-// this situation.
-func (g *Govim) errorf(format string, args ...interface{}) {
-	defer func() {
-		fmt.Fprintln(g.err, recover())
-	}()
-	panic(fmt.Errorf(format, args...))
+// Errorf is a means of raising an error that will be logged, and the govim
+// instance will then effectively "stop".
+func (g *Govim) Errorf(format string, args ...interface{}) {
+	b := make([]byte, (1<<10)*10)
+	runtime.Stack(b, true)
+	args = append([]interface{}{}, args...)
+	args = append(args, b)
+	g.tomb.Kill(fmt.Errorf(format+"\n%s", args...))
 }
 
-func (g *Govim) logf(format string, args ...interface{}) {
-	fmt.Fprintf(g.err, format, args...)
+func (g *Govim) Logf(format string, args ...interface{}) {
+	fmt.Fprintf(g.log, format, args...)
 }
 
 type errProto struct {

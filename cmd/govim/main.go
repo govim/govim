@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/token"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
+	"time"
 
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/internal/plugin"
@@ -46,13 +50,19 @@ func mainerr() error {
 	} else {
 		in, out = os.Stdin, os.Stdout
 	}
+
+	nowStr := time.Now().Format("20060102_1504_05_999999999")
+	tf, err := ioutil.TempFile("", nowStr+"_*")
+	if err != nil {
+		return fmt.Errorf("failed to create log file")
+	}
+	defer tf.Close()
+
 	d := newDriver()
-	g, err := govim.NewGoVim(in, out)
+	g, err := govim.NewGoVim(in, out, tf)
 	if err != nil {
 		return fmt.Errorf("failed to create govim instance: %v", err)
 	}
-
-	// TODO set a logger/similar here for the govim plugin?
 
 	runCh := make(chan error)
 
@@ -75,29 +85,28 @@ func mainerr() error {
 
 type driver struct {
 	*plugin.Driver
+}
 
-	// TODO does this need some sort of locking?
-	buffSyntax map[int]*synGenerator
+type parseData struct {
+	fset *token.FileSet
+	file *ast.File
 }
 
 func newDriver() *driver {
 	return &driver{
-		Driver:     plugin.NewDriver("GOVIM"),
-		buffSyntax: make(map[int]*synGenerator),
+		Driver: plugin.NewDriver("GOVIM"),
 	}
 }
 
 func (d *driver) init(g *govim.Govim) error {
 	d.Govim = g
+
 	return d.Do(func() error {
 		d.ChannelEx(`augroup govim`)
+		d.ChannelEx(`augroup END`)
 		d.DefineFunction("Hello", []string{}, d.hello)
 		d.DefineCommand("Hello", d.helloComm)
-		d.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, d.parseAndHighlight)
-		d.DefineAutoCommand("", govim.Events{govim.EventCursorMoved}, govim.Patterns{"*.go"}, false, d.highlight)
 
-		// is this the correct hack for the fact the plugin is loaded async?
-		// d.ChannelEx(`bufdo execute "if expand('%:e') == 'go' | doau vimgo BufReadPost | endif"`)
 		return nil
 	})
 }
