@@ -125,8 +125,9 @@ func newplugin(goplspath string) *govimplugin {
 		goplspath: goplspath,
 		Driver:    d,
 		vimstate: &vimstate{
-			Driver:  d,
-			buffers: make(map[int]*types.Buffer),
+			Driver:       d,
+			buffers:      make(map[int]*types.Buffer),
+			winHighlihts: make(map[int]map[position]*match),
 		},
 	}
 	res.vimstate.govimplugin = res
@@ -147,6 +148,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.complete)
 	g.DefineCommand(string(config.CommandGoToDef), g.gotoDef, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandGoToPrevDef), g.gotoPrevDef, govim.NArgsZeroOrOne, govim.CountN(1))
+	g.SubOnViewportChange(g.highlightViewport)
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 

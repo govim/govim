@@ -19,6 +19,9 @@ syntax on
 " TODO these probably doesn't belong here?
 let g:govim_format_on_save = "goimports"
 
+" effectively disable vim-go's ftplugin-based stuff
+au! filetypedetect * *.go
+
 function s:callbackFunction(name, args)
   let l:args = ["function", "function:".a:name, a:args]
   let l:resp = ch_evalexpr(s:channel, l:args)

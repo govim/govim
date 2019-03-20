@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go/parser"
+	"go/scanner"
+	"go/token"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -37,6 +40,11 @@ type vimstate struct {
 	// returns the matching words. This is by definition stateful. Hence we persist that
 	// state here
 	lastCompleteResults *protocol.CompletionList
+
+	// winHighlihts is a map from window ID to highlight information
+	// This does not need any sychronisation because the highlighter
+	// is the only accessing go routine
+	winHighlihts map[int]map[position]*match
 }
 
 func (v *vimstate) hello(args ...json.RawMessage) (interface{}, error) {
@@ -129,6 +137,18 @@ func (g *govimplugin) bufTextChanged() error {
 func (g *govimplugin) handleBufferEvent(b *types.Buffer) error {
 	g.buffers[b.Num] = b
 
+	b.Fset = token.NewFileSet()
+	f, err := parser.ParseFile(b.Fset, b.Name, b.Contents, parser.AllErrors|parser.ParseComments)
+	if _, ok := err.(scanner.ErrorList); f == nil || (err != nil && !ok) {
+		return fmt.Errorf("failed to parse buffer (%v): %v", b.Name, err)
+	}
+	b.AST = f
+
+	if err := g.highlight(); err != nil {
+		return fmt.Errorf("failed to update highlighting: %v", err)
+	}
+
+	// TODO: we could actually do the following concurrently with the highlighting
 	if b.Version == 0 {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
@@ -152,8 +172,7 @@ func (g *govimplugin) handleBufferEvent(b *types.Buffer) error {
 			},
 		},
 	}
-	err := g.server.DidChange(context.Background(), params)
-	return err
+	return g.server.DidChange(context.Background(), params)
 }
 
 func (g *govimplugin) formatCurrentBuffer() (err error) {

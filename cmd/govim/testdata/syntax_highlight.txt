@@ -1,0 +1,23 @@
+vim ex 'e main.go'
+vim ex 'e other.go'
+
+# this test should fail because syntax highlighting real files and switching
+# buffers fails
+fail
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+const (
+	x = 5
+)
+
+-- other.go --
+package main
+
+const (
+	x = 5
+)

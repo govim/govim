@@ -2,6 +2,8 @@ package types
 
 import (
 	"fmt"
+	"go/ast"
+	"go/token"
 	"math"
 
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
@@ -18,6 +20,9 @@ type Buffer struct {
 	Name     string
 	Contents []byte
 	Version  int
+
+	Fset *token.FileSet
+	AST  *ast.File
 
 	// cc is lazily set whenever position information is required
 	cc *span.TokenConverter
