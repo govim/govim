@@ -6,9 +6,6 @@ let s:currViewport = {}
 
 syntax on
 
-" effectively disable vim-go's ftplugin-based stuff
-au! filetypedetect * *.go
-
 function s:callbackFunction(name, args)
   let l:args = ["function", "function:".a:name]
   call extend(l:args, a:args)

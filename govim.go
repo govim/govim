@@ -38,6 +38,8 @@ type Govim struct {
 	funcHandlers     map[string]interface{}
 	funcHandlersLock sync.Mutex
 
+	Init func() error
+
 	// callCallbackNextID represents the next ID to use in a call to the Vim
 	// channel handler. This then allows us to direct the response.
 	callCallbackNextID int
@@ -76,8 +78,6 @@ func NewGoVim(in io.Reader, out io.Writer, log io.Writer) (*Govim, error) {
 		callbackResps:      make(map[int]chan callbackResp),
 	}
 
-	g.tomb.Go(g.load)
-
 	return g, nil
 }
 
@@ -96,6 +96,14 @@ func (g *Govim) load() error {
 		}
 	}
 	close(g.loaded)
+
+	if g.Init != nil {
+		var err error
+		return g.DoProto(func() {
+			err = g.Init()
+		})
+		return err
+	}
 	return nil
 }
 
@@ -161,13 +169,13 @@ func (g *Govim) Run() error {
 func (g *Govim) run() {
 	userQ := queue.NewQueue(g.tomb.Dying())
 
+	g.tomb.Go(g.load)
 	g.tomb.Go(userQ.Run)
 
 	// the read loop
 	for {
 		g.Logf("run: waiting to read a JSON message\n")
 		id, msg := g.readJSONMsg()
-		fmt.Printf("got msg: %v %s\n", id, msg)
 		g.Logf("run: got a message: %v: %s\n", id, msg)
 		args := g.parseJSONArgSlice(msg)
 		typ := g.parseString(args[0])
@@ -805,7 +813,6 @@ func (g *Govim) parseInt(m json.RawMessage) int {
 func (g *Govim) sendJSONMsg(p1, p2 interface{}, ps ...interface{}) {
 	msg := []interface{}{p1, p2}
 	msg = append(msg, ps...)
-	fmt.Printf("sendJSONMsg(%v)\n", msg)
 	g.Logf("sendJSONMsg: %v\n", msg)
 	if err := g.out.Encode(msg); err != nil {
 		g.errProto("failed to send msg: %v", err)

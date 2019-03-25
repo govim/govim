@@ -6,12 +6,14 @@ import (
 	"strings"
 
 	"github.com/myitcv/govim"
+	"gopkg.in/tomb.v2"
 )
 
 type Driver struct {
 	*govim.Govim
 
 	prefix string
+	tomb.Tomb
 }
 
 func NewDriver(name string) *Driver {
