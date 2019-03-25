@@ -1,9 +1,13 @@
 " Useful for debugging
 " call ch_logfile("/tmp/vimchannel.out", "a")
 let s:channel = ""
+let s:timer = ""
+let s:currViewport = {}
 
 syntax on
-au BufRead *.go setlocal filetype=off
+
+" effectively disable vim-go's ftplugin-based stuff
+au! filetypedetect * *.go
 
 function s:callbackFunction(name, args)
   let l:args = ["function", "function:".a:name]
@@ -44,14 +48,42 @@ function s:callbackAutoCommand(name)
   return l:resp[1]
 endfunction
 
+function s:updateViewport(timer)
+  let l:currTab = tabpagenr()
+  let l:windows = []
+  for l:w in getwininfo()
+    if l:w.tabnr != l:currTab
+      continue
+    endif
+    let l:sw = filter(l:w, 'v:key != "variables"')
+    call add(l:windows, l:sw)
+  endfor
+  let l:viewport = {
+        \ 'currTab': l:currTab,
+        \ 'windows': l:windows,
+        \ }
+  if s:currViewport != l:viewport
+    let s:currViewport = l:viewport
+    let l:resp = ch_evalexpr(s:channel, ["function", "govim:OnViewportChange", l:viewport])
+    if l:resp[0] != ""
+      " TODO disable the timer and the autocmd callback
+      echoerr l:resp[0]
+    endif
+  endif
+endfunction
+
 function s:define(channel, msg)
   " format is [type, ...]
   " type is function, command or autocmd
   try
     let l:id = a:msg[0]
     let l:resp = ["callback", l:id, [""]]
-    if a:msg[1] == "function"
-      " define a function
+    if a:msg[1] == "loaded"
+      " the plugin has loaded, setup and well-known plugin-level
+      " stuff like OnViewportChange
+      let s:timer = timer_start(100, function('s:updateViewport'), {'repeat': -1})
+      au CursorMoved,CursorMovedI * call s:updateViewport(0)
+    elseif a:msg[1] == "function"
       call s:defineFunction(a:msg[2], a:msg[3], 0)
     elseif a:msg[1] == "rangefunction"
       call s:defineFunction(a:msg[2], a:msg[3], 1)
@@ -162,7 +194,8 @@ func s:defineFunction(name, argsStr, range)
         \ "endfunction\n"
 endfunction
 
-let opts = {"in_mode": "json", "out_mode": "json", "err_mode": "json", "callback": function("s:define")}
+" TODO - would be nice to be able to specify -1 as a timeout
+let opts = {"in_mode": "json", "out_mode": "json", "err_mode": "json", "callback": function("s:define"), "timeout": 30000}
 if $GOVIMTEST_SOCKET != ""
   let s:channel = ch_open($GOVIMTEST_SOCKET, opts)
 else

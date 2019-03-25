@@ -151,7 +151,7 @@ func (d *Driver) listenGovim() error {
 	if err != nil {
 		return fmt.Errorf("failed to accept connection on %v: %v", d.govimListener.Addr(), err)
 	}
-	g, err := govim.NewGoVim(conn, conn)
+	g, err := govim.NewGoVim(conn, conn, ioutil.Discard)
 	if err != nil {
 		return fmt.Errorf("failed to create govim: %v", err)
 	}
