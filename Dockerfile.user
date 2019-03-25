@@ -1,0 +1,18 @@
+FROM myitcv/govim:${GO_VERSION}_${VIM_VERSION}
+
+ARG USER
+ARG UID
+ARG GID
+
+ENV PATH=/vbash/bin:/home/$USER/.local/bin:$PATH
+ENV GOPATH=/home/$USER/gopath
+
+RUN groupadd -g $GID $USER && \
+    adduser --uid $UID --gid $GID --disabled-password --gecos "" $USER
+
+# enable sudo
+RUN usermod -aG sudo $USER
+RUN echo "$USER ALL=(ALL:ALL) NOPASSWD: ALL" > /etc/sudoers.d/$USER
+
+WORKDIR /home/$USER
+USER $USER
