@@ -15,6 +15,7 @@ import (
 
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/internal/plugin"
+	"gopkg.in/tomb.v2"
 )
 
 func main() {
@@ -34,57 +35,59 @@ func main1() int {
 }
 
 func mainerr() error {
-	var in io.ReadCloser
-	var out io.WriteCloser
-
 	if sock := os.Getenv("GOVIMTEST_SOCKET"); sock != "" {
 		ln, err := net.Listen("tcp", sock)
 		if err != nil {
 			return fmt.Errorf("failed to listen on %v: %v", sock, err)
 		}
-		conn, err := ln.Accept()
-		if err != nil {
-			return fmt.Errorf("failed to accept connection on %v: %v", sock, err)
-		}
-		in, out = conn, conn
-	} else {
-		in, out = os.Stdin, os.Stdout
-	}
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return fmt.Errorf("failed to accept connection on %v: %v", sock, err)
+			}
 
-	nowStr := time.Now().Format("20060102_1504_05_999999999")
-	tf, err := ioutil.TempFile("", nowStr+"_*")
+			go func() {
+				if err := launch(conn, conn); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+				}
+			}()
+		}
+	} else {
+		return launch(os.Stdin, os.Stdout)
+	}
+}
+
+func launch(in io.ReadCloser, out io.WriteCloser) error {
+	defer out.Close()
+
+	d := newDriver()
+
+	nowStr := time.Now().Format("20060102_1504_05.000000000")
+	tf, err := ioutil.TempFile("", "govim_"+nowStr+"_*")
 	if err != nil {
 		return fmt.Errorf("failed to create log file")
 	}
 	defer tf.Close()
 
-	d := newDriver()
+	if os.Getenv("GOVIMTEST_SOCKET") != "" {
+		fmt.Fprintf(os.Stderr, "New connection will log to %v\n", tf.Name())
+	}
+
 	g, err := govim.NewGoVim(in, out, tf)
 	if err != nil {
 		return fmt.Errorf("failed to create govim instance: %v", err)
 	}
+	g.Init = d.init
+	d.Govim = g
 
-	runCh := make(chan error)
-
-	go func() {
-		if err := g.Run(); err != nil {
-			runCh <- fmt.Errorf("error whilst running govim instance: %v", err)
-		}
-		close(runCh)
-	}()
-
-	if err := d.init(g); err != nil {
-		return nil
-	}
-
-	if err, ok := <-runCh; ok && err != nil {
-		return err
-	}
-	return nil
+	d.Kill(g.Run())
+	return d.Wait()
 }
 
 type driver struct {
 	*plugin.Driver
+
+	tomb tomb.Tomb
 }
 
 type parseData struct {
@@ -98,17 +101,13 @@ func newDriver() *driver {
 	}
 }
 
-func (d *driver) init(g *govim.Govim) error {
-	d.Govim = g
+func (d *driver) init() error {
+	d.ChannelEx(`augroup govim`)
+	d.ChannelEx(`augroup END`)
+	d.DefineFunction("Hello", []string{}, d.hello)
+	d.DefineCommand("Hello", d.helloComm)
 
-	return d.Do(func() error {
-		d.ChannelEx(`augroup govim`)
-		d.ChannelEx(`augroup END`)
-		d.DefineFunction("Hello", []string{}, d.hello)
-		d.DefineCommand("Hello", d.helloComm)
-
-		return nil
-	})
+	return nil
 }
 
 func (d *driver) hello(args ...json.RawMessage) (interface{}, error) {
