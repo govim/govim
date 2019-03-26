@@ -57,6 +57,7 @@ func (g *Govim) onViewportChange(args ...json.RawMessage) (interface{}, error) {
 
 type Viewport struct {
 	TabNr   int
+	WinNr   int
 	Windows []WinInfo
 }
 
