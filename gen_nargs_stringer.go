@@ -4,6 +4,17 @@ package govim
 
 import "strconv"
 
+func _() {
+	// An "invalid array index" compiler error signifies that the constant values have changed.
+	// Re-run the stringer command to generate them again.
+	var x [1]struct{}
+	_ = x[NArgs0-0]
+	_ = x[NArgs1-1]
+	_ = x[NArgsZeroOrMore-2]
+	_ = x[NArgsZeroOrOne-3]
+	_ = x[NArgsOneOrMore-4]
+}
+
 const _NArgs_name = "-nargs=0-nargs=1-nargs=*-nargs=?-nargs=+"
 
 var _NArgs_index = [...]uint8{0, 8, 16, 24, 32, 40}

@@ -4,6 +4,14 @@ package govim
 
 import "strconv"
 
+func _() {
+	// An "invalid array index" compiler error signifies that the constant values have changed.
+	// Re-run the stringer command to generate them again.
+	var x [1]struct{}
+	_ = x[RangeLine-0]
+	_ = x[RangeFile-1]
+}
+
 const _Range_name = "-range-range=%"
 
 var _Range_index = [...]uint8{0, 6, 14}
