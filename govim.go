@@ -711,7 +711,7 @@ func (g *Govim) ChannelExpr(expr string) (json.RawMessage, error) {
 func (g *Govim) ChannelCall(fn string, args ...interface{}) (json.RawMessage, error) {
 	<-g.loaded
 	args = append([]interface{}{fn}, args...)
-	g.Logf("ChannelCall: %v\n", args...)
+	g.Logf("ChannelCall: %v\n", args)
 	var err error
 	var ch chan callbackResp
 	err = g.DoProto(func() {
