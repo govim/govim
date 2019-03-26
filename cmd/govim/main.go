@@ -106,6 +106,8 @@ func (d *driver) init() error {
 	d.ChannelEx(`augroup END`)
 	d.DefineFunction("Hello", []string{}, d.hello)
 	d.DefineCommand("Hello", d.helloComm)
+	d.DefineFunction("BalloonExpr", []string{}, d.balloonExpr)
+	d.ChannelEx("set balloonexpr=GOVIMBalloonExpr()")
 
 	return nil
 }
@@ -117,4 +119,11 @@ func (d *driver) hello(args ...json.RawMessage) (interface{}, error) {
 func (d *driver) helloComm(flags govim.CommandFlags, args ...string) error {
 	d.ChannelEx(`echom "Hello from command"`)
 	return nil
+}
+
+func (d *driver) balloonExpr(args ...json.RawMessage) (interface{}, error) {
+	go func() {
+		d.ChannelCall("balloon_show", "Hello from balloon!")
+	}()
+	return "Balloon placeholder", nil
 }
