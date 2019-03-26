@@ -47,6 +47,7 @@ endfunction
 
 function s:updateViewport(timer)
   let l:currTab = tabpagenr()
+  let l:currWin = winnr()
   let l:windows = []
   for l:w in getwininfo()
     if l:w.tabnr != l:currTab
@@ -57,6 +58,7 @@ function s:updateViewport(timer)
   endfor
   let l:viewport = {
         \ 'currTab': l:currTab,
+        \ 'currWin': l:currWin,
         \ 'windows': l:windows,
         \ }
   if s:currViewport != l:viewport
@@ -79,7 +81,7 @@ function s:define(channel, msg)
       " the plugin has loaded, setup and well-known plugin-level
       " stuff like OnViewportChange
       let s:timer = timer_start(100, function('s:updateViewport'), {'repeat': -1})
-      au CursorMoved,CursorMovedI * call s:updateViewport(0)
+      au CursorMoved,CursorMovedI,BufWinEnter * call s:updateViewport(0)
     elseif a:msg[1] == "function"
       call s:defineFunction(a:msg[2], a:msg[3], 0)
     elseif a:msg[1] == "rangefunction"
