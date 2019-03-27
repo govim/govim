@@ -2,7 +2,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -16,6 +15,10 @@ import (
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/internal/plugin"
 	"gopkg.in/tomb.v2"
+)
+
+var (
+	fTail = flag.Bool("tail", false, "whether to also log output to stdout")
 )
 
 func main() {
@@ -35,6 +38,8 @@ func main1() int {
 }
 
 func mainerr() error {
+	flag.Parse()
+
 	if sock := os.Getenv("GOVIMTEST_SOCKET"); sock != "" {
 		ln, err := net.Listen("tcp", sock)
 		if err != nil {
@@ -69,11 +74,16 @@ func launch(in io.ReadCloser, out io.WriteCloser) error {
 	}
 	defer tf.Close()
 
+	var log io.Writer = tf
+	if *fTail {
+		log = io.MultiWriter(tf, os.Stdout)
+	}
+
 	if os.Getenv("GOVIMTEST_SOCKET") != "" {
 		fmt.Fprintf(os.Stderr, "New connection will log to %v\n", tf.Name())
 	}
 
-	g, err := govim.NewGoVim(in, out, tf)
+	g, err := govim.NewGoVim(in, out, log)
 	if err != nil {
 		return fmt.Errorf("failed to create govim instance: %v", err)
 	}
@@ -107,14 +117,5 @@ func (d *driver) init() error {
 	d.DefineFunction("Hello", []string{}, d.hello)
 	d.DefineCommand("Hello", d.helloComm)
 
-	return nil
-}
-
-func (d *driver) hello(args ...json.RawMessage) (interface{}, error) {
-	return "Hello from function", nil
-}
-
-func (d *driver) helloComm(flags govim.CommandFlags, args ...string) error {
-	d.ChannelEx(`echom "Hello from command"`)
 	return nil
 }
