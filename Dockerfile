@@ -1,7 +1,7 @@
 FROM buildpack-deps:18.04
 
 RUN apt-get update
-RUN apt-get -y install sudo apt-utils git jq curl libncurses5-dev gcc
+RUN apt-get -y install sudo apt-utils git jq curl libncurses5-dev gcc rsync
 
 RUN git config --global advice.detachedHead false
 
@@ -21,7 +21,7 @@ RUN cd /tmp && \
   cd vim && \
   git checkout $VIM_VERSION && \
   ./configure --prefix=/vim --disable-darwin --disable-selinux --disable-netbeans && \
-  make install
+  make -j$(nproc --all) install
 
 ENV PATH=/vim/bin:$PATH
 
