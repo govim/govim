@@ -1,5 +1,7 @@
 #!/usr/bin/env vbash
 
+./_scripts/revendorToolsInternal.sh
+
 go generate ./...
 go test ./...
 
