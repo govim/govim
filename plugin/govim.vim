@@ -4,6 +4,11 @@ let s:channel = ""
 let s:timer = ""
 let s:currViewport = {}
 
+set mouse=a
+set ttymouse=sgr
+set balloondelay=250
+set ballooneval
+set balloonevalterm
 syntax on
 
 function s:callbackFunction(name, args)

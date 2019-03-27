@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -10,9 +11,14 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"os/exec"
 	"time"
 
+	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
+	"github.com/myitcv/govim/cmd/govim/internal/jsonrpc2"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
+	"github.com/myitcv/govim/cmd/govim/internal/span"
 	"github.com/myitcv/govim/internal/plugin"
 	"gopkg.in/tomb.v2"
 )
@@ -97,6 +103,11 @@ func launch(in io.ReadCloser, out io.WriteCloser) error {
 type driver struct {
 	*plugin.Driver
 
+	gopls       *os.Process
+	goplsConn   *jsonrpc2.Conn
+	goplsCancel context.CancelFunc
+	server      protocol.Server
+
 	tomb tomb.Tomb
 }
 
@@ -116,6 +127,52 @@ func (d *driver) init() error {
 	d.ChannelEx(`augroup END`)
 	d.DefineFunction("Hello", []string{}, d.hello)
 	d.DefineCommand("Hello", d.helloComm)
+	d.DefineFunction("BalloonExpr", []string{}, d.balloonExpr)
+	d.ChannelEx("set balloonexpr=GOVIMBalloonExpr()")
+
+	gopls := exec.Command("gobin", "-m", "-run", "golang.org/x/tools/cmd/gopls")
+	out, err := gopls.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdout pipe for gopls: %v", err)
+	}
+	in, err := gopls.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe for gopls: %v", err)
+	}
+	if err := gopls.Start(); err != nil {
+		return fmt.Errorf("failed to start gopls: %v", err)
+	}
+	d.tomb.Go(func() (err error) {
+		if err = gopls.Wait(); err != nil {
+			err = fmt.Errorf("got error running gopls: %v", err)
+		}
+		return
+	})
+
+	stream := jsonrpc2.NewHeaderStream(out, in)
+	ctxt, cancel := context.WithCancel(context.Background())
+	conn, server := protocol.RunClient(ctxt, stream, d)
+
+	d.gopls = gopls.Process
+	d.goplsConn = conn
+	d.goplsCancel = cancel
+	d.server = server
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get working directory for gopls: %v", err)
+	}
+
+	initParams := &protocol.InitializeParams{
+		InnerInitializeParams: protocol.InnerInitializeParams{
+			RootURI: string(span.FileURI(wd)),
+		},
+	}
+	initRes, err := server.Initialize(context.Background(), initParams)
+	if err != nil {
+		return fmt.Errorf("failed to initialise gopls: %v", err)
+	}
+	d.Logf("gopls init complete: %v", pretty.Sprint(initRes.Capabilities))
 
 	return nil
 }

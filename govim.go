@@ -853,7 +853,11 @@ func (g *Govim) Errorf(format string, args ...interface{}) {
 }
 
 func (g *Govim) Logf(format string, args ...interface{}) {
-	fmt.Fprintf(g.log, format, args...)
+	s := fmt.Sprintf(format, args...)
+	if s[len(s)-1] != '\n' {
+		s += "\n"
+	}
+	fmt.Fprint(g.log, s)
 }
 
 type errProto struct {
