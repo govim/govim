@@ -8,48 +8,50 @@ import (
 	"github.com/russross/blackfriday/v2"
 )
 
+type Buffer struct {
+	Num      int
+	Name     string
+	Contents []byte
+	Version  int
+}
+
+func (d *driver) currentBuffer() (buf Buffer, err error) {
+	var b struct {
+		Num      int
+		Name     string
+		Contents string
+	}
+	expr := d.ChannelExpr(`{"Num": bufnr(""), "Name": expand('%:p'), "Contents": join(getline(0, "$"), "\n")}`)
+	if err = json.Unmarshal(expr, &b); err != nil {
+		err = fmt.Errorf("failed to unmarshal current buffer info: %v", err)
+	} else {
+		buf.Num = b.Num
+		buf.Name = b.Name
+		buf.Contents = []byte(b.Contents)
+	}
+	return
+}
+
 type Pos struct {
-	Filename string
-	Line     int
-	Col      int
+	BufNum int `json:"bufnum"`
+	Line   int `json:"line"`
+	Col    int `json:"col"`
 }
 
 func (d *driver) cursorPos() (c Pos, err error) {
-	var vp struct {
-		Filename string `json:"filename"`
-		Line     string `json:"line"`
-		LineNr   int    `json:"linenr"`
-		ColNr    int    `json:"colnr"`
+	expr := d.ChannelExpr(`{"bufnum": bufnr(""), "line": line("."), "col": col(".")}`)
+	if err = json.Unmarshal(expr, &c); err != nil {
+		err = fmt.Errorf("failed to unmarshal current cursor position info: %v", err)
 	}
-	expr := d.ChannelExpr(`{"filename": expand('%:p'), "line": getline("."), "linenr": line("."), "colnr": col(".")}`)
-	if err = json.Unmarshal(expr, &vp); err != nil {
-		return Pos{}, fmt.Errorf("failed to unmarshal current position info: %v", err)
-	}
-	var p = Pos{
-		Filename: vp.Filename,
-		Line:     vp.LineNr,
-		Col:      byteToRuneOffset(vp.Line, vp.ColNr),
-	}
-	return p, nil
+	return
 }
 
 func (d *driver) mousePos() (c Pos, err error) {
-	var vp struct {
-		Filename string `json:"filename"`
-		Line     string `json:"line"`
-		LineNr   int    `json:"linenr"`
-		ColNr    int    `json:"colnr"`
+	expr := d.ChannelExpr(`{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col}`)
+	if err = json.Unmarshal(expr, &c); err != nil {
+		err = fmt.Errorf("failed to unmarshal current mouse position info: %v", err)
 	}
-	expr := d.ChannelExpr(`{"filename": fnamemodify(bufname(v:beval_bufnr), ":p"), "line": getbufline(v:beval_bufnr, v:beval_lnum)[0], "linenr": v:beval_lnum, "colnr": v:beval_col}`)
-	if err = json.Unmarshal(expr, &vp); err != nil {
-		return Pos{}, fmt.Errorf("failed to unmarshal current position info: %v", err)
-	}
-	var p = Pos{
-		Filename: vp.Filename,
-		Line:     vp.LineNr,
-		Col:      byteToRuneOffset(vp.Line, vp.ColNr),
-	}
-	return p, nil
+	return
 }
 
 func byteToRuneOffset(s string, o int) (j int) {

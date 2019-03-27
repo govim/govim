@@ -99,9 +99,12 @@ func (g *Govim) load() error {
 
 	if g.Init != nil {
 		var err error
-		return g.DoProto(func() {
+		perr := g.DoProto(func() {
 			err = g.Init()
 		})
+		if perr != nil {
+			return perr
+		}
 		return err
 	}
 	return nil
