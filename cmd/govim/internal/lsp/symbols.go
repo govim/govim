@@ -5,9 +5,8 @@
 package lsp
 
 import (
-	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
-
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
 )
 
 func toProtocolDocumentSymbols(m *protocol.ColumnMapper, symbols []source.Symbol) []protocol.DocumentSymbol {
@@ -21,6 +20,8 @@ func toProtocolDocumentSymbols(m *protocol.ColumnMapper, symbols []source.Symbol
 		}
 		if r, err := m.Range(s.Span); err == nil {
 			ps.Range = r
+		}
+		if r, err := m.Range(s.SelectionSpan); err == nil {
 			ps.SelectionRange = r
 		}
 		result = append(result, ps)
@@ -42,6 +43,8 @@ func toProtocolSymbolKind(kind source.SymbolKind) protocol.SymbolKind {
 		return protocol.Function
 	case source.MethodSymbol:
 		return protocol.Method
+	case source.InterfaceSymbol:
+		return protocol.Interface
 	default:
 		return 0
 	}
