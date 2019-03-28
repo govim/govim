@@ -2,6 +2,8 @@
 
 ./_scripts/revendorToolsInternal.sh
 
+go install golang.org/x/tools/cmd/gopls
+
 go generate ./...
 go test ./...
 go vet $(go list ./... | grep -v 'govim/internal')

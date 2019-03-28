@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 
 	"github.com/russross/blackfriday/v2"
 )
@@ -15,7 +16,7 @@ type Buffer struct {
 	Version  int
 }
 
-func (d *driver) currentBuffer() (buf Buffer, err error) {
+func (d *driver) fetchCurrentBufferInfo() (buf Buffer, err error) {
 	var b struct {
 		Num      int
 		Name     string
@@ -75,3 +76,7 @@ func (p plainMarkdown) RenderNode(w io.Writer, node *blackfriday.Node, entering 
 
 func (p plainMarkdown) RenderHeader(w io.Writer, ast *blackfriday.Node) {}
 func (p plainMarkdown) RenderFooter(w io.Writer, ast *blackfriday.Node) {}
+
+func f2int(f float64) int {
+	return int(math.Round(f))
+}

@@ -68,7 +68,7 @@ func (d *driver) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 }
 
 func (d *driver) bufReadPost() error {
-	b, err := d.currentBuffer()
+	b, err := d.fetchCurrentBufferInfo()
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (d *driver) bufReadPost() error {
 }
 
 func (d *driver) bufTextChanged() error {
-	b, err := d.currentBuffer()
+	b, err := d.fetchCurrentBufferInfo()
 	if err != nil {
 		return err
 	}
@@ -114,6 +114,78 @@ func (d *driver) bufTextChanged() error {
 	return d.server.DidChange(context.Background(), params)
 }
 
-func (d *driver) bad(args ...json.RawMessage) (interface{}, error) {
-	return nil, fmt.Errorf("this is a bad function")
+func (d *driver) formatCurrentBuffer() error {
+	v := d.Viewport()
+	b := d.buffers[v.Current.BufNr]
+	params := &protocol.DocumentFormattingParams{
+		TextDocument: protocol.TextDocumentIdentifier{
+			URI: string(span.FileURI(b.Name)),
+		},
+	}
+	d.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
+	edits, err := d.server.Formatting(context.Background(), params)
+	if err != nil {
+		return fmt.Errorf("failed to call gopls.Formatting: %v", err)
+	}
+	cc := span.NewContentConverter(b.Name, b.Contents)
+	preEventIgnore := d.ParseString(d.ChannelExpr("&eventignore"))
+	d.ChannelEx("set eventignore=all")
+	defer d.ChannelExf("set eventignore=%v", preEventIgnore)
+	d.ToggleOnViewportChange()
+	defer d.ToggleOnViewportChange()
+	for ie := len(edits) - 1; ie >= 0; ie-- {
+		e := edits[ie]
+		d.Logf("==================")
+		d.Logf("%v", pretty.Sprint(e))
+		sline := f2int(e.Range.Start.Line)
+		schar := f2int(e.Range.Start.Character)
+		eline := f2int(e.Range.End.Line)
+		echar := f2int(e.Range.End.Character)
+		soff, err := cc.ToOffset(sline+1, 0)
+		if err != nil {
+			return fmt.Errorf("failed to calculate start position offset for %v: %v", e.Range.Start, err)
+		}
+		eoff, err := cc.ToOffset(eline+1, 0)
+		if err != nil {
+			return fmt.Errorf("failed to calculate start position offset for %v: %v", e.Range.Start, err)
+		}
+		start := span.NewPoint(sline+1, 0, soff)
+		end := span.NewPoint(eline+1, 0, eoff)
+
+		if e.Range.Start.Character > 0 {
+			start, err = span.FromUTF16Column(start, schar, b.Contents)
+			if err != nil {
+				return fmt.Errorf("failed to adjust start colum for %v: %v", e.Range.Start, err)
+			}
+		}
+		if e.Range.End.Character > 0 {
+			end, err = span.FromUTF16Column(end, echar, b.Contents)
+			if err != nil {
+				return fmt.Errorf("failed to adjust end colum for %v: %v", e.Range.End, err)
+			}
+		}
+
+		if start.Column() != 1 || end.Column() != 1 {
+			// Whether this is a delete or not, we will implement support for this later
+			return fmt.Errorf("saw an edit where start col != end col (edit: %v). We can't currently handle this", e)
+		}
+
+		if start.Line() != end.Line() {
+			if e.NewText != "" {
+				return fmt.Errorf("saw an edit where start line != end line with replacement text %q; We can't currently handle this", e.NewText)
+			}
+			// This is a delete of line
+			if res := d.ParseInt(d.ChannelCall("deletebufline", b.Num, start.Line(), end.Line()-1)); res != 0 {
+				return fmt.Errorf("deletebufline(%v, %v, %v) failed", b.Num, start.Line(), end.Line()-1)
+			}
+		} else {
+			// we are within the same line so strip the newline
+			if e.NewText != "" && e.NewText[len(e.NewText)-1] == '\n' {
+				e.NewText = e.NewText[:len(e.NewText)-1]
+			}
+			repl := strings.Split(e.NewText, "\n")
+			d.ChannelCall("append", start.Line()-1, repl)
+		}
+	}
+	return d.bufTextChanged()
 }

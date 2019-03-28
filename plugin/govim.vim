@@ -3,6 +3,7 @@
 let s:channel = ""
 let s:timer = ""
 let s:currViewport = {}
+let s:sendUpdateViewport = 1
 
 set mouse=a
 set ttymouse=sgr
@@ -51,6 +52,9 @@ function s:callbackAutoCommand(name)
 endfunction
 
 function s:updateViewport(timer)
+  if !s:sendUpdateViewport
+    return
+  endif
   let l:currTabNr = tabpagenr()
   let l:currWinNr = winnr()
   let l:currWin = {}
@@ -87,6 +91,8 @@ function s:define(channel, msg)
       " stuff like OnViewportChange
       let s:timer = timer_start(100, function('s:updateViewport'), {'repeat': -1})
       au CursorMoved,CursorMovedI,BufWinEnter * call s:updateViewport(0)
+    elseif a:msg[1] == "toggleUpdateViewport"
+      let s:sendUpdateViewport = !s:sendUpdateViewport
     elseif a:msg[1] == "function"
       call s:defineFunction(a:msg[2], a:msg[3], 0)
     elseif a:msg[1] == "rangefunction"
