@@ -113,3 +113,7 @@ func (d *driver) bufTextChanged() error {
 	}
 	return d.server.DidChange(context.Background(), params)
 }
+
+func (d *driver) bad(args ...json.RawMessage) (interface{}, error) {
+	return nil, fmt.Errorf("this is a bad function")
+}

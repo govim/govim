@@ -30,6 +30,11 @@ type callbackResp struct {
 	val       json.RawMessage
 }
 
+type Plugin interface {
+	Init(*Govim) error
+	Shutdown() error
+}
+
 type Govim struct {
 	in  *json.Decoder
 	out *json.Encoder
@@ -38,7 +43,7 @@ type Govim struct {
 	funcHandlers     map[string]interface{}
 	funcHandlersLock sync.Mutex
 
-	Init func() error
+	plugin Plugin
 
 	// callCallbackNextID represents the next ID to use in a call to the Vim
 	// channel handler. This then allows us to direct the response.
@@ -64,13 +69,15 @@ type Govim struct {
 	tomb tomb.Tomb
 }
 
-func NewGoVim(in io.Reader, out io.Writer, log io.Writer) (*Govim, error) {
+func NewGoVim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (*Govim, error) {
 	g := &Govim{
 		in:  json.NewDecoder(in),
 		out: json.NewEncoder(out),
 		log: log,
 
 		funcHandlers: make(map[string]interface{}),
+
+		plugin: plug,
 
 		loaded: make(chan bool),
 
@@ -97,10 +104,10 @@ func (g *Govim) load() error {
 	}
 	close(g.loaded)
 
-	if g.Init != nil {
+	if g.plugin != nil {
 		var err error
 		perr := g.DoProto(func() {
-			err = g.Init()
+			err = g.plugin.Init(g)
 		})
 		if perr != nil {
 			return perr
@@ -165,7 +172,13 @@ type VimAutoCommandFunction func() error
 func (g *Govim) Run() error {
 	err := g.DoProto(g.run)
 	g.tomb.Kill(err)
-	return g.tomb.Wait()
+	if err := g.tomb.Wait(); err != nil {
+		return err
+	}
+	if g.plugin != nil {
+		return g.plugin.Shutdown()
+	}
+	return nil
 }
 
 // run is the main loop that handles call from Vim
