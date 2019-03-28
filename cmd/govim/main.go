@@ -131,12 +131,12 @@ func (d *driver) Init(g *govim.Govim) error {
 	d.ChannelEx(`augroup govim`)
 	d.ChannelEx(`augroup END`)
 	d.DefineFunction("Hello", []string{}, d.hello)
-	d.DefineFunction("Bad", []string{}, d.bad)
 	d.DefineCommand("Hello", d.helloComm)
 	d.DefineFunction("BalloonExpr", []string{}, d.balloonExpr)
 	d.ChannelEx("set balloonexpr=GOVIMBalloonExpr()")
-	d.DefineAutoCommand("", govim.Events{govim.EventBufReadPost}, govim.Patterns{"*.go"}, false, d.bufReadPost)
+	d.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, d.bufReadPost)
 	d.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, d.bufTextChanged)
+	d.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, d.formatCurrentBuffer)
 
 	gopls := exec.Command("gobin", "-m", "-run", "golang.org/x/tools/cmd/gopls")
 	out, err := gopls.StdoutPipe()
@@ -166,16 +166,13 @@ func (d *driver) Init(g *govim.Govim) error {
 	d.goplsCancel = cancel
 	d.server = server
 
-	wd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get working directory for gopls: %v", err)
-	}
-
+	wd := d.ParseString(d.ChannelCall("getcwd", -1))
 	initParams := &protocol.InitializeParams{
 		InnerInitializeParams: protocol.InnerInitializeParams{
 			RootURI: string(span.FileURI(wd)),
 		},
 	}
+	g.Logf("calling protocol.Initialize(%v)", pretty.Sprint(initParams))
 	initRes, err := server.Initialize(context.Background(), initParams)
 	if err != nil {
 		return fmt.Errorf("failed to initialise gopls: %v", err)

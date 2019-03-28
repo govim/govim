@@ -35,6 +35,17 @@ func (g *Govim) UnsubOnViewportChange(sub *OnViewportChangeSub) {
 	panic(fmt.Errorf("did not find subscription"))
 }
 
+func (g *Govim) ToggleOnViewportChange() {
+	select {
+	case <-g.tomb.Dying():
+		// we are already dying, nothing to do
+	case resp := <-g.callCallback("toggleUpdateViewport"):
+		if resp.errString != "" {
+			g.errProto("failed to toggle OnViewportChange: %v", resp.errString)
+		}
+	}
+}
+
 type OnViewportChangeSub struct {
 	f func(Viewport)
 }

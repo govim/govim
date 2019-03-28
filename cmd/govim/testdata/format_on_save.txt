@@ -1,0 +1,19 @@
+vim ex 'e file.go'
+vim ex 'w'
+cmp file.go file.go.formatted
+
+-- go.mod --
+module mod.com
+
+-- file.go --
+package blah
+
+const ( x = 5
+ )
+-- file.go.formatted --
+package blah
+
+const (
+	x = 5
+)
+
