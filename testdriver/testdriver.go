@@ -255,7 +255,6 @@ func Vim() (exitCode int) {
 			return
 		}
 		exitCode = -1
-		panic(r)
 		fmt.Fprintln(os.Stderr, r)
 	}()
 	ef := func(format string, args ...interface{}) {

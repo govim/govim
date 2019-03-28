@@ -4,6 +4,7 @@
 
 go generate ./...
 go test ./...
+go vet $(go list ./... | grep -v 'govim/internal')
 
 go mod tidy
 # https://github.com/golang/go/issues/27868#issuecomment-431413621

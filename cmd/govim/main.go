@@ -108,6 +108,11 @@ type driver struct {
 	goplsCancel context.CancelFunc
 	server      protocol.Server
 
+	// buffers represents the current state of all buffers in Vim. It is only safe to
+	// write and read to/from this map in the callback for a defined function, command
+	// or autocommand.
+	buffers map[int]Buffer
+
 	tomb tomb.Tomb
 }
 
@@ -118,7 +123,8 @@ type parseData struct {
 
 func newDriver() *driver {
 	return &driver{
-		Driver: plugin.NewDriver("GOVIM"),
+		Driver:  plugin.NewDriver("GOVIM"),
+		buffers: make(map[int]Buffer),
 	}
 }
 
@@ -129,6 +135,8 @@ func (d *driver) init() error {
 	d.DefineCommand("Hello", d.helloComm)
 	d.DefineFunction("BalloonExpr", []string{}, d.balloonExpr)
 	d.ChannelEx("set balloonexpr=GOVIMBalloonExpr()")
+	d.DefineAutoCommand("", govim.Events{govim.EventBufReadPost}, govim.Patterns{"*.go"}, false, d.bufReadPost)
+	d.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, d.bufTextChanged)
 
 	gopls := exec.Command("gobin", "-m", "-run", "golang.org/x/tools/cmd/gopls")
 	out, err := gopls.StdoutPipe()

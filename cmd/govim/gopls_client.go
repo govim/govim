@@ -36,6 +36,7 @@ func (d *driver) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) 
 	panic("not implemented yet")
 }
 
-func (d *driver) PublishDiagnostics(context.Context, *protocol.PublishDiagnosticsParams) error {
-	panic("not implemented yet")
+func (d *driver) PublishDiagnostics(ctxt context.Context, params *protocol.PublishDiagnosticsParams) error {
+	d.Logf("PublishDiagnostics callback: %v", params)
+	return nil
 }
