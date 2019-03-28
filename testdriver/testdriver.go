@@ -19,7 +19,9 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
-type Driver struct {
+// TODO - this code is a mess and needs to be fixed
+
+type TestDriver struct {
 	govimListener  net.Listener
 	driverListener net.Listener
 	govim          *govim.Govim
@@ -28,7 +30,7 @@ type Driver struct {
 
 	name string
 
-	init func(*govim.Govim) error
+	plugin signallingPlugin
 
 	quitVim    chan bool
 	quitGovim  chan bool
@@ -41,8 +43,8 @@ type Driver struct {
 	errCh chan error
 }
 
-func NewDriver(name string, env *testscript.Env, errCh chan error, init func(*govim.Govim) error) (*Driver, error) {
-	res := &Driver{
+func NewTestDriver(name string, env *testscript.Env, errCh chan error, plug govim.Plugin) (*TestDriver, error) {
+	res := &TestDriver{
 		quitVim:    make(chan bool),
 		quitGovim:  make(chan bool),
 		quitDriver: make(chan bool),
@@ -53,7 +55,7 @@ func NewDriver(name string, env *testscript.Env, errCh chan error, init func(*go
 
 		name: name,
 
-		init: init,
+		plugin: newSignallingPlugin(plug),
 
 		errCh: errCh,
 	}
@@ -104,12 +106,14 @@ func findLocalVimrc() (string, error) {
 	return filepath.Join(dir, "test.vim"), nil
 }
 
-func (d *Driver) Run() error {
+func (d *TestDriver) Run() (err error) {
 	go d.runVim()
-	return d.listenGovim()
+	err = d.listenGovim()
+	<-d.plugin.initDone
+	return
 }
 
-func (d *Driver) runVim() {
+func (d *TestDriver) runVim() {
 	thepty, err := pty.Start(d.cmd)
 	if err != nil {
 		d.errorf("failed to start %v: %v", strings.Join(d.cmd.Args, " "), err)
@@ -128,7 +132,7 @@ func (d *Driver) runVim() {
 	io.Copy(ioutil.Discard, thepty)
 }
 
-func (d *Driver) Close() {
+func (d *TestDriver) Close() {
 	close(d.quitVim)
 	d.cmd.Process.Kill()
 	<-d.doneQuitVim
@@ -140,18 +144,18 @@ func (d *Driver) Close() {
 	<-d.doneQuitDriver
 }
 
-func (d *Driver) errorf(format string, args ...interface{}) {
+func (d *TestDriver) errorf(format string, args ...interface{}) {
 	err := fmt.Errorf(d.name+": "+format, args...)
 	fmt.Println(err)
 	d.errCh <- err
 }
 
-func (d *Driver) listenGovim() error {
+func (d *TestDriver) listenGovim() error {
 	conn, err := d.govimListener.Accept()
 	if err != nil {
 		return fmt.Errorf("failed to accept connection on %v: %v", d.govimListener.Addr(), err)
 	}
-	g, err := govim.NewGoVim(conn, conn, ioutil.Discard)
+	g, err := govim.NewGoVim(d.plugin, conn, conn, ioutil.Discard)
 	if err != nil {
 		return fmt.Errorf("failed to create govim: %v", err)
 	}
@@ -160,13 +164,10 @@ func (d *Driver) listenGovim() error {
 	go d.listenDriver()
 	go d.runGovim()
 
-	if d.init == nil {
-		return nil
-	}
-	return d.init(d.govim)
+	return nil
 }
 
-func (d *Driver) runGovim() {
+func (d *TestDriver) runGovim() {
 	if err := d.govim.Run(); err != nil {
 		select {
 		case <-d.quitGovim:
@@ -177,7 +178,7 @@ func (d *Driver) runGovim() {
 	close(d.doneQuitGovim)
 }
 
-func (d *Driver) listenDriver() {
+func (d *TestDriver) listenDriver() {
 	err := d.govim.DoProto(func() {
 	Accept:
 		for {
@@ -345,4 +346,25 @@ func Vim() (exitCode int) {
 	}
 	conn.Close()
 	return 0
+}
+
+type signallingPlugin struct {
+	u        govim.Plugin
+	initDone chan bool
+}
+
+func newSignallingPlugin(p govim.Plugin) signallingPlugin {
+	return signallingPlugin{
+		u:        p,
+		initDone: make(chan bool),
+	}
+}
+
+func (s signallingPlugin) Init(g *govim.Govim) error {
+	defer close(s.initDone)
+	return s.u.Init(g)
+}
+
+func (s signallingPlugin) Shutdown() error {
+	return s.u.Shutdown()
 }

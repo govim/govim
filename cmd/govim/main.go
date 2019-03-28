@@ -89,12 +89,10 @@ func launch(in io.ReadCloser, out io.WriteCloser) error {
 		fmt.Fprintf(os.Stderr, "New connection will log to %v\n", tf.Name())
 	}
 
-	g, err := govim.NewGoVim(in, out, log)
+	g, err := govim.NewGoVim(d, in, out, log)
 	if err != nil {
 		return fmt.Errorf("failed to create govim instance: %v", err)
 	}
-	g.Init = d.init
-	d.Govim = g
 
 	d.Kill(g.Run())
 	return d.Wait()
@@ -128,10 +126,12 @@ func newDriver() *driver {
 	}
 }
 
-func (d *driver) init() error {
+func (d *driver) Init(g *govim.Govim) error {
+	d.Driver.Govim = g
 	d.ChannelEx(`augroup govim`)
 	d.ChannelEx(`augroup END`)
 	d.DefineFunction("Hello", []string{}, d.hello)
+	d.DefineFunction("Bad", []string{}, d.bad)
 	d.DefineCommand("Hello", d.helloComm)
 	d.DefineFunction("BalloonExpr", []string{}, d.balloonExpr)
 	d.ChannelEx("set balloonexpr=GOVIMBalloonExpr()")
@@ -182,5 +182,9 @@ func (d *driver) init() error {
 	}
 	d.Logf("gopls init complete: %v", pretty.Sprint(initRes.Capabilities))
 
+	return nil
+}
+
+func (d *driver) Shutdown() error {
 	return nil
 }

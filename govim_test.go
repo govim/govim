@@ -36,7 +36,7 @@ func TestScripts(t *testing.T) {
 			Setup: func(e *testscript.Env) error {
 				wg.Add(1)
 				d := &driver{Driver: new(plugin.Driver)}
-				td, err := testdriver.NewDriver(filepath.Base(e.WorkDir), e, errCh, d.init)
+				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), e, errCh, d)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
@@ -83,19 +83,21 @@ func TestScripts(t *testing.T) {
 
 type driver struct {
 	*plugin.Driver
-	driver *testdriver.Driver
+	driver *testdriver.TestDriver
 }
 
-func (d *driver) init(g *govim.Govim) error {
+func (d *driver) Init(g *govim.Govim) (err error) {
 	d.Govim = g
-	return d.Do(func() error {
-		d.DefineFunction("Hello", []string{}, d.hello)
-		d.DefineFunction("Bad", []string{}, d.bad)
-		d.DefineRangeFunction("Echo", []string{}, d.echo)
-		d.DefineCommand("HelloComm", d.helloComm, govim.AttrBang)
-		d.DefineAutoCommand("", govim.Events{govim.EventBufRead}, govim.Patterns{"*.go"}, false, d.bufRead)
-		return nil
-	})
+	d.DefineFunction("Hello", []string{}, d.hello)
+	d.DefineFunction("Bad", []string{}, d.bad)
+	d.DefineRangeFunction("Echo", []string{}, d.echo)
+	d.DefineCommand("HelloComm", d.helloComm, govim.AttrBang)
+	d.DefineAutoCommand("", govim.Events{govim.EventBufRead}, govim.Patterns{"*.go"}, false, d.bufRead)
+	return nil
+}
+
+func (d *driver) Shutdown() error {
+	return nil
 }
 
 func (d *driver) bufRead() error {
