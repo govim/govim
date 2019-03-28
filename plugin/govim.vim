@@ -51,20 +51,20 @@ function s:callbackAutoCommand(name)
 endfunction
 
 function s:updateViewport(timer)
-  let l:currTab = tabpagenr()
-  let l:currWin = winnr()
+  let l:currTabNr = tabpagenr()
+  let l:currWinNr = winnr()
+  let l:currWin = {}
   let l:windows = []
   for l:w in getwininfo()
-    if l:w.tabnr != l:currTab
-      continue
-    endif
     let l:sw = filter(l:w, 'v:key != "variables"')
     call add(l:windows, l:sw)
+    if l:sw.tabnr == l:currTabNr && l:sw.winnr == l:currWinNr
+      let l:currWin = l:sw
+    endif
   endfor
   let l:viewport = {
-        \ 'currTab': l:currTab,
-        \ 'currWin': l:currWin,
-        \ 'windows': l:windows,
+        \ 'Current': l:currWin,
+        \ 'Windows': l:windows,
         \ }
   if s:currViewport != l:viewport
     let s:currViewport = l:viewport

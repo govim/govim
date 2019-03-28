@@ -3,6 +3,8 @@ package govim
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/kr/pretty"
 )
 
 const (
@@ -42,22 +44,23 @@ func (g *Govim) onViewportChange(args ...json.RawMessage) (interface{}, error) {
 	g.decodeJSON(args[0], &r)
 	g.viewportLock.Lock()
 	g.currViewport = r
+	r = r.dup()
 	g.viewportLock.Unlock()
 
+	g.Logf("Viewport changed: %v", pretty.Sprint(r))
+
 	var subs []*OnViewportChangeSub
-	r = r.dup()
 	g.onViewportChangeSubsLock.Lock()
 	subs = append(subs, g.onViewportChangeSubs...)
 	g.onViewportChangeSubsLock.Unlock()
 	for _, s := range subs {
-		s.f(r)
+		s.f(r.dup())
 	}
 	return nil, nil
 }
 
 type Viewport struct {
-	TabNr   int
-	WinNr   int
+	Current WinInfo
 	Windows []WinInfo
 }
 
