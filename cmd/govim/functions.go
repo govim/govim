@@ -10,7 +10,7 @@ import (
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/internal/span"
+	"github.com/myitcv/govim/cmd/govim/types"
 	"github.com/russross/blackfriday/v2"
 )
 
@@ -24,33 +24,14 @@ func (d *driver) helloComm(flags govim.CommandFlags, args ...string) error {
 }
 
 func (d *driver) balloonExpr(args ...json.RawMessage) (interface{}, error) {
-	pos, err := d.mousePos()
+	b, pos, err := d.mousePos()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get current position: %v", err)
-	}
-	b, ok := d.buffers[pos.BufNum]
-	if !ok {
-		return nil, fmt.Errorf("failed to resolve buffer from buffer number %v", pos.BufNum)
-	}
-	cc := span.NewContentConverter(b.Name, b.Contents)
-	off, err := cc.ToOffset(pos.Line, pos.Col)
-	if err != nil {
-		return nil, fmt.Errorf("failed to calculate mouse position offset: %v", err)
-	}
-	p := span.NewPoint(pos.Line, pos.Col, off)
-	col, err := span.ToUTF16Column(p, b.Contents)
-	if err != nil {
-		return nil, fmt.Errorf("failed to calculate UTF col number of mouse position: %v", err)
+		return nil, fmt.Errorf("failed to determine mouse position: %v", err)
 	}
 	go func() {
 		params := &protocol.TextDocumentPositionParams{
-			TextDocument: protocol.TextDocumentIdentifier{
-				URI: string(span.FileURI(b.Name)),
-			},
-			Position: protocol.Position{
-				Line:      float64(pos.Line - 1),
-				Character: float64(col - 1),
-			},
+			TextDocument: b.ToTextDocumentIdentifier(),
+			Position:     pos.ToPosition(),
 		}
 		d.Logf("calling Hover: %v", pretty.Sprint(params))
 		hovRes, err := d.server.Hover(context.Background(), params)
@@ -95,13 +76,13 @@ func (d *driver) bufTextChanged() error {
 	return d.handleBufferEvent(b)
 }
 
-func (d *driver) handleBufferEvent(b Buffer) error {
+func (d *driver) handleBufferEvent(b *types.Buffer) error {
 	d.buffers[b.Num] = b
 
 	if b.Version == 0 {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
-				URI:     string(span.FileURI(b.Name)),
+				URI:     string(b.URI()),
 				Version: float64(b.Version),
 				Text:    string(b.Contents),
 			},
@@ -111,10 +92,8 @@ func (d *driver) handleBufferEvent(b Buffer) error {
 
 	params := &protocol.DidChangeTextDocumentParams{
 		TextDocument: protocol.VersionedTextDocumentIdentifier{
-			TextDocumentIdentifier: protocol.TextDocumentIdentifier{
-				URI: string(span.FileURI(b.Name)),
-			},
-			Version: float64(b.Version),
+			TextDocumentIdentifier: b.ToTextDocumentIdentifier(),
+			Version:                float64(b.Version),
 		},
 		ContentChanges: []protocol.TextDocumentContentChangeEvent{
 			{
@@ -136,9 +115,7 @@ func (d *driver) formatCurrentBuffer() error {
 	switch config.FormatOnSave(tool) {
 	case config.FormatOnSaveGoFmt:
 		params := &protocol.DocumentFormattingParams{
-			TextDocument: protocol.TextDocumentIdentifier{
-				URI: string(span.FileURI(b.Name)),
-			},
+			TextDocument: b.ToTextDocumentIdentifier(),
 		}
 		d.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
 		edits, err = d.server.Formatting(context.Background(), params)
@@ -146,11 +123,8 @@ func (d *driver) formatCurrentBuffer() error {
 			return fmt.Errorf("failed to call gopls.Formatting: %v", err)
 		}
 	case config.FormatOnSaveGoImports:
-		uri := string(span.FileURI(b.Name))
 		params := &protocol.CodeActionParams{
-			TextDocument: protocol.TextDocumentIdentifier{
-				URI: uri,
-			},
+			TextDocument: b.ToTextDocumentIdentifier(),
 		}
 		d.Logf("Calling gopls.CodeAction: %v", pretty.Sprint(params))
 		actions, err := d.server.CodeAction(context.Background(), params)
@@ -161,12 +135,11 @@ func (d *driver) formatCurrentBuffer() error {
 		if got := len(actions); want != got {
 			return fmt.Errorf("got %v actions; expected %v", got, want)
 		}
-		edits = (*actions[0].Edit.Changes)[uri]
+		edits = (*actions[0].Edit.Changes)[string(b.URI())]
 	default:
 		return fmt.Errorf("unknown format tool specified for %v: %v", config.GlobalFormatOnSave, tool)
 	}
 
-	cc := span.NewContentConverter(b.Name, b.Contents)
 	preEventIgnore := d.ParseString(d.ChannelExpr("&eventignore"))
 	d.ChannelEx("set eventignore=all")
 	defer d.ChannelExf("set eventignore=%v", preEventIgnore)
@@ -176,35 +149,16 @@ func (d *driver) formatCurrentBuffer() error {
 		e := edits[ie]
 		d.Logf("==================")
 		d.Logf("%v", pretty.Sprint(e))
-		sline := f2int(e.Range.Start.Line)
-		schar := f2int(e.Range.Start.Character)
-		eline := f2int(e.Range.End.Line)
-		echar := f2int(e.Range.End.Character)
-		soff, err := cc.ToOffset(sline+1, 0)
+		start, err := types.PointFromPosition(b, e.Range.Start)
 		if err != nil {
-			return fmt.Errorf("failed to calculate start position offset for %v: %v", e.Range.Start, err)
+			return fmt.Errorf("failed to derive start point from position: %v", err)
 		}
-		eoff, err := cc.ToOffset(eline+1, 0)
+		end, err := types.PointFromPosition(b, e.Range.End)
 		if err != nil {
-			return fmt.Errorf("failed to calculate start position offset for %v: %v", e.Range.Start, err)
-		}
-		start := span.NewPoint(sline+1, 0, soff)
-		end := span.NewPoint(eline+1, 0, eoff)
-
-		if e.Range.Start.Character > 0 {
-			start, err = span.FromUTF16Column(start, schar, b.Contents)
-			if err != nil {
-				return fmt.Errorf("failed to adjust start colum for %v: %v", e.Range.Start, err)
-			}
-		}
-		if e.Range.End.Character > 0 {
-			end, err = span.FromUTF16Column(end, echar, b.Contents)
-			if err != nil {
-				return fmt.Errorf("failed to adjust end colum for %v: %v", e.Range.End, err)
-			}
+			return fmt.Errorf("failed to derive end point from position: %v", err)
 		}
 
-		if start.Column() != 1 || end.Column() != 1 {
+		if start.Col() != 1 || end.Col() != 1 {
 			// Whether this is a delete or not, we will implement support for this later
 			return fmt.Errorf("saw an edit where start col != end col (edit: %v). We can't currently handle this", e)
 		}
