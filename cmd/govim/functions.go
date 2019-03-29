@@ -8,6 +8,7 @@ import (
 
 	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
+	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 	"github.com/russross/blackfriday/v2"
@@ -72,19 +73,13 @@ func (d *driver) bufReadPost() error {
 	if err != nil {
 		return err
 	}
-	if _, ok := d.buffers[b.Num]; ok {
-		return fmt.Errorf("have already seen buffer %v (%v) - this should be impossible", b.Num, b.Name)
+	if cb, ok := d.buffers[b.Num]; ok {
+		// reload of buffer, e.g. e!
+		b.Version = cb.Version + 1
+	} else {
+		b.Version = 0
 	}
-	b.Version = 0
-	d.buffers[b.Num] = b
-	params := &protocol.DidOpenTextDocumentParams{
-		TextDocument: protocol.TextDocumentItem{
-			URI:     string(span.FileURI(b.Name)),
-			Version: float64(b.Version),
-			Text:    string(b.Contents),
-		},
-	}
-	return d.server.DidOpen(context.Background(), params)
+	return d.handleBufferEvent(b)
 }
 
 func (d *driver) bufTextChanged() error {
@@ -97,7 +92,23 @@ func (d *driver) bufTextChanged() error {
 		return fmt.Errorf("have not seen buffer %v (%v) - this should be impossible", b.Num, b.Name)
 	}
 	b.Version = cb.Version + 1
+	return d.handleBufferEvent(b)
+}
+
+func (d *driver) handleBufferEvent(b Buffer) error {
 	d.buffers[b.Num] = b
+
+	if b.Version == 0 {
+		params := &protocol.DidOpenTextDocumentParams{
+			TextDocument: protocol.TextDocumentItem{
+				URI:     string(span.FileURI(b.Name)),
+				Version: float64(b.Version),
+				Text:    string(b.Contents),
+			},
+		}
+		return d.server.DidOpen(context.Background(), params)
+	}
+
 	params := &protocol.DidChangeTextDocumentParams{
 		TextDocument: protocol.VersionedTextDocumentIdentifier{
 			TextDocumentIdentifier: protocol.TextDocumentIdentifier{
@@ -115,18 +126,46 @@ func (d *driver) bufTextChanged() error {
 }
 
 func (d *driver) formatCurrentBuffer() error {
+	var err error
+	tool := d.ParseString(d.ChannelExpr(config.GlobalFormatOnSave))
 	v := d.Viewport()
 	b := d.buffers[v.Current.BufNr]
-	params := &protocol.DocumentFormattingParams{
-		TextDocument: protocol.TextDocumentIdentifier{
-			URI: string(span.FileURI(b.Name)),
-		},
+
+	var edits []protocol.TextEdit
+
+	switch config.FormatOnSave(tool) {
+	case config.FormatOnSaveGoFmt:
+		params := &protocol.DocumentFormattingParams{
+			TextDocument: protocol.TextDocumentIdentifier{
+				URI: string(span.FileURI(b.Name)),
+			},
+		}
+		d.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
+		edits, err = d.server.Formatting(context.Background(), params)
+		if err != nil {
+			return fmt.Errorf("failed to call gopls.Formatting: %v", err)
+		}
+	case config.FormatOnSaveGoImports:
+		uri := string(span.FileURI(b.Name))
+		params := &protocol.CodeActionParams{
+			TextDocument: protocol.TextDocumentIdentifier{
+				URI: uri,
+			},
+		}
+		d.Logf("Calling gopls.CodeAction: %v", pretty.Sprint(params))
+		actions, err := d.server.CodeAction(context.Background(), params)
+		if err != nil {
+			return fmt.Errorf("failed to call gopls.CodeAction: %v", err)
+		}
+		want := 1
+		if got := len(actions); want != got {
+			return fmt.Errorf("got %v actions; expected %v", got, want)
+		}
+		edits = (*actions[0].Edit.Changes)[uri]
+	default:
+		return fmt.Errorf("unknown format tool specified for %v: %v", config.GlobalFormatOnSave, tool)
 	}
-	d.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
-	edits, err := d.server.Formatting(context.Background(), params)
-	if err != nil {
-		return fmt.Errorf("failed to call gopls.Formatting: %v", err)
-	}
+
 	cc := span.NewContentConverter(b.Name, b.Contents)
 	preEventIgnore := d.ParseString(d.ChannelExpr("&eventignore"))
 	d.ChannelEx("set eventignore=all")

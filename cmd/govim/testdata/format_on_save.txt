@@ -1,11 +1,21 @@
-vim ex 'e file.go'
+# gofmt
+cp file.go.orig file.go
+vim ex 'let g:govim_format_on_save=\"gofmt\"'
+vim ex 'e! file.go'
+vim ex 'w'
+cmp file.go file.go.formatted
+
+# goimports
+cp file.go.orig file.go
+vim ex 'let g:govim_format_on_save=\"goimports\"'
+vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.formatted
 
 -- go.mod --
 module mod.com
 
--- file.go --
+-- file.go.orig --
 package blah
 
 const ( x = 5
