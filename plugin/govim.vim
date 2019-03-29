@@ -12,6 +12,9 @@ set ballooneval
 set balloonevalterm
 syntax on
 
+" TODO this probably doesn't belong here?
+let g:govim_format_on_save = "goimports"
+
 function s:callbackFunction(name, args)
   let l:args = ["function", "function:".a:name]
   call extend(l:args, a:args)
