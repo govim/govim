@@ -10,13 +10,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kr/pretty"
+	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/types"
 )
 
 func (v *vimstate) formatCurrentBuffer(args ...json.RawMessage) (err error) {
-	tool := v.ParseString(v.ChannelExpr(config.GlobalFormatOnSave))
 	// we are an autocmd endpoint so we need to be told the current
 	// buffer number via <abuf>
 	currBufNr := v.ParseInt(args[0])
@@ -24,27 +25,88 @@ func (v *vimstate) formatCurrentBuffer(args ...json.RawMessage) (err error) {
 	if !ok {
 		return fmt.Errorf("failed to resolve buffer %v", currBufNr)
 	}
-
-	var edits []protocol.TextEdit
-
-	switch config.FormatOnSave(tool) {
+	tool := config.FormatOnSave(v.ParseString(v.ChannelExpr(config.GlobalFormatOnSave)))
+	// TODO we should move this validation elsewhere...
+	switch tool {
 	case config.FormatOnSaveNone:
 		return nil
-	case config.FormatOnSaveGoFmt:
-		params := &protocol.DocumentFormattingParams{
-			TextDocument: b.ToTextDocumentIdentifier(),
-		}
-		edits, err = v.server.Formatting(context.Background(), params)
+	case config.FormatOnSaveGoFmt, config.FormatOnSaveGoImports:
+	default:
+		return fmt.Errorf("unknown format tool specified for %v: %v", config.GlobalFormatOnSave, tool)
+	}
+	return v.formatBufferRange(b, tool, govim.CommandFlags{})
+}
+
+func (v *vimstate) gofmtCurrentBufferRange(flags govim.CommandFlags, args ...string) error {
+	return v.formatCurrentBufferRange(config.FormatOnSaveGoFmt, flags, args...)
+}
+
+func (v *vimstate) goimportsCurrentBufferRange(flags govim.CommandFlags, args ...string) error {
+	return v.formatCurrentBufferRange(config.FormatOnSaveGoImports, flags, args...)
+}
+
+func (v *vimstate) formatCurrentBufferRange(mode config.FormatOnSave, flags govim.CommandFlags, args ...string) error {
+	vp := v.Viewport()
+	b, ok := v.buffers[vp.Current.BufNr]
+	if !ok {
+		return fmt.Errorf("failed to resolve current buffer %v", vp.Current.BufNr)
+	}
+	return v.formatBufferRange(b, mode, flags)
+}
+
+func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, flags govim.CommandFlags, args ...string) error {
+	var err error
+	var edits []protocol.TextEdit
+
+	var ran *protocol.Range
+	if flags.Range != nil {
+		start, err := types.PointFromVim(b, *flags.Line1, 1)
 		if err != nil {
-			return fmt.Errorf("failed to call gopls.Formatting: %v", err)
+			return fmt.Errorf("failed to convert start of range (%v, 1) to Point: %v", *flags.Line1, err)
+		}
+		end, err := types.PointFromVim(b, *flags.Line2+1, 1)
+		if err != nil {
+			return fmt.Errorf("failed to convert end of range (%v, 1) to Point: %v", *flags.Line2, err)
+		}
+		ran = &protocol.Range{
+			Start: start.ToPosition(),
+			End:   end.ToPosition(),
+		}
+	}
+
+	switch mode {
+	case config.FormatOnSaveGoFmt:
+		if flags.Range != nil {
+			params := &protocol.DocumentRangeFormattingParams{
+				TextDocument: b.ToTextDocumentIdentifier(),
+				Range:        *ran,
+			}
+			v.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
+			edits, err = v.server.RangeFormatting(context.Background(), params)
+			if err != nil {
+				return fmt.Errorf("failed to call gopls.RangeFormatting: %v\nParams were: %v", err, pretty.Sprint(params))
+			}
+		} else {
+			params := &protocol.DocumentFormattingParams{
+				TextDocument: b.ToTextDocumentIdentifier(),
+			}
+			v.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
+			edits, err = v.server.Formatting(context.Background(), params)
+			if err != nil {
+				return fmt.Errorf("failed to call gopls.Formatting: %v\nParams were: %v", err, pretty.Sprint(params))
+			}
 		}
 	case config.FormatOnSaveGoImports:
 		params := &protocol.CodeActionParams{
 			TextDocument: b.ToTextDocumentIdentifier(),
 		}
+		if flags.Range != nil {
+			params.Range = *ran
+		}
+		v.Logf("Calling gopls.CodeAction: %v", pretty.Sprint(params))
 		actions, err := v.server.CodeAction(context.Background(), params)
 		if err != nil {
-			return fmt.Errorf("failed to call gopls.CodeAction: %v", err)
+			return fmt.Errorf("failed to call gopls.CodeAction: %v\nParams were: %v", err, pretty.Sprint(params))
 		}
 		switch len(actions) {
 		case 0:
@@ -55,7 +117,7 @@ func (v *vimstate) formatCurrentBuffer(args ...json.RawMessage) (err error) {
 			return fmt.Errorf("don't know how to handle %v actions", len(actions))
 		}
 	default:
-		return fmt.Errorf("unknown format tool specified for %v: %v", config.GlobalFormatOnSave, tool)
+		return fmt.Errorf("unknown format mode specified for %v: %v", config.GlobalFormatOnSave, mode)
 	}
 
 	// see :help wundo. The use of wundo! is significant. It first deletes
