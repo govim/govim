@@ -13,14 +13,11 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
-func (s *server) cacheAndDiagnose(ctx context.Context, uri span.URI, content string) error {
+func (s *Server) cacheAndDiagnose(ctx context.Context, uri span.URI, content string) error {
 	if err := s.setContent(ctx, uri, []byte(content)); err != nil {
 		return err
 	}
 	go func() {
-		//TODO: this is an ugly hack to make the diagnostics call happen after the
-		// configuration is collected, we need to rewrite all the concurrency
-		<-s.configured
 		ctx := s.view.BackgroundContext()
 		if ctx.Err() != nil {
 			return
@@ -43,7 +40,7 @@ func (s *server) cacheAndDiagnose(ctx context.Context, uri span.URI, content str
 	return nil
 }
 
-func (s *server) setContent(ctx context.Context, uri span.URI, content []byte) error {
+func (s *Server) setContent(ctx context.Context, uri span.URI, content []byte) error {
 	return s.view.SetContent(ctx, uri, content)
 }
 
