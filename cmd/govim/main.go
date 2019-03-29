@@ -159,7 +159,8 @@ func (d *driver) Init(g *govim.Govim) error {
 
 	stream := jsonrpc2.NewHeaderStream(out, in)
 	ctxt, cancel := context.WithCancel(context.Background())
-	conn, server := protocol.RunClient(ctxt, stream, d)
+	conn, server := protocol.NewClient(stream, d)
+	go conn.Run(ctxt)
 
 	d.gopls = gopls.Process
 	d.goplsConn = conn
