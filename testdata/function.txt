@@ -2,7 +2,7 @@ vim normal '\"=Hello()\u000dp'
 vim ex 'w test'
 cmp test test.golden
 
-vim expr 'Bad()'
+vim -bang expr 'Bad()'
 ! stdout .+
 stderr '^\Qfailed to expr(Bad()) in Vim: Caught ''Vim(echoerr):got error whilst handling Bad: this is a bad function''\E'
 
