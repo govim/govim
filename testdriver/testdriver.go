@@ -4,6 +4,7 @@ package testdriver
 import (
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -261,7 +262,10 @@ func Vim() (exitCode int) {
 	ef := func(format string, args ...interface{}) {
 		panic(fmt.Sprintf(format, args...))
 	}
-	args := os.Args[1:]
+	fs := flag.NewFlagSet("vim", flag.PanicOnError)
+	bang := fs.Bool("bang", false, "expect command to fail")
+	fs.Parse(os.Args[1:])
+	args := fs.Args()
 	fn := args[0]
 	var jsonArgs []string
 	for i, a := range args {
@@ -335,9 +339,16 @@ func Vim() (exitCode int) {
 	// element will be a Vim-level error
 	vimResp := resp[1].([]interface{})
 	if err := vimResp[0].(string); err != "" {
+		// this was a vim-level error
+		if !*bang {
+			ef("unexpected command error: %v", err)
+		}
 		fmt.Fprintln(os.Stderr, err)
 	}
 	if len(vimResp) == 2 {
+		if *bang {
+			ef("unexpected command success")
+		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(vimResp[1]); err != nil {
