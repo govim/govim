@@ -1,0 +1,35 @@
+vim ex 'e main.go'
+vim ex 'call cursor(11,16)'
+vim ex 'call feedkeys(\"i\\<C-X>\\<C-O>\\<C-N>\\<C-N>\\<ESC>\", \"x\")'
+vim ex 'w'
+cmp main.go main.go.golden
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import "fmt"
+
+const (
+	Const1 = 1
+	Const2 = 2
+)
+
+func main() {
+	fmt.Println()
+}
+-- main.go.golden --
+package main
+
+import "fmt"
+
+const (
+	Const1 = 1
+	Const2 = 2
+)
+
+func main() {
+	fmt.Println(Const2)
+}
