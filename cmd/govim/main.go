@@ -113,6 +113,12 @@ type driver struct {
 	buffers map[int]*types.Buffer
 
 	tomb tomb.Tomb
+
+	// omnifunc calls happen in pairs (see :help complete-functions). The return value
+	// from the first tells Vim where the completion starts, the return from the second
+	// returns the matching words. This is by definition stateful. Hence we persist that
+	// state here
+	lastCompleteResults *protocol.CompletionList
 }
 
 type parseData struct {
@@ -138,6 +144,8 @@ func (d *driver) Init(g *govim.Govim) error {
 	d.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, d.bufReadPost)
 	d.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, d.bufTextChanged)
 	d.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, d.formatCurrentBuffer)
+	d.DefineFunction("Complete", []string{"findarg", "base"}, d.complete)
+	d.ChannelEx("set omnifunc=GOVIMComplete")
 
 	gopls := exec.Command("gobin", "-m", "-run", "golang.org/x/tools/cmd/gopls")
 	out, err := gopls.StdoutPipe()

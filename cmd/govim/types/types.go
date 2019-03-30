@@ -76,7 +76,7 @@ func PointFromVim(b *Buffer, line, col int) (Point, error) {
 		line:     line,
 		col:      col,
 		offset:   off,
-		utf16Col: utf16col,
+		utf16Col: utf16col - 1,
 	}
 	return res, nil
 }
