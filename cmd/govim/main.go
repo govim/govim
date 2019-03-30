@@ -19,6 +19,7 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/jsonrpc2"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
+	"github.com/myitcv/govim/cmd/govim/types"
 	"github.com/myitcv/govim/internal/plugin"
 	"gopkg.in/tomb.v2"
 )
@@ -109,7 +110,7 @@ type driver struct {
 	// buffers represents the current state of all buffers in Vim. It is only safe to
 	// write and read to/from this map in the callback for a defined function, command
 	// or autocommand.
-	buffers map[int]Buffer
+	buffers map[int]*types.Buffer
 
 	tomb tomb.Tomb
 }
@@ -122,7 +123,7 @@ type parseData struct {
 func newDriver() *driver {
 	return &driver{
 		Driver:  plugin.NewDriver("GOVIM"),
-		buffers: make(map[int]Buffer),
+		buffers: make(map[int]*types.Buffer),
 	}
 }
 

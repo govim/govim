@@ -4,65 +4,68 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 
+	"github.com/myitcv/govim/cmd/govim/types"
 	"github.com/russross/blackfriday/v2"
 )
 
-type Buffer struct {
-	Num      int
-	Name     string
-	Contents []byte
-	Version  int
-}
-
-func (d *driver) fetchCurrentBufferInfo() (buf Buffer, err error) {
-	var b struct {
+// fetchCurrentBufferInfo is a helper function to snapshot the current buffer
+// information from Vim. This helper method should only be used with methods
+// responsible for updating d.buffers
+func (d *driver) fetchCurrentBufferInfo() (*types.Buffer, error) {
+	var buf struct {
 		Num      int
 		Name     string
 		Contents string
 	}
 	expr := d.ChannelExpr(`{"Num": bufnr(""), "Name": expand('%:p'), "Contents": join(getline(0, "$"), "\n")}`)
-	if err = json.Unmarshal(expr, &b); err != nil {
-		err = fmt.Errorf("failed to unmarshal current buffer info: %v", err)
-	} else {
-		buf.Num = b.Num
-		buf.Name = b.Name
-		buf.Contents = []byte(b.Contents)
+	if err := json.Unmarshal(expr, &buf); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal current buffer info: %v", err)
 	}
-	return
+	res := &types.Buffer{
+		Num:      buf.Num,
+		Name:     buf.Name,
+		Contents: []byte(buf.Contents),
+	}
+	return res, nil
 }
 
-type Pos struct {
-	BufNum int `json:"bufnum"`
-	Line   int `json:"line"`
-	Col    int `json:"col"`
-}
-
-func (d *driver) cursorPos() (c Pos, err error) {
+func (d *driver) cursorPos() (b *types.Buffer, p types.Point, err error) {
+	var pos struct {
+		BufNum int `json:"bufnum"`
+		Line   int `json:"line"`
+		Col    int `json:"col"`
+	}
 	expr := d.ChannelExpr(`{"bufnum": bufnr(""), "line": line("."), "col": col(".")}`)
-	if err = json.Unmarshal(expr, &c); err != nil {
+	if err = json.Unmarshal(expr, &pos); err != nil {
 		err = fmt.Errorf("failed to unmarshal current cursor position info: %v", err)
+		return
 	}
+	b, ok := d.buffers[pos.BufNum]
+	if !ok {
+		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNum)
+	}
+	p, err = types.PointFromVim(b, pos.Line, pos.Col)
 	return
 }
 
-func (d *driver) mousePos() (c Pos, err error) {
+func (d *driver) mousePos() (b *types.Buffer, p types.Point, err error) {
+	var pos struct {
+		BufNum int `json:"bufnum"`
+		Line   int `json:"line"`
+		Col    int `json:"col"`
+	}
 	expr := d.ChannelExpr(`{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col}`)
-	if err = json.Unmarshal(expr, &c); err != nil {
+	if err = json.Unmarshal(expr, &pos); err != nil {
 		err = fmt.Errorf("failed to unmarshal current mouse position info: %v", err)
+		return
 	}
+	b, ok := d.buffers[pos.BufNum]
+	if !ok {
+		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNum)
+	}
+	p, err = types.PointFromVim(b, pos.Line, pos.Col)
 	return
-}
-
-func byteToRuneOffset(s string, o int) (j int) {
-	for i := range s {
-		if i == o {
-			return
-		}
-		j++
-	}
-	return -1
 }
 
 type plainMarkdown struct{}
@@ -76,7 +79,3 @@ func (p plainMarkdown) RenderNode(w io.Writer, node *blackfriday.Node, entering 
 
 func (p plainMarkdown) RenderHeader(w io.Writer, ast *blackfriday.Node) {}
 func (p plainMarkdown) RenderFooter(w io.Writer, ast *blackfriday.Node) {}
-
-func f2int(f float64) int {
-	return int(math.Round(f))
-}
