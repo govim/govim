@@ -241,11 +241,12 @@ func (g *Govim) run() {
 			case VimRangeFunction:
 				line1 = g.parseInt(fargs[0])
 				line2 = g.parseInt(fargs[1])
-				fargs = fargs[2:]
+				fargs = g.parseJSONArgSlice(fargs[2])
 				call = func() (interface{}, error) {
 					return f(line1, line2, fargs...)
 				}
 			case VimFunction:
+				fargs = g.parseJSONArgSlice(fargs[0])
 				call = func() (interface{}, error) {
 					return f(fargs...)
 				}
@@ -270,7 +271,19 @@ func (g *Govim) run() {
 			}
 			theQueue.Add(func() {
 				resp := [2]interface{}{"", ""}
-				if res, err := call(); err != nil {
+				var res interface{}
+				var err error
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							stack := make([]byte, 20*(1<<10))
+							l := runtime.Stack(stack, true)
+							err = fmt.Errorf("caught panic: %v\n%s", r, stack[:l])
+						}
+					}()
+					res, err = call()
+				}()
+				if err != nil {
 					errStr := fmt.Sprintf("got error whilst handling %v: %v", fname, err)
 					g.Logf(errStr)
 					resp[0] = errStr

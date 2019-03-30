@@ -106,6 +106,14 @@ func (d *Driver) ParseString(j json.RawMessage) string {
 	return v
 }
 
+func (d *Driver) ParseJSONArgSlice(j json.RawMessage) []json.RawMessage {
+	var v []json.RawMessage
+	if err := json.Unmarshal(j, &v); err != nil {
+		d.Errorf("failed to parse []json.RawMessage from %q: %v", j, err)
+	}
+	return v
+}
+
 func (d *Driver) ParseInt(j json.RawMessage) int {
 	var v int
 	if err := json.Unmarshal(j, &v); err != nil {

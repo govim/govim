@@ -307,16 +307,30 @@ func Vim() (exitCode int) {
 		}
 	case "call":
 		switch l := len(args[1:]); l {
+		case 1:
+			// no args
+			if _, ok := i[1].(string); !ok {
+				ef("%v takes a string as its first argument; saw %T", fn, i[1])
+			}
 		case 2:
 			if _, ok := i[1].(string); !ok {
 				ef("%v takes a string as its first argument; saw %T", fn, i[1])
 			}
-			if _, ok := i[2].([]interface{}); !ok {
+			vs, ok := i[2].([]interface{})
+			if !ok {
 				ef("%v takes a slice of values as its second argument; saw %T", fn, i[2])
 			}
+			// on the command line we require the args to be specified as an array
+			// for ease of explanation/documentation, but now we splat the slice
+			i = append(i[:2], vs...)
 		default:
 			ef("%v takes a two arguments: we saw %v", fn, l)
 		}
+	}
+	if bs, err := json.Marshal(i); err != nil {
+		ef("failed to remarshal json args: %v", err)
+	} else {
+		jsonArgString = string(bs)
 	}
 	addr := os.Getenv("GOVIMTESTDRIVER_SOCKET")
 	conn, err := net.Dial("tcp", addr)

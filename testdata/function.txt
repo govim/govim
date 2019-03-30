@@ -1,10 +1,24 @@
-vim normal '\"=Hello()\u000dp'
-vim ex 'w test'
-cmp test test.golden
+# just var args
+vim call HelloNil
+cmp stdout test.golden
+
+# no args
+vim call Hello
+cmp stdout test.golden
+
+# single defined arg
+vim call HelloWithArg '[\"World\"]'
+cmp stdout test.golden
+
+# var args after positional args
+vim call HelloWithVarArgs '[\"London\", \"Gophers\"]'
+cmp stdout gophers.golden
 
 vim -bang expr 'Bad()'
 ! stdout .+
 stderr '^\Qfailed to expr(Bad()) in Vim: Caught ''Vim(echoerr):got error whilst handling Bad: this is a bad function''\E'
 
 -- test.golden --
-World
+"World"
+-- gophers.golden --
+"London Gophers"

@@ -88,7 +88,10 @@ type driver struct {
 
 func (d *driver) Init(g *govim.Govim) (err error) {
 	d.Govim = g
+	d.DefineFunction("HelloNil", nil, d.hello)
 	d.DefineFunction("Hello", []string{}, d.hello)
+	d.DefineFunction("HelloWithArg", []string{"target"}, d.helloWithArg)
+	d.DefineFunction("HelloWithVarArgs", []string{"target", "..."}, d.helloWithVarArgs)
 	d.DefineFunction("Bad", []string{}, d.bad)
 	d.DefineRangeFunction("Echo", []string{}, d.echo)
 	d.DefineCommand("HelloComm", d.helloComm, govim.AttrBang)
@@ -112,6 +115,21 @@ func (d *driver) helloComm(flags govim.CommandFlags, args ...string) error {
 
 func (d *driver) hello(args ...json.RawMessage) (interface{}, error) {
 	return "World", nil
+}
+
+func (d *driver) helloWithArg(args ...json.RawMessage) (interface{}, error) {
+	// Params: (target string)
+	return d.ParseString(args[0]), nil
+}
+
+func (d *driver) helloWithVarArgs(args ...json.RawMessage) (interface{}, error) {
+	// Params: (target string, others ...string)
+	parts := []string{d.ParseString(args[0])}
+	varargs := d.ParseJSONArgSlice(args[1])
+	for _, a := range varargs {
+		parts = append(parts, d.ParseString(a))
+	}
+	return strings.Join(parts, " "), nil
 }
 
 func (d *driver) bad(args ...json.RawMessage) (interface{}, error) {

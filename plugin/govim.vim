@@ -16,8 +16,7 @@ syntax on
 let g:govim_format_on_save = "goimports"
 
 function s:callbackFunction(name, args)
-  let l:args = ["function", "function:".a:name]
-  call extend(l:args, a:args)
+  let l:args = ["function", "function:".a:name, a:args]
   let l:resp = ch_evalexpr(s:channel, l:args)
   if l:resp[0] != ""
     echoerr l:resp[0]
@@ -26,8 +25,7 @@ function s:callbackFunction(name, args)
 endfunction
 
 function s:callbackRangeFunction(name, first, last, args)
-  let l:args = ["function", "function:".a:name, a:first, a:last]
-  call extend(l:args, a:args)
+  let l:args = ["function", "function:".a:name, a:first, a:last, a:args]
   let l:resp = ch_evalexpr(s:channel, l:args)
   if l:resp[0] != ""
     echoerr l:resp[0]
@@ -75,7 +73,7 @@ function s:updateViewport(timer)
         \ }
   if s:currViewport != l:viewport
     let s:currViewport = l:viewport
-    let l:resp = ch_evalexpr(s:channel, ["function", "govim:OnViewportChange", l:viewport])
+    let l:resp = ch_evalexpr(s:channel, ["function", "govim:OnViewportChange", [l:viewport]])
     if l:resp[0] != ""
       " TODO disable the timer and the autocmd callback
       echoerr l:resp[0]
@@ -183,14 +181,18 @@ endfunction
 func s:defineFunction(name, argsStr, range)
   let l:params = join(a:argsStr, ", ")
   let l:args = "let l:args = []\n"
-  if len(a:argsStr) > 0
+  if len(a:argsStr) == 1 && a:argsStr[0] == "..."
+    let l:args = "let l:args = a:000\n"
+  elseif len(a:argsStr) > 0
     let l:args = "let l:args = ["
+    let l:join = ""
     for i in a:argsStr
       if i == "..."
-        let l:args = l:args."a:000"
+        let l:args = l:args.l:join."a:000"
       else
-        let l:args = l:args."a:".i
+        let l:args = l:args.l:join."a:".i
       endif
+      let l:join = ", "
     endfor
     let l:args = l:args."]"
   endif
