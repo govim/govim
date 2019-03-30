@@ -8,7 +8,7 @@ env:
   global:
     - GO111MODULE=on
   matrix:
-    - GO_VERSION=go1.12.1 VIM_VERSION=v8.1.1053
+    - GO_VERSION=go1.12.1 VIM_VERSION=v8.1.1091
 
 # Add this before_install until we have a definitive resolution on
 # https://travis-ci.community/t/files-in-checkout-have-eol-changed-from-lf-to-crlf/349/2

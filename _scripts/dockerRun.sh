@@ -1,5 +1,8 @@
 #!/usr/bin/env vbash
 
+go version
+vim --version
+
 ./_scripts/revendorToolsInternal.sh
 
 go install golang.org/x/tools/cmd/gopls
