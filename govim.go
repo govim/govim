@@ -95,8 +95,7 @@ func (g *Govim) load() error {
 	g.funcHandlersLock.Unlock()
 	select {
 	case <-g.tomb.Dying():
-		// we are already dying, nothing to report
-		return g.tomb.Err()
+		return tomb.ErrDying
 	case resp := <-g.callCallback("loaded"):
 		if resp.errString != "" {
 			return fmt.Errorf("failed to signal loaded to Vim: %v", resp.errString)
@@ -185,6 +184,10 @@ func (g *Govim) Run() error {
 func (g *Govim) run() {
 	userQ := queue.NewQueue(g.tomb.Dying())
 
+	// TODO we do not properly handle errors in init functions
+	// To properly handle it we will need to send a kill signal
+	// to Vim to then close the channel. For now it happens will
+	// will likely get a tomb error below
 	g.tomb.Go(g.load)
 	g.tomb.Go(userQ.Run)
 
@@ -223,7 +226,7 @@ func (g *Govim) run() {
 				select {
 				case ch <- resp:
 				case <-g.tomb.Dying():
-					return g.tomb.Err()
+					return tomb.ErrDying
 				}
 				return nil
 			})
