@@ -20,7 +20,7 @@ RUN cd /tmp && \
   git clone https://github.com/vim/vim && \
   cd vim && \
   git checkout $VIM_VERSION && \
-  ./configure --prefix=/vim --disable-darwin --disable-selinux --disable-netbeans && \
+  ./configure --prefix=/vim --disable-darwin --disable-selinux --disable-netbeans --enable-gui=no && \
   make -j$(nproc --all) install
 
 ENV PATH=/vim/bin:$PATH
