@@ -214,11 +214,17 @@ let opts = {"in_mode": "json", "out_mode": "json", "err_mode": "json", "callback
 if $GOVIMTEST_SOCKET != ""
   let s:channel = ch_open($GOVIMTEST_SOCKET, opts)
 else
+  let plugindir = expand(expand("<sfile>:h"))."/../"
+  let $GOBIN = plugindir."/cmd/govim/.bin"
+  let oldpath = getcwd()
+  execute "cd ".plugindir
+  call system("go install github.com/myitcv/govim/cmd/govim")
+  execute "cd ".oldpath
   let start = $GOVIM_RUNCMD
   if start == ""
-    let start = ["gobin", "-m", "-run", "github.com/myitcv/govim/cmd/govim"]
+    let start = plugindir."/cmd/govim/.bin/govim"
   endif
-  let opts.cwd = expand(expand("<sfile>:h"))
+  let opts.cwd = plugindir
   let job = job_start(start, opts)
   let s:channel = job_getchannel(job)
 endif

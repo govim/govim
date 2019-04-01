@@ -12,6 +12,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/kr/pretty"
@@ -147,7 +149,12 @@ func (d *driver) Init(g *govim.Govim) error {
 	d.DefineFunction("Complete", []string{"findarg", "base"}, d.complete)
 	d.ChannelEx("set omnifunc=GOVIMComplete")
 
-	gopls := exec.Command("gobin", "-m", "-run", "golang.org/x/tools/cmd/gopls")
+	goplsPath, err := installGoPls()
+	if err != nil {
+		return fmt.Errorf("failed to install gopls: %v", err)
+	}
+
+	gopls := exec.Command(goplsPath)
 	out, err := gopls.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdout pipe for gopls: %v", err)
@@ -194,4 +201,26 @@ func (d *driver) Init(g *govim.Govim) error {
 
 func (d *driver) Shutdown() error {
 	return nil
+}
+
+func installGoPls() (string, error) {
+	// If we are being run as a plugin we require that it is somewhere within
+	// the github.com/myitcv/govim module. That allows tests to work but also
+	// the plugin itself when run from within plugin/govim.vim
+	modlist := exec.Command("go", "list", "-m", "-f={{.Dir}}", "github.com/myitcv/govim")
+	out, err := modlist.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to determine directory of github.com/myitcv/govim: %v", err)
+	}
+
+	gobin := filepath.Join(string(out), "cmd", "govim", ".bin")
+
+	cmd := exec.Command("go", "install", "golang.org/x/tools/cmd/gopls")
+	cmd.Env = append(os.Environ(), "GOBIN="+gobin)
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to run [%v] in %v: %v\n%s", strings.Join(cmd.Args, " "), gobin, err, out)
+	}
+
+	return filepath.Join(gobin, "gopls"), nil
 }
