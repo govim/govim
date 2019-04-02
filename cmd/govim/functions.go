@@ -246,3 +246,92 @@ type completionResult struct {
 	Word string `json:"word"`
 	Info string `json:"info"`
 }
+
+func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
+	// We expect at most one argument that is the mode config.GoToDefMode
+	var mode config.GoToDefMode
+	if len(args) == 1 {
+		mode = config.GoToDefMode(args[0])
+		switch mode {
+		case config.GoToDefModeTab, config.GoToDefModeSplit, config.GoToDefModeVsplit:
+		default:
+			return fmt.Errorf("unknown mode %q supplied", mode)
+		}
+	}
+
+	cb, pos, err := v.cursorPos()
+	if err != nil {
+		return fmt.Errorf("failed to determine cursor position: %v", err)
+	}
+	params := &protocol.TextDocumentPositionParams{
+		TextDocument: cb.ToTextDocumentIdentifier(),
+		Position:     pos.ToPosition(),
+	}
+	locs, err := v.server.Definition(context.Background(), params)
+	if err != nil {
+		return fmt.Errorf("failed to call gopls.Definition: %v\nparams were: %v", err, pretty.Sprint(params))
+	}
+	v.Logf("called golspl.Definition(%v)", pretty.Sprint(params))
+	v.Logf("result: %v", pretty.Sprint(locs))
+
+	switch len(locs) {
+	case 0:
+		v.ChannelEx(`echorerr "No definition exists under cursor"`)
+		return nil
+	case 1:
+	default:
+		return fmt.Errorf("got multiple locations (%v); don't know how to handle this", len(locs))
+	}
+
+	loc := locs[0]
+
+	// re-use the logic from vim-go:
+	//
+	// https://github.com/fatih/vim-go/blob/f04098811b8a7aba3dba699ed98f6f6e39b7d7ac/autoload/go/def.vim#L106
+
+	oldSwitchBuf := v.ParseString(v.ChannelExpr("&switchbuf"))
+	v.ChannelEx("normal! m'")
+
+	cmd := "edit"
+	if v.ParseInt(v.ChannelExpr("&modified")) == 1 {
+		cmd = "hide edit"
+	}
+
+	// TODO implement remaining logic from vim-go if it
+	// makes sense to do so
+
+	// if a:mode == "tab"
+	//   let &switchbuf = "useopen,usetab,newtab"
+	//   if bufloaded(filename) == 0
+	//     tab split
+	//   else
+	//      let cmd = 'sbuf'
+	//   endif
+	// elseif a:mode == "split"
+	//   split
+	// elseif a:mode == "vsplit"
+	//   vsplit
+	// endif
+
+	v.ChannelExf("%v %v", cmd, strings.TrimPrefix(loc.URI, "file://"))
+
+	// vp := v.Viewport()
+	// nb := v.buffers[vp.Current.BufNr]
+	// newPos, err := types.PointFromPosition(nb, loc.Range.Start)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to derive point from position: %v", err)
+	// }
+	// v.ChannelCall("cursor", newPos.Line(), newPos.Col())
+
+	// exec cmd fnameescape(fnamemodify(filename, ':.'))
+
+	// call cursor(line, col)
+
+	// " also align the line to middle of the view
+	// normal! zz
+
+	v.ChannelExf(`let &switchbuf=%q`, oldSwitchBuf)
+	// let &switchbuf = old_switchbuf
+
+	return nil
+}
