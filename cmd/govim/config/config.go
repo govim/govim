@@ -15,3 +15,11 @@ const (
 	FormatOnSaveGoFmt     FormatOnSave = "gofmt"
 	FormatOnSaveGoImports FormatOnSave = "goimports"
 )
+
+type GoToDefMode string
+
+const (
+	GoToDefModeTab    GoToDefMode = "tab"
+	GoToDefModeSplit  GoToDefMode = "split"
+	GoToDefModeVsplit GoToDefMode = "vsplit"
+)

@@ -153,6 +153,7 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, g.formatCurrentBuffer)
 	g.DefineFunction("Complete", []string{"findarg", "base"}, g.complete)
 	g.ChannelEx("set omnifunc=GOVIMComplete")
+	g.DefineCommand("GoToDef", g.gotoDef, govim.NArgsZeroOrOne)
 
 	goplsPath, err := installGoPls()
 	if err != nil {
