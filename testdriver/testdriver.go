@@ -25,7 +25,7 @@ import (
 type TestDriver struct {
 	govimListener  net.Listener
 	driverListener net.Listener
-	govim          *govim.Govim
+	govim          govim.Govim
 
 	cmd *exec.Cmd
 
@@ -156,7 +156,7 @@ func (d *TestDriver) listenGovim() error {
 	if err != nil {
 		return fmt.Errorf("failed to accept connection on %v: %v", d.govimListener.Addr(), err)
 	}
-	g, err := govim.NewGoVim(d.plugin, conn, conn, ioutil.Discard)
+	g, err := govim.NewGovim(d.plugin, conn, conn, ioutil.Discard)
 	if err != nil {
 		return fmt.Errorf("failed to create govim: %v", err)
 	}
@@ -378,16 +378,16 @@ type signallingPlugin struct {
 	initDone chan bool
 }
 
-func newSignallingPlugin(p govim.Plugin) signallingPlugin {
+func newSignallingPlugin(g govim.Plugin) signallingPlugin {
 	return signallingPlugin{
-		u:        p,
+		u:        g,
 		initDone: make(chan bool),
 	}
 }
 
-func (s signallingPlugin) Init(g *govim.Govim) error {
+func (s signallingPlugin) Init(d govim.Govim) error {
 	defer close(s.initDone)
-	return s.u.Init(g)
+	return s.u.Init(d)
 }
 
 func (s signallingPlugin) Shutdown() error {

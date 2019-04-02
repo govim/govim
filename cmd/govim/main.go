@@ -74,7 +74,7 @@ func mainerr() error {
 func launch(in io.ReadCloser, out io.WriteCloser) error {
 	defer out.Close()
 
-	d := newDriver()
+	d := newplugin()
 
 	nowStr := time.Now().Format("20060102_1504_05.000000000")
 	tf, err := ioutil.TempFile("", "govim_"+nowStr+"_*")
@@ -92,35 +92,32 @@ func launch(in io.ReadCloser, out io.WriteCloser) error {
 		fmt.Fprintf(os.Stderr, "New connection will log to %v\n", tf.Name())
 	}
 
-	g, err := govim.NewGoVim(d, in, out, log)
+	g, err := govim.NewGovim(d, in, out, log)
 	if err != nil {
 		return fmt.Errorf("failed to create govim instance: %v", err)
 	}
 
-	d.Kill(g.Run())
-	return d.Wait()
+	d.tomb.Kill(g.Run())
+	return d.tomb.Wait()
 }
 
-type driver struct {
-	*plugin.Driver
+type govimplugin struct {
+	plugin.Driver
+	*vimstate
 
 	gopls       *os.Process
 	goplsConn   *jsonrpc2.Conn
 	goplsCancel context.CancelFunc
 	server      protocol.Server
 
-	// buffers represents the current state of all buffers in Vim. It is only safe to
-	// write and read to/from this map in the callback for a defined function, command
-	// or autocommand.
-	buffers map[int]*types.Buffer
-
 	tomb tomb.Tomb
+}
 
-	// omnifunc calls happen in pairs (see :help complete-functions). The return value
-	// from the first tells Vim where the completion starts, the return from the second
-	// returns the matching words. This is by definition stateful. Hence we persist that
-	// state here
-	lastCompleteResults *protocol.CompletionList
+type jumpPos struct {
+	WinID int
+	BufNr int
+	Line  int
+	Col   int
 }
 
 type parseData struct {
@@ -128,26 +125,34 @@ type parseData struct {
 	file *ast.File
 }
 
-func newDriver() *driver {
-	return &driver{
-		Driver:  plugin.NewDriver("GOVIM"),
-		buffers: make(map[int]*types.Buffer),
+func newplugin() *govimplugin {
+	d := plugin.NewDriver("GOVIM")
+	res := &govimplugin{
+		Driver: d,
+		vimstate: &vimstate{
+			Driver:    d,
+			buffers:   make(map[int]*types.Buffer),
+			jumpStack: make(map[int][]jumpPos),
+		},
 	}
+	res.vimstate.govimplugin = res
+	return res
 }
 
-func (d *driver) Init(g *govim.Govim) error {
-	d.Driver.Govim = g
-	d.ChannelEx(`augroup govim`)
-	d.ChannelEx(`augroup END`)
-	d.DefineFunction("Hello", []string{}, d.hello)
-	d.DefineCommand("Hello", d.helloComm)
-	d.DefineFunction("BalloonExpr", []string{}, d.balloonExpr)
-	d.ChannelEx("set balloonexpr=GOVIMBalloonExpr()")
-	d.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, d.bufReadPost)
-	d.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, d.bufTextChanged)
-	d.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, d.formatCurrentBuffer)
-	d.DefineFunction("Complete", []string{"findarg", "base"}, d.complete)
-	d.ChannelEx("set omnifunc=GOVIMComplete")
+func (g *govimplugin) Init(gg govim.Govim) error {
+	g.Driver.Govim = gg
+	g.vimstate.Driver.Govim = gg.Sync()
+	g.ChannelEx(`augroup govim`)
+	g.ChannelEx(`augroup END`)
+	g.DefineFunction("Hello", []string{}, g.hello)
+	g.DefineCommand("Hello", g.helloComm)
+	g.DefineFunction("BalloonExpr", []string{}, g.balloonExpr)
+	g.ChannelEx("set balloonexpr=GOVIMBalloonExpr()")
+	g.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.bufReadPost)
+	g.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, g.bufTextChanged)
+	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, g.formatCurrentBuffer)
+	g.DefineFunction("Complete", []string{"findarg", "base"}, g.complete)
+	g.ChannelEx("set omnifunc=GOVIMComplete")
 
 	goplsPath, err := installGoPls()
 	if err != nil {
@@ -166,7 +171,7 @@ func (d *driver) Init(g *govim.Govim) error {
 	if err := gopls.Start(); err != nil {
 		return fmt.Errorf("failed to start gopls: %v", err)
 	}
-	d.tomb.Go(func() (err error) {
+	g.tomb.Go(func() (err error) {
 		if err = gopls.Wait(); err != nil {
 			err = fmt.Errorf("got error running gopls: %v", err)
 		}
@@ -175,15 +180,15 @@ func (d *driver) Init(g *govim.Govim) error {
 
 	stream := jsonrpc2.NewHeaderStream(out, in)
 	ctxt, cancel := context.WithCancel(context.Background())
-	conn, server := protocol.NewClient(stream, d)
+	conn, server := protocol.NewClient(stream, g)
 	go conn.Run(ctxt)
 
-	d.gopls = gopls.Process
-	d.goplsConn = conn
-	d.goplsCancel = cancel
-	d.server = server
+	g.gopls = gopls.Process
+	g.goplsConn = conn
+	g.goplsCancel = cancel
+	g.server = server
 
-	wd := d.ParseString(d.ChannelCall("getcwd", -1))
+	wd := g.ParseString(g.ChannelCall("getcwd", -1))
 	initParams := &protocol.InitializeParams{
 		InnerInitializeParams: protocol.InnerInitializeParams{
 			RootURI: string(span.FileURI(wd)),
@@ -194,12 +199,12 @@ func (d *driver) Init(g *govim.Govim) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialise gopls: %v", err)
 	}
-	d.Logf("gopls init complete: %v", pretty.Sprint(initRes.Capabilities))
+	g.Logf("gopls init complete: %v", pretty.Sprint(initRes.Capabilities))
 
 	return nil
 }
 
-func (d *driver) Shutdown() error {
+func (s *govimplugin) Shutdown() error {
 	return nil
 }
 

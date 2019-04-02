@@ -11,20 +11,40 @@ import (
 	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/types"
+	"github.com/myitcv/govim/internal/plugin"
 	"github.com/russross/blackfriday/v2"
 )
 
-func (d *driver) hello(args ...json.RawMessage) (interface{}, error) {
+type vimstate struct {
+	plugin.Driver
+	*govimplugin
+
+	// buffers represents the current state of all buffers in Vim. It is only safe to
+	// write and read to/from this map in the callback for a defined function, command
+	// or autocommand.
+	buffers map[int]*types.Buffer
+
+	// jumpStack is a map from winid to jump position
+	jumpStack map[int][]jumpPos
+
+	// omnifunc calls happen in pairs (see :help complete-functions). The return value
+	// from the first tells Vim where the completion starts, the return from the second
+	// returns the matching words. This is by definition stateful. Hence we persist that
+	// state here
+	lastCompleteResults *protocol.CompletionList
+}
+
+func (v *vimstate) hello(args ...json.RawMessage) (interface{}, error) {
 	return "Hello from function", nil
 }
 
-func (d *driver) helloComm(flags govim.CommandFlags, args ...string) error {
-	d.ChannelEx(`echom "Hello from command"`)
+func (v *vimstate) helloComm(flags govim.CommandFlags, args ...string) error {
+	v.ChannelEx(`echom "Hello from command"`)
 	return nil
 }
 
-func (d *driver) balloonExpr(args ...json.RawMessage) (interface{}, error) {
-	b, pos, err := d.mousePos()
+func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
+	b, pos, err := v.mousePos()
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine mouse position: %v", err)
 	}
@@ -33,51 +53,51 @@ func (d *driver) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 			TextDocument: b.ToTextDocumentIdentifier(),
 			Position:     pos.ToPosition(),
 		}
-		d.Logf("calling Hover: %v", pretty.Sprint(params))
-		hovRes, err := d.server.Hover(context.Background(), params)
+		v.Logf("calling Hover: %v", pretty.Sprint(params))
+		hovRes, err := v.server.Hover(context.Background(), params)
 		if err != nil {
-			d.ChannelCall("balloon_show", fmt.Sprintf("failed to get hover details: %v", err))
+			v.ChannelCall("balloon_show", fmt.Sprintf("failed to get hover details: %v", err))
 		} else {
-			d.Logf("got Hover results: %q", hovRes.Contents.Value)
+			v.Logf("got Hover results: %q", hovRes.Contents.Value)
 			md := []byte(hovRes.Contents.Value)
 			plain := string(blackfriday.Run(md, blackfriday.WithRenderer(plainMarkdown{})))
 			plain = strings.TrimSpace(plain)
-			d.ChannelCall("balloon_show", strings.Split(plain, "\n"))
+			v.ChannelCall("balloon_show", strings.Split(plain, "\n"))
 		}
 
 	}()
 	return "", nil
 }
 
-func (d *driver) bufReadPost() error {
-	b, err := d.fetchCurrentBufferInfo()
+func (g *govimplugin) bufReadPost() error {
+	b, err := g.fetchCurrentBufferInfo()
 	if err != nil {
 		return err
 	}
-	if cb, ok := d.buffers[b.Num]; ok {
+	if cb, ok := g.buffers[b.Num]; ok {
 		// reload of buffer, e.g. e!
 		b.Version = cb.Version + 1
 	} else {
 		b.Version = 0
 	}
-	return d.handleBufferEvent(b)
+	return g.handleBufferEvent(b)
 }
 
-func (d *driver) bufTextChanged() error {
-	b, err := d.fetchCurrentBufferInfo()
+func (g *govimplugin) bufTextChanged() error {
+	b, err := g.fetchCurrentBufferInfo()
 	if err != nil {
 		return err
 	}
-	cb, ok := d.buffers[b.Num]
+	cb, ok := g.buffers[b.Num]
 	if !ok {
 		return fmt.Errorf("have not seen buffer %v (%v) - this should be impossible", b.Num, b.Name)
 	}
 	b.Version = cb.Version + 1
-	return d.handleBufferEvent(b)
+	return g.handleBufferEvent(b)
 }
 
-func (d *driver) handleBufferEvent(b *types.Buffer) error {
-	d.buffers[b.Num] = b
+func (g *govimplugin) handleBufferEvent(b *types.Buffer) error {
+	g.buffers[b.Num] = b
 
 	if b.Version == 0 {
 		params := &protocol.DidOpenTextDocumentParams{
@@ -87,7 +107,7 @@ func (d *driver) handleBufferEvent(b *types.Buffer) error {
 				Text:    string(b.Contents),
 			},
 		}
-		return d.server.DidOpen(context.Background(), params)
+		return g.server.DidOpen(context.Background(), params)
 	}
 
 	params := &protocol.DidChangeTextDocumentParams{
@@ -101,14 +121,14 @@ func (d *driver) handleBufferEvent(b *types.Buffer) error {
 			},
 		},
 	}
-	return d.server.DidChange(context.Background(), params)
+	return g.server.DidChange(context.Background(), params)
 }
 
-func (d *driver) formatCurrentBuffer() error {
+func (g *govimplugin) formatCurrentBuffer() error {
 	var err error
-	tool := d.ParseString(d.ChannelExpr(config.GlobalFormatOnSave))
-	v := d.Viewport()
-	b := d.buffers[v.Current.BufNr]
+	tool := g.ParseString(g.ChannelExpr(config.GlobalFormatOnSave))
+	vp := g.Viewport()
+	b := g.buffers[vp.Current.BufNr]
 
 	var edits []protocol.TextEdit
 
@@ -117,8 +137,8 @@ func (d *driver) formatCurrentBuffer() error {
 		params := &protocol.DocumentFormattingParams{
 			TextDocument: b.ToTextDocumentIdentifier(),
 		}
-		d.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
-		edits, err = d.server.Formatting(context.Background(), params)
+		g.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
+		edits, err = g.server.Formatting(context.Background(), params)
 		if err != nil {
 			return fmt.Errorf("failed to call gopls.Formatting: %v", err)
 		}
@@ -126,8 +146,8 @@ func (d *driver) formatCurrentBuffer() error {
 		params := &protocol.CodeActionParams{
 			TextDocument: b.ToTextDocumentIdentifier(),
 		}
-		d.Logf("Calling gopls.CodeAction: %v", pretty.Sprint(params))
-		actions, err := d.server.CodeAction(context.Background(), params)
+		g.Logf("Calling gopls.CodeAction: %v", pretty.Sprint(params))
+		actions, err := g.server.CodeAction(context.Background(), params)
 		if err != nil {
 			return fmt.Errorf("failed to call gopls.CodeAction: %v", err)
 		}
@@ -140,15 +160,14 @@ func (d *driver) formatCurrentBuffer() error {
 		return fmt.Errorf("unknown format tool specified for %v: %v", config.GlobalFormatOnSave, tool)
 	}
 
-	preEventIgnore := d.ParseString(d.ChannelExpr("&eventignore"))
-	d.ChannelEx("set eventignore=all")
-	defer d.ChannelExf("set eventignore=%v", preEventIgnore)
-	d.ToggleOnViewportChange()
-	defer d.ToggleOnViewportChange()
+	preEventIgnore := g.ParseString(g.ChannelExpr("&eventignore"))
+	g.ChannelEx("set eventignore=all")
+	defer g.ChannelExf("set eventignore=%v", preEventIgnore)
+	g.ToggleOnViewportChange()
+	defer g.ToggleOnViewportChange()
 	for ie := len(edits) - 1; ie >= 0; ie-- {
 		e := edits[ie]
-		d.Logf("==================")
-		d.Logf("%v", pretty.Sprint(e))
+		g.Logf("%v", pretty.Sprint(e))
 		start, err := types.PointFromPosition(b, e.Range.Start)
 		if err != nil {
 			return fmt.Errorf("failed to derive start point from position: %v", err)
@@ -168,7 +187,7 @@ func (d *driver) formatCurrentBuffer() error {
 				return fmt.Errorf("saw an edit where start line != end line with replacement text %q; We can't currently handle this", e.NewText)
 			}
 			// This is a delete of line
-			if res := d.ParseInt(d.ChannelCall("deletebufline", b.Num, start.Line(), end.Line()-1)); res != 0 {
+			if res := g.ParseInt(g.ChannelCall("deletebufline", b.Num, start.Line(), end.Line()-1)); res != 0 {
 				return fmt.Errorf("deletebufline(%v, %v, %v) failed", b.Num, start.Line(), end.Line()-1)
 			}
 		} else {
@@ -177,18 +196,18 @@ func (d *driver) formatCurrentBuffer() error {
 				e.NewText = e.NewText[:len(e.NewText)-1]
 			}
 			repl := strings.Split(e.NewText, "\n")
-			d.ChannelCall("append", start.Line()-1, repl)
+			g.ChannelCall("append", start.Line()-1, repl)
 		}
 	}
-	return d.bufTextChanged()
+	return nil
 }
 
-func (d *driver) complete(args ...json.RawMessage) (interface{}, error) {
+func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 	// Params are: findstart int, base string
-	findstart := d.ParseInt(args[0]) == 1
+	findstart := v.ParseInt(args[0]) == 1
 
 	if findstart {
-		b, pos, err := d.cursorPos()
+		b, pos, err := v.cursorPos()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get current position: %v", err)
 		}
@@ -200,17 +219,17 @@ func (d *driver) complete(args ...json.RawMessage) (interface{}, error) {
 				Position: pos.ToPosition(),
 			},
 		}
-		d.Logf("gopls.Completion(%v)", pretty.Sprint(params))
-		res, err := d.server.Completion(context.Background(), params)
+		v.Logf("gopls.Completion(%v)", pretty.Sprint(params))
+		res, err := v.server.Completion(context.Background(), params)
 		if err != nil {
 			return nil, fmt.Errorf("called to gopls.Completion failed: %v", err)
 		}
 
-		d.lastCompleteResults = res
+		v.lastCompleteResults = res
 		return pos.Col(), nil
 	} else {
 		var matches []completionResult
-		for _, i := range d.lastCompleteResults.Items {
+		for _, i := range v.lastCompleteResults.Items {
 			matches = append(matches, completionResult{
 				Abbr: i.Label,
 				Word: i.TextEdit.NewText,

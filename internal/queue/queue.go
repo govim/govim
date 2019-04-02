@@ -8,36 +8,26 @@ type Queue struct {
 	work    []func()
 	lock    sync.Mutex
 	gotwork chan struct{}
-	dying   <-chan struct{}
 }
 
-func NewQueue(dying <-chan struct{}) *Queue {
+func NewQueue() *Queue {
 	res := &Queue{
 		gotwork: make(chan struct{}),
-		dying:   dying,
 	}
 	return res
 }
 
-func (q *Queue) Run() error {
-	for {
-		select {
-		case <-q.gotwork:
-		case <-q.dying:
-			return nil
-		}
-		for {
-			var work func()
-			q.lock.Lock()
-			if len(q.work) == 0 {
-				q.lock.Unlock()
-				break
-			}
-			work, q.work = q.work[0], q.work[1:]
-			q.lock.Unlock()
-			work()
-		}
+func (q *Queue) GotWork() <-chan struct{} {
+	return q.gotwork
+}
+
+func (q *Queue) Get() (work func(), ok bool) {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+	if ok = len(q.work) > 0; ok {
+		work, q.work = q.work[0], q.work[1:]
 	}
+	return
 }
 
 func (q *Queue) Add(f func()) {

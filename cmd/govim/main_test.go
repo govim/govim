@@ -30,7 +30,7 @@ func TestScripts(t *testing.T) {
 			Dir: "testdata",
 			Setup: func(e *testscript.Env) error {
 				wg.Add(1)
-				d := newDriver()
+				d := newplugin()
 				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), e, errCh, d)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)

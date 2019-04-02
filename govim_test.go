@@ -35,7 +35,7 @@ func TestScripts(t *testing.T) {
 			Dir: "testdata",
 			Setup: func(e *testscript.Env) error {
 				wg.Add(1)
-				d := &driver{Driver: new(plugin.Driver)}
+				d := newTestPlugin(plugin.NewDriver(""))
 				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), e, errCh, d)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
@@ -81,62 +81,79 @@ func TestScripts(t *testing.T) {
 	}
 }
 
-type driver struct {
-	*plugin.Driver
-	driver *testdriver.TestDriver
+type testplugin struct {
+	plugin.Driver
+	*testpluginvim
 }
 
-func (d *driver) Init(g *govim.Govim) (err error) {
-	d.Govim = g
-	d.DefineFunction("HelloNil", nil, d.hello)
-	d.DefineFunction("Hello", []string{}, d.hello)
-	d.DefineFunction("HelloWithArg", []string{"target"}, d.helloWithArg)
-	d.DefineFunction("HelloWithVarArgs", []string{"target", "..."}, d.helloWithVarArgs)
-	d.DefineFunction("Bad", []string{}, d.bad)
-	d.DefineRangeFunction("Echo", []string{}, d.echo)
-	d.DefineCommand("HelloComm", d.helloComm, govim.AttrBang)
-	d.DefineAutoCommand("", govim.Events{govim.EventBufRead}, govim.Patterns{"*.go"}, false, d.bufRead)
+type testpluginvim struct {
+	plugin.Driver
+	*testplugin
+}
+
+func newTestPlugin(d plugin.Driver) *testplugin {
+	res := &testplugin{
+		Driver: d,
+		testpluginvim: &testpluginvim{
+			Driver: d,
+		},
+	}
+	res.testpluginvim.testplugin = res
+	return res
+}
+
+func (t *testplugin) Init(g govim.Govim) (err error) {
+	t.Driver.Govim = g
+	t.testpluginvim.Driver.Govim = g.Sync()
+	t.DefineFunction("HelloNil", nil, t.hello)
+	t.DefineFunction("Hello", []string{}, t.hello)
+	t.DefineFunction("HelloWithArg", []string{"target"}, t.helloWithArg)
+	t.DefineFunction("HelloWithVarArgs", []string{"target", "..."}, t.helloWithVarArgs)
+	t.DefineFunction("Bad", []string{}, t.bad)
+	t.DefineRangeFunction("Echo", []string{}, t.echo)
+	t.DefineCommand("HelloComm", t.helloComm, govim.AttrBang)
+	t.DefineAutoCommand("", govim.Events{govim.EventBufRead}, govim.Patterns{"*.go"}, false, t.bufRead)
 	return nil
 }
 
-func (d *driver) Shutdown() error {
+func (t *testplugin) Shutdown() error {
 	return nil
 }
 
-func (d *driver) bufRead() error {
-	d.ChannelEx(`echom "Hello from BufRead"`)
+func (t *testpluginvim) bufRead() error {
+	t.ChannelEx(`echom "Hello from BufRead"`)
 	return nil
 }
 
-func (d *driver) helloComm(flags govim.CommandFlags, args ...string) error {
-	d.ChannelExf(`echom "Hello world (%v)"`, *flags.Bang)
+func (t *testpluginvim) helloComm(flags govim.CommandFlags, args ...string) error {
+	t.ChannelExf(`echom "Hello world (%v)"`, *flags.Bang)
 	return nil
 }
 
-func (d *driver) hello(args ...json.RawMessage) (interface{}, error) {
+func (t *testpluginvim) hello(args ...json.RawMessage) (interface{}, error) {
 	return "World", nil
 }
 
-func (d *driver) helloWithArg(args ...json.RawMessage) (interface{}, error) {
+func (t *testpluginvim) helloWithArg(args ...json.RawMessage) (interface{}, error) {
 	// Params: (target string)
-	return d.ParseString(args[0]), nil
+	return t.ParseString(args[0]), nil
 }
 
-func (d *driver) helloWithVarArgs(args ...json.RawMessage) (interface{}, error) {
+func (t *testpluginvim) helloWithVarArgs(args ...json.RawMessage) (interface{}, error) {
 	// Params: (target string, others ...string)
-	parts := []string{d.ParseString(args[0])}
-	varargs := d.ParseJSONArgSlice(args[1])
+	parts := []string{t.ParseString(args[0])}
+	varargs := t.ParseJSONArgSlice(args[1])
 	for _, a := range varargs {
-		parts = append(parts, d.ParseString(a))
+		parts = append(parts, t.ParseString(a))
 	}
 	return strings.Join(parts, " "), nil
 }
 
-func (d *driver) bad(args ...json.RawMessage) (interface{}, error) {
+func (t *testpluginvim) bad(args ...json.RawMessage) (interface{}, error) {
 	return nil, fmt.Errorf("this is a bad function")
 }
 
-func (d *driver) echo(first, last int, jargs ...json.RawMessage) (interface{}, error) {
+func (t *testpluginvim) echo(first, last int, jargs ...json.RawMessage) (interface{}, error) {
 	args := make([]interface{}, len(jargs))
 	for i, a := range jargs {
 		if err := json.Unmarshal(a, &args[i]); err != nil {
@@ -145,9 +162,9 @@ func (d *driver) echo(first, last int, jargs ...json.RawMessage) (interface{}, e
 	}
 	var lines []string
 	for i := first; i <= last; i++ {
-		line := d.ParseString(d.ChannelExprf("getline(%v)", i))
+		line := t.ParseString(t.ChannelExprf("getline(%v)", i))
 		lines = append(lines, line)
 	}
-	d.ChannelExf("echom %v", strconv.Quote(strings.Join(lines, "\n")))
+	t.ChannelExf("echom %v", strconv.Quote(strings.Join(lines, "\n")))
 	return nil, nil
 }

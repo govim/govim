@@ -124,6 +124,11 @@ function s:define(channel, msg)
       let F= function(l:fn, a:msg[3:-1])
       let l:res = F()
       call add(l:resp[2], l:res)
+    elseif a:msg[1] == "error"
+      let l:msg = a:msg[2]
+      " this is an async call from the client
+      echoerr l:msg
+      return
     else
       throw "unknown callback function type ".a:msg[1]
     endif

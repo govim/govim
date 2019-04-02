@@ -13,7 +13,7 @@ const (
 
 // SubOnViewportChange creates a subscription to the OnViewportChange event
 // exposed by Govim
-func (g *Govim) SubOnViewportChange(f func(Viewport)) *OnViewportChangeSub {
+func (g *govimImpl) SubOnViewportChange(f func(Viewport)) *OnViewportChangeSub {
 	res := &OnViewportChangeSub{f: f}
 	g.onViewportChangeSubsLock.Lock()
 	g.onViewportChangeSubs = append(g.onViewportChangeSubs, res)
@@ -23,7 +23,7 @@ func (g *Govim) SubOnViewportChange(f func(Viewport)) *OnViewportChangeSub {
 
 // UnsubOnViewportChange removes a subscription to the OnViewportChange event.
 // It panics if sub is not an active subscription.
-func (g *Govim) UnsubOnViewportChange(sub *OnViewportChangeSub) {
+func (g *govimImpl) UnsubOnViewportChange(sub *OnViewportChangeSub) {
 	g.onViewportChangeSubsLock.Lock()
 	defer g.onViewportChangeSubsLock.Unlock()
 	for i, s := range g.onViewportChangeSubs {
@@ -35,7 +35,7 @@ func (g *Govim) UnsubOnViewportChange(sub *OnViewportChangeSub) {
 	panic(fmt.Errorf("did not find subscription"))
 }
 
-func (g *Govim) ToggleOnViewportChange() {
+func (g *govimImpl) ToggleOnViewportChange() {
 	select {
 	case <-g.tomb.Dying():
 		// we are already dying, nothing to do
@@ -50,7 +50,7 @@ type OnViewportChangeSub struct {
 	f func(Viewport)
 }
 
-func (g *Govim) onViewportChange(args ...json.RawMessage) (interface{}, error) {
+func (g *govimImpl) onViewportChange(args ...json.RawMessage) (interface{}, error) {
 	var r Viewport
 	g.decodeJSON(args[0], &r)
 	g.viewportLock.Lock()
@@ -93,7 +93,7 @@ type WinInfo struct {
 }
 
 // Viewport returns the active Vim viewport
-func (g *Govim) Viewport() Viewport {
+func (g *govimImpl) Viewport() Viewport {
 	var res Viewport
 	g.viewportLock.Lock()
 	res = g.currViewport.dup()
