@@ -12,13 +12,13 @@ import (
 // fetchCurrentBufferInfo is a helper function to snapshot the current buffer
 // information from Vim. This helper method should only be used with methods
 // responsible for updating d.buffers
-func (d *driver) fetchCurrentBufferInfo() (*types.Buffer, error) {
+func (v *vimstate) fetchCurrentBufferInfo() (*types.Buffer, error) {
 	var buf struct {
 		Num      int
 		Name     string
 		Contents string
 	}
-	expr := d.ChannelExpr(`{"Num": bufnr(""), "Name": expand('%:p'), "Contents": join(getline(0, "$"), "\n")}`)
+	expr := v.ChannelExpr(`{"Num": bufnr(""), "Name": expand('%:p'), "Contents": join(getline(0, "$"), "\n")}`)
 	if err := json.Unmarshal(expr, &buf); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal current buffer info: %v", err)
 	}
@@ -30,18 +30,18 @@ func (d *driver) fetchCurrentBufferInfo() (*types.Buffer, error) {
 	return res, nil
 }
 
-func (d *driver) cursorPos() (b *types.Buffer, p types.Point, err error) {
+func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {
 	var pos struct {
 		BufNum int `json:"bufnum"`
 		Line   int `json:"line"`
 		Col    int `json:"col"`
 	}
-	expr := d.ChannelExpr(`{"bufnum": bufnr(""), "line": line("."), "col": col(".")}`)
+	expr := v.ChannelExpr(`{"bufnum": bufnr(""), "line": line("."), "col": col(".")}`)
 	if err = json.Unmarshal(expr, &pos); err != nil {
 		err = fmt.Errorf("failed to unmarshal current cursor position info: %v", err)
 		return
 	}
-	b, ok := d.buffers[pos.BufNum]
+	b, ok := v.buffers[pos.BufNum]
 	if !ok {
 		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNum)
 	}
@@ -49,18 +49,18 @@ func (d *driver) cursorPos() (b *types.Buffer, p types.Point, err error) {
 	return
 }
 
-func (d *driver) mousePos() (b *types.Buffer, p types.Point, err error) {
+func (v *vimstate) mousePos() (b *types.Buffer, p types.Point, err error) {
 	var pos struct {
 		BufNum int `json:"bufnum"`
 		Line   int `json:"line"`
 		Col    int `json:"col"`
 	}
-	expr := d.ChannelExpr(`{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col}`)
+	expr := v.ChannelExpr(`{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col}`)
 	if err = json.Unmarshal(expr, &pos); err != nil {
 		err = fmt.Errorf("failed to unmarshal current mouse position info: %v", err)
 		return
 	}
-	b, ok := d.buffers[pos.BufNum]
+	b, ok := v.buffers[pos.BufNum]
 	if !ok {
 		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNum)
 	}
