@@ -44,6 +44,7 @@ func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {
 	b, ok := v.buffers[pos.BufNum]
 	if !ok {
 		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNum)
+		return
 	}
 	p, err = types.PointFromVim(b, pos.Line, pos.Col)
 	return
@@ -63,6 +64,7 @@ func (v *vimstate) mousePos() (b *types.Buffer, p types.Point, err error) {
 	b, ok := v.buffers[pos.BufNum]
 	if !ok {
 		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNum)
+		return
 	}
 	p, err = types.PointFromVim(b, pos.Line, pos.Col)
 	return

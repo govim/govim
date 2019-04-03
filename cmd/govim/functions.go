@@ -179,7 +179,7 @@ func (g *govimplugin) formatCurrentBuffer() error {
 
 		if start.Col() != 1 || end.Col() != 1 {
 			// Whether this is a delete or not, we will implement support for this later
-			return fmt.Errorf("saw an edit where start col != end col (edit: %v). We can't currently handle this", e)
+			return fmt.Errorf("saw an edit where start col != end col (range start: %v, range end: %v start: %v, end: %v). We can't currently handle this", e.Range.Start, e.Range.End, start, end)
 		}
 
 		if start.Line() != end.Line() {
@@ -191,8 +191,12 @@ func (g *govimplugin) formatCurrentBuffer() error {
 				return fmt.Errorf("deletebufline(%v, %v, %v) failed", b.Num, start.Line(), end.Line()-1)
 			}
 		} else {
+			// do we have anything to do?
+			if e.NewText == "" {
+				continue
+			}
 			// we are within the same line so strip the newline
-			if e.NewText != "" && e.NewText[len(e.NewText)-1] == '\n' {
+			if e.NewText[len(e.NewText)-1] == '\n' {
 				e.NewText = e.NewText[:len(e.NewText)-1]
 			}
 			repl := strings.Split(e.NewText, "\n")
@@ -290,6 +294,7 @@ func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
 	// https://github.com/fatih/vim-go/blob/f04098811b8a7aba3dba699ed98f6f6e39b7d7ac/autoload/go/def.vim#L106
 
 	oldSwitchBuf := v.ParseString(v.ChannelExpr("&switchbuf"))
+	defer v.ChannelExf(`let &switchbuf=%q`, oldSwitchBuf)
 	v.ChannelEx("normal! m'")
 
 	cmd := "edit"
@@ -315,23 +320,14 @@ func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
 
 	v.ChannelExf("%v %v", cmd, strings.TrimPrefix(loc.URI, "file://"))
 
-	// vp := v.Viewport()
-	// nb := v.buffers[vp.Current.BufNr]
-	// newPos, err := types.PointFromPosition(nb, loc.Range.Start)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to derive point from position: %v", err)
-	// }
-	// v.ChannelCall("cursor", newPos.Line(), newPos.Col())
-
-	// exec cmd fnameescape(fnamemodify(filename, ':.'))
-
-	// call cursor(line, col)
-
-	// " also align the line to middle of the view
-	// normal! zz
-
-	v.ChannelExf(`let &switchbuf=%q`, oldSwitchBuf)
-	// let &switchbuf = old_switchbuf
+	vp := v.Viewport()
+	nb := v.buffers[vp.Current.BufNr]
+	newPos, err := types.PointFromPosition(nb, loc.Range.Start)
+	if err != nil {
+		return fmt.Errorf("failed to derive point from position: %v", err)
+	}
+	v.ChannelCall("cursor", newPos.Line(), newPos.Col())
+	v.ChannelEx("normal! zz")
 
 	return nil
 }

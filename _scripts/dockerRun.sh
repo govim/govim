@@ -10,6 +10,7 @@ go install golang.org/x/tools/cmd/gopls
 go generate ./...
 go test ./...
 go vet $(go list ./... | grep -v 'govim/internal')
+gobin -m -run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/internal')
 
 go mod tidy
 # https://github.com/golang/go/issues/27868#issuecomment-431413621

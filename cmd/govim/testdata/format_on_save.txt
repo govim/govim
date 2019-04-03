@@ -26,4 +26,3 @@ package blah
 const (
 	x = 5
 )
-
