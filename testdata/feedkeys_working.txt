@@ -1,0 +1,7 @@
+# If we need special keys in feedkeys we need to use ex call
+vim ex 'call feedkeys(\"i1234\\<ESC>\")'
+vim ex 'w test'
+cmp test test.golden
+
+-- test.golden --
+1234
