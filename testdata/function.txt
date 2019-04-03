@@ -7,11 +7,11 @@ vim call Hello
 cmp stdout test.golden
 
 # single defined arg
-vim call HelloWithArg '[\"World\"]'
+vim call HelloWithArg '["World"]'
 cmp stdout test.golden
 
 # var args after positional args
-vim call HelloWithVarArgs '[\"London\", \"Gophers\"]'
+vim call HelloWithVarArgs '["London", "Gophers"]'
 cmp stdout gophers.golden
 
 vim -bang expr 'Bad()'

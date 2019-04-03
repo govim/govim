@@ -267,14 +267,16 @@ func Vim() (exitCode int) {
 	fn := args[0]
 	var jsonArgs []string
 	for i, a := range args {
-		uq, err := strconv.Unquote("\"" + a + "\"")
-		if err != nil {
-			ef("failed to unquote %q: %v", a, err)
-		}
 		if i <= 1 {
+			uq, err := strconv.Unquote("\"" + a + "\"")
+			if err != nil {
+				ef("failed to unquote %q: %v", a, err)
+			}
 			jsonArgs = append(jsonArgs, strconv.Quote(uq))
 		} else {
-			jsonArgs = append(jsonArgs, uq)
+			var buf bytes.Buffer
+			json.HTMLEscape(&buf, []byte(a))
+			jsonArgs = append(jsonArgs, buf.String())
 		}
 	}
 	jsonArgString := "[" + strings.Join(jsonArgs, ", ") + "]"
