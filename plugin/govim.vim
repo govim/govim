@@ -4,6 +4,7 @@ let s:channel = ""
 let s:timer = ""
 let s:currViewport = {}
 let s:sendUpdateViewport = 1
+let s:plugindir = expand(expand("<sfile>:p:h:h"))
 
 set mouse=a
 set ttymouse=sgr
@@ -223,18 +224,26 @@ endfunction
 command -bar GOVIMInstallPlugin echom "Installed to ".s:install(1)
 
 function s:install(force)
-  let plugindir = expand(expand("<sfile>:p:h"))
+  let oldpath = getcwd()
+  execute "cd ".s:plugindir
   let commit = trim(system("git rev-parse HEAD"))
-  let targetdir = plugindir."/cmd/govim/.bin/".commit."/"
+  if v:shell_error
+    echoerr commit
+  endif
+  let targetdir = s:plugindir."/cmd/govim/.bin/".commit."/"
   if a:force || $GOVIM_ALWAYS_INSTALL == "true" || !filereadable(targetdir."govim") || !filereadable(targetdir."gopls")
     let oldgobin = $GOBIN
+    let oldgomod = $GO111MODULE
+    let $GO111MODULE = "on"
     let $GOBIN = targetdir
-    let oldpath = getcwd()
-    execute "cd ".plugindir
-    call system("go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/cmd/gopls")
-    execute "cd ".oldpath
+    let install = system("go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/cmd/gopls")
+    if v:shell_error
+      echoerr install
+    endif
     let $GOBIN = oldgobin
+    let $GO111MODULE=oldgomod
   endif
+  execute "cd ".oldpath
   return targetdir
 endfunction
 
