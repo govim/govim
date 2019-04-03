@@ -5,8 +5,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"go/ast"
-	"go/token"
 	"io"
 	"io/ioutil"
 	"net"
@@ -118,11 +116,6 @@ type jumpPos struct {
 	BufNr int
 	Line  int
 	Col   int
-}
-
-type parseData struct {
-	fset *token.FileSet
-	file *ast.File
 }
 
 func newplugin() *govimplugin {

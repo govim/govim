@@ -72,6 +72,9 @@ func PointFromVim(b *Buffer, line, col int) (Point, error) {
 	}
 	p := span.NewPoint(line, col, off)
 	utf16col, err := span.ToUTF16Column(p, b.Contents)
+	if err != nil {
+		return Point{}, fmt.Errorf("failed to calculate UTF16 char value: %v", err)
+	}
 	res := Point{
 		line:     line,
 		col:      col,
@@ -85,12 +88,12 @@ func PointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 	cc := b.tokenConvertor()
 	sline := f2int(pos.Line) + 1
 	scol := f2int(pos.Character)
-	soff, err := cc.ToOffset(sline, 0)
+	soff, err := cc.ToOffset(sline, 1)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate offset within buffer %v: %v", b.Num, err)
 	}
-	p := span.NewPoint(f2int(pos.Line)+1, 0, soff)
-	p, err = span.FromUTF16Column(p, scol, b.Contents)
+	p := span.NewPoint(sline, 1, soff)
+	p, err = span.FromUTF16Column(p, scol+1, b.Contents)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to translate char colum for buffer %v: %v", b.Num, err)
 	}

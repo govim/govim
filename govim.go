@@ -112,12 +112,6 @@ type govimImpl struct {
 	callbackResps      map[int]chan callbackResp
 	callbackRespsLock  sync.Mutex
 
-	// channelCmdNextID reprents the next ID to use for a channel command
-	// that will give us a response
-	channelCmdNextID int
-	channelCmds      map[int]chan json.RawMessage
-	channelCmdsLock  sync.Mutex
-
 	autocmdNextID int
 
 	loaded chan bool
@@ -197,9 +191,18 @@ func (g *govimImpl) funcHandler(name string) (string, interface{}) {
 }
 
 type internalFunction func(args ...json.RawMessage) (interface{}, error)
+
+// VimFunction is the signature of a callback from a defined function
 type VimFunction func(g Govim, args ...json.RawMessage) (interface{}, error)
+
+// VimRangeFunction is the signature of a callback from a defined range-based
+// function
 type VimRangeFunction func(g Govim, line1, line2 int, args ...json.RawMessage) (interface{}, error)
+
+// VimCommandFunction is the signature of a callback from a defined command
 type VimCommandFunction func(g Govim, flags CommandFlags, args ...string) error
+
+// VimAutoCommandFunction is the signature of a callback from a defined autocmd
 type VimAutoCommandFunction func(g Govim) error
 
 func (g *govimImpl) Run() error {
@@ -648,19 +651,6 @@ func (g *govimImpl) callCallback(typ string, vs ...interface{}) chan callbackRes
 	return ch
 }
 
-// callCallbackAsync is a low-level protocol primitive for making a call to the
-// channel defined handler in Vim where no response is expected. Like
-// callCallback, the Vim handler switches on typ.
-func (g *govimImpl) callCallbackAsync(typ string, vs ...interface{}) {
-	g.callbackRespsLock.Lock()
-	id := g.callCallbackNextID
-	g.callCallbackNextID++
-	g.callbackRespsLock.Unlock()
-	args := []interface{}{id, typ}
-	args = append(args, vs...)
-	g.sendJSONMsg(0, args)
-}
-
 // readJSONMsg is a low-level protocol primitive for reading a JSON msg sent by Vim.
 // There is more structure to the messages that we receive, hence we can be
 // more specific in our return type. See
@@ -719,15 +709,6 @@ func (g *govimImpl) decodeJSON(m json.RawMessage, i interface{}) {
 	if err != nil {
 		g.errProto("failed to decode JSON into type %T: %v", i, err)
 	}
-}
-
-// encodeJSON is a low-level protocol primitive used for encoding a JSON value
-func (g *govimImpl) encodeJSON(i interface{}) json.RawMessage {
-	bs, err := json.Marshal(i)
-	if err != nil {
-		g.errProto("failed to JSON encode %v: %v", i, err)
-	}
-	return bs
 }
 
 func (g *govimImpl) errProto(format string, args ...interface{}) {

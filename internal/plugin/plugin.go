@@ -13,10 +13,20 @@ type Driver struct {
 	prefix string
 }
 
-type Function func(args ...json.RawMessage) (interface{}, error)
-type RangeFunction func(line1, line2 int, args ...json.RawMessage) (interface{}, error)
-type CommandFunction func(flags govim.CommandFlags, args ...string) error
-type AutoCommandFunction func() error
+type (
+	// VimAutoCommandFunction is the signature of a callback from a defined autocmd
+	DriverAutoCommandFunction func() error
+
+	// VimCommandFunction is the signature of a callback from a defined command
+	DriverCommandFunction func(flags govim.CommandFlags, args ...string) error
+
+	// VimFunction is the signature of a callback from a defined function
+	DriverFunction func(args ...json.RawMessage) (interface{}, error)
+
+	// DriverRangeFunction is the signature of a callback from a defined range-based
+	// function
+	DriverRangeFunction func(line1, line2 int, args ...json.RawMessage) (interface{}, error)
+)
 
 func NewDriver(name string) Driver {
 	return Driver{
@@ -24,17 +34,12 @@ func NewDriver(name string) Driver {
 	}
 }
 
-func (d Driver) Sync() Driver {
-	d.Govim = d.Govim.Sync()
-	return d
-}
-
 func (d Driver) clone(g govim.Govim) Driver {
 	d.Govim = g
 	return d
 }
 
-func (d Driver) Do(f func() error) (err error) {
+func (d Driver) do(f func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			switch r := r.(type) {
@@ -46,56 +51,6 @@ func (d Driver) Do(f func() error) (err error) {
 		}
 	}()
 	return f()
-}
-
-func (d Driver) DoFunction(f Function) govim.VimFunction {
-	return func(g govim.Govim, args ...json.RawMessage) (interface{}, error) {
-		d := d.clone(g)
-		var i interface{}
-		err := d.Do(func() error {
-			var err error
-			i, err = f(args...)
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-		return i, nil
-	}
-}
-
-func (d Driver) DoRangeFunction(f RangeFunction) govim.VimRangeFunction {
-	return func(g govim.Govim, first, last int, args ...json.RawMessage) (interface{}, error) {
-		d := d.clone(g)
-		var i interface{}
-		err := d.Do(func() error {
-			var err error
-			i, err = f(first, last, args...)
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-		return i, nil
-	}
-}
-
-func (d Driver) DoCommandFunction(f CommandFunction) govim.VimCommandFunction {
-	return func(g govim.Govim, flags govim.CommandFlags, args ...string) error {
-		d := d.clone(g)
-		return d.Do(func() error {
-			return f(flags, args...)
-		})
-	}
-}
-
-func (d Driver) DoAutoCommandFunction(f AutoCommandFunction) govim.VimAutoCommandFunction {
-	return func(g govim.Govim) error {
-		d := d.clone(g)
-		return d.Do(func() error {
-			return f()
-		})
-	}
 }
 
 func (d Driver) Errorf(format string, args ...interface{}) {
@@ -182,30 +137,80 @@ func (d Driver) ChannelExf(format string, args ...interface{}) {
 	d.ChannelEx(fmt.Sprintf(format, args...))
 }
 
-func (d Driver) DefineFunction(name string, args []string, f Function) {
-	if err := d.Govim.DefineFunction(d.prefix+name, args, d.DoFunction(f)); err != nil {
+func (d Driver) DefineFunction(name string, args []string, f DriverFunction) {
+	if err := d.Govim.DefineFunction(d.prefix+name, args, d.doFunction(f)); err != nil {
 		d.Errorf("failed to DefineFunction %q: %v", name, err)
 	}
 }
 
-func (d Driver) DefineRangeFunction(name string, args []string, f RangeFunction) {
-	if err := d.Govim.DefineRangeFunction(d.prefix+name, args, d.DoRangeFunction(f)); err != nil {
+func (d Driver) DefineRangeFunction(name string, args []string, f DriverRangeFunction) {
+	if err := d.Govim.DefineRangeFunction(d.prefix+name, args, d.doRangeFunction(f)); err != nil {
 		d.Errorf("failed to DefineRangeFunction %q: %v", name, err)
 	}
 }
 
-func (d Driver) DefineCommand(name string, f CommandFunction, attrs ...govim.CommAttr) {
-	if err := d.Govim.DefineCommand(d.prefix+name, d.DoCommandFunction(f), attrs...); err != nil {
+func (d Driver) DefineCommand(name string, f DriverCommandFunction, attrs ...govim.CommAttr) {
+	if err := d.Govim.DefineCommand(d.prefix+name, d.doCommandFunction(f), attrs...); err != nil {
 		d.Errorf("failed to DefineCommand %q: %v", name, err)
 	}
 }
 
-func (d Driver) DefineAutoCommand(group string, events govim.Events, patts govim.Patterns, nested bool, f AutoCommandFunction) {
+func (d Driver) DefineAutoCommand(group string, events govim.Events, patts govim.Patterns, nested bool, f DriverAutoCommandFunction) {
 	if group == "" {
 		group = strings.ToLower(d.prefix)
 	}
-	if err := d.Govim.DefineAutoCommand(group, events, patts, nested, d.DoAutoCommandFunction(f)); err != nil {
+	if err := d.Govim.DefineAutoCommand(group, events, patts, nested, d.doAutoCommandFunction(f)); err != nil {
 		d.Errorf("failed to DefineAutoCommand: %v", err)
+	}
+}
+
+func (d Driver) doFunction(f DriverFunction) govim.VimFunction {
+	return func(g govim.Govim, args ...json.RawMessage) (interface{}, error) {
+		d := d.clone(g)
+		var i interface{}
+		err := d.do(func() error {
+			var err error
+			i, err = f(args...)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return i, nil
+	}
+}
+
+func (d Driver) doRangeFunction(f DriverRangeFunction) govim.VimRangeFunction {
+	return func(g govim.Govim, first, last int, args ...json.RawMessage) (interface{}, error) {
+		d := d.clone(g)
+		var i interface{}
+		err := d.do(func() error {
+			var err error
+			i, err = f(first, last, args...)
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+		return i, nil
+	}
+}
+
+func (d Driver) doCommandFunction(f DriverCommandFunction) govim.VimCommandFunction {
+	return func(g govim.Govim, flags govim.CommandFlags, args ...string) error {
+		d := d.clone(g)
+		return d.do(func() error {
+			return f(flags, args...)
+		})
+	}
+}
+
+func (d Driver) doAutoCommandFunction(f DriverAutoCommandFunction) govim.VimAutoCommandFunction {
+	return func(g govim.Govim) error {
+		d := d.clone(g)
+		return d.do(func() error {
+			return f()
+		})
 	}
 }
 

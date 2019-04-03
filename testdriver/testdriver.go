@@ -204,9 +204,7 @@ func (d *TestDriver) listenDriver() {
 				if err != nil {
 					toAdd[0] = err.Error()
 				} else {
-					for _, i := range is {
-						toAdd = append(toAdd, i)
-					}
+					toAdd = append(toAdd, is...)
 				}
 				res = append(res, toAdd)
 			}
