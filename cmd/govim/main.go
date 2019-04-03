@@ -10,8 +10,6 @@ import (
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/kr/pretty"
@@ -47,6 +45,12 @@ func main1() int {
 func mainerr() error {
 	flag.Parse()
 
+	args := flag.Args()
+	if len(flag.Args()) == 0 {
+		return fmt.Errorf("missing single argument path to gopls")
+	}
+	goplspath := args[0]
+
 	if sock := os.Getenv("GOVIMTEST_SOCKET"); sock != "" {
 		ln, err := net.Listen("tcp", sock)
 		if err != nil {
@@ -59,20 +63,20 @@ func mainerr() error {
 			}
 
 			go func() {
-				if err := launch(conn, conn); err != nil {
+				if err := launch(goplspath, conn, conn); err != nil {
 					fmt.Fprintln(os.Stderr, err)
 				}
 			}()
 		}
 	} else {
-		return launch(os.Stdin, os.Stdout)
+		return launch(goplspath, os.Stdin, os.Stdout)
 	}
 }
 
-func launch(in io.ReadCloser, out io.WriteCloser) error {
+func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 	defer out.Close()
 
-	d := newplugin()
+	d := newplugin(goplspath)
 
 	nowStr := time.Now().Format("20060102_1504_05.000000000")
 	tf, err := ioutil.TempFile("", "govim_"+nowStr+"_*")
@@ -103,6 +107,7 @@ type govimplugin struct {
 	plugin.Driver
 	*vimstate
 
+	goplspath   string
 	gopls       *os.Process
 	goplsConn   *jsonrpc2.Conn
 	goplsCancel context.CancelFunc
@@ -118,10 +123,11 @@ type jumpPos struct {
 	Col   int
 }
 
-func newplugin() *govimplugin {
+func newplugin(goplspath string) *govimplugin {
 	d := plugin.NewDriver("GOVIM")
 	res := &govimplugin{
-		Driver: d,
+		goplspath: goplspath,
+		Driver:    d,
 		vimstate: &vimstate{
 			Driver:    d,
 			buffers:   make(map[int]*types.Buffer),
@@ -148,12 +154,7 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 	g.ChannelEx("set omnifunc=GOVIMComplete")
 	g.DefineCommand("GoToDef", g.gotoDef, govim.NArgsZeroOrOne)
 
-	goplsPath, err := installGoPls()
-	if err != nil {
-		return fmt.Errorf("failed to install gopls: %v", err)
-	}
-
-	gopls := exec.Command(goplsPath)
+	gopls := exec.Command(g.goplspath)
 	out, err := gopls.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdout pipe for gopls: %v", err)
@@ -200,26 +201,4 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 
 func (s *govimplugin) Shutdown() error {
 	return nil
-}
-
-func installGoPls() (string, error) {
-	// If we are being run as a plugin we require that it is somewhere within
-	// the github.com/myitcv/govim module. That allows tests to work but also
-	// the plugin itself when run from within plugin/govim.vim
-	modlist := exec.Command("go", "list", "-m", "-f={{.Dir}}", "github.com/myitcv/govim")
-	out, err := modlist.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("failed to determine directory of github.com/myitcv/govim: %v", err)
-	}
-
-	gobin := filepath.Join(string(out), "cmd", "govim", ".bin")
-
-	cmd := exec.Command("go", "install", "golang.org/x/tools/cmd/gopls")
-	cmd.Env = append(os.Environ(), "GOBIN="+gobin)
-	out, err = cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("failed to run [%v] in %v: %v\n%s", strings.Join(cmd.Args, " "), gobin, err, out)
-	}
-
-	return filepath.Join(gobin, "gopls"), nil
 }
