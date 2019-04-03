@@ -6,6 +6,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -25,12 +26,19 @@ func TestScripts(t *testing.T) {
 	var wg sync.WaitGroup
 	errCh := make(chan error)
 
+	goplspath := strings.TrimSpace(runCmd(t, "gobin", "-m", "-p", "golang.org/x/tools/cmd/gopls"))
+	plugpath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
+
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
 			Dir: "testdata",
 			Setup: func(e *testscript.Env) error {
+				e.Vars = append(e.Vars,
+					"PLUGIN_PATH="+plugpath,
+					"CURRENT_GOPATH="+os.Getenv("GOPATH"),
+				)
 				wg.Add(1)
-				d := newplugin()
+				d := newplugin(string(goplspath))
 				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), e, errCh, d)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
@@ -74,4 +82,14 @@ func TestScripts(t *testing.T) {
 		}
 		t.Fatalf("got some errors:\n%v\n", strings.Join(msgs, "\n"))
 	}
+}
+
+func runCmd(t *testing.T, c string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command(c, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to run %v: %v\n%s", strings.Join(cmd.Args, " "), err, out)
+	}
+	return string(out)
 }

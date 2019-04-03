@@ -214,22 +214,41 @@ func s:defineFunction(name, argsStr, range)
         \ "endfunction\n"
 endfunction
 
+function s:govimExit(job, exitstatus)
+  if a:exitstatus != 0
+    echoerr "govim plugin died :("
+  endif
+endfunction
+
+command -bar GOVIMInstallPlugin echom "Installed to ".s:install(1)
+
+function s:install(force)
+  let plugindir = expand(expand("<sfile>:p:h"))
+  let commit = trim(system("git rev-parse HEAD"))
+  let targetdir = plugindir."/cmd/govim/.bin/".commit."/"
+  if a:force || $GOVIM_ALWAYS_INSTALL == "true" || !filereadable(targetdir."govim") || !filereadable(targetdir."gopls")
+    let oldgobin = $GOBIN
+    let $GOBIN = targetdir
+    let oldpath = getcwd()
+    execute "cd ".plugindir
+    call system("go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/cmd/gopls")
+    execute "cd ".oldpath
+    let $GOBIN = oldgobin
+  endif
+  return targetdir
+endfunction
+
 " TODO - would be nice to be able to specify -1 as a timeout
 let opts = {"in_mode": "json", "out_mode": "json", "err_mode": "json", "callback": function("s:define"), "timeout": 30000}
 if $GOVIMTEST_SOCKET != ""
   let s:channel = ch_open($GOVIMTEST_SOCKET, opts)
 else
-  let plugindir = expand(expand("<sfile>:h"))."/../"
-  let $GOBIN = plugindir."/cmd/govim/.bin"
-  let oldpath = getcwd()
-  execute "cd ".plugindir
-  call system("go install github.com/myitcv/govim/cmd/govim")
-  execute "cd ".oldpath
+  let targetdir = s:install(0)
   let start = $GOVIM_RUNCMD
   if start == ""
-    let start = plugindir."/cmd/govim/.bin/govim"
+    let start = targetdir."govim ".targetdir."gopls"
   endif
-  let opts.cwd = plugindir
+  let opts.exit_cb = function("s:govimExit")
   let job = job_start(start, opts)
   let s:channel = job_getchannel(job)
 endif
