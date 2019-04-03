@@ -181,7 +181,7 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 
 	stream := jsonrpc2.NewHeaderStream(out, in)
 	ctxt, cancel := context.WithCancel(context.Background())
-	conn, server := protocol.NewClient(stream, g)
+	conn, server, _ := protocol.NewClient(stream, g)
 	go conn.Run(ctxt)
 
 	g.gopls = gopls.Process
