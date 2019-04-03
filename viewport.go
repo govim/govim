@@ -13,7 +13,7 @@ const (
 
 // SubOnViewportChange creates a subscription to the OnViewportChange event
 // exposed by Govim
-func (g *govimImpl) SubOnViewportChange(f func(Viewport)) *OnViewportChangeSub {
+func (g *govimImpl) SubOnViewportChange(f func(Viewport) error) *OnViewportChangeSub {
 	res := &OnViewportChangeSub{f: f}
 	g.onViewportChangeSubsLock.Lock()
 	g.onViewportChangeSubs = append(g.onViewportChangeSubs, res)
@@ -47,7 +47,7 @@ func (g *govimImpl) ToggleOnViewportChange() {
 }
 
 type OnViewportChangeSub struct {
-	f func(Viewport)
+	f func(Viewport) error
 }
 
 func (g *govimImpl) onViewportChange(args ...json.RawMessage) (interface{}, error) {
@@ -65,7 +65,9 @@ func (g *govimImpl) onViewportChange(args ...json.RawMessage) (interface{}, erro
 	subs = append(subs, g.onViewportChangeSubs...)
 	g.onViewportChangeSubsLock.Unlock()
 	for _, s := range subs {
-		s.f(r.dup())
+		if err := s.f(r.dup()); err != nil {
+			return nil, err
+		}
 	}
 	return nil, nil
 }

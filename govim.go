@@ -77,7 +77,7 @@ type Govim interface {
 
 	// SubOnViewportChange creates a subscription to the OnViewportChange event
 	// exposed by Govim
-	SubOnViewportChange(f func(Viewport)) *OnViewportChangeSub
+	SubOnViewportChange(f func(Viewport) error) *OnViewportChangeSub
 
 	// UnsubOnViewportChange removes a subscription to the OnViewportChange event.
 	// It panics if sub is not an active subscription.
