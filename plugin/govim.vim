@@ -6,6 +6,8 @@ let s:currViewport = {}
 let s:sendUpdateViewport = 1
 let s:plugindir = expand(expand("<sfile>:p:h:h"))
 
+let s:govim_loaded = 0
+
 set mouse=a
 set ttymouse=sgr
 set balloondelay=250
@@ -82,6 +84,10 @@ function s:updateViewport(timer)
   endif
 endfunction
 
+function GOVIMPluginLoaded()
+  return s:govim_loaded
+endfunction
+
 function s:define(channel, msg)
   " format is [type, ...]
   " type is function, command or autocmd
@@ -93,6 +99,7 @@ function s:define(channel, msg)
       " stuff like OnViewportChange
       let s:timer = timer_start(100, function('s:updateViewport'), {'repeat': -1})
       au CursorMoved,CursorMovedI,BufWinEnter * call s:updateViewport(0)
+      let s:govim_loaded = 1
     elseif a:msg[1] == "toggleUpdateViewport"
       let s:sendUpdateViewport = !s:sendUpdateViewport
     elseif a:msg[1] == "function"
@@ -221,7 +228,7 @@ function s:govimExit(job, exitstatus)
   endif
 endfunction
 
-command -bar GOVIMInstallPlugin echom "Installed to ".s:install(1)
+command -bar GOVIMPluginInstall echom "Installed to ".s:install(1)
 
 function s:install(force)
   let oldpath = getcwd()

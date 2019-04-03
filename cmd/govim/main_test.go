@@ -5,6 +5,9 @@
 package main
 
 import (
+	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,13 +15,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/kr/pty"
 	"github.com/myitcv/govim/testdriver"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
 func TestMain(m *testing.M) {
 	os.Exit(testscript.RunMain(m, map[string]func() int{
-		"vim": testdriver.Vim,
+		"vim":     testdriver.Vim,
+		"execvim": execvim,
 	}))
 }
 
@@ -92,4 +97,19 @@ func runCmd(t *testing.T, c string, args ...string) string {
 		t.Fatalf("failed to run %v: %v\n%s", strings.Join(cmd.Args, " "), err, out)
 	}
 	return string(out)
+}
+
+func execvim() int {
+	args := os.Args[1:]
+	cmd := exec.Command("vim", args[1:]...)
+	thepty, err := pty.Start(cmd)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to start %v: %v", strings.Join(cmd.Args, " "), err)
+		return 1
+	}
+	go io.Copy(ioutil.Discard, thepty)
+	if err := cmd.Wait(); err != nil {
+		return 1
+	}
+	return 0
 }
