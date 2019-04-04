@@ -6,7 +6,6 @@ require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/kr/pretty v0.1.0
 	github.com/kr/pty v1.1.3
-	github.com/myitcv/gobin v0.0.9
 	github.com/myitcv/vbash v0.0.4
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.2.2
