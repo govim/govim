@@ -1,18 +1,15 @@
 # Test the vim-plug install approach
 
-[short] skip
 [!net] skip
 
 env HOME=$WORK/home
 env GOPATH=$CURRENT_GOPATH
-env GOVIMTEST_SOCKET=
-env GOVIMTESTDRIVER_SOCKET=
 
 exec git clone -q $PLUGIN_PATH $WORK/plugin
 
 exec curl -sfLo $HOME/.vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
 
-execvim --not-a-term +'sleep 2' +'execute "normal \"=GOVIMHello()\<C-M>p"' +'w test' +qall
+execvim +'source '$PLUGIN_PATH/plugin/test_callback.txt
 ! stdout .+
 ! stderr .+
 cmp test test.golden
@@ -23,4 +20,4 @@ Plug 'myitcv/govim', { 'dir': $WORK.'/plugin' }
 call plug#end()
 
 -- test.golden --
-Hello from function
+loadedinitcompleteHello from function

@@ -24,8 +24,9 @@ type vimstate struct {
 	// or autocommand.
 	buffers map[int]*types.Buffer
 
-	// jumpStack is a map from winid to jump position
-	jumpStack map[int][]jumpPos
+	// jumpStack is akin to the Vim concept of a tagstack
+	jumpStack    []protocol.Location
+	jumpStackPos int
 
 	// omnifunc calls happen in pairs (see :help complete-functions). The return value
 	// from the first tells Vim where the completion starts, the return from the second
@@ -70,6 +71,14 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 }
 
 func (g *govimplugin) bufReadPost() error {
+	// Setup buffer-local mappings
+	g.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
+	g.ChannelExf("nnoremap <buffer> <silent> gd :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
+	g.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
+	g.ChannelExf("nnoremap <buffer> <silent> <C-LeftMouse> <LeftMouse>:%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
+	g.ChannelExf("nnoremap <buffer> <silent> g<LeftMouse> <LeftMouse>:%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
+	g.ChannelExf("nnoremap <buffer> <silent> <C-t> :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToPrevDef)
+
 	b, err := g.fetchCurrentBufferInfo()
 	if err != nil {
 		return err
@@ -288,7 +297,32 @@ func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
 	}
 
 	loc := locs[0]
+	v.jumpStack = append(v.jumpStack[:v.jumpStackPos], protocol.Location{
+		URI: string(cb.URI()),
+		Range: protocol.Range{
+			Start: pos.ToPosition(),
+			End:   pos.ToPosition(),
+		},
+	})
+	v.jumpStackPos++
+	return v.loadLocation(loc)
+}
 
+func (v *vimstate) gotoPrevDef(flags govim.CommandFlags, args ...string) error {
+	if v.jumpStackPos == 0 {
+		v.ChannelEx(`echom "Already at top of stack"`)
+		return nil
+	}
+	v.jumpStackPos -= *flags.Count
+	if v.jumpStackPos < 0 {
+		v.jumpStackPos = 0
+	}
+	loc := v.jumpStack[v.jumpStackPos]
+
+	return v.loadLocation(loc)
+}
+
+func (v *vimstate) loadLocation(loc protocol.Location) error {
 	// re-use the logic from vim-go:
 	//
 	// https://github.com/fatih/vim-go/blob/f04098811b8a7aba3dba699ed98f6f6e39b7d7ac/autoload/go/def.vim#L106

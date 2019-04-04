@@ -34,6 +34,10 @@ func NewDriver(name string) Driver {
 	}
 }
 
+func (d Driver) Prefix() string {
+	return d.prefix
+}
+
 func (d Driver) clone(g govim.Govim) Driver {
 	d.Govim = g
 	return d

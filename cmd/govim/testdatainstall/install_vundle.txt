@@ -1,28 +1,24 @@
 # Test the Vundle install approach
 
-[short] skip
 [!net] skip
 
 env HOME=$WORK/home
 env GOPATH=$CURRENT_GOPATH
-env GOVIMTEST_SOCKET=
-env GOVIMTESTDRIVER_SOCKET=
 
 exec git clone -q $PLUGIN_PATH $WORK/plugin
 
 exec git clone --depth=1 https://github.com/VundleVim/Vundle.vim.git $HOME/.vim/bundle/Vundle.vim
 
-execvim --not-a-term +PluginInstall +qall
+execvim +PluginInstall +qall
 
-execvim --not-a-term +'sleep 2' +'execute "normal \"=GOVIMHello()\<C-M>p"' +'w test' +qall
+execvim +'source '$PLUGIN_PATH/plugin/test_callback.txt
 ! stdout .+
 ! stderr .+
 cmp test test.golden
 
 -- home/.vimrc --
-set nocompatible              " be iMproved, required
-filetype off                  " required
-
+set nocompatible
+filetype off
 set rtp+=~/.vim/bundle/Vundle.vim
 call vundle#begin()
 Plugin 'file://'.$WORK.'/plugin'
@@ -30,4 +26,4 @@ call vundle#end()
 filetype plugin indent on
 
 -- test.golden --
-Hello from function
+loadedinitcompleteHello from function

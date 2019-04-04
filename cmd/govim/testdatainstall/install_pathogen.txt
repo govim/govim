@@ -1,12 +1,9 @@
 # Test the Pathogen install approach
 
-[short] skip
 [!net] skip
 
 env HOME=$WORK/home
 env GOPATH=$CURRENT_GOPATH
-env GOVIMTEST_SOCKET=
-env GOVIMTESTDRIVER_SOCKET=
 
 exec git clone -q $PLUGIN_PATH $HOME/.vim/bundle/govim
 
@@ -14,7 +11,7 @@ mkdir $HOME/.vim/autoload
 mkdir $HOME/.vim/bundle
 exec curl -LSso $HOME/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
 
-execvim --not-a-term +'sleep 2' +'execute "normal \"=GOVIMHello()\<C-M>p"' +'w test' +qall
+execvim +'source '$PLUGIN_PATH/plugin/test_callback.txt
 ! stdout .+
 ! stderr .+
 cmp test test.golden
@@ -25,4 +22,4 @@ syntax on
 filetype plugin indent on
 
 -- test.golden --
-Hello from function
+loadedinitcompleteHello from function

@@ -1,0 +1,20 @@
+" ***************************************************************
+"
+"             NOTE THIS CANNOT BE RENAMED .vim
+"
+"        Otherwise this file is picked up as a plugin
+"
+" ***************************************************************
+
+" A test function used by the install test scripts
+fu GOVIMTestingFunction(status)
+  execute "normal A".a:status
+  if a:status == "initcomplete"
+    execute "normal A".GOVIMHello()
+    :w! test
+  endif
+  if a:status == "failed" || a:status == "exited" || a:status == "initcomplete"
+    :q
+  endif
+endfu
+call GOVIMPluginStatus(function("GOVIMTestingFunction"))

@@ -174,8 +174,20 @@ func (g *govimImpl) load() error {
 		if perr != nil {
 			return perr
 		}
-		return err
+		if err != nil {
+			return err
+		}
 	}
+
+	select {
+	case <-g.tomb.Dying():
+		return tomb.ErrDying
+	case resp := <-g.callCallback("initcomplete"):
+		if resp.errString != "" {
+			return fmt.Errorf("failed to signal initcomplete to Vim: %v", resp.errString)
+		}
+	}
+
 	return nil
 }
 

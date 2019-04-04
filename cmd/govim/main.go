@@ -14,6 +14,7 @@ import (
 
 	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
+	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/jsonrpc2"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
@@ -116,22 +117,14 @@ type govimplugin struct {
 	tomb tomb.Tomb
 }
 
-type jumpPos struct {
-	WinID int
-	BufNr int
-	Line  int
-	Col   int
-}
-
 func newplugin(goplspath string) *govimplugin {
 	d := plugin.NewDriver("GOVIM")
 	res := &govimplugin{
 		goplspath: goplspath,
 		Driver:    d,
 		vimstate: &vimstate{
-			Driver:    d,
-			buffers:   make(map[int]*types.Buffer),
-			jumpStack: make(map[int][]jumpPos),
+			Driver:  d,
+			buffers: make(map[int]*types.Buffer),
 		},
 	}
 	res.vimstate.govimplugin = res
@@ -143,16 +136,17 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 	g.vimstate.Driver.Govim = gg.Sync()
 	g.ChannelEx(`augroup govim`)
 	g.ChannelEx(`augroup END`)
-	g.DefineFunction("Hello", []string{}, g.hello)
-	g.DefineCommand("Hello", g.helloComm)
-	g.DefineFunction("BalloonExpr", []string{}, g.balloonExpr)
-	g.ChannelEx("set balloonexpr=GOVIMBalloonExpr()")
+	g.DefineFunction(string(config.FunctionHello), []string{}, g.hello)
+	g.DefineCommand(string(config.CommandHello), g.helloComm)
+	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.balloonExpr)
+	g.ChannelExf("set balloonexpr=%v%v()", g.Driver.Prefix(), config.FunctionBalloonExpr)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.bufReadPost)
 	g.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, g.bufTextChanged)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, g.formatCurrentBuffer)
-	g.DefineFunction("Complete", []string{"findarg", "base"}, g.complete)
-	g.ChannelEx("set omnifunc=GOVIMComplete")
-	g.DefineCommand("GoToDef", g.gotoDef, govim.NArgsZeroOrOne)
+	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.complete)
+	g.ChannelExf("set omnifunc=%v%v", g.Driver.Prefix(), config.FunctionComplete)
+	g.DefineCommand(string(config.CommandGoToDef), g.gotoDef, govim.NArgsZeroOrOne)
+	g.DefineCommand(string(config.CommandGoToPrevDef), g.gotoPrevDef, govim.NArgsZeroOrOne, govim.CountN(1))
 
 	gopls := exec.Command(g.goplspath)
 	out, err := gopls.StdoutPipe()
