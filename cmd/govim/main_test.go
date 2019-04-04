@@ -31,7 +31,19 @@ func TestScripts(t *testing.T) {
 	var wg sync.WaitGroup
 	errCh := make(chan error)
 
-	goplspath := strings.TrimSpace(runCmd(t, "gobin", "-m", "-p", "golang.org/x/tools/cmd/gopls"))
+	td, err := ioutil.TempDir("", "gobin-gopls-installdir*")
+	if err != nil {
+		t.Fatalf("failed to create temp install directory for gopls: %v", err)
+	}
+	defer os.RemoveAll(td)
+
+	cmd := exec.Command("go", "install", "golang.org/x/tools/cmd/gopls")
+	cmd.Env = append(os.Environ(), "GOBIN="+td)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("failed to install temp version of golang.org/x/tools/cmd/gopls: %v\n%s", err, out)
+	}
+
+	goplspath := filepath.Join(td, "gopls")
 	plugpath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
 
 	t.Run("scripts", func(t *testing.T) {
