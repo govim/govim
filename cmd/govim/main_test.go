@@ -89,6 +89,27 @@ func TestScripts(t *testing.T) {
 	}
 }
 
+func TestInstallScripts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Install scripts are long-running")
+	}
+
+	plugpath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
+
+	t.Run("scripts", func(t *testing.T) {
+		testscript.Run(t, testscript.Params{
+			Dir: "testdatainstall",
+			Setup: func(e *testscript.Env) error {
+				e.Vars = append(e.Vars,
+					"PLUGIN_PATH="+plugpath,
+					"CURRENT_GOPATH="+os.Getenv("GOPATH"),
+				)
+				return nil
+			},
+		})
+	})
+}
+
 func runCmd(t *testing.T, c string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(c, args...)
@@ -100,7 +121,7 @@ func runCmd(t *testing.T, c string, args ...string) string {
 }
 
 func execvim() int {
-	args := os.Args[1:]
+	args := append([]string{"--not-a-term"}, os.Args[1:]...)
 	cmd := exec.Command("vim", args[1:]...)
 	thepty, err := pty.Start(cmd)
 	if err != nil {

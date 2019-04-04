@@ -6,7 +6,8 @@ let s:currViewport = {}
 let s:sendUpdateViewport = 1
 let s:plugindir = expand(expand("<sfile>:p:h:h"))
 
-let s:govim_loaded = 0
+let s:govim_status = "loading"
+let s:loadStatusCallbacks = []
 
 set mouse=a
 set ttymouse=sgr
@@ -15,7 +16,7 @@ set ballooneval
 set balloonevalterm
 syntax on
 
-" TODO this probably doesn't belong here?
+" TODO these probably doesn't belong here?
 let g:govim_format_on_save = "goimports"
 
 function s:callbackFunction(name, args)
@@ -84,8 +85,11 @@ function s:updateViewport(timer)
   endif
 endfunction
 
-function GOVIMPluginLoaded()
-  return s:govim_loaded
+function GOVIMPluginStatus(...)
+  if s:govim_status != "loaded" && s:govim_status != "failed" && len(a:000) != 0
+    call extend(s:loadStatusCallbacks, a:000)
+  endif
+  return s:govim_status
 endfunction
 
 function s:define(channel, msg)
@@ -95,11 +99,18 @@ function s:define(channel, msg)
     let l:id = a:msg[0]
     let l:resp = ["callback", l:id, [""]]
     if a:msg[1] == "loaded"
-      " the plugin has loaded, setup and well-known plugin-level
-      " stuff like OnViewportChange
       let s:timer = timer_start(100, function('s:updateViewport'), {'repeat': -1})
       au CursorMoved,CursorMovedI,BufWinEnter * call s:updateViewport(0)
-      let s:govim_loaded = 1
+      let s:govim_status = "loaded"
+      for F in s:loadStatusCallbacks
+        call call(F, [s:govim_status])
+      endfor
+    elseif a:msg[1] == "initcomplete"
+      doautoall BufRead
+      let s:govim_status = "initcomplete"
+      for F in s:loadStatusCallbacks
+        call call(F, [s:govim_status])
+      endfor
     elseif a:msg[1] == "toggleUpdateViewport"
       let s:sendUpdateViewport = !s:sendUpdateViewport
     elseif a:msg[1] == "function"
@@ -142,9 +153,8 @@ function s:define(channel, msg)
     endif
   catch
     let l:resp[2][0] = 'Caught ' . string(v:exception) . ' in ' . v:throwpoint
-  finally
-    call ch_sendexpr(a:channel, l:resp)
   endtry
+  call ch_sendexpr(a:channel, l:resp)
 endfunction
 
 func s:defineAutoCommand(name, def)
@@ -223,6 +233,14 @@ func s:defineFunction(name, argsStr, range)
 endfunction
 
 function s:govimExit(job, exitstatus)
+  if a:exitstatus != 0
+    let s:govim_status = "failed"
+  else
+    let s:govim_status = "exited"
+  endif
+  for i in s:loadStatusCallbacks
+    call call(i, [s:govim_status])
+  endfor
   if a:exitstatus != 0
     echoerr "govim plugin died :("
   endif

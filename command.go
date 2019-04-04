@@ -131,7 +131,7 @@ type CountN int
 func (c CountN) isCommAttr() {}
 
 func (c CountN) String() string {
-	return strconv.Itoa(int(c))
+	return fmt.Sprintf("-count=%v", int(c))
 }
 
 type Range uint

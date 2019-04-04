@@ -1,19 +1,16 @@
 # Test the Vim8 package install approach
 
-[short] skip
 [!net] skip
 
 env HOME=$WORK/home
 env GOPATH=$CURRENT_GOPATH
-env GOVIMTEST_SOCKET=
-env GOVIMTESTDRIVER_SOCKET=
 
 exec git clone -q $PLUGIN_PATH $HOME/.vim/pack/plugins/start/govim
 
-execvim --not-a-term +'sleep 2' +'execute "normal \"=GOVIMHello()\<C-M>p"' +'w test' +qall
+execvim +'source '$PLUGIN_PATH/plugin/test_callback.txt
 ! stdout .+
 ! stderr .+
 cmp test test.golden
 
 -- test.golden --
-Hello from function
+loadedinitcompleteHello from function
