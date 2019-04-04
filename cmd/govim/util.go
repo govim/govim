@@ -50,26 +50,6 @@ func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {
 	return
 }
 
-func (v *vimstate) mousePos() (b *types.Buffer, p types.Point, err error) {
-	var pos struct {
-		BufNum int `json:"bufnum"`
-		Line   int `json:"line"`
-		Col    int `json:"col"`
-	}
-	expr := v.ChannelExpr(`{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col}`)
-	if err = json.Unmarshal(expr, &pos); err != nil {
-		err = fmt.Errorf("failed to unmarshal current mouse position info: %v", err)
-		return
-	}
-	b, ok := v.buffers[pos.BufNum]
-	if !ok {
-		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNum)
-		return
-	}
-	p, err = types.PointFromVim(b, pos.Line, pos.Col)
-	return
-}
-
 type plainMarkdown struct{}
 
 var _ blackfriday.Renderer = plainMarkdown{}
