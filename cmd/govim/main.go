@@ -114,6 +114,8 @@ type govimplugin struct {
 	goplsCancel context.CancelFunc
 	server      protocol.Server
 
+	isGui bool
+
 	tomb tomb.Tomb
 }
 
@@ -147,6 +149,8 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 	g.ChannelExf("set omnifunc=%v%v", g.Driver.Prefix(), config.FunctionComplete)
 	g.DefineCommand(string(config.CommandGoToDef), g.gotoDef, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandGoToPrevDef), g.gotoPrevDef, govim.NArgsZeroOrOne, govim.CountN(1))
+
+	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
 	gopls := exec.Command(g.goplspath)
 	out, err := gopls.StdoutPipe()

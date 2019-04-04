@@ -63,7 +63,11 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 			md := []byte(hovRes.Contents.Value)
 			plain := string(blackfriday.Run(md, blackfriday.WithRenderer(plainMarkdown{})))
 			plain = strings.TrimSpace(plain)
-			v.ChannelCall("balloon_show", strings.Split(plain, "\n"))
+			var args interface{} = plain
+			if !v.isGui {
+				args = strings.Split(plain, "\n")
+			}
+			v.ChannelCall("balloon_show", args)
 		}
 
 	}()
