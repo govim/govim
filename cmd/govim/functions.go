@@ -45,7 +45,21 @@ func (v *vimstate) helloComm(flags govim.CommandFlags, args ...string) error {
 }
 
 func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
-	b, pos, err := v.mousePos()
+	var vpos struct {
+		BufNum int `json:"bufnum"`
+		Line   int `json:"line"`
+		Col    int `json:"col"`
+	}
+	expr := v.ChannelExpr(`{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col}`)
+	if err := json.Unmarshal(expr, &vpos); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal current mouse position info: %v", err)
+	}
+	b, ok := v.buffers[vpos.BufNum]
+	if !ok {
+		// The mouse is over a non-go buffer. This is not an error
+		return "", nil
+	}
+	pos, err := types.PointFromVim(b, vpos.Line, vpos.Col)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine mouse position: %v", err)
 	}
