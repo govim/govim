@@ -50,8 +50,6 @@ type GenAttr uint
 
 func (g GenAttr) isCommAttr() {}
 
-//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=GenAttr -linecomment -output gen_genattr_stringer.go
-
 const (
 	AttrBang     GenAttr = iota // -bang
 	AttrBar                     // -bar
@@ -62,8 +60,6 @@ const (
 type Complete uint
 
 func (c Complete) isCommAttr() {}
-
-//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=Complete -linecomment -output gen_complete_stringer.go
 
 const (
 	CompleteArglist      Complete = iota // -complete=arglist
@@ -138,8 +134,6 @@ type Range uint
 
 func (r Range) isCommAttr() {}
 
-//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=Range -linecomment -output gen_range_stringer.go
-
 const (
 	RangeLine Range = iota // -range
 	RangeFile              // -range=%
@@ -148,8 +142,6 @@ const (
 type NArgs uint
 
 func (n NArgs) isCommAttr() {}
-
-//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=NArgs -linecomment -output gen_nargs_stringer.go
 
 const (
 	NArgs0          NArgs = iota // -nargs=0

@@ -6,8 +6,6 @@ type Patterns []Pattern
 type Event uint
 type Events []Event
 
-//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=Event -linecomment -output gen_event_stringer.go
-
 const (
 	EventBufNewFile           Event = iota // BufNewFile
 	EventBufReadPre                        // BufReadPre
