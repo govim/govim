@@ -16,7 +16,7 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-//go:generate gobin -m -run golang.org/x/tools/cmd/stringer -type=GenAttr,Complete,Range,Event,NArgs -linecomment -output gen_stringers_stringer.go
+//go:generate go run golang.org/x/tools/cmd/stringer -type=GenAttr,Complete,Range,Event,NArgs -linecomment -output gen_stringers_stringer.go
 
 const (
 	funcHandlePref     = "function:"
