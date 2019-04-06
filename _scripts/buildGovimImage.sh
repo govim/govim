@@ -1,18 +1,23 @@
 #!/usr/bin/env vbash
 
-if [ "$#" -gt 1 ]
-then
-	echo "We take at most one argument"
-	exit 1
-fi
+set -eu
 
-if [ "$#" -eq 1 ]
+# Usage; either:
+#
+#   buildGovimImage.sh
+#   buildGovimImage.sh VIMVERSION GOVERSION
+#
+
+if [ "$#" -eq 2 ]
 then
 	VIM_VERSION="$1"
+	GO_VERSION="$2"
 else
-	VIM_VERSION=$(echo $VIM_VERSIONS | tr ',' '\n' | tail -n 1)
+	if [ "${VIM_VERSION:-}" == "" ]
+	then
+		VIM_VERSION=$(echo $VIM_VERSIONS | tr ',' '\n' | tail -n 1)
+	fi
+	# $GO_VERSION used as is
 fi
 
-export VIM_VERSION
-
-cat Dockerfile.user | envsubst '$GO_VERSION,$VIM_VERSION' | docker build -t govim --build-arg USER=$USER --build-arg UID=$UID --build-arg GID=$(id -g $USER) -
+cat Dockerfile.user | GO_VERSION=$GO_VERSION VIM_VERSION=$VIM_VERSION envsubst '$GO_VERSION,$VIM_VERSION' | docker build -t govim --build-arg USER=$USER --build-arg UID=$UID --build-arg GID=$(id -g $USER) -

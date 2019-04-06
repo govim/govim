@@ -7,10 +7,13 @@ vim --version
 
 go install golang.org/x/tools/cmd/gopls
 
+# remove all generated files to ensure we are never stale
+rm -f $(git ls-files -- ':!:cmd/govim/internal' '**/gen_*.go' 'gen_*.go')
+
 go generate ./...
 go test ./...
 go vet $(go list ./... | grep -v 'govim/internal')
-gobin -m -run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/internal')
+go run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/internal')
 
 go mod tidy
 # https://github.com/golang/go/issues/27868#issuecomment-431413621
