@@ -23,7 +23,7 @@ function s:callbackFunction(name, args)
   let l:args = ["function", "function:".a:name, a:args]
   let l:resp = ch_evalexpr(s:channel, l:args)
   if l:resp[0] != ""
-    echoerr l:resp[0]
+    throw l:resp[0]
   endif
   return l:resp[1]
 endfunction
@@ -32,7 +32,7 @@ function s:callbackRangeFunction(name, first, last, args)
   let l:args = ["function", "function:".a:name, a:first, a:last, a:args]
   let l:resp = ch_evalexpr(s:channel, l:args)
   if l:resp[0] != ""
-    echoerr l:resp[0]
+    throw l:resp[0]
   endif
   return l:resp[1]
 endfunction
@@ -42,7 +42,7 @@ function s:callbackCommand(name, flags, ...)
   call extend(l:args, a:000)
   let l:resp = ch_evalexpr(s:channel, l:args)
   if l:resp[0] != ""
-    echoerr l:resp[0]
+    throw l:resp[0]
   endif
   return l:resp[1]
 endfunction
@@ -51,7 +51,7 @@ function s:callbackAutoCommand(name)
   let l:args = ["function", a:name]
   let l:resp = ch_evalexpr(s:channel, l:args)
   if l:resp[0] != ""
-    echoerr l:resp[0]
+    throw l:resp[0]
   endif
   return l:resp[1]
 endfunction
@@ -80,7 +80,7 @@ function s:updateViewport(timer)
     let l:resp = ch_evalexpr(s:channel, ["function", "govim:OnViewportChange", [l:viewport]])
     if l:resp[0] != ""
       " TODO disable the timer and the autocmd callback
-      echoerr l:resp[0]
+      throw l:resp[0]
     endif
   endif
 endfunction
@@ -146,7 +146,7 @@ function s:define(channel, msg)
     elseif a:msg[1] == "error"
       let l:msg = a:msg[2]
       " this is an async call from the client
-      echoerr l:msg
+      throw l:msg
       return
     else
       throw "unknown callback function type ".a:msg[1]
@@ -242,7 +242,7 @@ function s:govimExit(job, exitstatus)
     call call(i, [s:govim_status])
   endfor
   if a:exitstatus != 0
-    echoerr "govim plugin died :("
+    throw "govim plugin died :("
   endif
 endfunction
 
@@ -253,7 +253,7 @@ function s:install(force)
   execute "cd ".s:plugindir
   let commit = trim(system("git rev-parse HEAD"))
   if v:shell_error
-    echoerr commit
+    throw commit
   endif
   let targetdir = s:plugindir."/cmd/govim/.bin/".commit."/"
   if a:force || $GOVIM_ALWAYS_INSTALL == "true" || !filereadable(targetdir."govim") || !filereadable(targetdir."gopls")
@@ -263,7 +263,7 @@ function s:install(force)
     let $GOBIN = targetdir
     let install = system("go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/cmd/gopls")
     if v:shell_error
-      echoerr install
+      throw install
     endif
     let $GOBIN = oldgobin
     let $GO111MODULE=oldgomod
