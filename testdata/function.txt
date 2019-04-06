@@ -16,7 +16,7 @@ cmp stdout gophers.golden
 
 vim -bang expr 'Bad()'
 ! stdout .+
-stderr '^\Qfailed to expr(Bad()) in Vim: Caught ''Vim(echoerr):got error whilst handling Bad: this is a bad function''\E'
+stderr '^\Qfailed to expr(Bad()) in Vim: Caught ''got error whilst handling Bad: this is a bad function''\E'
 
 -- test.golden --
 "World"
