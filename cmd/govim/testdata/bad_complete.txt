@@ -1,0 +1,14 @@
+vim ex 'e main.go'
+vim ex 'call cursor(5,1)'
+vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\", \"x\")'
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+func main() {
+	cmd := exec.Command("ls")
+	out, err := cmd.
+}
