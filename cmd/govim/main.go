@@ -141,12 +141,10 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 	g.DefineFunction(string(config.FunctionHello), []string{}, g.hello)
 	g.DefineCommand(string(config.CommandHello), g.helloComm)
 	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.balloonExpr)
-	g.ChannelExf("set balloonexpr=%v%v()", g.Driver.Prefix(), config.FunctionBalloonExpr)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.bufReadPost)
 	g.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, g.bufTextChanged)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, g.formatCurrentBuffer)
 	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.complete)
-	g.ChannelExf("set omnifunc=%v%v", g.Driver.Prefix(), config.FunctionComplete)
 	g.DefineCommand(string(config.CommandGoToDef), g.gotoDef, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandGoToPrevDef), g.gotoPrevDef, govim.NArgsZeroOrOne, govim.CountN(1))
 
