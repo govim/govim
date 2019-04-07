@@ -56,8 +56,7 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 	}
 	b, ok := v.buffers[vpos.BufNum]
 	if !ok {
-		// The mouse is over a non-go buffer. This is not an error
-		return "", nil
+		return nil, fmt.Errorf("unable to resolve buffer %v", vpos.BufNum)
 	}
 	pos, err := types.PointFromVim(b, vpos.Line, vpos.Col)
 	if err != nil {
@@ -89,7 +88,9 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 }
 
 func (g *govimplugin) bufReadPost() error {
-	// Setup buffer-local mappings
+	// Setup buffer-local mappings and settings
+	g.ChannelExf("setlocal balloonexpr=%v%v()", g.Driver.Prefix(), config.FunctionBalloonExpr)
+	g.ChannelExf("setlocal omnifunc=%v%v", g.Driver.Prefix(), config.FunctionComplete)
 	g.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
 	g.ChannelExf("nnoremap <buffer> <silent> gd :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
 	g.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
