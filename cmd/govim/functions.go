@@ -67,8 +67,9 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 			TextDocument: b.ToTextDocumentIdentifier(),
 			Position:     pos.ToPosition(),
 		}
-		v.Logf("calling Hover: %v", pretty.Sprint(params))
+		v.Logf("calling gopls.Hover: %v", pretty.Sprint(params))
 		hovRes, err := v.server.Hover(context.Background(), params)
+		v.Logf("gopls.Hover err: %v, res: %v", err, pretty.Sprint(hovRes))
 		if err != nil {
 			v.ChannelCall("balloon_show", fmt.Sprintf("failed to get hover details: %v", err))
 		} else {
@@ -135,7 +136,10 @@ func (g *govimplugin) handleBufferEvent(b *types.Buffer) error {
 				Text:    string(b.Contents),
 			},
 		}
-		return g.server.DidOpen(context.Background(), params)
+		g.Logf("calling gopls.DidOpen(%v)", pretty.Sprint(params))
+		err := g.server.DidOpen(context.Background(), params)
+		g.Logf("gopls.DidOpen err: %v", err)
+		return err
 	}
 
 	params := &protocol.DidChangeTextDocumentParams{
@@ -149,7 +153,10 @@ func (g *govimplugin) handleBufferEvent(b *types.Buffer) error {
 			},
 		},
 	}
-	return g.server.DidChange(context.Background(), params)
+	g.Logf("calling gopls.DidChange(%v)", pretty.Sprint(params))
+	err := g.server.DidChange(context.Background(), params)
+	g.Logf("gopls.DidChange err: %v", err)
+	return err
 }
 
 func (g *govimplugin) formatCurrentBuffer() error {
@@ -167,8 +174,9 @@ func (g *govimplugin) formatCurrentBuffer() error {
 		params := &protocol.DocumentFormattingParams{
 			TextDocument: b.ToTextDocumentIdentifier(),
 		}
-		g.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
+		g.Logf("calling gopls.Formatting(%v)", pretty.Sprint(params))
 		edits, err = g.server.Formatting(context.Background(), params)
+		g.Logf("gopls.Formatting err: %v; res: %v", err, pretty.Sprint(edits))
 		if err != nil {
 			return fmt.Errorf("failed to call gopls.Formatting: %v", err)
 		}
@@ -176,8 +184,9 @@ func (g *govimplugin) formatCurrentBuffer() error {
 		params := &protocol.CodeActionParams{
 			TextDocument: b.ToTextDocumentIdentifier(),
 		}
-		g.Logf("Calling gopls.CodeAction: %v", pretty.Sprint(params))
+		g.Logf("calling gopls.CodeAction: %v", pretty.Sprint(params))
 		actions, err := g.server.CodeAction(context.Background(), params)
+		g.Logf("gopls.CodeAction err: %v; res: %v", err, pretty.Sprint(actions))
 		if err != nil {
 			return fmt.Errorf("failed to call gopls.CodeAction: %v", err)
 		}
@@ -253,8 +262,9 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 				Position: pos.ToPosition(),
 			},
 		}
-		v.Logf("gopls.Completion(%v)", pretty.Sprint(params))
+		v.Logf("calling gopls.Completion(%v)", pretty.Sprint(params))
 		res, err := v.server.Completion(context.Background(), params)
+		v.Logf("gopls.Completion err: %v; res: %v", err, pretty.Sprint(res))
 		if err != nil {
 			// Work around two bugs:
 			//
@@ -311,7 +321,9 @@ func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
 		TextDocument: cb.ToTextDocumentIdentifier(),
 		Position:     pos.ToPosition(),
 	}
+	v.Logf("calling gopls.Definition(%v)", pretty.Sprint(params))
 	locs, err := v.server.Definition(context.Background(), params)
+	v.Logf("gopls.Definition err: %v; res: %v", err, pretty.Sprint(locs))
 	if err != nil {
 		return fmt.Errorf("failed to call gopls.Definition: %v\nparams were: %v", err, pretty.Sprint(params))
 	}
