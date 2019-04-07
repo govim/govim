@@ -185,8 +185,9 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 			RootURI: string(span.FileURI(wd)),
 		},
 	}
-	g.Logf("calling protocol.Initialize(%v)", pretty.Sprint(initParams))
+	g.Logf("calling gopls.Initialize(%v)", pretty.Sprint(initParams))
 	initRes, err := server.Initialize(context.Background(), initParams)
+	g.Logf("gopls.Initialize err: %v; res: %v", err, pretty.Sprint(initRes))
 	if err != nil {
 		return fmt.Errorf("failed to initialise gopls: %v", err)
 	}
