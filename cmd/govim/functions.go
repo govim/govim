@@ -290,17 +290,7 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 		}
 		res, err := v.server.Completion(context.Background(), params)
 		if err != nil {
-			// Work around two bugs:
-			//
-			// https://github.com/golang/go/issues/31301
-			// https://github.com/vim/vim/issues/4218
-			//
-			// Ideally we would return an error here because the gopls server should
-			// not return an error if there are simply no results. Equally if there
-			// is an error (which will be thrown on the Vim side) Vim should not try
-			// to call this function again
-			v.ChannelEx(`echom "No completion results"`)
-			return -3, nil
+			return nil, fmt.Errorf("called to gopls.Completion failed: %v", err)
 		}
 
 		v.lastCompleteResults = res
