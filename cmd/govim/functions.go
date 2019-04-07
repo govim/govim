@@ -160,6 +160,8 @@ func (g *govimplugin) formatCurrentBuffer() error {
 	var edits []protocol.TextEdit
 
 	switch config.FormatOnSave(tool) {
+	case config.FormatOnSaveNone:
+		return nil
 	case config.FormatOnSaveGoFmt:
 		params := &protocol.DocumentFormattingParams{
 			TextDocument: b.ToTextDocumentIdentifier(),
