@@ -1,16 +1,29 @@
-# gofmt
-cp file.go.orig file.go
-vim ex 'let g:govim_format_on_save=\"gofmt\"'
-vim ex 'e! file.go'
-vim ex 'w'
-cmp file.go file.go.formatted
+# Verify various configurations of g:govim_format_on_save
+
+# Ensure the default is goimports
+vim expr 'g:govim_format_on_save'
+stdout '^"goimports"$'
 
 # goimports
 cp file.go.orig file.go
 vim ex 'let g:govim_format_on_save=\"goimports\"'
 vim ex 'e! file.go'
 vim ex 'w'
-cmp file.go file.go.formatted
+cmp file.go file.go.goimports
+
+# gofmt
+cp file.go.orig file.go
+vim ex 'let g:govim_format_on_save=\"gofmt\"'
+vim ex 'e! file.go'
+vim ex 'w'
+cmp file.go file.go.gofmt
+
+# none
+cp file.go.orig file.go
+vim ex 'let g:govim_format_on_save=\"\"'
+vim ex 'e! file.go'
+vim ex 'w'
+cmp file.go file.go.orig
 
 -- go.mod --
 module mod.com
@@ -19,10 +32,21 @@ module mod.com
 package blah
 
 const ( x = 5
+y = os.PathSeparator
  )
--- file.go.formatted --
+-- file.go.goimports --
+package blah
+
+import "os"
+
+const (
+	x = 5
+	y = os.PathSeparator
+)
+-- file.go.gofmt --
 package blah
 
 const (
 	x = 5
+	y = os.PathSeparator
 )

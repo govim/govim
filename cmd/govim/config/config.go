@@ -28,6 +28,7 @@ const (
 type FormatOnSave string
 
 const (
+	FormatOnSaveNone      FormatOnSave = ""
 	FormatOnSaveGoFmt     FormatOnSave = "gofmt"
 	FormatOnSaveGoImports FormatOnSave = "goimports"
 )
