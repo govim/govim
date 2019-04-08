@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/kr/pretty"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 )
 
@@ -14,8 +15,9 @@ func (g *govimplugin) ShowMessage(context.Context, *protocol.ShowMessageParams) 
 func (g *govimplugin) ShowMessageRequest(context.Context, *protocol.ShowMessageRequestParams) (*protocol.MessageActionItem, error) {
 	panic("not implemented yet")
 }
-func (g *govimplugin) LogMessage(context.Context, *protocol.LogMessageParams) error {
-	panic("not implemented yet")
+func (g *govimplugin) LogMessage(ctxt context.Context, params *protocol.LogMessageParams) error {
+	g.logGoplsClientf("LogMessage callback: %v", pretty.Sprint(params))
+	return nil
 }
 func (g *govimplugin) Telemetry(context.Context, interface{}) error {
 	panic("not implemented yet")
@@ -37,7 +39,7 @@ func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditPar
 }
 
 func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.PublishDiagnosticsParams) error {
-	g.logGoplsClientf("PublishDiagnostics callback: %v", params)
+	g.logGoplsClientf("PublishDiagnostics callback: %v", pretty.Sprint(params))
 	return nil
 }
 

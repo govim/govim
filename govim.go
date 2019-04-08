@@ -34,7 +34,7 @@ type callbackResp struct {
 }
 
 type Plugin interface {
-	Init(Govim) error
+	Init(Govim, chan error) error
 	Shutdown() error
 }
 
@@ -106,7 +106,8 @@ type govimImpl struct {
 	funcHandlers     map[string]interface{}
 	funcHandlersLock sync.Mutex
 
-	plugin Plugin
+	plugin      Plugin
+	pluginErrCh chan error
 
 	flushEvents chan struct{}
 
@@ -174,9 +175,10 @@ func (g *govimImpl) load() error {
 	}
 
 	if g.plugin != nil {
+		g.pluginErrCh = make(chan error)
 		var err error
 		perr := g.DoProto(func() {
-			err = g.plugin.Init(g)
+			err = g.plugin.Init(g, g.pluginErrCh)
 		})
 		if perr != nil {
 			return perr
@@ -184,6 +186,10 @@ func (g *govimImpl) load() error {
 		if err != nil {
 			return err
 		}
+
+		go func() {
+			g.tomb.Kill(<-g.pluginErrCh)
+		}()
 	}
 
 	select {
@@ -232,6 +238,9 @@ func (g *govimImpl) Run() error {
 	}
 	if g.plugin != nil {
 		return g.plugin.Shutdown()
+	}
+	if g.pluginErrCh != nil {
+		close(g.pluginErrCh)
 	}
 	return nil
 }

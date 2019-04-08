@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -132,7 +133,7 @@ func newplugin(goplspath string) *govimplugin {
 	return res
 }
 
-func (g *govimplugin) Init(gg govim.Govim) error {
+func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.Driver.Govim = gg
 	g.vimstate.Driver.Govim = gg.Sync()
 	g.ChannelEx(`augroup govim`)
@@ -150,11 +151,25 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
 	gopls := exec.Command(g.goplspath)
-	out, err := gopls.StdoutPipe()
+	stderr, err := gopls.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stderr pipe for gopls: %v", err)
+	}
+	g.tomb.Go(func() error {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			g.Logf("gopls stderr: %v", scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			return fmt.Errorf("reading standard input: %v", err)
+		}
+		return nil
+	})
+	stdout, err := gopls.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdout pipe for gopls: %v", err)
 	}
-	in, err := gopls.StdinPipe()
+	stdin, err := gopls.StdinPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdin pipe for gopls: %v", err)
 	}
@@ -164,11 +179,12 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 	g.tomb.Go(func() (err error) {
 		if err = gopls.Wait(); err != nil {
 			err = fmt.Errorf("got error running gopls: %v", err)
+			errCh <- err
 		}
 		return
 	})
 
-	stream := jsonrpc2.NewHeaderStream(out, in)
+	stream := jsonrpc2.NewHeaderStream(stdout, stdin)
 	ctxt, cancel := context.WithCancel(context.Background())
 	conn, server, _ := protocol.NewClient(stream, g)
 	go conn.Run(ctxt)
