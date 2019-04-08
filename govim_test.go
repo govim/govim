@@ -6,7 +6,9 @@ package govim_test
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,6 +20,10 @@ import (
 	"github.com/myitcv/govim/internal/plugin"
 	"github.com/myitcv/govim/testdriver"
 	"github.com/rogpeppe/go-internal/testscript"
+)
+
+var (
+	fLogGovim = flag.Bool("govimLog", false, "whether to log govim activity")
 )
 
 func TestMain(m *testing.M) {
@@ -39,6 +45,14 @@ func TestScripts(t *testing.T) {
 				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), e, errCh, d)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
+				}
+				if *fLogGovim {
+					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
+					if err != nil {
+						t.Fatalf("failed to create govim log file: %v", err)
+					}
+					td.Log = tf
+					t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
 				}
 				if err := td.Run(); err != nil {
 					td.Close()
