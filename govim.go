@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -154,7 +156,6 @@ func (g *govimImpl) Sync() Govim {
 }
 
 func (g *govimImpl) load() error {
-	// g.sendJSONMsg("call", "s:something", []interface{}{}, 15)
 	g.funcHandlersLock.Lock()
 	g.funcHandlers[sysFuncOnViewportChange] = internalFunction(g.onViewportChange)
 	g.funcHandlersLock.Unlock()
@@ -167,6 +168,10 @@ func (g *govimImpl) load() error {
 		}
 	}
 	close(g.loaded)
+
+	if fi, ok := g.log.(*os.File); ok {
+		g.ChannelEx(`echom "govim logfile: ` + fi.Name() + `"`)
+	}
 
 	if g.plugin != nil {
 		var err error
@@ -249,7 +254,7 @@ func (g *govimImpl) run() {
 	for {
 		g.Logf("run: waiting to read a JSON message\n")
 		id, msg := g.readJSONMsg()
-		g.Logf("run: got a message: %v: %s\n", id, msg)
+		g.logVimEventf("recvJSONMsg: %s\n", msg)
 		args := g.parseJSONArgSlice(msg)
 		typ := g.parseString(args[0])
 		args = args[1:]
@@ -264,7 +269,6 @@ func (g *govimImpl) run() {
 			if len(resp) == 2 {
 				val = resp[1]
 			}
-			g.Logf("got a callback response: [%v, %s]\n", id, args[1])
 			g.callbackRespsLock.Lock()
 			ch, ok := g.callbackResps[id]
 			delete(g.callbackResps, id)
@@ -287,7 +291,6 @@ func (g *govimImpl) run() {
 		case "function":
 			fname := g.parseString(args[0])
 			fargs := args[1:]
-			g.Logf("got a function call: %v(%s)\n", fname, fargs)
 			fname, f := g.funcHandler(fname)
 			var line1, line2 int
 			var call func() (interface{}, error)
@@ -423,13 +426,11 @@ func (g *govimImpl) runEventQ(q *queue.Queue) {
 
 func (g *govimImpl) DefineFunction(name string, params []string, f VimFunction) error {
 	<-g.loaded
-	g.Logf("DefineFunction: %v, %v\n", name, params)
 	return g.defineFunction(false, name, params, f)
 }
 
 func (g *govimImpl) DefineRangeFunction(name string, params []string, f VimRangeFunction) error {
 	<-g.loaded
-	g.Logf("DefineRangeFunction: %v, %v\n", name, params)
 	return g.defineFunction(true, name, params, f)
 }
 
@@ -711,7 +712,12 @@ func (g *govimImpl) parseInt(m json.RawMessage) int {
 func (g *govimImpl) sendJSONMsg(p1, p2 interface{}, ps ...interface{}) {
 	msg := []interface{}{p1, p2}
 	msg = append(msg, ps...)
-	g.Logf("sendJSONMsg: %v\n", msg)
+	// TODO could use a multi-writer here
+	logMsg, err := json.Marshal(msg)
+	if err != nil {
+		g.errProto("failed to create log message: %v", err)
+	}
+	g.logVimEventf("sendJSONMsg: %s\n", logMsg)
 	if err := g.out.Encode(msg); err != nil {
 		g.errProto("failed to send msg: %v", err)
 	}
@@ -741,12 +747,18 @@ func (g *govimImpl) Errorf(format string, args ...interface{}) {
 	g.tomb.Kill(fmt.Errorf(format+"\n%s", args...))
 }
 
+func (g *govimImpl) logVimEventf(format string, args ...interface{}) {
+	g.Logf("vim start =======================\n"+format+"vim end =======================\n", args...)
+}
+
 func (g *govimImpl) Logf(format string, args ...interface{}) {
 	s := fmt.Sprintf(format, args...)
-	if s[len(s)-1] != '\n' {
-		s += "\n"
+	if s[len(s)-1] == '\n' {
+		s = s[:len(s)-1]
 	}
-	fmt.Fprint(g.log, s)
+	t := time.Now().Format("2006-01-02T15:04:05.000000")
+	s = strings.ReplaceAll(s, "\n", "\n"+t+": ")
+	fmt.Fprint(g.log, t+": "+s+"\n")
 }
 
 type errProto struct {

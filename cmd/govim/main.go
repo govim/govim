@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/jsonrpc2"
@@ -177,7 +176,10 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 	g.gopls = gopls.Process
 	g.goplsConn = conn
 	g.goplsCancel = cancel
-	g.server = server
+	g.server = loggingGoplsServer{
+		u: server,
+		g: g,
+	}
 
 	wd := g.ParseString(g.ChannelCall("getcwd", -1))
 	initParams := &protocol.InitializeParams{
@@ -185,13 +187,9 @@ func (g *govimplugin) Init(gg govim.Govim) error {
 			RootURI: string(span.FileURI(wd)),
 		},
 	}
-	g.Logf("calling gopls.Initialize(%v)", pretty.Sprint(initParams))
-	initRes, err := server.Initialize(context.Background(), initParams)
-	g.Logf("gopls.Initialize err: %v; res: %v", err, pretty.Sprint(initRes))
-	if err != nil {
+	if _, err := g.server.Initialize(context.Background(), initParams); err != nil {
 		return fmt.Errorf("failed to initialise gopls: %v", err)
 	}
-	g.Logf("gopls init complete: %v", pretty.Sprint(initRes.Capabilities))
 
 	return nil
 }

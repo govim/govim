@@ -1,3 +1,5 @@
+# Test that basic functions work
+
 vim normal '\"=GOVIMHello()\u000dp'
 vim ex 'w test'
 cmp test test.golden

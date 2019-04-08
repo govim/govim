@@ -1,3 +1,5 @@
+# Test that the vim sidecar ex command can be used to make feedkeys calls
+
 # If we need special keys in feedkeys we need to use ex call
 vim ex 'call feedkeys(\"i1234\\<ESC>\")'
 vim ex 'w test'

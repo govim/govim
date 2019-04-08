@@ -1,3 +1,5 @@
+# Test that basic range functions work
+
 vim ex 'r input | 0d_'
 vim ex 'w output'
 cmp output input

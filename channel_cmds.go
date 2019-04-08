@@ -39,7 +39,6 @@ const channelRedrawErrMsg = "failed to redraw (force = %v) in Vim: %v"
 
 func (g *govimImpl) channelRedrawImpl(f chanErrHandler, force bool) error {
 	<-g.loaded
-	g.Logf("ChannelRedraw: %v\n", force)
 	var sForce string
 	if force {
 		sForce = "force"
@@ -62,7 +61,6 @@ const channelExErrMsg = "failed to ex(%v) in Vim: %v"
 
 func (g *govimImpl) channelExImpl(f chanErrHandler, expr string) error {
 	<-g.loaded
-	g.Logf("ChannelEx: %v\n", expr)
 	var err error
 	var ch chan callbackResp
 	err = g.DoProto(func() {
@@ -81,7 +79,6 @@ const channelNormalErrMsg = "failed to normal(%v) in Vim: %v"
 
 func (g *govimImpl) channelNormalImpl(f chanErrHandler, expr string) error {
 	<-g.loaded
-	g.Logf("ChannelNormal: %v\n", expr)
 	var err error
 	var ch chan callbackResp
 	err = g.DoProto(func() {
@@ -100,7 +97,6 @@ const channelExprErrMsg = "failed to expr(%v) in Vim: %v"
 
 func (g *govimImpl) channelExprImpl(f chanValueErrHandler, expr string) (json.RawMessage, error) {
 	<-g.loaded
-	g.Logf("ChannelExpr: %v\n", expr)
 	var err error
 	var ch chan callbackResp
 	err = g.DoProto(func() {
@@ -120,7 +116,6 @@ const channelCallErrMsg = "failed to call(%v) in Vim: %v"
 func (g *govimImpl) channelCallImpl(f chanValueErrHandler, fn string, args ...interface{}) (json.RawMessage, error) {
 	<-g.loaded
 	args = append([]interface{}{fn}, args...)
-	g.Logf("ChannelCall: %v\n", args)
 	var err error
 	var ch chan callbackResp
 	err = g.DoProto(func() {
@@ -135,7 +130,7 @@ func (g *govimImpl) DoProto(f func()) (err error) {
 			switch r := r.(type) {
 			case errProto:
 				if r.underlying == io.EOF {
-					g.Logf("closing connection\n")
+					g.logVimEventf("closing connection\n")
 					return
 				}
 				err = r

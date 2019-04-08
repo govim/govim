@@ -1,3 +1,5 @@
+# Test that basic functions work
+
 # just var args
 vim call HelloNil
 cmp stdout test.golden

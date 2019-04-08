@@ -1,3 +1,9 @@
+# Test that our workaround for gopls incorrectly returning an error when there are no
+# completions results has done its job (of working around the bug)
+#
+# The fix in 4484754fb9ffd26fa2f1dedd8dce9e3656135b3d and this test should be reverted
+# when https://github.com/golang/go/issues/31301 is addressed.
+
 vim ex 'e main.go'
 vim ex 'call cursor(5,1)'
 vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\", \"x\")'
