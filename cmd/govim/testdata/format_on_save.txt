@@ -1,4 +1,4 @@
-# Verify various configurations of g:govim_format_on_save
+# Test that various configurations of g:govim_format_on_save work
 
 # Ensure the default is goimports
 vim expr 'g:govim_format_on_save'

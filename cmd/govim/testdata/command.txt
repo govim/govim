@@ -1,3 +1,5 @@
+# Test that simple command works
+
 # no bang
 vim ex 'GOVIMHello'
 ! stdout .+

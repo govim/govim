@@ -1,4 +1,5 @@
-# Verify thate GOVIMGoToDef works
+# Test that GOVIMGoToDef works
+
 vim ex 'e p.go'
 vim ex 'call cursor(5,16)'
 vim ex 'GOVIMGoToDef'

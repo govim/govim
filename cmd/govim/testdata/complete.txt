@@ -1,3 +1,6 @@
+# Test that ominfunc complete works. This simple test uses an existing file on disk that
+# already has the relevant import required for the completion.
+
 vim ex 'e main.go'
 vim ex 'call cursor(11,16)'
 vim ex 'call feedkeys(\"i\\<C-X>\\<C-O>\\<C-N>\\<C-N>\\<ESC>\", \"x\")'

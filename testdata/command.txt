@@ -1,3 +1,5 @@
+# Test that basic commands work
+
 # no bang
 vim ex 'HelloComm'
 ! stdout .+

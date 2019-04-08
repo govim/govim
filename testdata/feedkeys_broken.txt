@@ -1,3 +1,7 @@
+# Test that verifies the vim sidecar call command cannot be used to
+# make feedkeys calls. Instead, see feedkeys_working.txt which shows
+# it can be done via the ex command
+
 # We cannot call feedkeys with special keys using call
 vim call feedkeys '["i1234\\<ESC>"]'
 vim ex 'w test'

@@ -37,6 +37,13 @@ func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditPar
 }
 
 func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.PublishDiagnosticsParams) error {
-	g.Logf("PublishDiagnostics callback: %v", params)
+	g.logGoplsClientf("PublishDiagnostics callback: %v", params)
 	return nil
+}
+
+func (g *govimplugin) logGoplsClientf(format string, args ...interface{}) {
+	if format[len(format)-1] != '\n' {
+		format = format + "\n"
+	}
+	g.Logf("gopls client start =======================\n"+format+"gopls client end =======================\n", args...)
 }
