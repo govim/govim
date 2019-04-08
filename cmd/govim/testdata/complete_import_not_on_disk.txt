@@ -1,0 +1,32 @@
+# Test that ominfunc complete works even when the relevant imports/changes
+# are not persisted to disk.
+
+vim ex 'e main.go'
+vim ex 'call setline(3, \"import \\\"fmt\\\"\")'
+errlogmatch -wait 30s 'protocol\.DidChangeTextDocumentParams{\n\S+:\s+Version:\s+1,\n\S+:\s+TextDocumentIdentifier:\s+protocol.TextDocumentIdentifier{URI:"file://'$WORK/main.go
+vim ex 'call setline(6, \"\\tfmt.Pr\")'
+vim ex 'call cursor(6,1)'
+vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\\<C-N>\\<C-N>\\<C-N>\\<ESC>\", \"x\")'
+vim ex 'w'
+cmp main.go main.go.golden
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+// import
+
+func main() {
+	// fmt.Pr
+}
+
+-- main.go.golden --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println
+}
