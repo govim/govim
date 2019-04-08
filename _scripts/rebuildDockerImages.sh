@@ -26,5 +26,5 @@ vbashVersion="$(go list -m -f={{.Version}} github.com/myitcv/vbash)"
 for i in $(echo "$VIM_VERSIONS" | tr ',' '\n')
 do
 	echo docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$GO_VERSION" --build-arg "VIM_VERSION=$i" -t myitcv/govim:${GO_VERSION}_${i} .
-	docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$GO_VERSION" --build-arg "VIM_VERSION=$i" -t myitcv/govim:${GO_VERSION}_${i} .
+	docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$GO_VERSION" --build-arg "VIM_VERSION=$i" -t myitcv/govim:${GO_VERSION}_${i}_v1 .
 done

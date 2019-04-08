@@ -1,4 +1,4 @@
-FROM myitcv/govim:${GO_VERSION}_${VIM_VERSION}
+FROM myitcv/govim:${GO_VERSION}_${VIM_VERSION}_v1
 
 ARG USER
 ARG UID

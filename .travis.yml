@@ -8,8 +8,10 @@ env:
   global:
     - GO111MODULE=on
   matrix:
-    - GO_VERSION=go1.12.2 VIM_VERSION=v8.1.0053
-    - GO_VERSION=go1.12.2 VIM_VERSION=v8.1.1137
+    - GO_VERSION=go1.12.2 VIM_VERSION=v8.1.0053 VIM_COMMAND="vim"
+    - GO_VERSION=go1.12.2 VIM_VERSION=v8.1.0053 VIM_COMMAND="xvfb-run -a gvim -f"
+    - GO_VERSION=go1.12.2 VIM_VERSION=v8.1.1137 VIM_COMMAND="vim"
+    - GO_VERSION=go1.12.2 VIM_VERSION=v8.1.1137 VIM_COMMAND="xvfb-run -a gvim -f"
 
 # Add this before_install until we have a definitive resolution on
 # https://travis-ci.community/t/files-in-checkout-have-eol-changed-from-lf-to-crlf/349/2
@@ -22,7 +24,7 @@ before_install:
 
 before_install:
   - docker --version
-  - docker pull myitcv/govim:${GO_VERSION}_${VIM_VERSION} | tee
+  - docker pull myitcv/govim:${GO_VERSION}_${VIM_VERSION}_v1 | tee
   - cat Dockerfile.user | envsubst '$GO_VERSION,$VIM_VERSION' | docker build -t govim --build-arg USER=$USER --build-arg UID=$UID --build-arg GID=$(id -g $USER) -
 
 script:
