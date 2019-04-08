@@ -116,7 +116,7 @@ func newTestPlugin(d plugin.Driver) *testplugin {
 	return res
 }
 
-func (t *testplugin) Init(g govim.Govim) (err error) {
+func (t *testplugin) Init(g govim.Govim, errCh chan error) (err error) {
 	t.Driver.Govim = g
 	t.testpluginvim.Driver.Govim = g.Sync()
 	t.DefineFunction("HelloNil", nil, t.hello)

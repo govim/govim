@@ -391,9 +391,9 @@ func newSignallingPlugin(g govim.Plugin) signallingPlugin {
 	}
 }
 
-func (s signallingPlugin) Init(d govim.Govim) error {
+func (s signallingPlugin) Init(d govim.Govim, errCh chan error) error {
 	defer close(s.initDone)
-	return s.u.Init(d)
+	return s.u.Init(d, errCh)
 }
 
 func (s signallingPlugin) Shutdown() error {
