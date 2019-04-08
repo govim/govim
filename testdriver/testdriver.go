@@ -27,6 +27,8 @@ type TestDriver struct {
 	driverListener net.Listener
 	govim          govim.Govim
 
+	Log io.Writer
+
 	cmd *exec.Cmd
 
 	name string
@@ -156,7 +158,11 @@ func (d *TestDriver) listenGovim() error {
 	if err != nil {
 		return fmt.Errorf("failed to accept connection on %v: %v", d.govimListener.Addr(), err)
 	}
-	g, err := govim.NewGovim(d.plugin, conn, conn, ioutil.Discard)
+	var log io.Writer = ioutil.Discard
+	if d.Log != nil {
+		log = d.Log
+	}
+	g, err := govim.NewGovim(d.plugin, conn, conn, log)
 	if err != nil {
 		return fmt.Errorf("failed to create govim: %v", err)
 	}
