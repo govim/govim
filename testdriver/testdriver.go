@@ -84,7 +84,13 @@ func NewTestDriver(name string, env *testscript.Env, errCh chan error, plug govi
 		return nil, fmt.Errorf("failed to find local vimrc: %v", err)
 	}
 
-	res.cmd = exec.Command("vim", "-u", vimrc)
+	vimCmd := []string{"vim"}
+	if e := os.Getenv("VIM_COMMAND"); e != "" {
+		vimCmd = strings.Fields(e)
+	}
+	vimCmd = append(vimCmd, "-u", vimrc)
+
+	res.cmd = exec.Command(vimCmd[0], vimCmd[1:]...)
 	res.cmd.Env = env.Vars
 
 	for i := len(env.Vars) - 1; i >= 0; i-- {

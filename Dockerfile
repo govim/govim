@@ -1,7 +1,7 @@
 FROM buildpack-deps:18.04
 
 RUN apt-get update
-RUN apt-get -y install sudo apt-utils git jq curl libncurses5-dev gcc rsync
+RUN apt-get -y install sudo apt-utils git jq curl libncurses5-dev gcc rsync libgtk2.0-dev xvfb
 
 RUN git config --global advice.detachedHead false
 
@@ -20,7 +20,7 @@ RUN cd /tmp && \
   git clone https://github.com/vim/vim && \
   cd vim && \
   git checkout $VIM_VERSION && \
-  ./configure --prefix=/vim --disable-darwin --disable-selinux --disable-netbeans --enable-gui=no && \
+  ./configure --prefix=/vim --enable-gui=gtk2 --disable-darwin --disable-selinux --disable-netbeans && \
   make -j$(nproc --all) install
 
 ENV PATH=/vim/bin:$PATH
