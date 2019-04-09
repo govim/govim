@@ -195,11 +195,14 @@ func (v *vimstate) formatCurrentBuffer() (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to call gopls.CodeAction: %v", err)
 		}
-		want := 1
-		if got := len(actions); want != got {
-			return fmt.Errorf("got %v actions; expected %v", got, want)
+		switch len(actions) {
+		case 0:
+			return nil
+		case 1:
+			edits = (*actions[0].Edit.Changes)[string(b.URI())]
+		default:
+			return fmt.Errorf("don't know how to handle %v actions", len(actions))
 		}
-		edits = (*actions[0].Edit.Changes)[string(b.URI())]
 	default:
 		return fmt.Errorf("unknown format tool specified for %v: %v", config.GlobalFormatOnSave, tool)
 	}
