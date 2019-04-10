@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
@@ -152,8 +156,7 @@ func (g *govimplugin) handleBufferEvent(b *types.Buffer) error {
 	return err
 }
 
-func (g *govimplugin) formatCurrentBuffer() error {
-	var err error
+func (g *govimplugin) formatCurrentBuffer() (err error) {
 	tool := g.ParseString(g.ChannelExpr(config.GlobalFormatOnSave))
 	vp := g.Viewport()
 	b := g.buffers[vp.Current.BufNr]
@@ -187,6 +190,25 @@ func (g *govimplugin) formatCurrentBuffer() error {
 	default:
 		return fmt.Errorf("unknown format tool specified for %v: %v", config.GlobalFormatOnSave, tool)
 	}
+
+	// see :help wundo. The use of wundo! is significant. It first deletes
+	// the temp file we created, but only recreates it if there is something
+	// to write.  This is inherently racey... because theorectically the file
+	// might in the meantime have been created by another instance of
+	// govim.... We reduce that risk using the time above
+	tf, err := ioutil.TempFile("", strconv.FormatInt(time.Now().UnixNano(), 10))
+	if err != nil {
+		return fmt.Errorf("failed to create temp undo file")
+	}
+
+	g.ChannelExf("wundo! %v", tf.Name())
+	defer func() {
+		if _, err := os.Stat(tf.Name()); err != nil {
+			return
+		}
+		g.ChannelExf("silent! rundo %v", tf.Name())
+		err = os.Remove(tf.Name())
+	}()
 
 	preEventIgnore := g.ParseString(g.ChannelExpr("&eventignore"))
 	g.ChannelEx("set eventignore=all")
