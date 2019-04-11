@@ -766,7 +766,7 @@ func (g *govimImpl) Logf(format string, args ...interface{}) {
 		s = s[:len(s)-1]
 	}
 	t := time.Now().Format("2006-01-02T15:04:05.000000")
-	s = strings.ReplaceAll(s, "\n", "\n"+t+": ")
+	s = strings.Replace(s, "\n", "\n"+t+": ", -1)
 	fmt.Fprint(g.log, t+": "+s+"\n")
 }
 
