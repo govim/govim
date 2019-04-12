@@ -14,10 +14,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/kr/pty"
 	"github.com/myitcv/govim"
 	"github.com/rogpeppe/go-internal/testscript"
+	"gopkg.in/tomb.v2"
 )
 
 // TODO - this code is a mess and needs to be fixed
@@ -43,10 +45,13 @@ type TestDriver struct {
 	doneQuitGovim  chan bool
 	doneQuitDriver chan bool
 
-	errCh chan error
+	tomb tomb.Tomb
+
+	closeLock sync.Mutex
+	closed    bool
 }
 
-func NewTestDriver(name string, env *testscript.Env, errCh chan error, plug govim.Plugin) (*TestDriver, error) {
+func NewTestDriver(name string, env *testscript.Env, plug govim.Plugin) (*TestDriver, error) {
 	res := &TestDriver{
 		quitVim:    make(chan bool),
 		quitGovim:  make(chan bool),
@@ -59,16 +64,14 @@ func NewTestDriver(name string, env *testscript.Env, errCh chan error, plug govi
 		name: name,
 
 		plugin: newSignallingPlugin(plug),
-
-		errCh: errCh,
 	}
 	gl, err := net.Listen("tcp4", "localhost:0")
 	if err != nil {
-		res.errorf("failed to create listener for govim: %v", err)
+		return nil, fmt.Errorf("failed to create listener for govim: %v", err)
 	}
 	dl, err := net.Listen("tcp4", ":0")
 	if err != nil {
-		res.errorf("failed to create listener for driver: %v", err)
+		return nil, fmt.Errorf("failed to create listener for driver: %v", err)
 	}
 
 	res.govimListener = gl
@@ -115,54 +118,102 @@ func findLocalVimrc() (string, error) {
 	return filepath.Join(dir, "test.vim"), nil
 }
 
-func (d *TestDriver) Run() (err error) {
-	go d.runVim()
-	err = d.listenGovim()
-	<-d.plugin.initDone
-	return
+func (d *TestDriver) Run() {
+	d.tombgo(d.runVim)
+	d.tombgo(d.listenGovim)
+	select {
+	case <-d.tomb.Dying():
+	case <-d.plugin.initDone:
+	}
 }
 
-func (d *TestDriver) runVim() {
+func (d *TestDriver) Wait() error {
+	return d.tomb.Wait()
+}
+
+func (d *TestDriver) runVim() error {
 	thepty, err := pty.Start(d.cmd)
 	if err != nil {
-		d.errorf("failed to start %v: %v", strings.Join(d.cmd.Args, " "), err)
+		close(d.doneQuitVim)
+		return fmt.Errorf("failed to start %v: %v", strings.Join(d.cmd.Args, " "), err)
 	}
-	go func() {
+	d.tombgo(func() error {
+		defer func() {
+			thepty.Close()
+			close(d.doneQuitVim)
+		}()
 		if err := d.cmd.Wait(); err != nil {
 			select {
 			case <-d.quitVim:
 			default:
-				d.errorf("vim exited: %v", err)
+				return fmt.Errorf("vim exited: %v", err)
 			}
 		}
-		thepty.Close()
-		close(d.doneQuitVim)
-	}()
+		return nil
+	})
 	io.Copy(ioutil.Discard, thepty)
+	return nil
 }
 
 func (d *TestDriver) Close() {
-	close(d.quitVim)
-	d.cmd.Process.Kill()
-	<-d.doneQuitVim
-	close(d.quitGovim)
-	close(d.quitDriver)
-	d.govimListener.Close()
-	d.driverListener.Close()
-	<-d.doneQuitGovim
-	<-d.doneQuitDriver
+	d.closeLock.Lock()
+	if d.closed {
+		d.closeLock.Unlock()
+		return
+	}
+	d.closed = true
+	d.closeLock.Unlock()
+	select {
+	case <-d.doneQuitVim:
+	default:
+		close(d.quitVim)
+		d.cmd.Process.Kill()
+		<-d.doneQuitVim
+	}
+	select {
+	case <-d.doneQuitGovim:
+	default:
+		close(d.quitGovim)
+		d.govimListener.Close()
+		<-d.doneQuitGovim
+	}
+	select {
+	case <-d.doneQuitDriver:
+	default:
+		close(d.quitDriver)
+		d.driverListener.Close()
+		<-d.doneQuitDriver
+	}
+	fmt.Println(">> Close done")
 }
 
-func (d *TestDriver) errorf(format string, args ...interface{}) {
-	err := fmt.Errorf(d.name+": "+format, args...)
-	fmt.Println(err)
-	d.errCh <- err
+func (d *TestDriver) tombgo(f func() error) {
+	d.tomb.Go(func() error {
+		err := f()
+		if err != nil {
+			fmt.Printf(">>> %v\n", err)
+			d.Close()
+		}
+		return err
+	})
 }
 
 func (d *TestDriver) listenGovim() error {
+	good := false
+	defer func() {
+		if !good {
+			close(d.doneQuitGovim)
+			close(d.doneQuitDriver)
+		}
+	}()
 	conn, err := d.govimListener.Accept()
 	if err != nil {
-		return fmt.Errorf("failed to accept connection on %v: %v", d.govimListener.Addr(), err)
+		select {
+		case <-d.quitGovim:
+			return nil
+		default:
+			return fmt.Errorf("failed to accept connection on %v: %v", d.govimListener.Addr(), err)
+		}
 	}
 	var log io.Writer = ioutil.Discard
 	if d.Log != nil {
@@ -172,26 +223,28 @@ func (d *TestDriver) listenGovim() error {
 	if err != nil {
 		return fmt.Errorf("failed to create govim: %v", err)
 	}
+	good = true
 	d.govim = g
-
-	go d.listenDriver()
-	go d.runGovim()
+	d.tombgo(d.listenDriver)
+	d.tombgo(d.runGovim)
 
 	return nil
 }
 
-func (d *TestDriver) runGovim() {
+func (d *TestDriver) runGovim() error {
 	if err := d.govim.Run(); err != nil {
 		select {
 		case <-d.quitGovim:
 		default:
-			d.errorf("govim Run failed: %v", err)
+			return fmt.Errorf("govim Run failed: %v", err)
 		}
 	}
 	close(d.doneQuitGovim)
+	return nil
 }
 
-func (d *TestDriver) listenDriver() {
+func (d *TestDriver) listenDriver() error {
+	defer close(d.doneQuitDriver)
 	err := d.govim.DoProto(func() {
 	Accept:
 		for {
@@ -201,13 +254,13 @@ func (d *TestDriver) listenDriver() {
 				case <-d.quitDriver:
 					break Accept
 				default:
-					d.errorf("failed to accept connection to driver on %v: %v", d.driverListener.Addr(), err)
+					panic(fmt.Errorf("failed to accept connection to driver on %v: %v", d.driverListener.Addr(), err))
 				}
 			}
 			dec := json.NewDecoder(conn)
 			var args []interface{}
 			if err := dec.Decode(&args); err != nil {
-				d.errorf("failed to read command for driver: %v", err)
+				panic(fmt.Errorf("failed to read command for driver: %v", err))
 			}
 			cmd := args[0]
 			res := []interface{}{""}
@@ -242,20 +295,20 @@ func (d *TestDriver) listenDriver() {
 				resp, err := d.govim.ChannelCall(fn, args[2:]...)
 				add(err, resp)
 			default:
-				d.errorf("don't yet know how to handle %v", cmd)
+				panic(fmt.Errorf("don't yet know how to handle %v", cmd))
 			}
 			enc := json.NewEncoder(conn)
 			if err := enc.Encode(res); err != nil {
-				d.errorf("failed to encode response %v: %v", res, err)
+				panic(fmt.Errorf("failed to encode response %v: %v", res, err))
 			}
 			conn.Close()
 		}
 	})
 
 	if err != nil {
-		d.errorf("%v", err)
+		return fmt.Errorf("%v", err)
 	}
-	close(d.doneQuitDriver)
+	return nil
 }
 
 // Vim is a sidecar that effectively drives Vim via a simple JSON-based
