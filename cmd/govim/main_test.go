@@ -33,8 +33,8 @@ func TestMain(m *testing.M) {
 }
 
 func TestScripts(t *testing.T) {
-	var wg sync.WaitGroup
-	errCh := make(chan error)
+	var waitLock sync.Mutex
+	var waitList []func() error
 
 	td, err := ioutil.TempDir("", "gobin-gopls-installdir*")
 	if err != nil {
@@ -59,9 +59,8 @@ func TestScripts(t *testing.T) {
 					"PLUGIN_PATH="+plugpath,
 					"CURRENT_GOPATH="+os.Getenv("GOPATH"),
 				)
-				wg.Add(1)
 				d := newplugin(string(goplspath))
-				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), e, errCh, d)
+				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), e, d)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
@@ -73,41 +72,41 @@ func TestScripts(t *testing.T) {
 					td.Log = tf
 					t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
 				}
-				if err := td.Run(); err != nil {
-					td.Close()
-					wg.Done()
-					return err
-				}
+				td.Run()
+				waitLock.Lock()
+				waitList = append(waitList, td.Wait)
+				waitLock.Unlock()
 				e.Defer(func() {
 					td.Close()
-					wg.Done()
 				})
 				return nil
 			},
 		})
 	})
 
-	errsDone := make(chan bool)
+	var errLock sync.Mutex
+	var errors []error
 
-	var errs []error
+	var wg sync.WaitGroup
 
-	go func() {
-		for err, ok := <-errCh; ok; {
-			errs = append(errs, err)
-		}
-		close(errsDone)
-	}()
+	for _, w := range waitList {
+		w := w
+		wg.Add(1)
+		go func() {
+			if err := w(); err != nil {
+				errLock.Lock()
+				errors = append(errors, err)
+				errLock.Unlock()
+			}
+			wg.Done()
+		}()
+	}
 
-	go func() {
-		wg.Wait()
-		close(errCh)
-	}()
+	wg.Wait()
 
-	<-errsDone
-
-	if len(errs) > 0 {
+	if len(errors) > 0 {
 		var msgs []string
-		for _, e := range errs {
+		for _, e := range errors {
 			msgs = append(msgs, e.Error())
 		}
 		t.Fatalf("got some errors:\n%v\n", strings.Join(msgs, "\n"))

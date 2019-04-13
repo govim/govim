@@ -12,13 +12,13 @@ import (
 // fetchCurrentBufferInfo is a helper function to snapshot the current buffer
 // information from Vim. This helper method should only be used with methods
 // responsible for updating d.buffers
-func (v *vimstate) fetchCurrentBufferInfo() (*types.Buffer, error) {
+func (g *govimplugin) fetchCurrentBufferInfo() (*types.Buffer, error) {
 	var buf struct {
 		Num      int
 		Name     string
 		Contents string
 	}
-	expr := v.ChannelExpr(`{"Num": bufnr(""), "Name": expand('%:p'), "Contents": join(getline(0, "$"), "\n")}`)
+	expr := g.ChannelExpr(`{"Num": bufnr(""), "Name": expand('%:p'), "Contents": join(getline(0, "$"), "\n")}`)
 	if err := json.Unmarshal(expr, &buf); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal current buffer info: %v", err)
 	}

@@ -263,7 +263,7 @@ func (g *govimImpl) run() {
 	for {
 		g.Logf("run: waiting to read a JSON message\n")
 		id, msg := g.readJSONMsg()
-		g.logVimEventf("recvJSONMsg: %s\n", msg)
+		g.logVimEventf("recvJSONMsg: [%v] %s\n", id, msg)
 		args := g.parseJSONArgSlice(msg)
 		typ := g.parseString(args[0])
 		args = args[1:]

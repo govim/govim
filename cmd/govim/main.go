@@ -141,7 +141,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineFunction(string(config.FunctionHello), []string{}, g.hello)
 	g.DefineCommand(string(config.CommandHello), g.helloComm)
 	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.balloonExpr)
-	g.DefineAutoCommand("", govim.Events{govim.EventBufReadPost, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.bufReadPost)
+	g.DefineAutoCommand("", govim.Events{govim.EventBufRead, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.bufReadPost)
 	g.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, g.bufTextChanged)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, g.formatCurrentBuffer)
 	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.complete)
