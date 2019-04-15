@@ -39,7 +39,7 @@ func (g *govimImpl) ToggleOnViewportChange() {
 	select {
 	case <-g.tomb.Dying():
 		// we are already dying, nothing to do
-	case resp := <-g.callCallback("toggleUpdateViewport"):
+	case resp := <-g.unscheduledCallCallback("toggleUpdateViewport"):
 		if resp.errString != "" {
 			g.errProto("failed to toggle OnViewportChange: %v", resp.errString)
 		}
