@@ -1,0 +1,19 @@
+# Test that basic functions work
+
+vim ex 'e main.go'
+vim ex 'call cursor(6,6)'
+vim expr 'GOVIMHover()'
+stdout '^\Q"func fmt.Println(a ...interface{}) (n int, err error)"\E$'
+! stderr .+
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello, world")
+}

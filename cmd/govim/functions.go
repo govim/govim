@@ -412,3 +412,24 @@ func (v *vimstate) loadLocation(loc protocol.Location) error {
 
 	return nil
 }
+
+func (v *vimstate) hover(args ...json.RawMessage) (interface{}, error) {
+	b, pos, err := v.cursorPos()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current position: %v", err)
+	}
+	params := &protocol.TextDocumentPositionParams{
+		TextDocument: protocol.TextDocumentIdentifier{
+			URI: string(b.URI()),
+		},
+		Position: pos.ToPosition(),
+	}
+	res, err := v.server.Hover(context.Background(), params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get hover details: %v", err)
+	}
+	md := []byte(res.Contents.Value)
+	plain := string(blackfriday.Run(md, blackfriday.WithRenderer(plainMarkdown{})))
+	plain = strings.TrimSpace(plain)
+	return plain, nil
+}

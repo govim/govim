@@ -23,6 +23,7 @@ const (
 	FunctionBalloonExpr Function = "BalloonExpr"
 	FunctionComplete    Function = "Complete"
 	FunctionHello       Function = "Hello"
+	FunctionHover       Function = "Hover"
 )
 
 type FormatOnSave string
