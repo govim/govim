@@ -1,0 +1,41 @@
+# Test that GOVIMGoToDef works on flag.ErrHelp
+
+# os.Exit
+vim ex 'e main.go'
+vim ex 'call cursor(12,6)'
+vim ex 'GOVIMGoToDef'
+vim expr 'bufname(\"\")'
+stdout 'src[/\\]os[/\\]proc.go"$'
+! stderr .+
+
+# flag.ErrHelp
+vim ex 'e main.go'
+vim ex 'call cursor(13,12)'
+vim ex 'GOVIMGoToDef'
+vim expr 'bufname(\"\")'
+stdout 'src[/\\]flag[/\\]flag.go"$'
+! stderr .+
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import (
+	"flag"
+	"os"
+)
+
+func main() {
+	var err error
+	switch err {
+	case nil:
+		os.Exit(0)
+	case flag.ErrHelp:
+		os.Exit(2)
+	default:
+		os.Exit(1)
+	}
+}
+
