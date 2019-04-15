@@ -184,7 +184,6 @@ func (d *TestDriver) Close() {
 		d.driverListener.Close()
 		<-d.doneQuitDriver
 	}
-	fmt.Println(">> Close done")
 }
 
 func (d *TestDriver) tombgo(f func() error) {
