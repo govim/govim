@@ -89,45 +89,45 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 	return "", nil
 }
 
-func (g *govimplugin) bufReadPost() error {
+func (v *vimstate) bufReadPost() error {
 	// Setup buffer-local mappings and settings
-	g.ChannelExf("setlocal balloonexpr=%v%v()", g.Driver.Prefix(), config.FunctionBalloonExpr)
-	g.ChannelExf("setlocal omnifunc=%v%v", g.Driver.Prefix(), config.FunctionComplete)
-	g.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
-	g.ChannelExf("nnoremap <buffer> <silent> gd :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
-	g.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
-	g.ChannelExf("nnoremap <buffer> <silent> <C-LeftMouse> <LeftMouse>:%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
-	g.ChannelExf("nnoremap <buffer> <silent> g<LeftMouse> <LeftMouse>:%v%v<cr>", g.Driver.Prefix(), config.CommandGoToDef)
-	g.ChannelExf("nnoremap <buffer> <silent> <C-t> :%v%v<cr>", g.Driver.Prefix(), config.CommandGoToPrevDef)
+	v.ChannelExf("setlocal balloonexpr=%v%v()", v.Driver.Prefix(), config.FunctionBalloonExpr)
+	v.ChannelExf("setlocal omnifunc=%v%v", v.Driver.Prefix(), config.FunctionComplete)
+	v.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+	v.ChannelExf("nnoremap <buffer> <silent> gd :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+	v.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+	v.ChannelExf("nnoremap <buffer> <silent> <C-LeftMouse> <LeftMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+	v.ChannelExf("nnoremap <buffer> <silent> g<LeftMouse> <LeftMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+	v.ChannelExf("nnoremap <buffer> <silent> <C-t> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToPrevDef)
 
-	b, err := g.fetchCurrentBufferInfo()
+	b, err := v.fetchCurrentBufferInfo()
 	if err != nil {
 		return err
 	}
-	if cb, ok := g.buffers[b.Num]; ok {
-		// reload of buffer, e.g. e!
+	if cb, ok := v.buffers[b.Num]; ok {
+		// reload of buffer, e.v. e!
 		b.Version = cb.Version + 1
 	} else {
 		b.Version = 0
 	}
-	return g.handleBufferEvent(b)
+	return v.handleBufferEvent(b)
 }
 
-func (g *govimplugin) bufTextChanged() error {
-	b, err := g.fetchCurrentBufferInfo()
+func (v *vimstate) bufTextChanged() error {
+	b, err := v.fetchCurrentBufferInfo()
 	if err != nil {
 		return err
 	}
-	cb, ok := g.buffers[b.Num]
+	cb, ok := v.buffers[b.Num]
 	if !ok {
 		return fmt.Errorf("have not seen buffer %v (%v) - this should be impossible", b.Num, b.Name)
 	}
 	b.Version = cb.Version + 1
-	return g.handleBufferEvent(b)
+	return v.handleBufferEvent(b)
 }
 
-func (g *govimplugin) handleBufferEvent(b *types.Buffer) error {
-	g.buffers[b.Num] = b
+func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
+	v.buffers[b.Num] = b
 
 	if b.Version == 0 {
 		params := &protocol.DidOpenTextDocumentParams{
@@ -137,7 +137,7 @@ func (g *govimplugin) handleBufferEvent(b *types.Buffer) error {
 				Text:    string(b.Contents),
 			},
 		}
-		err := g.server.DidOpen(context.Background(), params)
+		err := v.server.DidOpen(context.Background(), params)
 		return err
 	}
 
@@ -152,14 +152,14 @@ func (g *govimplugin) handleBufferEvent(b *types.Buffer) error {
 			},
 		},
 	}
-	err := g.server.DidChange(context.Background(), params)
+	err := v.server.DidChange(context.Background(), params)
 	return err
 }
 
-func (g *govimplugin) formatCurrentBuffer() (err error) {
-	tool := g.ParseString(g.ChannelExpr(config.GlobalFormatOnSave))
-	vp := g.Viewport()
-	b := g.buffers[vp.Current.BufNr]
+func (v *vimstate) formatCurrentBuffer() (err error) {
+	tool := v.ParseString(v.ChannelExpr(config.GlobalFormatOnSave))
+	vp := v.Viewport()
+	b := v.buffers[vp.Current.BufNr]
 
 	var edits []protocol.TextEdit
 
@@ -170,7 +170,7 @@ func (g *govimplugin) formatCurrentBuffer() (err error) {
 		params := &protocol.DocumentFormattingParams{
 			TextDocument: b.ToTextDocumentIdentifier(),
 		}
-		edits, err = g.server.Formatting(context.Background(), params)
+		edits, err = v.server.Formatting(context.Background(), params)
 		if err != nil {
 			return fmt.Errorf("failed to call gopls.Formatting: %v", err)
 		}
@@ -178,7 +178,7 @@ func (g *govimplugin) formatCurrentBuffer() (err error) {
 		params := &protocol.CodeActionParams{
 			TextDocument: b.ToTextDocumentIdentifier(),
 		}
-		actions, err := g.server.CodeAction(context.Background(), params)
+		actions, err := v.server.CodeAction(context.Background(), params)
 		if err != nil {
 			return fmt.Errorf("failed to call gopls.CodeAction: %v", err)
 		}
@@ -201,20 +201,20 @@ func (g *govimplugin) formatCurrentBuffer() (err error) {
 		return fmt.Errorf("failed to create temp undo file")
 	}
 
-	g.ChannelExf("wundo! %v", tf.Name())
+	v.ChannelExf("wundo! %v", tf.Name())
 	defer func() {
 		if _, err := os.Stat(tf.Name()); err != nil {
 			return
 		}
-		g.ChannelExf("silent! rundo %v", tf.Name())
+		v.ChannelExf("silent! rundo %v", tf.Name())
 		err = os.Remove(tf.Name())
 	}()
 
-	preEventIgnore := g.ParseString(g.ChannelExpr("&eventignore"))
-	g.ChannelEx("set eventignore=all")
-	defer g.ChannelExf("set eventignore=%v", preEventIgnore)
-	g.ToggleOnViewportChange()
-	defer g.ToggleOnViewportChange()
+	preEventIgnore := v.ParseString(v.ChannelExpr("&eventignore"))
+	v.ChannelEx("set eventignore=all")
+	defer v.ChannelExf("set eventignore=%v", preEventIgnore)
+	v.ToggleOnViewportChange()
+	defer v.ToggleOnViewportChange()
 	for ie := len(edits) - 1; ie >= 0; ie-- {
 		e := edits[ie]
 		start, err := types.PointFromPosition(b, e.Range.Start)
@@ -236,7 +236,7 @@ func (g *govimplugin) formatCurrentBuffer() (err error) {
 				return fmt.Errorf("saw an edit where start line != end line with replacement text %q; We can't currently handle this", e.NewText)
 			}
 			// This is a delete of line
-			if res := g.ParseInt(g.ChannelCall("deletebufline", b.Num, start.Line(), end.Line()-1)); res != 0 {
+			if res := v.ParseInt(v.ChannelCall("deletebufline", b.Num, start.Line(), end.Line()-1)); res != 0 {
 				return fmt.Errorf("deletebufline(%v, %v, %v) failed", b.Num, start.Line(), end.Line()-1)
 			}
 		} else {
@@ -249,7 +249,7 @@ func (g *govimplugin) formatCurrentBuffer() (err error) {
 				e.NewText = e.NewText[:len(e.NewText)-1]
 			}
 			repl := strings.Split(e.NewText, "\n")
-			g.ChannelCall("append", start.Line()-1, repl)
+			v.ChannelCall("append", start.Line()-1, repl)
 		}
 	}
 	return nil
