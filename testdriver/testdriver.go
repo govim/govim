@@ -182,7 +182,7 @@ func (d *TestDriver) Close() {
 	select {
 	case <-d.doneQuitVim:
 	default:
-		d.cmd.Process.Kill()
+		d.govim.ChannelEx("qall!")
 		<-d.doneQuitVim
 	}
 	select {

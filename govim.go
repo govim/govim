@@ -743,7 +743,7 @@ func (g *govimImpl) sendJSONMsg(p1, p2 interface{}, ps ...interface{}) {
 	}
 	g.logVimEventf("sendJSONMsg: %s\n", logMsg)
 	if err := g.out.Encode(msg); err != nil {
-		g.errProto("failed to send msg: %v", err)
+		g.errProto("failed to send msg %s: %v", logMsg, err)
 	}
 }
 
