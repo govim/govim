@@ -36,7 +36,7 @@ func TestScripts(t *testing.T) {
 	var waitLock sync.Mutex
 	var waitList []func() error
 
-	td, err := ioutil.TempDir("", "gobin-gopls-installdir*")
+	td, err := ioutil.TempDir("", "gobin-gopls-installdir")
 	if err != nil {
 		t.Fatalf("failed to create temp install directory for gopls: %v", err)
 	}

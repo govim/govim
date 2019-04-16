@@ -3,6 +3,7 @@ package govim
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -105,7 +106,7 @@ type Govim interface {
 	Scheduled() Govim
 
 	// Schedule schdules f to run in the event queue
-	Schedule(func(Govim) error)
+	Schedule(func(Govim) error) chan struct{}
 }
 
 type govimImpl struct {
@@ -182,10 +183,16 @@ func (g *govimImpl) Scheduled() Govim {
 	}
 }
 
-func (g *govimImpl) Schedule(f func(Govim) error) {
+func (g *govimImpl) Schedule(f func(Govim) error) chan struct{} {
+	done := make(chan struct{})
 	g.eventQueue.Add(func() error {
-		return f(g)
+		defer func() {
+			close(done)
+			g.flushEvents <- struct{}{}
+		}()
+		return f(g.Scheduled())
 	})
+	return done
 }
 
 func (g *govimImpl) load() error {
@@ -276,6 +283,8 @@ type VimAutoCommandFunction func(g Govim) error
 
 func (v VimAutoCommandFunction) isHandler() {}
 
+var shuttingDown = errors.New("shutting down")
+
 func (g *govimImpl) Run() error {
 	err := g.DoProto(g.run)
 	g.tomb.Kill(err)
@@ -288,6 +297,9 @@ func (g *govimImpl) Run() error {
 	if g.pluginErrCh != nil {
 		close(g.pluginErrCh)
 	}
+	g.Schedule(func(Govim) error {
+		return shuttingDown
+	})
 	return nil
 }
 
@@ -436,23 +448,22 @@ func (g *govimImpl) run() {
 func (g *govimImpl) runEventQueue() error {
 	q := g.eventQueue
 	for {
-		select {
-		case <-g.tomb.Dying():
-			return tomb.ErrDying
-		case <-q.GotWork():
-			f, ok := q.Get()
-			if !ok {
-				continue
-			}
-			g.tomb.Go(func() error {
-				f()
-				return nil
-			})
+		f, ok := q.Get()
+		if !ok {
+			continue
 		}
+		var err error
+		g.tomb.Go(func() error {
+			err = f()
+			return err
+		})
 		select {
 		case <-g.tomb.Dying():
 			return tomb.ErrDying
 		case <-g.flushEvents:
+		}
+		if err == shuttingDown {
+			return nil
 		}
 	}
 }
