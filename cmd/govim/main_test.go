@@ -67,7 +67,6 @@ func TestScripts(t *testing.T) {
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
-				td.Log = os.Stderr
 				if *fLogGovim {
 					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
 					if err != nil {

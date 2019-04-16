@@ -14,6 +14,7 @@ set ttymouse=sgr
 set balloondelay=250
 set ballooneval
 set balloonevalterm
+set updatetime=500
 syntax on
 
 " TODO these probably doesn't belong here?

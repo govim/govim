@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
+	"github.com/myitcv/govim/cmd/govim/internal/span"
 	"github.com/myitcv/govim/cmd/govim/types"
 	"github.com/myitcv/govim/internal/plugin"
 	"github.com/russross/blackfriday/v2"
@@ -27,6 +30,10 @@ type vimstate struct {
 	// write and read to/from this map in the callback for a defined function, command
 	// or autocommand.
 	buffers map[int]*types.Buffer
+
+	// diagnostics gives us the current diagnostics by URI
+	diagnostics        map[span.URI][]protocol.Diagnostic
+	diagnosticsChanged bool
 
 	// jumpStack is akin to the Vim concept of a tagstack
 	jumpStack    []protocol.Location
@@ -441,4 +448,67 @@ func (v *vimstate) hover(args ...json.RawMessage) (interface{}, error) {
 	plain := string(blackfriday.Run(md, blackfriday.WithRenderer(plainMarkdown{})))
 	plain = strings.TrimSpace(plain)
 	return plain, nil
+}
+
+func (v *vimstate) updateQuickfix() error {
+	defer func() {
+		v.diagnosticsChanged = false
+	}()
+	var fns []span.URI
+	for u := range v.diagnostics {
+		fns = append(fns, u)
+	}
+	sort.Slice(fns, func(i, j int) bool {
+		return string(fns[i]) < string(fns[j])
+	})
+
+	tf, err := ioutil.TempFile("", "govim-quickfix-*")
+	if err != nil {
+		return fmt.Errorf("failed to create file for quickfix results: %v", err)
+	}
+	defer os.Remove(tf.Name())
+
+	// TODO this will become fragile at some point
+	cwd := v.ParseString(v.ChannelCall("getcwd"))
+
+	// now update the quickfix window based on the current diagnostics
+	for _, uri := range fns {
+		diags := v.diagnostics[uri]
+		fn, err := uri.Filename()
+		if err != nil {
+			return fmt.Errorf("failed to resolve filename from URI %q: %v", uri, err)
+		}
+		var buf *types.Buffer
+		for _, b := range v.buffers {
+			if b.URI() == uri {
+				buf = b
+			}
+		}
+		if buf == nil {
+			byts, err := ioutil.ReadFile(fn)
+			if err != nil {
+				return fmt.Errorf("failed to read contents of %v: %v", fn, err)
+			}
+			// create a temp buffer
+			buf = &types.Buffer{
+				Num:      -1,
+				Name:     fn,
+				Contents: byts,
+			}
+		}
+		// make fn relative for reporting purposes
+		fn, err = filepath.Rel(cwd, fn)
+		if err != nil {
+			return fmt.Errorf("failed to call filepath.Rel(%q, %q): %v", cwd, fn, err)
+		}
+		for _, d := range diags {
+			p, err := types.PointFromPosition(buf, d.Range.Start)
+			if err != nil {
+				return fmt.Errorf("failed to resolve position: %v", err)
+			}
+			fmt.Fprintf(tf, "%v:%v:%v: %v\n", fn, p.Line(), p.Col(), d.Message)
+		}
+	}
+	v.ChannelExf("cgetfile %v", tf.Name())
+	return nil
 }
