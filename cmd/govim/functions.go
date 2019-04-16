@@ -158,8 +158,14 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 
 func (v *vimstate) formatCurrentBuffer() (err error) {
 	tool := v.ParseString(v.ChannelExpr(config.GlobalFormatOnSave))
-	vp := v.Viewport()
-	b := v.buffers[vp.Current.BufNr]
+	vp, err := v.Viewport()
+	if err != nil {
+		return err
+	}
+	b, ok := v.buffers[vp.Current.BufNr]
+	if !ok {
+		return fmt.Errorf("failed to resolve buffer %v", vp.Current.BufNr)
+	}
 
 	var edits []protocol.TextEdit
 
@@ -401,7 +407,10 @@ func (v *vimstate) loadLocation(loc protocol.Location) error {
 
 	v.ChannelExf("%v %v", cmd, strings.TrimPrefix(loc.URI, "file://"))
 
-	vp := v.Viewport()
+	vp, err := v.Viewport()
+	if err != nil {
+		return err
+	}
 	nb := v.buffers[vp.Current.BufNr]
 	newPos, err := types.PointFromPosition(nb, loc.Range.Start)
 	if err != nil {

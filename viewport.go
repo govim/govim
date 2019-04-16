@@ -93,8 +93,19 @@ type WinInfo struct {
 }
 
 // Viewport returns the active Vim viewport
-func (g *govimImpl) Viewport() Viewport {
-	return g.currViewport.dup()
+func (g *govimImpl) Viewport() (vp Viewport, err error) {
+	// TODO right now we cannot rely on the Viewport() method having been
+	// updated by the plugin-initiated callback because it doesn't reliably get
+	// fired before other autocmds. This has the effect that a callback
+	// (function, command, autocmd) can therefore read the _wrong_ buffer. So
+	// for now we go the inefficient route of always re-reading the viewport
+	res, err := g.Scheduled().ChannelExpr("s:buildCurrentViewport()")
+	if err != nil {
+		err = fmt.Errorf("failed to build current viewport: %v", err)
+		return
+	}
+	g.decodeJSON(res, &vp)
+	return
 }
 
 func (v Viewport) dup() Viewport {

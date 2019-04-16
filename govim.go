@@ -93,7 +93,7 @@ type Govim interface {
 	ToggleOnViewportChange()
 
 	// Viewport returns the active Vim viewport
-	Viewport() Viewport
+	Viewport() (Viewport, error)
 
 	// Errorf raises a formatted fatal error
 	Errorf(format string, args ...interface{})
@@ -440,20 +440,20 @@ func (g *govimImpl) run() {
 
 func (g *govimImpl) runEventQueue() error {
 	q := g.eventQueue
+GetWork:
 	for {
-		select {
-		case <-g.tomb.Dying():
-			return tomb.ErrDying
-		case <-q.GotWork():
-			f, ok := q.Get()
-			if !ok {
-				continue
+		work, wait := q.Get()
+		if wait != nil {
+			select {
+			case <-g.tomb.Dying():
+				return tomb.ErrDying
+			case <-wait:
 			}
-			g.tomb.Go(func() error {
-				f()
-				return nil
-			})
+			continue GetWork
 		}
+		g.tomb.Go(func() error {
+			return work()
+		})
 		select {
 		case <-g.tomb.Dying():
 			return tomb.ErrDying
