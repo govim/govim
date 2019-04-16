@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kr/pty"
 	"github.com/myitcv/govim"
@@ -167,20 +168,32 @@ func (d *TestDriver) Close() {
 	case <-d.doneQuitVim:
 	default:
 		close(d.quitVim)
+	}
+	select {
+	case <-d.doneQuitGovim:
+	default:
+		close(d.quitGovim)
+	}
+	select {
+	case <-d.doneQuitDriver:
+	default:
+		close(d.quitDriver)
+	}
+	select {
+	case <-d.doneQuitVim:
+	default:
 		d.cmd.Process.Kill()
 		<-d.doneQuitVim
 	}
 	select {
 	case <-d.doneQuitGovim:
 	default:
-		close(d.quitGovim)
 		d.govimListener.Close()
 		<-d.doneQuitGovim
 	}
 	select {
 	case <-d.doneQuitDriver:
 	default:
-		close(d.quitDriver)
 		d.driverListener.Close()
 		<-d.doneQuitDriver
 	}
@@ -231,6 +244,7 @@ func (d *TestDriver) listenGovim() error {
 }
 
 func (d *TestDriver) runGovim() error {
+	defer close(d.doneQuitGovim)
 	if err := d.govim.Run(); err != nil {
 		select {
 		case <-d.quitGovim:
@@ -238,7 +252,6 @@ func (d *TestDriver) runGovim() error {
 			return fmt.Errorf("govim Run failed: %v", err)
 		}
 	}
-	close(d.doneQuitGovim)
 	return nil
 }
 
@@ -450,6 +463,22 @@ func Vim() (exitCode int) {
 	}
 	conn.Close()
 	return 0
+}
+
+// Sleep is a convenience function for those odd occasions when you
+// need to drop in a sleep, e.g. waiting for CursorHold to trigger
+func Sleep(ts *testscript.TestScript, neg bool, args []string) {
+	if neg {
+		ts.Fatalf("sleep does not support neg")
+	}
+	if len(args) != 1 {
+		ts.Fatalf("sleep expects a single argument; got %v", len(args))
+	}
+	d, err := time.ParseDuration(args[0])
+	if err != nil {
+		ts.Fatalf("failed to parse duration %q: %v", args[0], err)
+	}
+	time.Sleep(d)
 }
 
 type signallingPlugin struct {

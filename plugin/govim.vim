@@ -56,10 +56,7 @@ function s:callbackAutoCommand(name)
   return l:resp[1]
 endfunction
 
-function s:updateViewport(timer)
-  if !s:sendUpdateViewport
-    return
-  endif
+function s:buildCurrentViewport()
   let l:currTabNr = tabpagenr()
   let l:currWinNr = winnr()
   let l:currWin = {}
@@ -75,6 +72,14 @@ function s:updateViewport(timer)
         \ 'Current': l:currWin,
         \ 'Windows': l:windows,
         \ }
+  return l:viewport
+endfunction
+
+function s:updateViewport(timer)
+  if !s:sendUpdateViewport
+    return
+  endif
+  let l:viewport = s:buildCurrentViewport()
   if s:currViewport != l:viewport
     let s:currViewport = l:viewport
     let l:resp = ch_evalexpr(s:channel, ["function", "govim:OnViewportChange", [l:viewport]])
@@ -100,7 +105,7 @@ function s:define(channel, msg)
     let l:resp = ["callback", l:id, [""]]
     if a:msg[1] == "loaded"
       let s:timer = timer_start(100, function('s:updateViewport'), {'repeat': -1})
-      au CursorMoved,CursorMovedI,BufWinEnter * call s:updateViewport(0)
+      au BufRead,BufNewFile,CursorMoved,CursorMovedI,BufWinEnter * call s:updateViewport(0)
       let s:govim_status = "loaded"
       call s:updateViewport(0)
       for F in s:loadStatusCallbacks
@@ -108,12 +113,15 @@ function s:define(channel, msg)
       endfor
     elseif a:msg[1] == "initcomplete"
       doautoall BufRead
+      call s:updateViewport(0)
       let s:govim_status = "initcomplete"
       for F in s:loadStatusCallbacks
         call call(F, [s:govim_status])
       endfor
     elseif a:msg[1] == "toggleUpdateViewport"
       let s:sendUpdateViewport = !s:sendUpdateViewport
+    elseif a:msg[1] == "currentViewport"
+      let l:res = s:buildCurrentViewport()
     elseif a:msg[1] == "function"
       call s:defineFunction(a:msg[2], a:msg[3], 0)
     elseif a:msg[1] == "rangefunction"

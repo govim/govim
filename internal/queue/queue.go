@@ -17,33 +17,35 @@ func NewQueue() *Queue {
 	return res
 }
 
-func (q *Queue) GotWork() <-chan struct{} {
-	return q.gotwork
-}
-
-func (q *Queue) Get() (work func() error, ok bool) {
+func (q *Queue) Get() (work func() error, wait chan struct{}) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
-	if ok = len(q.work) > 0; ok {
+	if len(q.work) > 0 {
 		work, q.work = q.work[0], q.work[1:]
+	} else {
+		wait = make(chan struct{})
+		q.gotwork = wait
 	}
 	return
 }
 
 func (q *Queue) Add(f func() error) {
 	q.lock.Lock()
+	defer q.lock.Unlock()
 	q.work = append(q.work, f)
-	go q.signalWork()
-	q.lock.Unlock()
+	q.signalWork()
 }
 
 func (q *Queue) Set(f func() error) {
 	q.lock.Lock()
+	defer q.lock.Unlock()
 	q.work = []func() error{f}
-	go q.signalWork()
-	q.lock.Unlock()
+	q.signalWork()
 }
 
 func (q *Queue) signalWork() {
-	q.gotwork <- struct{}{}
+	if q.gotwork != nil {
+		close(q.gotwork)
+		q.gotwork = nil
+	}
 }

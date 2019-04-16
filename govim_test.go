@@ -15,7 +15,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/internal/plugin"
@@ -41,7 +40,7 @@ func TestScripts(t *testing.T) {
 		testscript.Run(t, testscript.Params{
 			Dir: "testdata",
 			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
-				"sleep": sleep,
+				"sleep": testdriver.Sleep,
 			},
 			Setup: func(e *testscript.Env) error {
 				d := newTestPlugin(plugin.NewDriver(""))
@@ -96,20 +95,6 @@ func TestScripts(t *testing.T) {
 		}
 		t.Fatalf("got some errors:\n%v\n", strings.Join(msgs, "\n"))
 	}
-}
-
-func sleep(ts *testscript.TestScript, neg bool, args []string) {
-	if neg {
-		ts.Fatalf("sleep does not support neg")
-	}
-	if len(args) != 1 {
-		ts.Fatalf("sleep expects a single argument; got %v", len(args))
-	}
-	d, err := time.ParseDuration(args[0])
-	if err != nil {
-		ts.Fatalf("failed to parse duration %q: %v", args[0], err)
-	}
-	time.Sleep(d)
 }
 
 type testplugin struct {
