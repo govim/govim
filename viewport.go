@@ -53,10 +53,8 @@ type OnViewportChangeSub struct {
 func (g *govimImpl) onViewportChange(args ...json.RawMessage) (interface{}, error) {
 	var r Viewport
 	g.decodeJSON(args[0], &r)
-	g.viewportLock.Lock()
 	g.currViewport = r
 	r = r.dup()
-	g.viewportLock.Unlock()
 
 	g.Logf("Viewport changed: %v", pretty.Sprint(r))
 
@@ -96,11 +94,7 @@ type WinInfo struct {
 
 // Viewport returns the active Vim viewport
 func (g *govimImpl) Viewport() Viewport {
-	var res Viewport
-	g.viewportLock.Lock()
-	res = g.currViewport.dup()
-	g.viewportLock.Unlock()
-	return res
+	return g.currViewport.dup()
 }
 
 func (v Viewport) dup() Viewport {

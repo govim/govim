@@ -102,6 +102,7 @@ function s:define(channel, msg)
       let s:timer = timer_start(100, function('s:updateViewport'), {'repeat': -1})
       au CursorMoved,CursorMovedI,BufWinEnter * call s:updateViewport(0)
       let s:govim_status = "loaded"
+      call s:updateViewport(0)
       for F in s:loadStatusCallbacks
         call call(F, [s:govim_status])
       endfor

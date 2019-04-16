@@ -105,7 +105,7 @@ type Govim interface {
 	Scheduled() Govim
 
 	// Schedule schdules f to run in the event queue
-	Schedule(func(Govim) error)
+	Schedule(func(Govim) error) chan struct{}
 }
 
 type govimImpl struct {
@@ -132,7 +132,6 @@ type govimImpl struct {
 	loaded chan bool
 
 	currViewport             Viewport
-	viewportLock             sync.Mutex
 	onViewportChangeSubs     []*OnViewportChangeSub
 	onViewportChangeSubsLock sync.Mutex
 
@@ -182,10 +181,16 @@ func (g *govimImpl) Scheduled() Govim {
 	}
 }
 
-func (g *govimImpl) Schedule(f func(Govim) error) {
+func (g *govimImpl) Schedule(f func(Govim) error) chan struct{} {
+	done := make(chan struct{})
 	g.eventQueue.Add(func() error {
-		return f(g)
+		defer func() {
+			close(done)
+			g.flushEvents <- struct{}{}
+		}()
+		return f(g.Scheduled())
 	})
+	return done
 }
 
 func (g *govimImpl) load() error {
