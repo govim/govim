@@ -10,7 +10,7 @@ tools=$(go list -m -f={{.Dir}} golang.org/x/tools)
 echo "Tools is $tools"
 
 cd $(git rev-parse --show-toplevel)
-rsync -a --chmod=D0755,F0644 $tools/internal/ ./cmd/govim/internal/
+rsync -a --delete --chmod=D0755,F0644 $tools/internal/ ./cmd/govim/internal/
 sed -i 's+golang.org/x/tools/internal+github.com/myitcv/govim/cmd/govim/internal+g' ./cmd/govim/internal/**/*.go
 rm ./cmd/govim/internal/**/*_test.go
 rm -f ./cmd/govim/internal/LICENSE

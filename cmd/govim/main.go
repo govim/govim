@@ -202,9 +202,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 
 	wd := g.ParseString(g.ChannelCall("getcwd", -1))
 	initParams := &protocol.InitializeParams{
-		InnerInitializeParams: protocol.InnerInitializeParams{
-			RootURI: string(span.FileURI(wd)),
-		},
+		RootURI: string(span.FileURI(wd)),
 	}
 	if _, err := g.server.Initialize(context.Background(), initParams); err != nil {
 		return fmt.Errorf("failed to initialise gopls: %v", err)

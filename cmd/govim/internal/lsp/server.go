@@ -149,54 +149,34 @@ func (s *Server) Initialize(ctx context.Context, params *protocol.InitializePara
 
 	return &protocol.InitializeResult{
 		Capabilities: protocol.ServerCapabilities{
-			InnerServerCapabilities: protocol.InnerServerCapabilities{
-				CodeActionProvider: true,
-				CompletionProvider: &protocol.CompletionOptions{
-					TriggerCharacters: []string{"."},
-				},
-				DefinitionProvider:              true,
-				DocumentFormattingProvider:      true,
-				DocumentRangeFormattingProvider: true,
-				DocumentSymbolProvider:          true,
-				HoverProvider:                   true,
-				DocumentHighlightProvider:       true,
-				SignatureHelpProvider: &protocol.SignatureHelpOptions{
-					TriggerCharacters: []string{"(", ","},
-				},
-				TextDocumentSync: &protocol.TextDocumentSyncOptions{
-					Change:    s.textDocumentSyncKind,
-					OpenClose: true,
-				},
+			CodeActionProvider: true,
+			CompletionProvider: &protocol.CompletionOptions{
+				TriggerCharacters: []string{"."},
 			},
-			TypeDefinitionServerCapabilities: protocol.TypeDefinitionServerCapabilities{
-				TypeDefinitionProvider: true,
+			DefinitionProvider:              true,
+			DocumentFormattingProvider:      true,
+			DocumentRangeFormattingProvider: true,
+			DocumentSymbolProvider:          true,
+			HoverProvider:                   true,
+			DocumentHighlightProvider:       true,
+			SignatureHelpProvider: &protocol.SignatureHelpOptions{
+				TriggerCharacters: []string{"(", ","},
 			},
+			TextDocumentSync: &protocol.TextDocumentSyncOptions{
+				Change:    s.textDocumentSyncKind,
+				OpenClose: true,
+			},
+			TypeDefinitionProvider: true,
 		},
 	}, nil
 }
 
 func (s *Server) setClientCapabilities(caps protocol.ClientCapabilities) {
 	// Check if the client supports snippets in completion items.
-	if x, ok := caps["textDocument"].(map[string]interface{}); ok {
-		if x, ok := x["completion"].(map[string]interface{}); ok {
-			if x, ok := x["completionItem"].(map[string]interface{}); ok {
-				if x, ok := x["snippetSupport"].(bool); ok {
-					s.snippetsSupported = x
-				}
-			}
-		}
-	}
+	s.snippetsSupported = caps.TextDocument.Completion.CompletionItem.SnippetSupport
 	// Check if the client supports configuration messages.
-	if x, ok := caps["workspace"].(map[string]interface{}); ok {
-		if x, ok := x["configuration"].(bool); ok {
-			s.configurationSupported = x
-		}
-		if x, ok := x["didChangeConfiguration"].(map[string]interface{}); ok {
-			if x, ok := x["dynamicRegistration"].(bool); ok {
-				s.dynamicConfigurationSupported = x
-			}
-		}
-	}
+	s.configurationSupported = caps.Workspace.Configuration
+	s.dynamicConfigurationSupported = caps.Workspace.DidChangeConfiguration.DynamicRegistration
 }
 
 func (s *Server) Initialized(ctx context.Context, params *protocol.InitializedParams) error {
@@ -415,7 +395,7 @@ func (s *Server) SignatureHelp(ctx context.Context, params *protocol.TextDocumen
 	}
 	info, err := source.SignatureHelp(ctx, f, rng.Start)
 	if err != nil {
-		return nil, err
+		s.log.Infof(ctx, "no signature help for %s:%v:%v", uri, int(params.Position.Line), int(params.Position.Character))
 	}
 	return toProtocolSignatureHelp(info), nil
 }
@@ -503,17 +483,14 @@ func (s *Server) DocumentHighlight(ctx context.Context, params *protocol.TextDoc
 	if err != nil {
 		return nil, err
 	}
-
 	spn, err := m.PointSpan(params.Position)
 	if err != nil {
 		return nil, err
 	}
-
 	rng, err := spn.Range(m.Converter)
 	if err != nil {
 		return nil, err
 	}
-
 	spans := source.Highlight(ctx, f, rng.Start)
 	return toProtocolHighlight(m, spans), nil
 }
@@ -530,31 +507,7 @@ func (s *Server) DocumentSymbol(ctx context.Context, params *protocol.DocumentSy
 }
 
 func (s *Server) CodeAction(ctx context.Context, params *protocol.CodeActionParams) ([]protocol.CodeAction, error) {
-	uri := span.NewURI(params.TextDocument.URI)
-	view := s.findView(ctx, uri)
-	_, m, err := newColumnMap(ctx, view, uri)
-	if err != nil {
-		return nil, err
-	}
-	spn, err := m.RangeSpan(params.Range)
-	if err != nil {
-		return nil, err
-	}
-	edits, err := organizeImports(ctx, view, spn)
-	if err != nil {
-		return nil, err
-	}
-	return []protocol.CodeAction{
-		{
-			Title: "Organize Imports",
-			Kind:  protocol.SourceOrganizeImports,
-			Edit: &protocol.WorkspaceEdit{
-				Changes: &map[string][]protocol.TextEdit{
-					params.TextDocument.URI: edits,
-				},
-			},
-		},
-	}, nil
+	return s.codeAction(ctx, params)
 }
 
 func (s *Server) CodeLens(context.Context, *protocol.CodeLensParams) ([]protocol.CodeLens, error) {
