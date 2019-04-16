@@ -135,7 +135,7 @@ func newplugin(goplspath string) *govimplugin {
 
 func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.Driver.Govim = gg
-	g.vimstate.Driver.Govim = gg.Sync()
+	g.vimstate.Driver.Govim = gg.Scheduled()
 	g.ChannelEx(`augroup govim`)
 	g.ChannelEx(`augroup END`)
 	g.DefineFunction(string(config.FunctionHello), []string{}, g.hello)

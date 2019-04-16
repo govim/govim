@@ -46,7 +46,7 @@ func (g *govimImpl) channelRedrawImpl(ch callback, force bool) error {
 		sForce = "force"
 	}
 	return g.DoProto(func() {
-		g.callCallback(ch, "redraw", sForce)
+		g.callVim(ch, "redraw", sForce)
 	})
 }
 
@@ -62,7 +62,7 @@ const channelExErrMsg = "failed to ex(%v) in Vim: %v"
 func (g *govimImpl) channelExImpl(ch callback, expr string) error {
 	<-g.loaded
 	return g.DoProto(func() {
-		g.callCallback(ch, "ex", expr)
+		g.callVim(ch, "ex", expr)
 	})
 }
 
@@ -78,7 +78,7 @@ const channelNormalErrMsg = "failed to normal(%v) in Vim: %v"
 func (g *govimImpl) channelNormalImpl(ch callback, expr string) error {
 	<-g.loaded
 	return g.DoProto(func() {
-		g.callCallback(ch, "normal", expr)
+		g.callVim(ch, "normal", expr)
 	})
 }
 
@@ -94,7 +94,7 @@ const channelExprErrMsg = "failed to expr(%v) in Vim: %v"
 func (g *govimImpl) channelExprImpl(ch callback, expr string) error {
 	<-g.loaded
 	return g.DoProto(func() {
-		g.callCallback(ch, "expr", expr)
+		g.callVim(ch, "expr", expr)
 	})
 }
 
@@ -111,7 +111,7 @@ func (g *govimImpl) channelCallImpl(ch callback, fn string, args ...interface{})
 	<-g.loaded
 	args = append([]interface{}{fn}, args...)
 	return g.DoProto(func() {
-		g.callCallback(ch, "call", args...)
+		g.callVim(ch, "call", args...)
 	})
 }
 

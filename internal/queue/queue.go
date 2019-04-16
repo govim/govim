@@ -5,7 +5,7 @@ import (
 )
 
 type Queue struct {
-	work    []func()
+	work    []func() error
 	lock    sync.Mutex
 	gotwork chan struct{}
 }
@@ -21,7 +21,7 @@ func (q *Queue) GotWork() <-chan struct{} {
 	return q.gotwork
 }
 
-func (q *Queue) Get() (work func(), ok bool) {
+func (q *Queue) Get() (work func() error, ok bool) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 	if ok = len(q.work) > 0; ok {
@@ -30,16 +30,16 @@ func (q *Queue) Get() (work func(), ok bool) {
 	return
 }
 
-func (q *Queue) Add(f func()) {
+func (q *Queue) Add(f func() error) {
 	q.lock.Lock()
 	q.work = append(q.work, f)
 	go q.signalWork()
 	q.lock.Unlock()
 }
 
-func (q *Queue) Set(f func()) {
+func (q *Queue) Set(f func() error) {
 	q.lock.Lock()
-	q.work = []func(){f}
+	q.work = []func() error{f}
 	go q.signalWork()
 	q.lock.Unlock()
 }

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/internal/plugin"
@@ -39,6 +40,9 @@ func TestScripts(t *testing.T) {
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
 			Dir: "testdata",
+			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
+				"sleep": sleep,
+			},
 			Setup: func(e *testscript.Env) error {
 				d := newTestPlugin(plugin.NewDriver(""))
 				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), e, d)
@@ -94,6 +98,20 @@ func TestScripts(t *testing.T) {
 	}
 }
 
+func sleep(ts *testscript.TestScript, neg bool, args []string) {
+	if neg {
+		ts.Fatalf("sleep does not support neg")
+	}
+	if len(args) != 1 {
+		ts.Fatalf("sleep expects a single argument; got %v", len(args))
+	}
+	d, err := time.ParseDuration(args[0])
+	if err != nil {
+		ts.Fatalf("failed to parse duration %q: %v", args[0], err)
+	}
+	time.Sleep(d)
+}
+
 type testplugin struct {
 	plugin.Driver
 	*testpluginvim
@@ -117,7 +135,7 @@ func newTestPlugin(d plugin.Driver) *testplugin {
 
 func (t *testplugin) Init(g govim.Govim, errCh chan error) (err error) {
 	t.Driver.Govim = g
-	t.testpluginvim.Driver.Govim = g.Sync()
+	t.testpluginvim.Driver.Govim = g.Scheduled()
 	t.DefineFunction("HelloNil", nil, t.hello)
 	t.DefineFunction("Hello", []string{}, t.hello)
 	t.DefineFunction("HelloWithArg", []string{"target"}, t.helloWithArg)
@@ -126,6 +144,9 @@ func (t *testplugin) Init(g govim.Govim, errCh chan error) (err error) {
 	t.DefineRangeFunction("Echo", []string{}, t.echo)
 	t.DefineCommand("HelloComm", t.helloComm, govim.AttrBang)
 	t.DefineAutoCommand("", govim.Events{govim.EventBufRead}, govim.Patterns{"*.go"}, false, t.bufRead)
+	t.DefineFunction("Func1", []string{}, t.func1)
+	t.DefineFunction("Func2", []string{}, t.func2)
+	t.DefineFunction("TriggerUnscheduled", []string{}, t.triggerUnscheduled)
 	return nil
 }
 
@@ -179,5 +200,25 @@ func (t *testpluginvim) echo(first, last int, jargs ...json.RawMessage) (interfa
 		lines = append(lines, line)
 	}
 	t.ChannelExf("echom %v", strconv.Quote(strings.Join(lines, "\n")))
+	return nil, nil
+}
+
+func (t *testpluginvim) func1(args ...json.RawMessage) (interface{}, error) {
+	res := t.ParseString(t.ChannelCall("Func2"))
+	return res, nil
+}
+
+func (t *testpluginvim) func2(args ...json.RawMessage) (interface{}, error) {
+	return "World from Func2", nil
+}
+
+func (t *testpluginvim) triggerUnscheduled(args ...json.RawMessage) (interface{}, error) {
+	go func() {
+		t.testplugin.Schedule(func(g govim.Govim) error {
+			g.ChannelNormal("iHello Gophers")
+			g.ChannelEx("w out")
+			return nil
+		})
+	}()
 	return nil, nil
 }

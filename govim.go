@@ -28,11 +28,14 @@ const (
 	sysFuncPref = "govim:"
 )
 
+// callbackResp is the container for a response from a call to callVim. If the
+// call does not result in a value, e.g. ChannelEx, then val will be nil
 type callbackResp struct {
 	errString string
 	val       json.RawMessage
 }
 
+// Plugin defines the contract between github.com/myitcv/govim and a plugin.
 type Plugin interface {
 	Init(Govim, chan error) error
 	Shutdown() error
@@ -92,10 +95,17 @@ type Govim interface {
 	// Viewport returns the active Vim viewport
 	Viewport() Viewport
 
+	// Errorf raises a formatted fatal error
 	Errorf(format string, args ...interface{})
+
+	// Logf logs a formatted message to the logger
 	Logf(format string, args ...interface{})
 
-	Sync() Govim
+	// Scheduled returns the event queue Govim interface
+	Scheduled() Govim
+
+	// Schedule schdules f to run in the event queue
+	Schedule(func(Govim) error)
 }
 
 type govimImpl struct {
@@ -103,7 +113,7 @@ type govimImpl struct {
 	out *json.Encoder
 	log io.Writer
 
-	funcHandlers     map[string]interface{}
+	funcHandlers     map[string]handler
 	funcHandlersLock sync.Mutex
 
 	plugin      Plugin
@@ -111,11 +121,11 @@ type govimImpl struct {
 
 	flushEvents chan struct{}
 
-	// callCallbackNextID represents the next ID to use in a call to the Vim
+	// callVimNextID represents the next ID to use in a call to the Vim
 	// channel handler. This then allows us to direct the response.
-	callCallbackNextID int
-	callbackResps      map[int]callback
-	callbackRespsLock  sync.Mutex
+	callVimNextID     int
+	callbackResps     map[int]callback
+	callbackRespsLock sync.Mutex
 
 	autocmdNextID int
 
@@ -126,17 +136,21 @@ type govimImpl struct {
 	onViewportChangeSubs     []*OnViewportChangeSub
 	onViewportChangeSubsLock sync.Mutex
 
-	tomb tomb.Tomb
+	eventQueue *queue.Queue
+	tomb       tomb.Tomb
 }
 
 type callback interface {
 	isCallback()
 }
 
+// scheduledCallback is used for responses to calls to Vim made from the event queue
 type scheduledCallback chan callbackResp
 
 func (s scheduledCallback) isCallback() {}
 
+// unscheduledCallback is used for responses to calls made from off the event queue,
+// i.e. as a result of a reponse from a process external to the plugin like gopls
 type unscheduledCallback chan callbackResp
 
 func (u unscheduledCallback) isCallback() {}
@@ -147,7 +161,7 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, e
 		out: json.NewEncoder(out),
 		log: log,
 
-		funcHandlers: make(map[string]interface{}),
+		funcHandlers: make(map[string]handler),
 
 		plugin: plug,
 
@@ -155,17 +169,23 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, e
 
 		flushEvents: make(chan struct{}),
 
-		callCallbackNextID: 1,
-		callbackResps:      make(map[int]callback),
+		callVimNextID: 1,
+		callbackResps: make(map[int]callback),
 	}
 
 	return g, nil
 }
 
-func (g *govimImpl) Sync() Govim {
-	return userQInst{
+func (g *govimImpl) Scheduled() Govim {
+	return eventQueueInst{
 		govimImpl: g,
 	}
+}
+
+func (g *govimImpl) Schedule(f func(Govim) error) {
+	g.eventQueue.Add(func() error {
+		return f(g)
+	})
 }
 
 func (g *govimImpl) load() error {
@@ -227,20 +247,34 @@ func (g *govimImpl) funcHandler(name string) (string, interface{}) {
 	return strings.TrimPrefix(name, funcHandlePref), f
 }
 
+type handler interface {
+	isHandler()
+}
+
 type internalFunction func(args ...json.RawMessage) (interface{}, error)
+
+func (i internalFunction) isHandler() {}
 
 // VimFunction is the signature of a callback from a defined function
 type VimFunction func(g Govim, args ...json.RawMessage) (interface{}, error)
+
+func (v VimFunction) isHandler() {}
 
 // VimRangeFunction is the signature of a callback from a defined range-based
 // function
 type VimRangeFunction func(g Govim, line1, line2 int, args ...json.RawMessage) (interface{}, error)
 
+func (v VimRangeFunction) isHandler() {}
+
 // VimCommandFunction is the signature of a callback from a defined command
 type VimCommandFunction func(g Govim, flags CommandFlags, args ...string) error
 
+func (v VimCommandFunction) isHandler() {}
+
 // VimAutoCommandFunction is the signature of a callback from a defined autocmd
 type VimAutoCommandFunction func(g Govim) error
+
+func (v VimAutoCommandFunction) isHandler() {}
 
 func (g *govimImpl) Run() error {
 	err := g.DoProto(g.run)
@@ -259,8 +293,8 @@ func (g *govimImpl) Run() error {
 
 // run is the main loop that handles call from Vim
 func (g *govimImpl) run() {
-	userQ := queue.NewQueue()
-	g.runUserQ(userQ)
+	g.eventQueue = queue.NewQueue()
+	g.tomb.Go(g.runEventQueue)
 	g.tomb.Go(g.load)
 
 	// the read loop
@@ -273,7 +307,7 @@ func (g *govimImpl) run() {
 		args = args[1:]
 		switch typ {
 		case "callback":
-			// This case is a "return" from a call to callCallback. Format of args
+			// This case is a "return" from a call to callVim. Format of args
 			// will be [id, [string, val]]
 			id := g.parseInt(args[0])
 			resp := g.parseJSONArgSlice(args[1])
@@ -295,8 +329,13 @@ func (g *govimImpl) run() {
 			}
 			switch ch := ch.(type) {
 			case scheduledCallback:
-				userQ.Add(func() {
-					ch <- toSend
+				g.eventQueue.Add(func() error {
+					select {
+					case ch <- toSend:
+					case <-g.tomb.Dying():
+						return tomb.ErrDying
+					}
+					return nil
 				})
 			case unscheduledCallback:
 				g.tomb.Go(func() error {
@@ -328,12 +367,12 @@ func (g *govimImpl) run() {
 				line2 = g.parseInt(fargs[1])
 				fargs = g.parseJSONArgSlice(fargs[2])
 				call = func() (interface{}, error) {
-					return f(userQInst{g}, line1, line2, fargs...)
+					return f(eventQueueInst{g}, line1, line2, fargs...)
 				}
 			case VimFunction:
 				fargs = g.parseJSONArgSlice(fargs[0])
 				call = func() (interface{}, error) {
-					return f(userQInst{g}, fargs...)
+					return f(eventQueueInst{g}, fargs...)
 				}
 			case VimCommandFunction:
 				var flagVals CommandFlags
@@ -343,7 +382,7 @@ func (g *govimImpl) run() {
 					args = append(args, g.parseString(f))
 				}
 				call = func() (interface{}, error) {
-					err := f(userQInst{g}, flagVals, args...)
+					err := f(eventQueueInst{g}, flagVals, args...)
 					return nil, err
 				}
 			case VimAutoCommandFunction:
@@ -354,7 +393,7 @@ func (g *govimImpl) run() {
 			default:
 				g.Errorf("unknown function type for %v %T", fname, f)
 			}
-			userQ.Add(func() {
+			g.eventQueue.Add(func() error {
 				resp := [2]interface{}{"", ""}
 				var res interface{}
 				var err error
@@ -380,6 +419,7 @@ func (g *govimImpl) run() {
 					resp[1] = res
 				}
 				g.sendJSONMsg(id, resp)
+				return nil
 			})
 		case "log":
 			var is []interface{}
@@ -393,26 +433,28 @@ func (g *govimImpl) run() {
 	}
 }
 
-func (g *govimImpl) runUserQ(q *queue.Queue) {
-	g.tomb.Go(func() error {
-		for {
-			select {
-			case <-g.tomb.Dying():
-				return tomb.ErrDying
-			case <-q.GotWork():
-				f, ok := q.Get()
-				if !ok {
-					continue
-				}
-				go f()
+func (g *govimImpl) runEventQueue() error {
+	q := g.eventQueue
+	for {
+		select {
+		case <-g.tomb.Dying():
+			return tomb.ErrDying
+		case <-q.GotWork():
+			f, ok := q.Get()
+			if !ok {
+				continue
 			}
-			select {
-			case <-g.tomb.Dying():
-				return tomb.ErrDying
-			case <-g.flushEvents:
-			}
+			g.tomb.Go(func() error {
+				f()
+				return nil
+			})
 		}
-	})
+		select {
+		case <-g.tomb.Dying():
+			return tomb.ErrDying
+		case <-g.flushEvents:
+		}
+	}
 }
 
 func (g *govimImpl) DefineFunction(name string, params []string, f VimFunction) error {
@@ -425,7 +467,7 @@ func (g *govimImpl) DefineRangeFunction(name string, params []string, f VimRange
 	return g.defineFunction(true, name, params, f)
 }
 
-func (g *govimImpl) defineFunction(isRange bool, name string, params []string, f interface{}) error {
+func (g *govimImpl) defineFunction(isRange bool, name string, params []string, f handler) error {
 	var err error
 	if name == "" {
 		return fmt.Errorf("function name must not be empty")
@@ -452,7 +494,7 @@ func (g *govimImpl) defineFunction(isRange bool, name string, params []string, f
 	}
 	ch := make(unscheduledCallback)
 	err = g.DoProto(func() {
-		g.callCallback(ch, callbackTyp, args...)
+		g.callVim(ch, callbackTyp, args...)
 	})
 	return g.handleChannelError(ch, err, "failed to define %q in Vim: %v", name)
 }
@@ -496,7 +538,7 @@ func (g *govimImpl) DefineAutoCommand(group string, events Events, patts Pattern
 	callbackTyp := "autocmd"
 	ch := make(unscheduledCallback)
 	err = g.DoProto(func() {
-		g.callCallback(ch, callbackTyp, args...)
+		g.callVim(ch, callbackTyp, args...)
 	})
 	return g.handleChannelError(ch, err, "failed to define autocmd %q in Vim: %v", def.String())
 }
@@ -617,25 +659,25 @@ func (g *govimImpl) DefineCommand(name string, f VimCommandFunction, attrs ...Co
 	args := []interface{}{name, attrMap}
 	ch := make(unscheduledCallback)
 	err = g.DoProto(func() {
-		g.callCallback(ch, "command", args...)
+		g.callVim(ch, "command", args...)
 	})
 	return g.handleChannelError(ch, err, "failed to define %q in Vim: %v", name)
 }
 
 func (g *govimImpl) unscheduledCallCallback(typ string, vs ...interface{}) unscheduledCallback {
 	ch := make(unscheduledCallback)
-	g.callCallback(ch, typ, vs...)
+	g.callVim(ch, typ, vs...)
 	return ch
 }
 
-// callCallback is a low-level protocol primitive for making a call to the
+// callVim is a low-level protocol primitive for making a call to the
 // channel defined handler in Vim. The Vim handler switches on typ. The Vim
 // handler does not return a value, instead it will acknowledge success by
 // sending a zero-length string.
-func (g *govimImpl) callCallback(ch callback, typ string, vs ...interface{}) {
+func (g *govimImpl) callVim(ch callback, typ string, vs ...interface{}) {
 	g.callbackRespsLock.Lock()
-	id := g.callCallbackNextID
-	g.callCallbackNextID++
+	id := g.callVimNextID
+	g.callVimNextID++
 	g.callbackResps[id] = ch
 	g.callbackRespsLock.Unlock()
 	args := []interface{}{id, typ}
