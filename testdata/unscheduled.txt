@@ -1,0 +1,8 @@
+# Test that unscheduled callbacks can schedule work
+
+vim call TriggerUnscheduled
+sleep 500ms
+cmp out out.golden
+
+-- out.golden --
+Hello Gophers
