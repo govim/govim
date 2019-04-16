@@ -12,9 +12,10 @@ const (
 type Command string
 
 const (
-	CommandGoToDef     Command = "GoToDef"
-	CommandGoToPrevDef Command = "GoToPrevDef"
-	CommandHello       Command = "Hello"
+	CommandGoToDef        Command = "GoToDef"
+	CommandGoToPrevDef    Command = "GoToPrevDef"
+	CommandUpdateQuickfix Command = "UpdateQuickfix"
+	CommandHello          Command = "Hello"
 )
 
 type Function string

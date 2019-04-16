@@ -515,3 +515,7 @@ func (v *vimstate) updateQuickfix() error {
 	v.ChannelExf("cgetfile %v", tf.Name())
 	return nil
 }
+
+func (v *vimstate) updateQuickfixCmd(flags govim.CommandFlags, args ...string) error {
+	return v.updateQuickfix()
+}

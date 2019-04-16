@@ -1,0 +1,24 @@
+# Test that the quickfix window gets populated with error messages from gopls
+
+vim ex 'e main.go'
+sleep 2000ms
+vim ex 'GOVIMUpdateQuickfix'
+vim ex 'copen'
+vim expr 'getline(0, \"$\")'
+cmp stdout errors.golden
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("This is a test %v\n")
+}
+-- errors.golden --
+[
+  "main.go|6 col 2| Printf format %v reads arg #1, but call has 0 args"
+]
