@@ -278,21 +278,36 @@ func (d *TestDriver) listenDriver() error {
 				if len(args) == 2 {
 					force = args[1].(string)
 				}
-				add(d.govim.ChannelRedraw(force == "force"))
+				<-d.govim.Schedule(func(g govim.Govim) error {
+					add(g.ChannelRedraw(force == "force"))
+					return nil
+				})
 			case "ex":
 				expr := args[1].(string)
-				add(d.govim.ChannelEx(expr))
+				<-d.govim.Schedule(func(g govim.Govim) error {
+					add(g.ChannelEx(expr))
+					return nil
+				})
 			case "normal":
 				expr := args[1].(string)
-				add(d.govim.ChannelNormal(expr))
+				<-d.govim.Schedule(func(g govim.Govim) error {
+					add(g.ChannelNormal(expr))
+					return nil
+				})
 			case "expr":
 				expr := args[1].(string)
-				resp, err := d.govim.ChannelExpr(expr)
-				add(err, resp)
+				<-d.govim.Schedule(func(g govim.Govim) error {
+					resp, err := g.ChannelExpr(expr)
+					add(err, resp)
+					return nil
+				})
 			case "call":
 				fn := args[1].(string)
-				resp, err := d.govim.ChannelCall(fn, args[2:]...)
-				add(err, resp)
+				<-d.govim.Schedule(func(g govim.Govim) error {
+					resp, err := g.ChannelCall(fn, args[2:]...)
+					add(err, resp)
+					return nil
+				})
 			default:
 				panic(fmt.Errorf("don't yet know how to handle %v", cmd))
 			}
