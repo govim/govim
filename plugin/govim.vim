@@ -9,8 +9,6 @@ let s:plugindir = expand(expand("<sfile>:p:h:h"))
 let s:govim_status = "loading"
 let s:loadStatusCallbacks = []
 
-set mouse=a
-set ttymouse=sgr
 set balloondelay=250
 set ballooneval
 set balloonevalterm
