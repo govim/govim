@@ -1,3 +1,5 @@
+set mouse=a
+set ttymouse=xterm2
 set nocompatible
 set nobackup
 set nowritebackup
