@@ -2,7 +2,7 @@
 
 ### What version of Vim/Gvim are you using?
 
-<details><summary><code>go env</code> Output</summary><br><pre>
+<details><summary>Vim/Gvim version</summary><br><pre>
 $ vim --version
 
 </pre></details>
@@ -21,13 +21,13 @@ $ go env
 
 </pre></details>
 
+
 ### What version/commit of `govim` are you using?
 
 
 ### What did you do?
 
 <!-- If possible, provide a recipe for reproducing the error.  -->
-
 
 
 ### What did you expect to see?
