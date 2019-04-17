@@ -9,7 +9,7 @@ Installation instructions below.
 Package [`github.com/myitcv/govim`](https://godoc.org/github.com/myitcv/govim) provides an API for plugin developers to
 interface with Vim8 in Go. More details [here](PLUGIN_AUTHORS.md).
 
-`govim` requires at least [`go1.12`](https://golang.org/dl/) and [Vim `v8.1.0053`](https://www.vim.org/download.php)
+`govim` requires at least [`go1.12`](https://golang.org/dl/) and [Vim `v8.1.1158`](https://www.vim.org/download.php)
 (`gvim` is also supported). More details [in the
 FAQ](https://github.com/myitcv/govim/wiki/FAQ#what-versions-of-vim-and-go-are-supported).
 
