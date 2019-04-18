@@ -443,10 +443,20 @@ func (v *vimstate) hover(args ...json.RawMessage) (interface{}, error) {
 	return plain, nil
 }
 
+type quickfixEntry struct {
+	Filename string `json:"filename"`
+	Lnum     int    `json:"lnum"`
+	Col      int    `json:"col"`
+	Text     string `json:"text"`
+}
+
 func (v *vimstate) updateQuickfix() error {
 	defer func() {
 		v.diagnosticsChanged = false
 	}()
+	if !v.diagnosticsChanged {
+		return nil
+	}
 	var fns []span.URI
 	for u := range v.diagnostics {
 		fns = append(fns, u)
@@ -455,14 +465,11 @@ func (v *vimstate) updateQuickfix() error {
 		return string(fns[i]) < string(fns[j])
 	})
 
-	tf, err := ioutil.TempFile("", "govim-quickfix-*")
-	if err != nil {
-		return fmt.Errorf("failed to create file for quickfix results: %v", err)
-	}
-	defer os.Remove(tf.Name())
-
 	// TODO this will become fragile at some point
 	cwd := v.ParseString(v.ChannelCall("getcwd"))
+
+	// must be non-nil
+	fixes := []quickfixEntry{}
 
 	// now update the quickfix window based on the current diagnostics
 	for _, uri := range fns {
@@ -499,9 +506,14 @@ func (v *vimstate) updateQuickfix() error {
 			if err != nil {
 				return fmt.Errorf("failed to resolve position: %v", err)
 			}
-			fmt.Fprintf(tf, "%v:%v:%v: %v\n", fn, p.Line(), p.Col(), d.Message)
+			fixes = append(fixes, quickfixEntry{
+				Filename: fn,
+				Lnum:     p.Line(),
+				Col:      p.Col(),
+				Text:     d.Message,
+			})
 		}
 	}
-	v.ChannelExf("cgetfile %v", tf.Name())
+	v.ChannelCall("setqflist", fixes, "r")
 	return nil
 }
