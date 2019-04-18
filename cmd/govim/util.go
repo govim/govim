@@ -3,10 +3,8 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 
 	"github.com/myitcv/govim/cmd/govim/types"
-	"github.com/russross/blackfriday/v2"
 )
 
 // fetchCurrentBufferInfo is a helper function to snapshot the current buffer
@@ -49,15 +47,3 @@ func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {
 	p, err = types.PointFromVim(b, pos.Line, pos.Col)
 	return
 }
-
-type plainMarkdown struct{}
-
-var _ blackfriday.Renderer = plainMarkdown{}
-
-func (p plainMarkdown) RenderNode(w io.Writer, node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
-	fmt.Fprint(w, string(node.Literal))
-	return blackfriday.GoToNext
-}
-
-func (p plainMarkdown) RenderHeader(w io.Writer, ast *blackfriday.Node) {}
-func (p plainMarkdown) RenderFooter(w io.Writer, ast *blackfriday.Node) {}

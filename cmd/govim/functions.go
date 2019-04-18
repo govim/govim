@@ -19,7 +19,6 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 	"github.com/myitcv/govim/cmd/govim/types"
 	"github.com/myitcv/govim/internal/plugin"
-	"github.com/russross/blackfriday/v2"
 )
 
 type vimstate struct {
@@ -82,12 +81,10 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 		if err != nil {
 			v.ChannelCall("balloon_show", fmt.Sprintf("failed to get hover details: %v", err))
 		} else {
-			md := []byte(hovRes.Contents.Value)
-			plain := string(blackfriday.Run(md, blackfriday.WithRenderer(plainMarkdown{})))
-			plain = strings.TrimSpace(plain)
-			var args interface{} = plain
+			msg := strings.TrimSpace(hovRes.Contents.Value)
+			var args interface{} = msg
 			if !v.isGui {
-				args = strings.Split(plain, "\n")
+				args = strings.Split(msg, "\n")
 			}
 			v.ChannelCall("balloon_show", args)
 		}
@@ -437,10 +434,7 @@ func (v *vimstate) hover(args ...json.RawMessage) (interface{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get hover details: %v", err)
 	}
-	md := []byte(res.Contents.Value)
-	plain := string(blackfriday.Run(md, blackfriday.WithRenderer(plainMarkdown{})))
-	plain = strings.TrimSpace(plain)
-	return plain, nil
+	return strings.TrimSpace(res.Contents.Value), nil
 }
 
 type quickfixEntry struct {
