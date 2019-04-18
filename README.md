@@ -10,8 +10,8 @@ Package [`github.com/myitcv/govim`](https://godoc.org/github.com/myitcv/govim) p
 interface with Vim8 in Go. More details [here](PLUGIN_AUTHORS.md).
 
 `govim` requires at least [`go1.12`](https://golang.org/dl/) and [Vim `v8.1.1158`](https://www.vim.org/download.php)
-(`gvim` is also supported). More details [in the
-FAQ](https://github.com/myitcv/govim/wiki/FAQ#what-versions-of-vim-and-go-are-supported).
+(`gvim` is also supported). [Neovim](https://neovim.io) is not (currently) supported. More details [in the
+FAQ](https://github.com/myitcv/govim/wiki/FAQ#what-versions-of-vim-and-go-are-supported-with-govim).
 
 Install `govim` via:
 
@@ -23,6 +23,8 @@ Install `govim` via:
   * `Plug 'myitcv/govim'`
 * [Vundle](https://github.com/VundleVim/Vundle.vim)
   * `Plugin 'myitcv/govim'`
+
+If necessary, setup a [minimal `.vimrc`](minimal.vimrc).
 
 ### What can `govim` do?
 
