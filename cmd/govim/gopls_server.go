@@ -70,10 +70,10 @@ func (l loggingGoplsServer) DidChangeWatchedFiles(ctxt context.Context, params *
 	return err
 }
 
-func (l loggingGoplsServer) Symbols(ctxt context.Context, params *protocol.WorkspaceSymbolParams) ([]protocol.SymbolInformation, error) {
-	l.Logf("gopls.Symbols() call; params:\n%v", pretty.Sprint(params))
-	res, err := l.u.Symbols(ctxt, params)
-	l.Logf("gopls.Symbols() return; err: %v; res:\n%v", err, pretty.Sprint(res))
+func (l loggingGoplsServer) Symbol(ctxt context.Context, params *protocol.WorkspaceSymbolParams) ([]protocol.SymbolInformation, error) {
+	l.Logf("gopls.Symbol() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.Symbol(ctxt, params)
+	l.Logf("gopls.Symbol() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
