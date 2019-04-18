@@ -13,7 +13,6 @@ set balloondelay=250
 set ballooneval
 set balloonevalterm
 set updatetime=500
-syntax on
 
 " TODO these probably doesn't belong here?
 let g:govim_format_on_save = "goimports"
@@ -259,17 +258,21 @@ command -bar GOVIMPluginInstall echom "Installed to ".s:install(1)
 function s:install(force)
   let oldpath = getcwd()
   execute "cd ".s:plugindir
-  let commit = trim(system("git rev-parse HEAD"))
+  " TODO make work on Windows
+  let commit = trim(system("git rev-parse HEAD 2>&1"))
   if v:shell_error
     throw commit
   endif
   let targetdir = s:plugindir."/cmd/govim/.bin/".commit."/"
   if a:force || $GOVIM_ALWAYS_INSTALL == "true" || !filereadable(targetdir."govim") || !filereadable(targetdir."gopls")
+    echom "Installing govim and gopls"
+    call feedkeys(" ") " to prevent press ENTER to continue
     let oldgobin = $GOBIN
     let oldgomod = $GO111MODULE
     let $GO111MODULE = "on"
     let $GOBIN = targetdir
-    let install = system("go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/cmd/gopls")
+    " TODO make work on Windows
+    let install = system("go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/cmd/gopls 2>&1")
     if v:shell_error
       throw install
     endif
