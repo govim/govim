@@ -13,5 +13,8 @@ set mouse=a
 "
 " :help ttymouse
 "
-" for the appropriate setting for your terminal.
-set ttymouse=xterm2
+" for the appropriate setting for your terminal. Note that despite the
+" automated tests using xterm as the terminal, a setting of ttymouse=xterm
+" does not work correctly beyond a certain column number (citation needed)
+" hence we use ttymouse=sgr
+set ttymouse=sgr
