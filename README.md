@@ -24,7 +24,8 @@ Install `govim` via:
 * [Vundle](https://github.com/VundleVim/Vundle.vim)
   * `Plugin 'myitcv/govim'`
 
-If necessary, setup a [minimal `.vimrc`](minimal.vimrc).
+You might need some `.vimrc` settings to get all features working: see the [minimal `.vimrc`](minimal.vimrc) for more
+details. For more `.vimrc` tips and tricks, see [here](https://github.com/myitcv/govim/wiki/vimrc-tips).
 
 ### What can `govim` do?
 
