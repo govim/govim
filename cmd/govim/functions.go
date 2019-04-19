@@ -510,3 +510,12 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 	v.ChannelCall("setqflist", fixes, "r")
 	return nil
 }
+
+func (v *vimstate) deleteCurrentBuffer(args ...json.RawMessage) error {
+	currBufNr := v.ParseInt(args[0])
+	if _, ok := v.buffers[currBufNr]; !ok {
+		return fmt.Errorf("tried to remove buffer %v; but we have no record of it", currBufNr)
+	}
+	delete(v.buffers, currBufNr)
+	return nil
+}
