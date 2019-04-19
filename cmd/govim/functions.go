@@ -103,6 +103,8 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	v.ChannelExf("nnoremap <buffer> <silent> <C-LeftMouse> <LeftMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
 	v.ChannelExf("nnoremap <buffer> <silent> g<LeftMouse> <LeftMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
 	v.ChannelExf("nnoremap <buffer> <silent> <C-t> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToPrevDef)
+	v.ChannelExf("nnoremap <buffer> <silent> <C-RightMouse> <RightMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+	v.ChannelExf("nnoremap <buffer> <silent> g<RightMouse> <RightMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
 
 	b, err := v.currentBufferInfo(args[0])
 	if err != nil {
@@ -312,17 +314,6 @@ type completionResult struct {
 }
 
 func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
-	// We expect at most one argument that is the mode config.GoToDefMode
-	var mode config.GoToDefMode
-	if len(args) == 1 {
-		mode = config.GoToDefMode(args[0])
-		switch mode {
-		case config.GoToDefModeTab, config.GoToDefModeSplit, config.GoToDefModeVsplit:
-		default:
-			return fmt.Errorf("unknown mode %q supplied", mode)
-		}
-	}
-
 	cb, pos, err := v.cursorPos()
 	if err != nil {
 		return fmt.Errorf("failed to determine cursor position: %v", err)
@@ -354,7 +345,7 @@ func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
 		},
 	})
 	v.jumpStackPos++
-	return v.loadLocation(loc)
+	return v.loadLocation(flags.Mods, loc, args...)
 }
 
 func (v *vimstate) gotoPrevDef(flags govim.CommandFlags, args ...string) error {
@@ -368,43 +359,96 @@ func (v *vimstate) gotoPrevDef(flags govim.CommandFlags, args ...string) error {
 	}
 	loc := v.jumpStack[v.jumpStackPos]
 
-	return v.loadLocation(loc)
+	return v.loadLocation(flags.Mods, loc, args...)
 }
 
-func (v *vimstate) loadLocation(loc protocol.Location) error {
-	// re-use the logic from vim-go:
-	//
-	// https://github.com/fatih/vim-go/blob/f04098811b8a7aba3dba699ed98f6f6e39b7d7ac/autoload/go/def.vim#L106
-
-	oldSwitchBuf := v.ParseString(v.ChannelExpr("&switchbuf"))
-	defer v.ChannelExf(`let &switchbuf=%q`, oldSwitchBuf)
-	v.ChannelEx("normal! m'")
-
-	cmd := "edit"
-	if v.ParseInt(v.ChannelExpr("&modified")) == 1 {
-		cmd = "hide edit"
+// args is expected to be the command args for either gotodef or gotoprevdef
+func (v *vimstate) loadLocation(mods govim.CommModList, loc protocol.Location, args ...string) error {
+	// We expect at most one argument that is the a string value appropriate
+	// for &switchbuf. This will need parsing if supplied
+	var modesStr string
+	if len(args) == 1 {
+		modesStr = args[0]
+	} else {
+		modesStr = v.ParseString(v.ChannelExpr("&switchbuf"))
+	}
+	var modes []govim.SwitchBufMode
+	if modesStr != "" {
+		pmodes, err := govim.ParseSwitchBufModes(modesStr)
+		if err != nil {
+			source := "from Vim setting &switchbuf"
+			if len(args) == 1 {
+				source = "as command argument"
+			}
+			return fmt.Errorf("got invalid SwitchBufMode setting %v: %q", source, modesStr)
+		}
+		modes = pmodes
+	} else {
+		modes = []govim.SwitchBufMode{govim.SwitchBufUseOpen}
 	}
 
-	// TODO implement remaining logic from vim-go if it
-	// makes sense to do so
+	modesMap := make(map[govim.SwitchBufMode]bool)
+	for _, m := range modes {
+		modesMap[m] = true
+	}
 
-	// if a:mode == "tab"
-	//   let &switchbuf = "useopen,usetab,newtab"
-	//   if bufloaded(filename) == 0
-	//     tab split
-	//   else
-	//      let cmd = 'sbuf'
-	//   endif
-	// elseif a:mode == "split"
-	//   split
-	// elseif a:mode == "vsplit"
-	//   vsplit
-	// endif
-
-	v.ChannelExf("%v %v", cmd, strings.TrimPrefix(loc.URI, "file://"))
+	v.ChannelEx("normal! m'")
 
 	vp := v.Viewport()
-	nb := v.buffers[vp.Current.BufNr]
+	tf := strings.TrimPrefix(loc.URI, "file://")
+
+	bn := v.ParseInt(v.ChannelCall("bufnr", tf))
+	if bn != -1 {
+		if vp.Current.BufNr == bn {
+			goto MovedToTargetWin
+		}
+		if modesMap[govim.SwitchBufUseOpen] {
+			ctp := vp.Current.TabNr
+			for _, w := range vp.Windows {
+				if w.TabNr == ctp && w.BufNr == bn {
+					v.ChannelCall("win_gotoid", w.WinID)
+					goto MovedToTargetWin
+				}
+			}
+		}
+		if modesMap[govim.SwitchBufUseTag] {
+			for _, w := range vp.Windows {
+				if w.BufNr == bn {
+					v.ChannelCall("win_gotoid", w.WinID)
+					goto MovedToTargetWin
+				}
+			}
+		}
+	}
+	for _, m := range modes {
+		switch m {
+		case govim.SwitchBufUseOpen, govim.SwitchBufUseTag:
+			continue
+		case govim.SwitchBufSplit:
+			v.ChannelExf("%v split %v", mods, tf)
+		case govim.SwitchBufVsplit:
+			v.ChannelExf("%v vsplit %v", mods, tf)
+		case govim.SwitchBufNewTab:
+			v.ChannelExf("%v tabnew %v", mods, tf)
+		}
+		goto MovedToTargetWin
+	}
+
+	// I _think_ the default behaviour at this point is to use the
+	// current window, i.e. simply edit
+	v.ChannelExf("%v edit %v", mods, tf)
+
+MovedToTargetWin:
+
+	// now we _must_ have a valid buffer
+	bn = v.ParseInt(v.ChannelCall("bufnr", tf))
+	if bn == -1 {
+		return fmt.Errorf("should have a valid buffer number by this point; we don't")
+	}
+	nb, ok := v.buffers[bn]
+	if !ok {
+		return fmt.Errorf("should have resolved a buffer; we didn't")
+	}
 	newPos, err := types.PointFromPosition(nb, loc.Range.Start)
 	if err != nil {
 		return fmt.Errorf("failed to derive point from position: %v", err)

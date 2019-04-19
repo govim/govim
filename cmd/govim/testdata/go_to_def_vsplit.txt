@@ -1,0 +1,42 @@
+# Test that GOVIMGoToDef works
+
+# More natural to split below and to the right
+vim ex 'set splitbelow'
+vim ex 'set splitright'
+
+# Definition in unopened buffer; vsplit
+vim ex 'set switchbuf=vsplit'
+vim ex 'e '$WORK/p.go
+vim ex 'call cursor(5,17)'
+vim ex 'GOVIMGoToDef'
+vim expr 'bufname(\"\")'
+stdout '^\Q"'$WORK'/q/q.go"\E$'
+vim expr '[winnr(), tabpagenr()]'
+stdout '^\Q[2,1]\E$'
+vim expr 'string([getcurpos()[1], getcurpos()[2]])'
+stdout '^\Q"[3, 7]"\E$'
+vim expr 'winlayout()'
+stdout '^\Q["row",[["leaf",1000],["leaf",1001]]]\E$'
+
+-- go.mod --
+module mod.com/p
+
+replace mod.com/q => ./q
+
+-- p.go --
+package p
+
+import "mod.com/q"
+
+const Name1 = q.Name
+const Name2 = SameFile
+
+const SameFile = "samefile"
+
+-- q/go.mod --
+module mod.com/q
+
+-- q/q.go --
+package q
+
+const Name = "package q"
