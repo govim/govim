@@ -15,7 +15,7 @@ type Driver struct {
 
 type (
 	// VimAutoCommandFunction is the signature of a callback from a defined autocmd
-	DriverAutoCommandFunction func() error
+	DriverAutoCommandFunction func(args ...json.RawMessage) error
 
 	// VimCommandFunction is the signature of a callback from a defined command
 	DriverCommandFunction func(flags govim.CommandFlags, args ...string) error
@@ -159,11 +159,11 @@ func (d Driver) DefineCommand(name string, f DriverCommandFunction, attrs ...gov
 	}
 }
 
-func (d Driver) DefineAutoCommand(group string, events govim.Events, patts govim.Patterns, nested bool, f DriverAutoCommandFunction) {
+func (d Driver) DefineAutoCommand(group string, events govim.Events, patts govim.Patterns, nested bool, f DriverAutoCommandFunction, exprs ...string) {
 	if group == "" {
 		group = strings.ToLower(d.prefix)
 	}
-	if err := d.Govim.DefineAutoCommand(group, events, patts, nested, d.doAutoCommandFunction(f)); err != nil {
+	if err := d.Govim.DefineAutoCommand(group, events, patts, nested, d.doAutoCommandFunction(f), exprs...); err != nil {
 		d.Errorf("failed to DefineAutoCommand: %v", err)
 	}
 }
@@ -210,10 +210,10 @@ func (d Driver) doCommandFunction(f DriverCommandFunction) govim.VimCommandFunct
 }
 
 func (d Driver) doAutoCommandFunction(f DriverAutoCommandFunction) govim.VimAutoCommandFunction {
-	return func(g govim.Govim) error {
+	return func(g govim.Govim, args ...json.RawMessage) error {
 		d := d.clone(g)
 		return d.do(func() error {
-			return f()
+			return f(args...)
 		})
 	}
 }

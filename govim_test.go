@@ -128,7 +128,7 @@ func (t *testplugin) Init(g govim.Govim, errCh chan error) (err error) {
 	t.DefineFunction("Bad", []string{}, t.bad)
 	t.DefineRangeFunction("Echo", []string{}, t.echo)
 	t.DefineCommand("HelloComm", t.helloComm, govim.AttrBang)
-	t.DefineAutoCommand("", govim.Events{govim.EventBufRead}, govim.Patterns{"*.go"}, false, t.bufRead)
+	t.DefineAutoCommand("", govim.Events{govim.EventBufRead}, govim.Patterns{"*.go"}, false, t.bufRead, "expand('<afile>')")
 	t.DefineFunction("Func1", []string{}, t.func1)
 	t.DefineFunction("Func2", []string{}, t.func2)
 	t.DefineFunction("TriggerUnscheduled", []string{}, t.triggerUnscheduled)
@@ -139,8 +139,10 @@ func (t *testplugin) Shutdown() error {
 	return nil
 }
 
-func (t *testpluginvim) bufRead() error {
-	t.ChannelEx(`echom "Hello from BufRead"`)
+func (t *testpluginvim) bufRead(args ...json.RawMessage) error {
+	// we are expecting the expanded result of <afile> as our first argument
+	fn := t.ParseString(args[0])
+	t.ChannelExf(`echom "Hello from BufRead %v"`, fn)
 	return nil
 }
 
