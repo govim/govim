@@ -2,7 +2,7 @@
 
 vim ex 'e main.go'
 vim expr 'v:statusmsg'
-stdout '^\Q"Hello from BufRead"\E$'
+stdout '^\Q"Hello from BufRead main.go"\E$'
 ! stderr .+
 
 -- main.go --

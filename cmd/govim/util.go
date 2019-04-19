@@ -7,16 +7,18 @@ import (
 	"github.com/myitcv/govim/cmd/govim/types"
 )
 
-// fetchCurrentBufferInfo is a helper function to snapshot the current buffer
-// information from Vim. This helper method should only be used with methods
-// responsible for updating d.buffers
-func (v *vimstate) fetchCurrentBufferInfo() (*types.Buffer, error) {
+const (
+	exprAutocmdCurrBufInfo = `{"Num": eval(expand('<abuf>')), "Name": expand('<afile>:p'), "Contents": join(getbufline(eval(expand('<abuf>')), 0, "$"), "\n")}`
+)
+
+// currentBufferInfo is a helper function to unmarshal autocmd current
+// buffer details from expr
+func (v *vimstate) currentBufferInfo(expr json.RawMessage) (*types.Buffer, error) {
 	var buf struct {
 		Num      int
 		Name     string
 		Contents string
 	}
-	expr := v.ChannelExpr(`{"Num": bufnr(""), "Name": expand('%:p'), "Contents": join(getline(0, "$"), "\n")}`)
 	if err := json.Unmarshal(expr, &buf); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal current buffer info: %v", err)
 	}

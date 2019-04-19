@@ -73,7 +73,7 @@ type Govim interface {
 	DefineCommand(name string, f VimCommandFunction, attrs ...CommAttr) error
 
 	// DefineAutoCommand defines an autocmd for events for files matching patterns.
-	DefineAutoCommand(group string, events Events, patts Patterns, nested bool, f VimAutoCommandFunction) error
+	DefineAutoCommand(group string, events Events, patts Patterns, nested bool, f VimAutoCommandFunction, exprs ...string) error
 
 	// Run is a user-friendly run wrapper
 	Run() error
@@ -277,7 +277,7 @@ type VimCommandFunction func(g Govim, flags CommandFlags, args ...string) error
 func (v VimCommandFunction) isHandler() {}
 
 // VimAutoCommandFunction is the signature of a callback from a defined autocmd
-type VimAutoCommandFunction func(g Govim) error
+type VimAutoCommandFunction func(g Govim, args ...json.RawMessage) error
 
 func (v VimAutoCommandFunction) isHandler() {}
 
@@ -391,8 +391,9 @@ func (g *govimImpl) run() {
 					return nil, err
 				}
 			case VimAutoCommandFunction:
+				fargs = g.parseJSONArgSlice(fargs[0])
 				call = func() (interface{}, error) {
-					err := f(g)
+					err := f(g, fargs...)
 					return nil, err
 				}
 			default:
@@ -504,7 +505,7 @@ func (g *govimImpl) defineFunction(isRange bool, name string, params []string, f
 	return g.handleChannelError(ch, err, "failed to define %q in Vim: %v", name)
 }
 
-func (g *govimImpl) DefineAutoCommand(group string, events Events, patts Patterns, nested bool, f VimAutoCommandFunction) error {
+func (g *govimImpl) DefineAutoCommand(group string, events Events, patts Patterns, nested bool, f VimAutoCommandFunction, exprs ...string) error {
 	<-g.loaded
 	var err error
 	g.funcHandlersLock.Lock()
@@ -539,7 +540,11 @@ func (g *govimImpl) DefineAutoCommand(group string, events Events, patts Pattern
 	if nested {
 		w("nested")
 	}
-	args := []interface{}{funcHandle, def.String()}
+	if exprs == nil {
+		// must be non-nil
+		exprs = []string{}
+	}
+	args := []interface{}{funcHandle, def.String(), exprs}
 	callbackTyp := "autocmd"
 	ch := make(unscheduledCallback)
 	err = g.DoProto(func() {

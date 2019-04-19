@@ -45,8 +45,12 @@ function s:callbackCommand(name, flags, ...)
   return l:resp[1]
 endfunction
 
-function s:callbackAutoCommand(name)
-  let l:args = ["function", a:name]
+function s:callbackAutoCommand(name, exprs)
+  let l:exprVals = []
+  for e in a:exprs
+    call add(l:exprVals, eval(e))
+  endfor
+  let l:args = ["function", a:name, l:exprVals]
   let l:resp = ch_evalexpr(s:channel, l:args)
   if l:resp[0] != ""
     throw l:resp[0]
@@ -127,7 +131,7 @@ function s:define(channel, msg)
     elseif a:msg[1] == "command"
       call s:defineCommand(a:msg[2], a:msg[3])
     elseif a:msg[1] == "autocmd"
-      call s:defineAutoCommand(a:msg[2], a:msg[3])
+      call s:defineAutoCommand(a:msg[2], a:msg[3], a:msg[4])
     elseif a:msg[1] == "redraw"
       let l:force = a:msg[2]
       let l:args = ""
@@ -164,8 +168,12 @@ function s:define(channel, msg)
   call ch_sendexpr(a:channel, l:resp)
 endfunction
 
-func s:defineAutoCommand(name, def)
-  execute "autocmd " . a:def . " call s:callbackAutoCommand(\"" . a:name . "\")"
+func s:defineAutoCommand(name, def, exprs)
+  let l:exprStrings = []
+  for e in a:exprs
+    call add(l:exprStrings, '"'.escape(e, '"').'"')
+  endfor
+  execute "autocmd " . a:def . " call s:callbackAutoCommand(\"" . a:name . "\", [".join(l:exprStrings, ",")."])"
 endfunction
 
 func s:defineCommand(name, attrs)

@@ -93,7 +93,7 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 	return "", nil
 }
 
-func (v *vimstate) bufReadPost() error {
+func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	// Setup buffer-local mappings and settings
 	v.ChannelExf("setlocal balloonexpr=%v%v()", v.Driver.Prefix(), config.FunctionBalloonExpr)
 	v.ChannelExf("setlocal omnifunc=%v%v", v.Driver.Prefix(), config.FunctionComplete)
@@ -104,7 +104,7 @@ func (v *vimstate) bufReadPost() error {
 	v.ChannelExf("nnoremap <buffer> <silent> g<LeftMouse> <LeftMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
 	v.ChannelExf("nnoremap <buffer> <silent> <C-t> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToPrevDef)
 
-	b, err := v.fetchCurrentBufferInfo()
+	b, err := v.currentBufferInfo(args[0])
 	if err != nil {
 		return err
 	}
@@ -117,8 +117,8 @@ func (v *vimstate) bufReadPost() error {
 	return v.handleBufferEvent(b)
 }
 
-func (v *vimstate) bufTextChanged() error {
-	b, err := v.fetchCurrentBufferInfo()
+func (v *vimstate) bufTextChanged(args ...json.RawMessage) error {
+	b, err := v.currentBufferInfo(args[0])
 	if err != nil {
 		return err
 	}
@@ -160,15 +160,14 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 	return err
 }
 
-func (v *vimstate) formatCurrentBuffer() (err error) {
+func (v *vimstate) formatCurrentBuffer(args ...json.RawMessage) (err error) {
 	tool := v.ParseString(v.ChannelExpr(config.GlobalFormatOnSave))
-	vp, err := v.Viewport()
-	if err != nil {
-		return err
-	}
-	b, ok := v.buffers[vp.Current.BufNr]
+	// we are an autocmd endpoint so we need to be told the current
+	// buffer number via <abuf>
+	currBufNr := v.ParseInt(args[0])
+	b, ok := v.buffers[currBufNr]
 	if !ok {
-		return fmt.Errorf("failed to resolve buffer %v", vp.Current.BufNr)
+		return fmt.Errorf("failed to resolve buffer %v", currBufNr)
 	}
 
 	var edits []protocol.TextEdit
@@ -444,7 +443,7 @@ type quickfixEntry struct {
 	Text     string `json:"text"`
 }
 
-func (v *vimstate) updateQuickfix() error {
+func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 	defer func() {
 		v.diagnosticsChanged = false
 	}()
