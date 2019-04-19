@@ -1,5 +1,16 @@
-" Useful for debugging
-" call ch_logfile("/tmp/vimchannel.out", "a")
+" TODO we are ignoring windows right now....
+let s:tmpdir = $TMPDIR
+if s:tmpdir == ""
+  let s:tmpdir = "/tmp"
+endif
+let s:ch_logfile = system("mktemp ".s:tmpdir."/vim_channel_log_".strftime("%Y%m%d_%H%M_%S")."_XXXXXXXXXXXX 2>&1")
+if v:shell_error
+  throw s:ch_logfile
+endif
+let s:ch_logfile = trim(s:ch_logfile)
+call ch_logfile(s:ch_logfile, "a")
+echom "Vim channel logfile: ".s:ch_logfile
+call feedkeys(" ") " to prevent press ENTER to continue
 let s:channel = ""
 let s:timer = ""
 let s:currViewport = {}
