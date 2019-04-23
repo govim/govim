@@ -1,0 +1,37 @@
+# Test that GOVIMGoToDef works
+
+# More natural to split below and to the right
+vim ex 'set splitbelow'
+vim ex 'set splitright'
+
+# Definition in same file
+vim ex 'e '$WORK/p.go
+vim ex 'call cursor(6,15)'
+vim ex 'GOVIMGoToDef'
+vim expr 'bufname(\"\")'
+stdout '^\Q"'$WORK'/p.go"\E$'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '^\Q[8,7]\E$'
+
+-- go.mod --
+module mod.com/p
+
+replace mod.com/q => ./q
+
+-- p.go --
+package p
+
+import "mod.com/q"
+
+const Name1 = q.Name
+const Name2 = SameFile
+
+const SameFile = "samefile"
+
+-- q/go.mod --
+module mod.com/q
+
+-- q/q.go --
+package q
+
+const Name = "package q"
