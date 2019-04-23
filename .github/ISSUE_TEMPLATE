@@ -25,6 +25,15 @@ $ go env
 ### What version/commit of `govim` are you using?
 
 
+### What is the output of `:messages` in Vim?
+
+
+### Do the Vim channel or `govim` log files show anything interesting?
+
+<!-- !! BEWARE THESE LOGFILES CONTAIN FILE CONTENTS !! -->
+
+<!-- The location of the logfiles is given by :messages in Vim -->
+
 
 ### How did you install `govim`?
 
