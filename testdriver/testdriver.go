@@ -354,6 +354,7 @@ func Vim() (exitCode int) {
 	}
 	fs := flag.NewFlagSet("vim", flag.PanicOnError)
 	bang := fs.Bool("bang", false, "expect command to fail")
+	indent := fs.Bool("indent", false, "pretty indent resulting JSON")
 	fs.Parse(os.Args[1:])
 	args := fs.Args()
 	fn := args[0]
@@ -456,7 +457,9 @@ func Vim() (exitCode int) {
 			ef("unexpected command success")
 		}
 		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
+		if *indent {
+			enc.SetIndent("", "  ")
+		}
 		if err := enc.Encode(vimResp[1]); err != nil {
 			ef("failed to format output of JSON: %v", err)
 		}

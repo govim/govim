@@ -190,12 +190,12 @@ endfunction
 func s:defineCommand(name, attrs)
   let l:def = "command! "
   let l:args = ""
-  let l:flags = ['"mods": split("<mods>", ",")']
+  let l:flags = ['"mods": expand("<mods>")']
   " let l:flags = []
   if has_key(a:attrs, "nargs")
     let l:def .= " ". a:attrs["nargs"]
     if a:attrs["nargs"] != "-nargs=0"
-      let l:args = ", <f-args>"
+      let l:args = ", <args>"
     endif
   endif
   if has_key(a:attrs, "range")

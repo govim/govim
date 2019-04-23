@@ -168,6 +168,14 @@ func (d Driver) DefineAutoCommand(group string, events govim.Events, patts govim
 	}
 }
 
+func (d Driver) Viewport() govim.Viewport {
+	vp, err := d.Govim.Viewport()
+	if err != nil {
+		d.Errorf("failed to get Viewport: %v", err)
+	}
+	return vp
+}
+
 func (d Driver) doFunction(f DriverFunction) govim.VimFunction {
 	return func(g govim.Govim, args ...json.RawMessage) (interface{}, error) {
 		d := d.clone(g)
