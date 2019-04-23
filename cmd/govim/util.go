@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	exprAutocmdCurrBufInfo = `{"Num": eval(expand('<abuf>')), "Name": expand('<afile>:p'), "Contents": join(getbufline(eval(expand('<abuf>')), 0, "$"), "\n")}`
+	exprAutocmdCurrBufInfo = `{"Num": eval(expand('<abuf>')), "Name": fnamemodify(bufname(eval(expand('<abuf>'))),':p'), "Contents": join(getbufline(eval(expand('<abuf>')), 0, "$"), "\n")}`
 )
 
 // currentBufferInfo is a helper function to unmarshal autocmd current
