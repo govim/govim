@@ -1,6 +1,6 @@
 # Test that the vim sidecar expr command works
 
-vim expr '[1, 2, line(\"$\")]'
+vim -indent expr '[1, 2, line(\"$\")]'
 cmp stdout out.golden
 
 -- out.golden --

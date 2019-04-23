@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 type CommandFlags struct {
@@ -13,6 +14,7 @@ type CommandFlags struct {
 	Count *int
 	Bang  *bool
 	Reg   *string
+	Mods  CommModList
 }
 
 func (c *CommandFlags) UnmarshalJSON(b []byte) error {
@@ -23,6 +25,7 @@ func (c *CommandFlags) UnmarshalJSON(b []byte) error {
 		Count *int    `json:"count"`
 		Bang  *string `json:"bang"`
 		Reg   *string `json:"reg"`
+		Mods  string  `json:"mods"`
 	}
 
 	if err := json.Unmarshal(b, &v); err != nil {
@@ -37,9 +40,55 @@ func (c *CommandFlags) UnmarshalJSON(b []byte) error {
 		b := *v.Bang == "!"
 		c.Bang = &b
 	}
+	for _, v := range strings.Fields(v.Mods) {
+		cm := CommMod(v)
+		switch cm {
+		case CommModAboveLeft, CommModBelowRight, CommModBotRight, CommModBrowse, CommModConfirm,
+			CommModHide, CommModKeepAlt, CommModKeepJumps, CommModKeepMarks, CommModKeepPatterns,
+			CommModLeftAbove, CommModLockMarks, CommModNoSwapfile, CommModRightBelow, CommModSilent,
+			CommModTab, CommModTopLeft, CommModVerbose, CommModVertical:
+		default:
+			return fmt.Errorf("unknown CommMod %q", cm)
+		}
+		c.Mods = append(c.Mods, cm)
+	}
 
 	return nil
 }
+
+type CommModList []CommMod
+
+func (c CommModList) String() string {
+	var vals []string
+	for _, cc := range c {
+		vals = append(vals, string(cc))
+	}
+	return strings.Join(vals, " ")
+}
+
+type CommMod string
+
+const (
+	CommModAboveLeft    CommMod = "aboveleft"
+	CommModBelowRight   CommMod = "belowright"
+	CommModBotRight     CommMod = "botright"
+	CommModBrowse       CommMod = "browse"
+	CommModConfirm      CommMod = "confirm"
+	CommModHide         CommMod = "hide"
+	CommModKeepAlt      CommMod = "keepalt"
+	CommModKeepJumps    CommMod = "keepjumps"
+	CommModKeepMarks    CommMod = "keepmarks"
+	CommModKeepPatterns CommMod = "keeppatterns"
+	CommModLeftAbove    CommMod = "leftabove"
+	CommModLockMarks    CommMod = "lockmarks"
+	CommModNoSwapfile   CommMod = "noswapfile"
+	CommModRightBelow   CommMod = "rightbelow"
+	CommModSilent       CommMod = "silent"
+	CommModTab          CommMod = "tab"
+	CommModTopLeft      CommMod = "topleft"
+	CommModVerbose      CommMod = "verbose"
+	CommModVertical     CommMod = "vertical"
+)
 
 type CommAttr interface {
 	fmt.Stringer

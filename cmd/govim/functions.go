@@ -403,10 +403,7 @@ func (v *vimstate) loadLocation(loc protocol.Location) error {
 
 	v.ChannelExf("%v %v", cmd, strings.TrimPrefix(loc.URI, "file://"))
 
-	vp, err := v.Viewport()
-	if err != nil {
-		return err
-	}
+	vp := v.Viewport()
 	nb := v.buffers[vp.Current.BufNr]
 	newPos, err := types.PointFromPosition(nb, loc.Range.Start)
 	if err != nil {
