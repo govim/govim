@@ -273,9 +273,9 @@ func (l loggingGoplsServer) Rename(ctxt context.Context, params *protocol.Rename
 	return res, err
 }
 
-func (l loggingGoplsServer) FoldingRanges(ctxt context.Context, params *protocol.FoldingRangeParams) ([]protocol.FoldingRange, error) {
-	l.Logf("gopls.FoldingRanges() call; params:\n%v", pretty.Sprint(params))
-	res, err := l.u.FoldingRanges(ctxt, params)
-	l.Logf("gopls.FoldingRanges() return; err: %v; res\n", err, pretty.Sprint(res))
+func (l loggingGoplsServer) FoldingRange(ctxt context.Context, params *protocol.FoldingRangeParams) ([]protocol.FoldingRange, error) {
+	l.Logf("gopls.FoldingRange() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.FoldingRange(ctxt, params)
+	l.Logf("gopls.FoldingRange() return; err: %v; res\n", err, pretty.Sprint(res))
 	return res, err
 }

@@ -74,6 +74,7 @@ type Server struct {
 	// Configurations.
 	// TODO(rstambler): Separate these into their own struct?
 	usePlaceholders               bool
+	enhancedHover                 bool
 	insertTextFormat              protocol.InsertTextFormat
 	configurationSupported        bool
 	dynamicConfigurationSupported bool
@@ -241,8 +242,8 @@ func (s *Server) Rename(context.Context, *protocol.RenameParams) ([]protocol.Wor
 	return nil, notImplemented("Rename")
 }
 
-func (s *Server) FoldingRanges(context.Context, *protocol.FoldingRangeParams) ([]protocol.FoldingRange, error) {
-	return nil, notImplemented("FoldingRanges")
+func (s *Server) FoldingRange(context.Context, *protocol.FoldingRangeParams) ([]protocol.FoldingRange, error) {
+	return nil, notImplemented("FoldingRange")
 }
 
 func notImplemented(method string) *jsonrpc2.Error {

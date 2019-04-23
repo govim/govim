@@ -26,6 +26,7 @@ type IdentifierInfo struct {
 	}
 	Declaration struct {
 		Range  span.Range
+		Node   ast.Decl
 		Object types.Object
 	}
 
@@ -49,19 +50,13 @@ func Identifier(ctx context.Context, v View, f File, pos token.Pos) (*Identifier
 	return result, err
 }
 
-func (i *IdentifierInfo) Hover(ctx context.Context, q types.Qualifier) (string, error) {
-	if q == nil {
-		fAST := i.File.GetAST(ctx)
-		pkg := i.File.GetPackage(ctx)
-		q = qualifier(fAST, pkg.GetTypes(), pkg.GetTypesInfo())
-	}
-	return types.ObjectString(i.Declaration.Object, q), nil
-}
-
 // identifier checks a single position for a potential identifier.
 func identifier(ctx context.Context, v View, f File, pos token.Pos) (*IdentifierInfo, error) {
 	fAST := f.GetAST(ctx)
 	pkg := f.GetPackage(ctx)
+	if pkg == nil {
+		return nil, fmt.Errorf("no package for %s", f.URI())
+	}
 	if pkg.IsIllTyped() {
 		return nil, fmt.Errorf("package for %s is ill typed", f.URI())
 	}
@@ -84,6 +79,7 @@ func identifier(ctx context.Context, v View, f File, pos token.Pos) (*Identifier
 	for _, n := range path[1:] {
 		if field, ok := n.(*ast.Field); ok {
 			result.wasEmbeddedField = len(field.Names) == 0
+			break
 		}
 	}
 	result.Name = result.ident.Name
@@ -96,13 +92,16 @@ func identifier(ctx context.Context, v View, f File, pos token.Pos) (*Identifier
 		// The original position was on the embedded field declaration, so we
 		// try to dig out the type and jump to that instead.
 		if v, ok := result.Declaration.Object.(*types.Var); ok {
-			if n, ok := v.Type().(*types.Named); ok {
-				result.Declaration.Object = n.Obj()
+			if typObj := typeToObject(v.Type()); typObj != nil {
+				result.Declaration.Object = typObj
 			}
 		}
 	}
 	var err error
 	if result.Declaration.Range, err = objToRange(ctx, v, result.Declaration.Object); err != nil {
+		return nil, err
+	}
+	if result.Declaration.Node, err = objToNode(ctx, v, result.Declaration.Object, result.Declaration.Range); err != nil {
 		return nil, err
 	}
 	typ := pkg.GetTypesInfo().TypeOf(result.ident)
@@ -139,4 +138,36 @@ func objToRange(ctx context.Context, v View, obj types.Object) (span.Range, erro
 		return span.Range{}, fmt.Errorf("invalid position for %v", obj.Name())
 	}
 	return span.NewRange(v.FileSet(), p, p+token.Pos(len(obj.Name()))), nil
+}
+
+func objToNode(ctx context.Context, v View, obj types.Object, rng span.Range) (ast.Decl, error) {
+	s, err := rng.Span()
+	if err != nil {
+		return nil, err
+	}
+	declFile, err := v.GetFile(ctx, s.URI())
+	if err != nil {
+		return nil, err
+	}
+	declAST := declFile.GetAST(ctx)
+	path, _ := astutil.PathEnclosingInterval(declAST, rng.Start, rng.End)
+	if path == nil {
+		return nil, fmt.Errorf("no path for range %v", rng)
+	}
+	for _, node := range path {
+		switch node := node.(type) {
+		case *ast.GenDecl:
+			// Type names, fields, and methods.
+			switch obj.(type) {
+			case *types.TypeName, *types.Var, *types.Const, *types.Func:
+				return node, nil
+			}
+		case *ast.FuncDecl:
+			// Function signatures.
+			if _, ok := obj.(*types.Func); ok {
+				return node, nil
+			}
+		}
+	}
+	return nil, nil // didn't find a node, but don't fail
 }
