@@ -94,18 +94,6 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 }
 
 func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
-	// Setup buffer-local mappings and settings
-	v.ChannelExf("setlocal balloonexpr=%v%v()", v.Driver.Prefix(), config.FunctionBalloonExpr)
-	v.ChannelExf("setlocal omnifunc=%v%v", v.Driver.Prefix(), config.FunctionComplete)
-	v.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
-	v.ChannelExf("nnoremap <buffer> <silent> gd :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
-	v.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
-	v.ChannelExf("nnoremap <buffer> <silent> <C-LeftMouse> <LeftMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
-	v.ChannelExf("nnoremap <buffer> <silent> g<LeftMouse> <LeftMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
-	v.ChannelExf("nnoremap <buffer> <silent> <C-t> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToPrevDef)
-	v.ChannelExf("nnoremap <buffer> <silent> <C-RightMouse> <RightMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
-	v.ChannelExf("nnoremap <buffer> <silent> g<RightMouse> <RightMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
-
 	b, err := v.currentBufferInfo(args[0])
 	if err != nil {
 		return err
@@ -559,4 +547,25 @@ func (v *vimstate) deleteCurrentBuffer(args ...json.RawMessage) error {
 	}
 	delete(v.buffers, currBufNr)
 	return nil
+}
+
+func (v *vimstate) ftplugin(args ...json.RawMessage) (interface{}, error) {
+	amatch := v.ParseString(args[0])
+	switch amatch {
+	case "go":
+		// Setup buffer-local mappings and settings
+		v.ChannelExf("setlocal balloonexpr=%v%v()", v.Driver.Prefix(), config.FunctionBalloonExpr)
+		v.ChannelExf("setlocal omnifunc=%v%v", v.Driver.Prefix(), config.FunctionComplete)
+		v.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+		v.ChannelExf("nnoremap <buffer> <silent> gd :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+		v.ChannelExf("nnoremap <buffer> <silent> <C-]> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+		v.ChannelExf("nnoremap <buffer> <silent> <C-LeftMouse> <LeftMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+		v.ChannelExf("nnoremap <buffer> <silent> g<LeftMouse> <LeftMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+		v.ChannelExf("nnoremap <buffer> <silent> <C-t> :%v%v<cr>", v.Driver.Prefix(), config.CommandGoToPrevDef)
+		v.ChannelExf("nnoremap <buffer> <silent> <C-RightMouse> <RightMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+		v.ChannelExf("nnoremap <buffer> <silent> g<RightMouse> <RightMouse>:%v%v<cr>", v.Driver.Prefix(), config.CommandGoToDef)
+	default:
+		return nil, fmt.Errorf("don't yet know how to handle filetype of %v", amatch)
+	}
+	return nil, nil
 }

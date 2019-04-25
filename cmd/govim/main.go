@@ -151,6 +151,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineFunction(string(config.FunctionHover), []string{}, g.hover)
 	g.DefineAutoCommand("", govim.Events{govim.EventCursorHold, govim.EventCursorHoldI}, govim.Patterns{"*.go"}, false, g.updateQuickfix)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufDelete}, govim.Patterns{"*.go"}, false, g.deleteCurrentBuffer, "eval(expand('<abuf>'))")
+	g.DefineFunction(string(config.FunctionFtplugin), []string{"amatch"}, g.ftplugin)
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 

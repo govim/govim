@@ -52,7 +52,7 @@ type TestDriver struct {
 	closed    bool
 }
 
-func NewTestDriver(name string, env *testscript.Env, plug govim.Plugin) (*TestDriver, error) {
+func NewTestDriver(name string, govimPath, testHomePath, testPluginPath string, env *testscript.Env, plug govim.Plugin) (*TestDriver, error) {
 	res := &TestDriver{
 		quitVim:    make(chan bool),
 		quitGovim:  make(chan bool),
@@ -75,6 +75,15 @@ func NewTestDriver(name string, env *testscript.Env, plug govim.Plugin) (*TestDr
 		return nil, fmt.Errorf("failed to create listener for driver: %v", err)
 	}
 
+	if err := copyDir(testPluginPath, govimPath); err != nil {
+		return nil, fmt.Errorf("failed to copy %v to %v: %v", govimPath, testPluginPath, err)
+	}
+	srcVimrc := filepath.Join(govimPath, "minimal.vimrc")
+	dstVimrc := filepath.Join(testHomePath, ".vimrc")
+	if err := copyFile(dstVimrc, srcVimrc); err != nil {
+		return nil, fmt.Errorf("failed to copy %v to %v: %v", srcVimrc, dstVimrc, err)
+	}
+
 	res.govimListener = gl
 	res.driverListener = dl
 
@@ -83,40 +92,51 @@ func NewTestDriver(name string, env *testscript.Env, plug govim.Plugin) (*TestDr
 		"GOVIMTESTDRIVER_SOCKET="+res.driverListener.Addr().String(),
 	)
 
-	vimrc, err := findLocalVimrc()
-	if err != nil {
-		return nil, fmt.Errorf("failed to find local vimrc: %v", err)
-	}
-
 	vimCmd := []string{"vim"}
 	if e := os.Getenv("VIM_COMMAND"); e != "" {
 		vimCmd = strings.Fields(e)
 	}
-	vimCmd = append(vimCmd, "-u", vimrc)
+	// vimCmd = append(vimCmd, "-V15/tmp/vim.debug")
 
 	res.cmd = exec.Command(vimCmd[0], vimCmd[1:]...)
 	res.cmd.Env = env.Vars
-
-	for i := len(env.Vars) - 1; i >= 0; i-- {
-		if strings.HasPrefix(env.Vars[i], "WORK=") {
-			res.cmd.Dir = strings.TrimPrefix(env.Vars[i], "WORK=")
-			break
-		}
-	}
+	res.cmd.Dir = env.WorkDir
 
 	return res, nil
 }
 
-func findLocalVimrc() (string, error) {
-	var stdout, stderr bytes.Buffer
-	cmd := exec.Command("go", "list", "-f={{.Dir}}", "github.com/myitcv/govim/testdriver")
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("failed to run %v: %v\n%s", strings.Join(cmd.Args, " "), err, stderr.Bytes())
+func copyDir(dst, src string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		switch path {
+		case filepath.Join(src, ".git"), filepath.Join(src, "cmd", "govim", ".bin"):
+			return filepath.SkipDir
+		}
+		rel := strings.TrimPrefix(path, src)
+		if strings.HasPrefix(rel, string(os.PathSeparator)) {
+			rel = strings.TrimPrefix(rel, string(os.PathSeparator))
+		}
+		dstpath := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(dstpath, 0777)
+		}
+		return copyFile(dstpath, path)
+	})
+}
+
+func copyFile(dst, src string) error {
+	r, err := os.Open(src)
+	if err != nil {
+		return err
 	}
-	dir := strings.TrimSpace(stdout.String())
-	return filepath.Join(dir, "test.vim"), nil
+	w, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(w, r); err != nil {
+		return err
+	}
+	r.Close()
+	return w.Close()
 }
 
 func (d *TestDriver) Run() {

@@ -49,7 +49,7 @@ func TestScripts(t *testing.T) {
 	}
 
 	goplspath := filepath.Join(td, "gopls")
-	plugpath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
+	govimPath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
 
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
@@ -58,12 +58,15 @@ func TestScripts(t *testing.T) {
 				"sleep": testdriver.Sleep,
 			},
 			Setup: func(e *testscript.Env) error {
+				home := filepath.Join(e.WorkDir, "home")
 				e.Vars = append(e.Vars,
-					"PLUGIN_PATH="+plugpath,
+					"HOME="+home,
+					"PLUGIN_PATH="+govimPath,
 					"CURRENT_GOPATH="+os.Getenv("GOPATH"),
 				)
+				testPluginPath := filepath.Join(e.WorkDir, "home", ".vim", "pack", "plugins", "start", "govim")
 				d := newplugin(string(goplspath))
-				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), e, d)
+				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), govimPath, home, testPluginPath, e, d)
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
@@ -121,14 +124,14 @@ func TestInstallScripts(t *testing.T) {
 		t.Skip("Install scripts are long-running")
 	}
 
-	plugpath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
+	govimPath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
 
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
 			Dir: "testdatainstall",
 			Setup: func(e *testscript.Env) error {
 				e.Vars = append(e.Vars,
-					"PLUGIN_PATH="+plugpath,
+					"PLUGIN_PATH="+govimPath,
 					"CURRENT_GOPATH="+os.Getenv("GOPATH"),
 				)
 				return nil

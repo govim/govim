@@ -7,6 +7,8 @@ set nobackup
 set nowritebackup
 set noswapfile
 
+filetype plugin on
+
 set mouse=a
 
 " To get hover working in the terminal we need to set ttymouse. See
