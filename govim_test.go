@@ -17,7 +17,6 @@ import (
 	"testing"
 
 	"github.com/myitcv/govim"
-	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/internal/plugin"
 	"github.com/myitcv/govim/testdriver"
 	"github.com/rogpeppe/go-internal/testscript"
@@ -127,8 +126,6 @@ func newTestPlugin(d plugin.Driver) *testplugin {
 func (t *testplugin) Init(g govim.Govim, errCh chan error) (err error) {
 	t.Driver.Govim = g
 	t.testpluginvim.Driver.Govim = g.Scheduled()
-	// TODO work out how to properly handle the Ftplugin stuff
-	t.DefineFunction("GOVIM"+string(config.FunctionFtplugin), []string{"amatch"}, t.ftplugin)
 	t.DefineFunction("HelloNil", nil, t.hello)
 	t.DefineFunction("Hello", []string{}, t.hello)
 	t.DefineFunction("HelloWithArg", []string{"target"}, t.helloWithArg)
@@ -145,16 +142,6 @@ func (t *testplugin) Init(g govim.Govim, errCh chan error) (err error) {
 
 func (t *testplugin) Shutdown() error {
 	return nil
-}
-
-func (t *testpluginvim) ftplugin(args ...json.RawMessage) (interface{}, error) {
-	amatch := t.ParseString(args[0])
-	switch amatch {
-	case "go":
-	default:
-		return nil, fmt.Errorf("don't yet know how to handle filetype of %v", amatch)
-	}
-	return nil, nil
 }
 
 func (t *testpluginvim) bufRead(args ...json.RawMessage) error {
