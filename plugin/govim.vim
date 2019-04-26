@@ -125,9 +125,10 @@ function s:define(channel, msg)
         call call(F, [s:govim_status])
       endfor
     elseif a:msg[1] == "initcomplete"
+      let s:govim_status = "initcomplete"
+      " doautoall BufRead also triggers ftplugin stuff
       doautoall BufRead
       call s:updateViewport(0)
-      let s:govim_status = "initcomplete"
       for F in s:loadStatusCallbacks
         call call(F, [s:govim_status])
       endfor
