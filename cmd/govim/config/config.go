@@ -45,10 +45,6 @@ const (
 	// FunctionHello is a friendly function, largely for checking govim is
 	// working.
 	FunctionHello Function = "Hello"
-
-	// FunctionFtplugin is not intended to be called by the user. Instead it
-	// is automatically called by govim when a Go-related filetype is set.
-	FunctionFtplugin Function = "Ftplugin"
 )
 
 // FormatOnSave typed constants define the set of valid values that
