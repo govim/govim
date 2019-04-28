@@ -22,7 +22,7 @@ then
 fi
 
 go version
-vim --version
+$VIM_COMMAND --version
 
 ./_scripts/revendorToolsInternal.sh
 

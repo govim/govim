@@ -4,7 +4,15 @@
 ! errlogmatch 'recvJSONMsg:.*got error whilst handling Bad'
 vim -bang expr 'Bad()'
 ! stdout .+
-stderr '^\Qfailed to expr(Bad()) in Vim: Caught ''got error whilst handling Bad: this is a bad function''\E'
-errlogmatch 'recvJSONMsg:.*got error whilst handling Bad'
-! errlogmatch 'recvJSONMsg:.*got error whilst handling Bad'
-errlogmatch -start 'recvJSONMsg:.*got error whilst handling Bad'
+[vim] stderr '^\Qfailed to expr(Bad()) in Vim: Caught ''got error whilst handling Bad: this is a bad function''\E'
+[gvim] stderr '^\Qfailed to expr(Bad()) in Vim: Caught ''got error whilst handling Bad: this is a bad function''\E'
+[neovim] stderr '^\Qnvim:nvim_eval exception: Vim(let):this is a bad function\E'
+
+[vim] errlogmatch 'recvJSONMsg:.*got error whilst handling Bad'
+[gvim] errlogmatch 'recvJSONMsg:.*got error whilst handling Bad'
+
+[vim] ! errlogmatch 'recvJSONMsg:.*got error whilst handling Bad'
+[gvim] ! errlogmatch 'recvJSONMsg:.*got error whilst handling Bad'
+
+[vim] errlogmatch -start 'recvJSONMsg:.*got error whilst handling Bad'
+[gvim] errlogmatch -start 'recvJSONMsg:.*got error whilst handling Bad'

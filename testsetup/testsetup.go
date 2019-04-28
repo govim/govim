@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/myitcv/govim"
@@ -60,7 +61,7 @@ var (
 
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{
-		NeovimVersion("v0.3.5"),
+		NeovimVersion("v0.3.7"),
 		VimVersion(MinVimGovim),
 		GvimVersion(MinVimGovim),
 		VimVersion(MinVimIncrementalSync),
@@ -73,6 +74,7 @@ var (
 type Version interface {
 	Version() string
 	Command() string
+	RCPath() string
 	Flavor() govim.Flavor
 }
 
@@ -100,6 +102,10 @@ func (v vimVersionType) Flavor() govim.Flavor {
 	return govim.FlavorVim
 }
 
+func (v vimVersionType) RCPath() string {
+	return ".vimrc"
+}
+
 func GvimVersion(v string) gvimVersionType {
 	return gvimVersionType{baseVersionType: baseVersionType{v: v}}
 }
@@ -116,6 +122,10 @@ func (v gvimVersionType) Flavor() govim.Flavor {
 	return govim.FlavorGvim
 }
 
+func (v gvimVersionType) RCPath() string {
+	return ".vimrc"
+}
+
 func NeovimVersion(v string) neovimVersionType {
 	return neovimVersionType{baseVersionType: baseVersionType{v: v}}
 }
@@ -130,6 +140,10 @@ func (v neovimVersionType) Command() string {
 
 func (v neovimVersionType) Flavor() govim.Flavor {
 	return govim.FlavorNeovim
+}
+
+func (v neovimVersionType) RCPath() string {
+	return filepath.Join("cmd", "govim", "config", "minimal.vimrc")
 }
 
 func EnvLookupFlavorCommand() (flav govim.Flavor, cmd Command, err error) {
@@ -152,6 +166,8 @@ func EnvLookupFlavorCommand() (flav govim.Flavor, cmd Command, err error) {
 		cmd = VimCommand
 	case govim.FlavorGvim:
 		cmd = GvimCommand
+	case govim.FlavorNeovim:
+		cmd = NeovimCommand
 	}
 	return flav, cmd, nil
 }

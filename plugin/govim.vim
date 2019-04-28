@@ -6,7 +6,7 @@ let g:govimpluginloaded=1
 
 " TODO we should source a code-generated, auto-loaded
 " vim file or similar to source this minimum version
-if !has("patch-8.1.1158")
+if !has('nvim') && !has("patch-8.1.1158")
   echoerr "Need at least version v8.1.1158 of Vim; govim will not be loaded"
   finish
 endif
@@ -16,25 +16,39 @@ let s:tmpdir = $TMPDIR
 if s:tmpdir == ""
   let s:tmpdir = "/tmp"
 endif
-let s:filetmpl = $GOVIM_LOGFILE_TMPL
-if s:filetmpl == ""
-  let s:filetmpl = "%v_%v_%v"
+
+if !has('nvim')
+    "Neovim doesn't support logging channel data
+    let s:filetmpl = $GOVIM_LOGFILE_TMPL
+    if s:filetmpl == ""
+      let s:filetmpl = "%v_%v_%v"
+    endif
+    let s:filetmpl = substitute(s:filetmpl, "%v", "vim_channel_log", "")
+    let s:filetmpl = substitute(s:filetmpl, "%v", strftime("%Y%m%d_%H%M_%S"), "")
+    if s:filetmpl =~ "%v"
+      let s:filetmpl = substitute(s:filetmpl, "%v", "XXXXXXXXXXXX", "")
+      let s:filetmpl = system("mktemp ".s:tmpdir."/".s:filetmpl." 2>&1")
+      if v:shell_error
+        throw s:filetmpl
+      endif
+    else
+      let s:filetmpl = s:tmpdir."/".s:filetmpl
+    endif
+    let s:ch_logfile = trim(s:filetmpl)
+    let s:govim_logfile="<unset>"
+    let s:gopls_logfile="<unset>"
+    call ch_logfile(s:ch_logfile, "a")
+    echom "Vim channel logfile: ".s:ch_logfile
+    call feedkeys(" ") " to prevent press ENTER to continue
+
+    "Balloon popups aren't supported by Neovim yet
+    set balloondelay=250
+    set ballooneval
+    set balloonevalterm
 endif
-let s:filetmpl = substitute(s:filetmpl, "%v", "vim_channel_log", "")
-let s:filetmpl = substitute(s:filetmpl, "%v", strftime("%Y%m%d_%H%M_%S"), "")
-if s:filetmpl =~ "%v"
-  let s:filetmpl = substitute(s:filetmpl, "%v", "XXXXXXXXXXXX", "")
-  let s:filetmpl = system("mktemp ".s:tmpdir."/".s:filetmpl." 2>&1")
-  if v:shell_error
-    throw s:filetmpl
-  endif
-else
-  let s:filetmpl = s:tmpdir."/".s:filetmpl
-endif
-let s:ch_logfile = trim(s:filetmpl)
-let s:govim_logfile="<unset>"
-let s:gopls_logfile="<unset>"
-call ch_logfile(s:ch_logfile, "a")
+
+set updatetime=500
+
 let s:channel = ""
 let s:timer = ""
 let s:plugindir = expand(expand("<sfile>:p:h:h"))
@@ -44,35 +58,48 @@ let s:loadStatusCallbacks = []
 
 let s:userBusy = 0
 
-set ballooneval
-set balloonevalterm
 
 function s:callbackFunction(name, args)
   let l:args = ["function", "function:".a:name, a:args]
-  let l:resp = ch_evalexpr(s:channel, l:args)
-  if l:resp[0] != ""
-    throw l:resp[0]
+  if !has("nvim")
+    let l:resp = ch_evalexpr(s:channel, l:args)
+    if l:resp[0] != ""
+      throw l:resp[0]
+    endif
+    return l:resp[1]
+  else
+    let l:resp = rpcrequest(s:channel, "callGovim", json_encode(l:args))
+    return l:resp
   endif
-  return l:resp[1]
 endfunction
 
 function s:callbackRangeFunction(name, first, last, args)
   let l:args = ["function", "function:".a:name, a:first, a:last, a:args]
-  let l:resp = ch_evalexpr(s:channel, l:args)
-  if l:resp[0] != ""
-    throw l:resp[0]
+  if !has("nvim")
+    let l:resp = ch_evalexpr(s:channel, l:args)
+    if l:resp[0] != ""
+      throw l:resp[0]
+    endif
+    return l:resp[1]
+  else
+    let l:resp = rpcrequest(s:channel, "callGovim", json_encode(l:args))
+    return l:resp
   endif
-  return l:resp[1]
 endfunction
 
 function s:callbackCommand(name, flags, ...)
-  let l:args = ["function", "command:".a:name, a:flags]
-  call extend(l:args, a:000)
-  let l:resp = ch_evalexpr(s:channel, l:args)
-  if l:resp[0] != ""
-    throw l:resp[0]
+  if !has("nvim")
+    let l:args = ["function", "command:".a:name, a:flags]
+    call extend(l:args, a:000)
+    let l:resp = ch_evalexpr(s:channel, l:args)
+    if l:resp[0] != ""
+      throw l:resp[0]
+    endif
+    return l:resp[1]
+  else
+    let l:resp = rpcrequest(s:channel, "command:".a:name, json_encode(a:flags), a:000)
+    return l:resp
   endif
-  return l:resp[1]
 endfunction
 
 function s:callbackAutoCommand(name, exprs)
@@ -92,12 +119,18 @@ function s:callbackAutoCommand(name, exprs)
   for e in a:exprs
     call add(l:exprVals, eval(e))
   endfor
-  let l:args = ["function", a:name, l:exprVals]
-  let l:resp = ch_evalexpr(s:channel, l:args)
-  if l:resp[0] != ""
-    throw l:resp[0]
+
+  if !has("nvim")
+    let l:args = ["function", a:name, l:exprVals]
+    let l:resp = ch_evalexpr(s:channel, l:args)
+    if l:resp[0] != ""
+      throw l:resp[0]
+    endif
+    return l:resp[1]
+  else
+    let l:resp = rpcrequest(s:channel, a:name, l:exprVals)
+    throw l:resp
   endif
-  return l:resp[1]
 endfunction
 
 function s:doShutdown()
@@ -105,7 +138,11 @@ function s:doShutdown()
     " TODO anything to do here other than return?
     return
   endif
-  call ch_close(s:channel)
+  if !has("nvim")
+    call ch_close(s:channel)
+  else
+    call rpcnotify(s:channel, "vimShuttingDown")
+  endif
 endfunction
 
 function s:buildCurrentViewport()
@@ -139,6 +176,12 @@ function s:userBusy(busy)
     let s:userBusy = a:busy
     call GOVIM_internal_SetUserBusy(s:userBusy)
   endif
+endfunction
+
+function govim#define(raw)
+    " [0,[99,"loaded"]]
+    let l:msg = json_decode(a:raw)
+    return s:define(-1, l:msg[1])
 endfunction
 
 function s:define(channel, msg)
@@ -205,7 +248,10 @@ function s:define(channel, msg)
   catch
     let l:resp[2][0] = 'Caught ' . string(v:exception) . ' in ' . v:throwpoint
   endtry
-  call ch_sendexpr(a:channel, l:resp)
+  if !has('nvim')
+    call ch_sendexpr(a:channel, l:resp)
+  endif
+  return l:resp
 endfunction
 
 func s:defineAutoCommand(name, def, exprs)
@@ -215,6 +261,11 @@ func s:defineAutoCommand(name, def, exprs)
   endfor
   execute "autocmd " . a:def . " call s:callbackAutoCommand(\"" . a:name . "\", [".join(l:exprStrings, ",")."])"
 endfunction
+
+func govim#defineAutoCommand(name, def, exprs)
+  "Public API for neovim plugin to call
+  call s:defineAutoCommand(a:name, a:def, a:exprs)
+endfunc
 
 func s:defineCommand(name, attrs)
   let l:def = "command! "
@@ -256,6 +307,11 @@ func s:defineCommand(name, attrs)
   execute l:def
 endfunction
 
+func govim#defineCommand(name, attrs)
+  "Public API for neovim plugin to call
+  call s:defineCommand(a:name, a:attrs)
+endfunc
+
 func s:defineFunction(name, argsStr, range)
   let l:params = join(a:argsStr, ", ")
   let l:args = "let l:args = []\n"
@@ -286,6 +342,11 @@ func s:defineFunction(name, argsStr, range)
         \ l:ret . "\n" .
         \ "endfunction\n"
 endfunction
+
+func govim#defineFunction(name, argsStr, range)
+  "Public API for neovim plugin to call
+  call s:defineFunction(a:name, a:argsStr, a:range)
+endfunc
 
 function s:govimExit(job, exitstatus)
   if a:exitstatus != 0
@@ -332,22 +393,32 @@ function s:install(force)
   return targetdir
 endfunction
 
-" TODO - would be nice to be able to specify -1 as a timeout
-let opts = {"in_mode": "json", "out_mode": "json", "err_mode": "json", "callback": function("s:define"), "timeout": 30000}
 if $GOVIMTEST_SOCKET != ""
-  let s:channel = ch_open($GOVIMTEST_SOCKET, opts)
+  if !has('nvim')
+    " TODO - would be nice to be able to specify -1 as a timeout
+    let opts = {"in_mode": "json", "out_mode": "json", "err_mode": "json", "callback": function("s:define"), "timeout": 30000}
+    let s:channel = ch_open($GOVIMTEST_SOCKET, opts)
+  else
+    let opts = {"rpc": v:true}
+    let s:channel = sockconnect("tcp", $GOVIMTEST_SOCKET, opts)
+    if s:channel == 0
+      throw "Invalid arguments or failure connecting to ".$GOVIMTEST_SOCKET
+    endif
+  endif
 else
   let targetdir = s:install(0)
   let start = $GOVIM_RUNCMD
   if start == ""
     let start = targetdir."govim ".targetdir."gopls"
   endif
-  let opts.exit_cb = function("s:govimExit")
-  let job = job_start(start, opts)
-  let s:channel = job_getchannel(job)
+  if !has('nvim')
+    let opts.exit_cb = function("s:govimExit")
+    let job = job_start(start, opts)
+    let s:channel = job_getchannel(job)
+  endif
 endif
 
-au VimLeave * call s:doShutdown()
+au! VimLeave * call s:doShutdown()
 
 function GOVIM_internal_EnrichDelta(bufnr, start, end, added, changes)
   for l:change in a:changes

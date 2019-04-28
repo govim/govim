@@ -20,7 +20,9 @@ set mouse=a
 " automated tests using xterm as the terminal, a setting of ttymouse=xterm
 " does not work correctly beyond a certain column number (citation needed)
 " hence we use ttymouse=sgr
-set ttymouse=sgr
+if !has('nvim')
+    set ttymouse=sgr
+endif
 
 " Suggestion: By default, govim populates the quickfix window with diagnostics
 " reported by gopls after a period of inactivity, the time period being
@@ -30,4 +32,6 @@ set updatetime=500
 
 " Suggestion: To make govim/Vim more responsive/IDE-like, we suggest a short
 " balloondelay
-set balloondelay=250
+if !has('nvim')
+    set balloondelay=250
+endif

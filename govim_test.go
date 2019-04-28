@@ -40,7 +40,8 @@ func TestScripts(t *testing.T) {
 
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
-			Dir: "testdata",
+			Dir:      "testdata",
+			TestWork: true,
 			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 				"sleep":       testdriver.Sleep,
 				"errlogmatch": testdriver.ErrLogMatch,
@@ -51,7 +52,7 @@ func TestScripts(t *testing.T) {
 				e.Vars = append(e.Vars,
 					"HOME="+home,
 				)
-				testPluginPath := filepath.Join(e.WorkDir, "home", ".vim", "pack", "plugins", "start", "govim")
+				fmt.Printf("Vim home path is at %s\n", home)
 
 				var vimDebugLogPath, govimDebugLogPath string
 
@@ -84,13 +85,12 @@ func TestScripts(t *testing.T) {
 				d := newTestPlugin(plugin.NewDriver(""))
 
 				config := &testdriver.Config{
-					Name:           filepath.Base(e.WorkDir),
-					GovimPath:      ".",
-					TestHomePath:   home,
-					TestPluginPath: testPluginPath,
-					Env:            e,
-					Plugin:         d,
-					Log:            io.MultiWriter(outputs...),
+					Name:         filepath.Base(e.WorkDir),
+					GovimPath:    ".",
+					TestHomePath: home,
+					Env:          e,
+					Plugin:       d,
+					Log:          io.MultiWriter(outputs...),
 					Debug: testdriver.Debug{
 						Enabled: *fDebugLog,
 						// FYI increasing this to 8 or above seems to cause Vim to do something weird with stdout, which means some tests fail

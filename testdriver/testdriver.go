@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/acarl005/stripansi"
 	"io"
 	"io/ioutil"
 	"net"
@@ -20,13 +19,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/acarl005/stripansi"
+
 	"github.com/kr/pty"
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/testsetup"
 	"github.com/rogpeppe/go-internal/semver"
 	"github.com/rogpeppe/go-internal/testscript"
 	"gopkg.in/retry.v1"
-	"gopkg.in/tomb.v2"
+	tomb "gopkg.in/tomb.v2"
 )
 
 const (
@@ -64,7 +65,7 @@ type TestDriver struct {
 }
 
 type Config struct {
-	Name, GovimPath, TestHomePath, TestPluginPath string
+	Name, GovimPath, TestHomePath string
 	Debug
 	Log io.Writer
 	*testscript.Env
@@ -79,6 +80,11 @@ type Debug struct {
 }
 
 func NewTestDriver(c *Config) (*TestDriver, error) {
+	flav, cmd, err := testsetup.EnvLookupFlavorCommand()
+	if err != nil {
+		return nil, err
+	}
+
 	res := &TestDriver{
 		quitVim:    make(chan bool),
 		quitGovim:  make(chan bool),
@@ -106,13 +112,23 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		return nil, fmt.Errorf("failed to create listener for driver: %v", err)
 	}
 
-	if err := copyDir(c.TestPluginPath, c.GovimPath); err != nil {
-		return nil, fmt.Errorf("failed to copy %v to %v: %v", c.GovimPath, c.TestPluginPath, err)
+	var testPluginPath, dstVimrc string
+	if flav == govim.FlavorNeovim {
+		dstVimrc = filepath.Join(c.TestHomePath, ".config", "nvim", "init.vim")
+		testPluginPath = filepath.Join(c.TestHomePath, ".local", "share", "nvim", "site", "pack", "govim", "start", "govim")
+	} else {
+		dstVimrc = filepath.Join(c.TestHomePath, ".vimrc")
+		testPluginPath = filepath.Join(c.TestHomePath, ".vim", "pack", "plugins", "start", "govim")
 	}
+	os.MkdirAll(filepath.Dir(dstVimrc), 0777)
+
 	srcVimrc := filepath.Join(c.GovimPath, "cmd", "govim", "config", "minimal.vimrc")
-	dstVimrc := filepath.Join(c.TestHomePath, ".vimrc")
 	if err := copyFile(dstVimrc, srcVimrc); err != nil {
 		return nil, fmt.Errorf("failed to copy %v to %v: %v", srcVimrc, dstVimrc, err)
+	}
+
+	if err := copyDir(testPluginPath, c.GovimPath); err != nil {
+		return nil, fmt.Errorf("failed to copy %v to %v: %v", c.GovimPath, testPluginPath, err)
 	}
 
 	res.govimListener = gl
@@ -123,12 +139,8 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		"GOVIMTESTDRIVER_SOCKET="+res.driverListener.Addr().String(),
 	)
 
-	_, cmd, err := testsetup.EnvLookupFlavorCommand()
-	if err != nil {
-		return nil, err
-	}
-
 	vimCmd := cmd
+
 	if e := os.Getenv("VIM_COMMAND"); e != "" {
 		vimCmd = strings.Fields(e)
 	}
@@ -160,16 +172,15 @@ func (d *TestDriver) Logf(format string, a ...interface{}) {
 	fmt.Fprintf(d.Log, format+"\n", a...)
 }
 func (d *TestDriver) LogStripANSI(r io.Reader) {
-	scanner := bufio.NewScanner(r)
+	buf := bufio.NewReader(r)
 	for {
-		ok := scanner.Scan()
-		if !ok {
-			if scanner.Err() != nil {
-				fmt.Fprintf(d.Log, "Erroring copying log: %+v\n", scanner.Err())
-			}
+		b := make([]byte, 64)
+		_, err := buf.Read(b)
+		if err != nil {
+			fmt.Fprintf(d.Log, "Erroring copying log: %+v\n", err)
 			return
 		}
-		fmt.Fprint(d.Log, stripansi.Strip(scanner.Text()))
+		fmt.Fprint(d.Log, stripansi.Strip(string(b)))
 	}
 }
 
@@ -193,18 +204,19 @@ func copyDir(dst, src string) error {
 
 func copyFile(dst, src string) error {
 	r, err := os.Open(src)
+	defer r.Close()
 	if err != nil {
 		return err
 	}
 	w, err := os.Create(dst)
+	defer w.Close()
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(w, r); err != nil {
 		return err
 	}
-	r.Close()
-	return w.Close()
+	return nil
 }
 
 func (d *TestDriver) Run() error {
@@ -225,7 +237,7 @@ func (d *TestDriver) Wait() error {
 }
 
 func (d *TestDriver) runVim() error {
-	d.Logf("Starting vim")
+	d.Logf("Starting vim with %v", d.cmd.Args)
 	thepty, err := pty.Start(d.cmd)
 	if err != nil {
 		close(d.doneQuitVim)
@@ -250,12 +262,12 @@ func (d *TestDriver) runVim() error {
 	})
 
 	if d.debug.Enabled {
+		d.Logf("Logging vim output")
 		d.LogStripANSI(thepty)
 	} else {
 		io.Copy(ioutil.Discard, thepty)
 	}
 
-	d.Logf("Vim running")
 	return nil
 }
 
@@ -355,10 +367,23 @@ func (d *TestDriver) listenGovim() error {
 	if d.Log != nil {
 		log = d.Log
 	}
-	g, err := govim.NewGovim(d.plugin, conn, conn, log)
+	var g govim.Govim
+
+	flav, _, err := testsetup.EnvLookupFlavorCommand()
+	if err != nil {
+		return fmt.Errorf("failed to look up Vim flavor: %v", err)
+	}
+
+	switch flav {
+	case govim.FlavorVim, govim.FlavorGvim:
+		g, err = govim.NewGovim(d.plugin, conn, conn, log)
+	case govim.FlavorNeovim:
+		g, err = govim.NewNeoGovim(d.plugin, conn, conn, conn, log)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create govim: %v", err)
 	}
+
 	good = true
 	d.govim = g
 	d.tombgo(d.listenDriver)
@@ -395,7 +420,7 @@ func (d *TestDriver) listenDriver() error {
 					panic(fmt.Errorf("failed to accept connection to driver on %v: %v", d.driverListener.Addr(), err))
 				}
 			}
-			d.Logf("Accepted driver connection on", d.driverListener.Addr().String())
+			d.Logf("Accepted driver connection on %s", d.driverListener.Addr().String())
 			dec := json.NewDecoder(conn)
 			var args []interface{}
 			if err := dec.Decode(&args); err != nil {
@@ -412,6 +437,7 @@ func (d *TestDriver) listenDriver() error {
 				}
 				res = append(res, toAdd)
 			}
+			d.Logf("got args %v", args)
 			switch cmd {
 			case "redraw":
 				var force string
@@ -646,6 +672,8 @@ func Condition(cond string) (bool, error) {
 		f = govim.FlavorVim
 	case strings.HasPrefix(cond, govim.FlavorGvim.String()):
 		f = govim.FlavorGvim
+	case strings.HasPrefix(cond, govim.FlavorNeovim.String()):
+		f = govim.FlavorNeovim
 	default:
 		return false, fmt.Errorf("unknown condition %v", cond)
 	}
@@ -798,4 +826,61 @@ func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("errlogmatch failed to find match")
 	}
 	// we didn't find a match, but this is expected
+}
+
+// TODO: where to put this?
+
+// VimConfig returns various config options for the flavour of Vim in use
+func VimConfig() vimConfig {
+	// TODO: Is there a better way of switching this?
+	if os.Getenv("VIM_FLAVOR") == "nvim" {
+		return flavorNvim
+	} else {
+		return flavorVim
+	}
+}
+
+// vimConfig has configuration that differs between different Vim flavours
+type vimConfig struct {
+	// pluginPath is a set of directories relative to $HOME where plugins are stored
+	pluginPathSegs []string
+	// vimRCPath is a list of path segments relative to $HOME where initial Vim config is stored
+	vimRCPathSegs []string
+	// execName is the (unqualified) name of the executable to run
+	execName string
+
+	isNvim bool
+}
+
+// PluginPath returns the path where plugins are stored
+func (v vimConfig) PluginPath(homeDir, pluginName string) string {
+	return filepath.Join(homeDir, filepath.Join(v.pluginPathSegs...), pluginName)
+}
+
+// PluginPath returns the path to the initial Vim config
+func (v vimConfig) VimRCPath(homeDir string) string {
+	return filepath.Join(homeDir, filepath.Join(v.vimRCPathSegs...))
+}
+
+// PluginPath gives the (unqualified) name of the executable to run
+func (v vimConfig) ExecName() string {
+	return v.execName
+}
+
+func (v vimConfig) IsNvim() bool {
+	return v.isNvim
+}
+
+var flavorVim = vimConfig{
+	pluginPathSegs: []string{".vim", "pack", "plugins", "start"},
+	vimRCPathSegs:  []string{".vimrc"},
+	execName:       "vim",
+	isNvim:         false,
+}
+
+var flavorNvim = vimConfig{
+	pluginPathSegs: []string{".local", "share", "nvim", "site", "pack", "govim", "start"},
+	vimRCPathSegs:  []string{".config", "nvim", "init.vim"},
+	execName:       "nvim",
+	isNvim:         true,
 }
