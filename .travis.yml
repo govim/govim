@@ -8,10 +8,10 @@ env:
   global:
     - GO111MODULE=on
   matrix:
-    - GO_VERSION=go1.12.3 VIM_VERSION=v8.1.1158 VIM_COMMAND="vim"
-    - GO_VERSION=go1.12.3 VIM_VERSION=v8.1.1158 VIM_COMMAND="xvfb-run -a gvim -f"
-    - GO_VERSION=go1.12.3 VIM_VERSION=v8.1.1176 VIM_COMMAND="vim"
-    - GO_VERSION=go1.12.3 VIM_VERSION=v8.1.1176 VIM_COMMAND="xvfb-run -a gvim -f"
+    - GO_VERSION=go1.12.4 VIM_VERSION=v8.1.1158 VIM_COMMAND="vim"
+    - GO_VERSION=go1.12.4 VIM_VERSION=v8.1.1158 VIM_COMMAND="xvfb-run -a gvim -f"
+    - GO_VERSION=go1.12.4 VIM_VERSION=v8.1.1222 VIM_COMMAND="vim"
+    - GO_VERSION=go1.12.4 VIM_VERSION=v8.1.1222 VIM_COMMAND="xvfb-run -a gvim -f"
 
 # Add this before_install until we have a definitive resolution on
 # https://travis-ci.community/t/files-in-checkout-have-eol-changed-from-lf-to-crlf/349/2
