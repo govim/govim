@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/myitcv/govim"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
+	"github.com/myitcv/govim/cmd/govim/internal/span"
+	"github.com/myitcv/govim/cmd/govim/types"
 )
 
 type modWatcher struct {
@@ -165,4 +170,89 @@ func (m *modWatcher) watch() {
 
 func ofInterest(path string) bool {
 	return filepath.Base(path) == "go.mod" || filepath.Ext(path) == ".go"
+}
+
+func (v *vimstate) handleEvent(event fsnotify.Event) error {
+	// We are handling a filesystem event... so the best we can do is log errors
+	errf := func(format string, args ...interface{}) {
+		v.Logf("**** handleEvent error: "+format, args...)
+	}
+
+	path := event.Name
+
+	for _, b := range v.buffers {
+		if b.Name == path {
+			// Vim is handling this file, do nothing
+			v.Logf("handleEvent: Vim is in charge of %v; not handling ", event.Name)
+			return nil
+		}
+	}
+
+	switch event.Op {
+	case fsnotify.Rename, fsnotify.Remove:
+		if _, ok := v.watchedFiles[path]; !ok {
+			// We saw the Rename/Remove event but nothing before
+			return nil
+		}
+		params := &protocol.DidCloseTextDocumentParams{
+			TextDocument: protocol.TextDocumentIdentifier{
+				URI: string(span.URI(path)),
+			},
+		}
+		err := v.server.DidClose(context.Background(), params)
+		if err != nil {
+			errf("failed to call server.DidClose: %v", err)
+		}
+		return nil
+	case fsnotify.Create, fsnotify.Chmod, fsnotify.Write:
+		byts, err := ioutil.ReadFile(path)
+		if err != nil {
+			errf("failed to read %v: %v", path, err)
+			return nil
+		}
+		wf, ok := v.watchedFiles[path]
+		if !ok {
+			wf = &types.WatchedFile{
+				Path:     path,
+				Contents: byts,
+			}
+			v.watchedFiles[path] = wf
+			params := &protocol.DidOpenTextDocumentParams{
+				TextDocument: protocol.TextDocumentItem{
+					URI:     string(wf.URI()),
+					Version: float64(0),
+					Text:    string(wf.Contents),
+				},
+			}
+			err := v.server.DidOpen(context.Background(), params)
+			if err != nil {
+				errf("failed to call server.DidOpen: %v", err)
+			}
+			v.Logf("handleEvent: handled %v", event)
+			return nil
+		}
+		wf.Version++
+		params := &protocol.DidChangeTextDocumentParams{
+			TextDocument: protocol.VersionedTextDocumentIdentifier{
+				TextDocumentIdentifier: protocol.TextDocumentIdentifier{
+					URI: string(wf.URI()),
+				},
+				Version: float64(wf.Version),
+			},
+			ContentChanges: []protocol.TextDocumentContentChangeEvent{
+				{
+					Text: string(byts),
+				},
+			},
+		}
+		err = v.server.DidChange(context.Background(), params)
+		if err != nil {
+			errf("failed to call server.DidChange: %v", err)
+		}
+		v.Logf("handleEvent: handled %v", event)
+		return nil
+
+	default:
+		panic(fmt.Errorf("unknown fsnotify event type: %v", event))
+	}
 }
