@@ -23,6 +23,18 @@ type Buffer struct {
 	cc *span.TokenConverter
 }
 
+// A WatchedFile is a file we are watching but that is not loaded as a buffer
+// in Vim
+type WatchedFile struct {
+	Path     string
+	Version  int
+	Contents []byte
+}
+
+func (w *WatchedFile) URI() span.URI {
+	return span.FileURI(w.Path)
+}
+
 // URI returns the b's Name as a span.URI, assuming it is a file.
 // TODO we should panic here is this is not a file-based buffer
 func (b *Buffer) URI() span.URI {

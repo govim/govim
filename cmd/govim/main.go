@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/myitcv/govim"
@@ -117,6 +118,8 @@ type govimplugin struct {
 	isGui bool
 
 	tomb tomb.Tomb
+
+	modWatcher *modWatcher
 }
 
 func newplugin(goplspath string) *govimplugin {
@@ -125,9 +128,10 @@ func newplugin(goplspath string) *govimplugin {
 		goplspath: goplspath,
 		Driver:    d,
 		vimstate: &vimstate{
-			Driver:      d,
-			buffers:     make(map[int]*types.Buffer),
-			diagnostics: make(map[span.URI][]protocol.Diagnostic),
+			Driver:       d,
+			buffers:      make(map[int]*types.Buffer),
+			watchedFiles: make(map[string]*types.WatchedFile),
+			diagnostics:  make(map[span.URI][]protocol.Diagnostic),
 		},
 	}
 	res.vimstate.govimplugin = res
@@ -210,9 +214,42 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 		return fmt.Errorf("failed to initialise gopls: %v", err)
 	}
 
+	// Temporary fix for the fact that gopls does not yet support watching (via
+	// the client) changed files: https://github.com/golang/go/issues/31553
+	gomodpath, err := goModPath(wd)
+	if err != nil {
+		return fmt.Errorf("failed to derive go.mod path: %v", err)
+	}
+
+	if gomodpath != "" {
+		// i.e. we are in a module
+		mw, err := newModWatcher(g, gomodpath)
+		if err != nil {
+			return fmt.Errorf("failed to create modWatcher for %v: %v", gomodpath, err)
+		}
+		g.modWatcher = mw
+	}
+
 	return nil
 }
 
-func (s *govimplugin) Shutdown() error {
+func goModPath(wd string) (string, error) {
+	cmd := exec.Command("go", "env", "GOMOD")
+	cmd.Dir = wd
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to execute [%v] in %v: %v\n%s", strings.Join(cmd.Args, " "), wd, err, out)
+	}
+
+	return strings.TrimSpace(string(out)), nil
+}
+
+func (g *govimplugin) Shutdown() error {
+	if g.modWatcher != nil {
+		if err := g.modWatcher.close(); err != nil {
+			return err
+		}
+	}
 	return nil
 }

@@ -1,0 +1,36 @@
+# Test that ominfunc complete works where the completion is made
+# available in a file that is not loaded via the editor.
+
+vim ex 'e main.go'
+cp const.go.orig const.go
+vim ex 'call cursor(6,16)'
+vim ex 'call feedkeys(\"i\\<C-X>\\<C-O>\\<C-N>\\<C-N>\\<ESC>\", \"x\")'
+vim ex 'w'
+cmp main.go main.go.golden
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println()
+}
+-- const.go.orig --
+package main
+
+const (
+	Const1 = 1
+	Const2 = 2
+)
+-- main.go.golden --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println(Const2)
+}
