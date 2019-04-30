@@ -13,21 +13,19 @@ const (
 
 // currentBufferInfo is a helper function to unmarshal autocmd current
 // buffer details from expr
-func (v *vimstate) currentBufferInfo(expr json.RawMessage) (*types.Buffer, error) {
+func (v *vimstate) currentBufferInfo(expr json.RawMessage) *types.Buffer {
 	var buf struct {
 		Num      int
 		Name     string
 		Contents string
 	}
-	if err := json.Unmarshal(expr, &buf); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal current buffer info: %v", err)
-	}
+	v.Parse(expr, &buf)
 	res := &types.Buffer{
 		Num:      buf.Num,
 		Name:     buf.Name,
 		Contents: []byte(buf.Contents),
 	}
-	return res, nil
+	return res
 }
 
 func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {
@@ -37,10 +35,7 @@ func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {
 		Col    int `json:"col"`
 	}
 	expr := v.ChannelExpr(`{"bufnum": bufnr(""), "line": line("."), "col": col(".")}`)
-	if err = json.Unmarshal(expr, &pos); err != nil {
-		err = fmt.Errorf("failed to unmarshal current cursor position info: %v", err)
-		return
-	}
+	v.Parse(expr, &pos)
 	b, ok := v.buffers[pos.BufNum]
 	if !ok {
 		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNum)

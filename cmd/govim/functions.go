@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/config"
@@ -29,6 +30,10 @@ type vimstate struct {
 	// write and read to/from this map in the callback for a defined function, command
 	// or autocommand.
 	buffers map[int]*types.Buffer
+
+	// watchedFiles is a map of files that we are handling via file watching
+	// events, rather than via open Buffers in Vim
+	watchedFiles map[string]*types.WatchedFile
 
 	// diagnostics gives us the current diagnostics by URI
 	diagnostics        map[span.URI][]protocol.Diagnostic
@@ -94,13 +99,16 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 }
 
 func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
-	b, err := v.currentBufferInfo(args[0])
-	if err != nil {
-		return err
-	}
+	b := v.currentBufferInfo(args[0])
 	if cb, ok := v.buffers[b.Num]; ok {
 		// reload of buffer, e.v. e!
 		b.Version = cb.Version + 1
+	} else if wf, ok := v.watchedFiles[b.Name]; ok {
+		// We are now picking up from a file that was previously watched. If we subsequently
+		// close this buffer then we will handle that event and delete the entry in v.buffers
+		// at which point the file watching will take back over again.
+		delete(v.watchedFiles, b.Name)
+		b.Version = wf.Version + 1
 	} else {
 		b.Version = 0
 	}
@@ -108,10 +116,7 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 }
 
 func (v *vimstate) bufTextChanged(args ...json.RawMessage) error {
-	b, err := v.currentBufferInfo(args[0])
-	if err != nil {
-		return err
-	}
+	b := v.currentBufferInfo(args[0])
 	cb, ok := v.buffers[b.Num]
 	if !ok {
 		return fmt.Errorf("have not seen buffer %v (%v) - this should be impossible", b.Num, b.Name)
@@ -542,9 +547,102 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 
 func (v *vimstate) deleteCurrentBuffer(args ...json.RawMessage) error {
 	currBufNr := v.ParseInt(args[0])
-	if _, ok := v.buffers[currBufNr]; !ok {
+	cb, ok := v.buffers[currBufNr]
+	if !ok {
 		return fmt.Errorf("tried to remove buffer %v; but we have no record of it", currBufNr)
 	}
-	delete(v.buffers, currBufNr)
+	delete(v.buffers, cb.Num)
+	params := &protocol.DidCloseTextDocumentParams{
+		TextDocument: cb.ToTextDocumentIdentifier(),
+	}
+	if err := v.server.DidClose(context.Background(), params); err != nil {
+		return fmt.Errorf("failed to call gopls.DidClose on %v: %v", cb.Name, err)
+	}
 	return nil
+}
+
+func (v *vimstate) handleEvent(event fsnotify.Event) error {
+	// We are handling a filesystem event... so the best we can do is log errors
+	errf := func(format string, args ...interface{}) {
+		v.Logf("**** handleEvent error: "+format, args...)
+	}
+
+	path := event.Name
+
+	for _, b := range v.buffers {
+		if b.Name == path {
+			// Vim is handling this file, do nothing
+			v.Logf("handleEvent: Vim is in charge of %v; not handling ", event.Name)
+			return nil
+		}
+	}
+
+	switch event.Op {
+	case fsnotify.Rename, fsnotify.Remove:
+		if _, ok := v.watchedFiles[path]; !ok {
+			// We saw the Rename/Remove event but nothing before
+			return nil
+		}
+		params := &protocol.DidCloseTextDocumentParams{
+			TextDocument: protocol.TextDocumentIdentifier{
+				URI: string(span.URI(path)),
+			},
+		}
+		err := v.server.DidClose(context.Background(), params)
+		if err != nil {
+			errf("failed to call server.DidClose: %v", err)
+		}
+		return nil
+	case fsnotify.Create, fsnotify.Chmod, fsnotify.Write:
+		byts, err := ioutil.ReadFile(path)
+		if err != nil {
+			errf("failed to read %v: %v", path, err)
+			return nil
+		}
+		wf, ok := v.watchedFiles[path]
+		if !ok {
+			wf = &types.WatchedFile{
+				Path:     path,
+				Contents: byts,
+			}
+			v.watchedFiles[path] = wf
+			params := &protocol.DidOpenTextDocumentParams{
+				TextDocument: protocol.TextDocumentItem{
+					URI:     string(wf.URI()),
+					Version: float64(0),
+					Text:    string(wf.Contents),
+				},
+			}
+			err := v.server.DidOpen(context.Background(), params)
+			if err != nil {
+				errf("failed to call server.DidOpen: %v", err)
+			}
+			v.Logf("handleEvent: handled %v", event)
+			return nil
+		}
+		wf.Version++
+		params := &protocol.DidChangeTextDocumentParams{
+			TextDocument: protocol.VersionedTextDocumentIdentifier{
+				TextDocumentIdentifier: protocol.TextDocumentIdentifier{
+					URI: string(wf.URI()),
+				},
+				Version: float64(wf.Version),
+			},
+			ContentChanges: []protocol.TextDocumentContentChangeEvent{
+				{
+					Text: string(byts),
+				},
+			},
+		}
+		err = v.server.DidChange(context.Background(), params)
+		if err != nil {
+			errf("failed to call server.DidChange: %v", err)
+		}
+		v.Logf("handleEvent: handled %v", event)
+		return nil
+
+	default:
+		panic(fmt.Errorf("unknown fsnotify event type: %v", event))
+	}
+
 }

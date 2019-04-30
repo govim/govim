@@ -248,7 +248,7 @@ func (l loggingGoplsServer) ColorPresentation(ctxt context.Context, params *prot
 func (l loggingGoplsServer) Formatting(ctxt context.Context, params *protocol.DocumentFormattingParams) ([]protocol.TextEdit, error) {
 	l.Logf("gopls.Formatting() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Formatting(ctxt, params)
-	l.Logf("gopls.Formatting() return; err: %v; res\n", err, pretty.Sprint(res))
+	l.Logf("gopls.Formatting() return; err: %v; res:\n%v\n", err, pretty.Sprint(res))
 	return res, err
 }
 

@@ -58,8 +58,14 @@ func TestScripts(t *testing.T) {
 				"sleep": testdriver.Sleep,
 			},
 			Setup: func(e *testscript.Env) error {
+				// We set a special TMPDIR so the file watcher ignores it
+				tmp := filepath.Join(e.WorkDir, "_tmp")
+				if err := os.MkdirAll(tmp, 0777); err != nil {
+					return fmt.Errorf("failed to create temp dir %v: %v", tmp, err)
+				}
 				home := filepath.Join(e.WorkDir, "home")
 				e.Vars = append(e.Vars,
+					"TMPDIR="+tmp,
 					"HOME="+home,
 					"PLUGIN_PATH="+govimPath,
 					"CURRENT_GOPATH="+os.Getenv("GOPATH"),
