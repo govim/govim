@@ -1,0 +1,17 @@
+# Test that g:govim_format_on_save="" works
+
+cp file.go.orig file.go
+vim ex 'let g:govim_format_on_save=\"\"'
+vim ex 'e! file.go'
+vim ex 'w'
+cmp file.go file.go.orig
+
+-- go.mod --
+module mod.com
+
+-- file.go.orig --
+package blah
+
+const ( x = 5
+y = os.PathSeparator
+ )
