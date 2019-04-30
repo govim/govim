@@ -1,5 +1,7 @@
 # Test that g:govim_format_on_save="gofmt" works
 
+skip 'Temporarily disable pending https://github.com/golang/go/issues/31759'
+
 cp file.go.orig file.go
 vim ex 'let g:govim_format_on_save=\"gofmt\"'
 vim ex 'e! file.go'
