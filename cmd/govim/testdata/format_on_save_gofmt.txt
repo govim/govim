@@ -17,6 +17,7 @@ package blah
 const ( x = 5
 y = os.PathSeparator
  )
+
 -- file.go.gofmt --
 package blah
 
