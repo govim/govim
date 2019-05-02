@@ -1,3 +1,8 @@
+if !has("patch-8.1.1158")
+  echoerr "Need at least version v8.1.1158 of Vim; govim will not be loaded"
+  finish
+endif
+
 " TODO we are ignoring windows right now....
 let s:tmpdir = $TMPDIR
 if s:tmpdir == ""
