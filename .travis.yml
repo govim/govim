@@ -7,6 +7,7 @@ os:
 env:
   global:
     - GO111MODULE=on
+    - GOPROXY=https://proxy.golang.org
   matrix:
     - GO_VERSION=go1.12.4 VIM_VERSION=v8.1.1158 VIM_COMMAND="vim"
     - GO_VERSION=go1.12.4 VIM_VERSION=v8.1.1158 VIM_COMMAND="xvfb-run -a gvim -f"
