@@ -36,7 +36,10 @@ func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFol
 func (g *govimplugin) Configuration(context.Context, *protocol.ConfigurationParams) ([]interface{}, error) {
 	panic("not implemented yet")
 }
-func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (bool, error) {
+func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {
+	panic("not implemented yet")
+}
+func (g *govimplugin) Event(context.Context, *interface{}) error {
 	panic("not implemented yet")
 }
 

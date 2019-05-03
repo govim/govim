@@ -133,10 +133,10 @@ func (l loggingGoplsServer) Completion(ctxt context.Context, params *protocol.Co
 	return res, err
 }
 
-func (l loggingGoplsServer) CompletionResolve(ctxt context.Context, params *protocol.CompletionItem) (*protocol.CompletionItem, error) {
-	l.Logf("gopls.CompletionResolve() call; params:\n%v", pretty.Sprint(params))
-	res, err := l.u.CompletionResolve(ctxt, params)
-	l.Logf("gopls.CompletionResolve() return; err: %v; res:\n%v", err, pretty.Sprint(res))
+func (l loggingGoplsServer) Resolve(ctxt context.Context, params *protocol.CompletionItem) (*protocol.CompletionItem, error) {
+	l.Logf("gopls.Resolve() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.Resolve(ctxt, params)
+	l.Logf("gopls.Resolve() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
@@ -210,10 +210,10 @@ func (l loggingGoplsServer) CodeLens(ctxt context.Context, params *protocol.Code
 	return res, err
 }
 
-func (l loggingGoplsServer) CodeLensResolve(ctxt context.Context, params *protocol.CodeLens) (*protocol.CodeLens, error) {
-	l.Logf("gopls.CodeLensResolve() call; params:\n%v", pretty.Sprint(params))
-	res, err := l.u.CodeLensResolve(ctxt, params)
-	l.Logf("gopls.CodeLensResolve() return; err: %v; res:\n%v", err, pretty.Sprint(res))
+func (l loggingGoplsServer) ResolveCodeLens(ctxt context.Context, params *protocol.CodeLens) (*protocol.CodeLens, error) {
+	l.Logf("gopls.ResolveCodeLens() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.ResolveCodeLens(ctxt, params)
+	l.Logf("gopls.ResolveCodeLens() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
@@ -224,10 +224,10 @@ func (l loggingGoplsServer) DocumentLink(ctxt context.Context, params *protocol.
 	return res, err
 }
 
-func (l loggingGoplsServer) DocumentLinkResolve(ctxt context.Context, params *protocol.DocumentLink) (*protocol.DocumentLink, error) {
-	l.Logf("gopls.DocumentLinkResolve() call; params:\n%v", pretty.Sprint(params))
-	res, err := l.u.DocumentLinkResolve(ctxt, params)
-	l.Logf("gopls.DocumentLinkResolve() return; err: %v; res:\n%v", err, pretty.Sprint(res))
+func (l loggingGoplsServer) ResolveDocumentLink(ctxt context.Context, params *protocol.DocumentLink) (*protocol.DocumentLink, error) {
+	l.Logf("gopls.ResolveDocumentLink() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.ResolveDocumentLink(ctxt, params)
+	l.Logf("gopls.ResolveDocumentLink() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
@@ -266,7 +266,7 @@ func (l loggingGoplsServer) OnTypeFormatting(ctxt context.Context, params *proto
 	return res, err
 }
 
-func (l loggingGoplsServer) Rename(ctxt context.Context, params *protocol.RenameParams) ([]protocol.WorkspaceEdit, error) {
+func (l loggingGoplsServer) Rename(ctxt context.Context, params *protocol.RenameParams) (*protocol.WorkspaceEdit, error) {
 	l.Logf("gopls.Rename() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Rename(ctxt, params)
 	l.Logf("gopls.Rename() return; err: %v; res\n", err, pretty.Sprint(res))
@@ -278,4 +278,39 @@ func (l loggingGoplsServer) FoldingRange(ctxt context.Context, params *protocol.
 	res, err := l.u.FoldingRange(ctxt, params)
 	l.Logf("gopls.FoldingRange() return; err: %v; res\n", err, pretty.Sprint(res))
 	return res, err
+}
+
+func (l loggingGoplsServer) Declaration(ctxt context.Context, params *protocol.TextDocumentPositionParams) ([]protocol.DeclarationLink, error) {
+	l.Logf("gopls.Declaration() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.Declaration(ctxt, params)
+	l.Logf("gopls.Declaration() return; err: %v; res\n", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) LogTraceNotification(ctxt context.Context, params *protocol.LogTraceParams) error {
+	l.Logf("gopls.LogTraceNotification() call; params:\n%v", pretty.Sprint(params))
+	err := l.u.LogTraceNotification(ctxt, params)
+	l.Logf("gopls.LogTraceNotification() return; err: %v", err)
+	return err
+}
+
+func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.TextDocumentPositionParams) (*protocol.Range, error) {
+	l.Logf("gopls.PrepareRename() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.PrepareRename(ctxt, params)
+	l.Logf("gopls.PrepareRename() return; err: %v; res\n", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) SelectionRange(ctxt context.Context, params *protocol.SelectionRangeParams) ([][]protocol.SelectionRange, error) {
+	l.Logf("gopls.SelectionRange() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.SelectionRange(ctxt, params)
+	l.Logf("gopls.SelectionRange() return; err: %v; res\n", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) SetTraceNotification(ctxt context.Context, params *protocol.SetTraceParams) error {
+	l.Logf("gopls.SetTraceNotification() call; params:\n%v", pretty.Sprint(params))
+	err := l.u.SetTraceNotification(ctxt, params)
+	l.Logf("gopls.SetTraceNotification() return; err: %v", err)
+	return err
 }
