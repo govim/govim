@@ -1,5 +1,7 @@
 #!/usr/bin/env vbash
 
+echo -e "machine github.com\n  login $GH_USER\n  password $GH_TOKEN" > ~/.netrc
+
 go version
 vim --version
 
