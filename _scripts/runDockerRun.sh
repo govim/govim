@@ -16,4 +16,4 @@ else
 	vimCmd="$VIM_COMMAND"
 fi
 
-docker run $proxy -e "VIM_COMMAND=$vimCmd" -v $PWD:/home/$USER/govim -w /home/$USER/govim --rm govim ./_scripts/dockerRun.sh
+docker run $proxy --env-file .docker_env_file -e "VIM_COMMAND=$vimCmd" -v $PWD:/home/$USER/govim -w /home/$USER/govim --rm govim ./_scripts/dockerRun.sh
