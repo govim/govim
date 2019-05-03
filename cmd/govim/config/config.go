@@ -24,6 +24,14 @@ const (
 	// CommandHello is a friendly command, largely for checking govim is
 	// working.
 	CommandHello Command = "Hello"
+
+	// CommandGoFmt applies gofmt to the selected range, or the entire file if
+	// no range is provided
+	CommandGoFmt Command = "GoFmt"
+
+	// CommandGoImports applies goimports to the selected range, or the entire
+	// file if no range is provided
+	CommandGoImports Command = "GoImports"
 )
 
 type Function string

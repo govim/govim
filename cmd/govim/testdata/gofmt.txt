@@ -1,0 +1,45 @@
+# Test that g:govim_format_on_save="gofmt" and GOVIMGoFmt work
+
+# We need to skip this entire test for now because of flakey Formatting method
+skip 'Temporarily disable pending https://github.com/golang/go/issues/31759'
+
+# :GOVIMGoFmt whole file
+cp file.go.orig file.go
+vim ex 'e! file.go'
+vim ex 'GOVIMGoFmt'
+vim ex 'noautocmd w'
+cmp file.go file.go.gofmt
+
+skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
+
+# :GOVIMGoFmt range
+cp file.go.orig file.go
+vim ex 'e! file.go'
+vim ex '3,5GOVIMGoFmt'
+vim ex 'noautocmd w'
+cmp file.go file.go.gofmt
+
+# Format on save
+cp file.go.orig file.go
+vim ex 'let g:govim_format_on_save=\"gofmt\"'
+vim ex 'e! file.go'
+vim ex 'w'
+cmp file.go file.go.gofmt
+
+-- go.mod --
+module mod.com
+
+-- file.go.orig --
+package blah
+
+const ( x = 5
+y = os.PathSeparator
+ )
+
+-- file.go.gofmt --
+package blah
+
+const (
+	x = 5
+	y = os.PathSeparator
+)
