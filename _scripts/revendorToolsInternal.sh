@@ -16,4 +16,4 @@ rm ./cmd/govim/internal/**/*_test.go
 rm -f ./cmd/govim/internal/LICENSE
 cp $tools/LICENSE ./cmd/govim/internal/
 
-
+go mod tidy

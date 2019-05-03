@@ -19,27 +19,43 @@ type CompletionItem struct {
 	// Label is the primary text the user sees for this completion item.
 	Label string
 
-	// Detail is supplemental information to present to the user. This
-	// often contains the Go type of the completion item.
+	// Detail is supplemental information to present to the user.
+	// This often contains the type or return type of the completion item.
 	Detail string
 
-	// Insert is the text to insert if this item is selected. Any already-typed
-	// prefix has not been trimmed. Insert does not contain snippets.
-	Insert string
+	// InsertText is the text to insert if this item is selected.
+	// Any of the prefix that has already been typed is not trimmed.
+	// The insert text does not contain snippets.
+	InsertText string
 
 	Kind CompletionItemKind
 
-	// Score is the internal relevance score. Higher is more relevant.
+	// Score is the internal relevance score.
+	// A higher score indicates that this completion item is more relevant.
 	Score float64
 
-	// PlainSnippet is the LSP snippet to be inserted if not nil and snippets are
-	// enabled and placeholders are not desired. This can contain tabs stops, but
-	// should not contain placeholder text.
-	PlainSnippet *snippet.Builder
+	// Snippet is the LSP snippet for the completion item, without placeholders.
+	// The LSP specification contains details about LSP snippets.
+	// For example, a snippet for a function with the following signature:
+	//
+	//     func foo(a, b, c int)
+	//
+	// would be:
+	//
+	//     foo(${1:})
+	//
+	Snippet *snippet.Builder
 
-	// PlaceholderSnippet is the LSP snippet to be inserted if not nil and
-	// snippets are enabled and placeholders are desired. This can contain
-	// placeholder text.
+	// PlaceholderSnippet is the LSP snippet for the completion ite, containing
+	// placeholders. The LSP specification contains details about LSP snippets.
+	// For example, a placeholder snippet for a function with the following signature:
+	//
+	//     func foo(a, b, c int)
+	//
+	// would be:
+	//
+	//     foo(${1:a int}, ${2: b int}, ${3: c int})
+	//
 	PlaceholderSnippet *snippet.Builder
 }
 
@@ -77,7 +93,12 @@ type completer struct {
 	types *types.Package
 	info  *types.Info
 	qf    types.Qualifier
-	fset  *token.FileSet
+
+	// view is the View associated with this completion request.
+	view View
+
+	// ctx is the context associated with this completion request.
+	ctx context.Context
 
 	// pos is the position at which the request was triggered.
 	pos token.Pos
@@ -144,7 +165,7 @@ func (c *completer) found(obj types.Object, weight float64) {
 func Completion(ctx context.Context, f File, pos token.Pos) ([]CompletionItem, string, error) {
 	file := f.GetAST(ctx)
 	pkg := f.GetPackage(ctx)
-	if pkg.IsIllTyped() {
+	if pkg == nil || pkg.IsIllTyped() {
 		return nil, "", fmt.Errorf("package for %s is ill typed", f.URI())
 	}
 
@@ -165,21 +186,22 @@ func Completion(ctx context.Context, f File, pos token.Pos) ([]CompletionItem, s
 		return nil, "", nil
 	}
 
-	cl, kv, clField := enclosingCompositeLiteral(path, pos)
+	lit, kv, inCompositeLiteralField := enclosingCompositeLiteral(path, pos)
 	c := &completer{
 		types:                     pkg.GetTypes(),
 		info:                      pkg.GetTypesInfo(),
 		qf:                        qualifier(file, pkg.GetTypes(), pkg.GetTypesInfo()),
-		fset:                      f.GetFileSet(ctx),
+		view:                      f.View(),
+		ctx:                       ctx,
 		path:                      path,
 		pos:                       pos,
 		seen:                      make(map[types.Object]bool),
 		expectedType:              expectedType(path, pos, pkg.GetTypesInfo()),
 		enclosingFunction:         enclosingFunction(path, pos, pkg.GetTypesInfo()),
 		preferTypeNames:           preferTypeNames(path, pos),
-		enclosingCompositeLiteral: cl,
+		enclosingCompositeLiteral: lit,
 		enclosingKeyValue:         kv,
-		inCompositeLiteralField:   clField,
+		inCompositeLiteralField:   inCompositeLiteralField,
 	}
 
 	// Composite literals are handled entirely separately.
@@ -466,12 +488,12 @@ func enclosingFunction(path []ast.Node, pos token.Pos, info *types.Info) *types.
 	return nil
 }
 
-func (c *completer) expectedCompositeLiteralType(cl *ast.CompositeLit, kv *ast.KeyValueExpr) types.Type {
-	clType, ok := c.info.Types[cl]
+func (c *completer) expectedCompositeLiteralType(lit *ast.CompositeLit, kv *ast.KeyValueExpr) types.Type {
+	litType, ok := c.info.Types[lit]
 	if !ok {
 		return nil
 	}
-	switch t := clType.Type.Underlying().(type) {
+	switch t := litType.Type.Underlying().(type) {
 	case *types.Slice:
 		return t.Elem()
 	case *types.Array:
@@ -501,14 +523,14 @@ func (c *completer) expectedCompositeLiteralType(cl *ast.CompositeLit, kv *ast.K
 		// We are in a struct literal, but not a specific key-value pair.
 		// If the struct literal doesn't have explicit field names,
 		// we may still be able to suggest an expected type.
-		for _, el := range cl.Elts {
+		for _, el := range lit.Elts {
 			if _, ok := el.(*ast.KeyValueExpr); ok {
 				return nil
 			}
 		}
 		// The order of the literal fields must match the order in the struct definition.
 		// Find the element that the position belongs to and suggest that field's type.
-		if i := indexExprAtPos(c.pos, cl.Elts); i < t.NumFields() {
+		if i := indexExprAtPos(c.pos, lit.Elts); i < t.NumFields() {
 			return t.Field(i).Type()
 		}
 	}
