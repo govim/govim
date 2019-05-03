@@ -9,7 +9,7 @@ exec git clone -q $PLUGIN_PATH $HOME/.vim/bundle/govim
 
 mkdir $HOME/.vim/autoload
 mkdir $HOME/.vim/bundle
-exec curl -LSso $HOME/.vim/autoload/pathogen.vim https://tpo.pe/pathogen.vim
+exec curl -LSso $HOME/.vim/autoload/pathogen.vim https://raw.githubusercontent.com/tpope/vim-pathogen/master/autoload/pathogen.vim
 
 execvim +'source '$PLUGIN_PATH/plugin/test_callback.txt
 ! stdout .+
