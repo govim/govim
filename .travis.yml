@@ -25,7 +25,7 @@ before_install:
 
 before_install:
   - docker --version
-  - docker pull myitcv/govim:${GO_VERSION}_${VIM_VERSION}_v1 | tee
+  - docker pull govim/govim:${GO_VERSION}_${VIM_VERSION}_v1 | tee
   - cat Dockerfile.user | envsubst '$GO_VERSION,$VIM_VERSION' | docker build -t govim --build-arg USER=$USER --build-arg UID=$UID --build-arg GID=$(id -g $USER) -
 
 script:
