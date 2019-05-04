@@ -33,7 +33,7 @@ do
 	done
 done
 
-toRemove=$(docker images myitcv/govim | tail -n +2 | grep -v -f $tf || true)
+toRemove=$(docker images govim/govim | tail -n +2 | grep -v -f $tf || true)
 
 if [ "$toRemove" == "" ]
 then

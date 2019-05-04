@@ -1,5 +1,5 @@
 #!/usr/bin/env vbash
 
-docker push myitcv/govim
+docker push govim/govim
 
 

@@ -30,7 +30,7 @@ for i in $(echo "$VIM_VERSIONS" | tr ',' '\n')
 do
 	for j in $(echo "$GO_VERSIONS" | tr ',' '\n')
 	do
-		echo running docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$j" --build-arg "VIM_VERSION=$i" -t myitcv/govim:${j}_${i} .
-		docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$j" --build-arg "VIM_VERSION=$i" -t myitcv/govim:${j}_${i}_v1 .
+		echo running docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$j" --build-arg "VIM_VERSION=$i" -t govim/govim:${j}_${i} .
+		docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$j" --build-arg "VIM_VERSION=$i" -t govim/govim:${j}_${i}_v1 .
 	done
 done
