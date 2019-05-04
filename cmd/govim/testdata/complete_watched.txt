@@ -1,8 +1,12 @@
 # Test that ominfunc complete works where the completion is made
 # available in a file that is not loaded via the editor.
+#
+# We add in a generous sleep to ensure the watch event has been
+# handled.
 
 vim ex 'e main.go'
 cp const.go.orig const.go
+sleep 500ms
 vim ex 'call cursor(6,16)'
 vim ex 'call feedkeys(\"i\\<C-X>\\<C-O>\\<C-N>\\<C-N>\\<ESC>\", \"x\")'
 vim ex 'w'
