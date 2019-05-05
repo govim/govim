@@ -15,13 +15,3 @@ RUN cd $(mktemp -d) && \
   go get github.com/myitcv/vbash@$VBASHVERSION && \
   GOBIN=/usr/bin go install github.com/myitcv/vbash
 
-ARG VIM_VERSION
-RUN cd /tmp && \
-  git clone https://github.com/vim/vim && \
-  cd vim && \
-  git checkout $VIM_VERSION && \
-  ./configure --prefix=/vim --enable-gui=gtk2 --disable-darwin --disable-selinux --disable-netbeans && \
-  make -j$(nproc --all) install
-
-ENV PATH=/vim/bin:$PATH
-

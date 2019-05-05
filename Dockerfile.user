@@ -1,4 +1,4 @@
-FROM govim/govim:${GO_VERSION}_${VIM_VERSION}_v1
+FROM govim/govim:${GO_VERSION}_${VIM_FLAVOR}_${VERSION}_v1
 
 ARG USER
 ARG UID
@@ -7,7 +7,8 @@ ARG GID
 ENV PATH=/vbash/bin:/home/$USER/.local/bin:$PATH
 ENV GOPATH=/home/$USER/gopath
 
-RUN groupadd -g $GID $USER && \
+# Create group if it doesn't exist
+RUN sh -c "if ! getent group $GID; then groupadd -g $GID $USER; fi" && \
     adduser --uid $UID --gid $GID --disabled-password --gecos "" $USER
 
 # enable sudo
