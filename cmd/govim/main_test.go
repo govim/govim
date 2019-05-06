@@ -76,6 +76,9 @@ func TestScripts(t *testing.T) {
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
+				if os.Getenv("CI") == "true" && filepath.Base(e.WorkDir) == "script-complete_watched" {
+					td.Log = os.Stderr
+				}
 				if *fLogGovim {
 					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
 					if err != nil {
