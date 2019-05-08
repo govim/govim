@@ -57,6 +57,7 @@ func TestScripts(t *testing.T) {
 			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 				"sleep": testdriver.Sleep,
 			},
+			Condition: testdriver.Condition,
 			Setup: func(e *testscript.Env) error {
 				// We set a special TMPDIR so the file watcher ignores it
 				tmp := filepath.Join(e.WorkDir, "_tmp")

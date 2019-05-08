@@ -39,8 +39,27 @@ vim ex 'call feedkeys(\"\\<C-t>\", \"x\")'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[5,15]\E$'
 
-# <C-LeftMouse> and <C-RightMouse> - can't be handled yet
-# g<LeftMouse> and g<RightMouse> - can't be handled yet
+# Vim only, and at least v8.1.1262
+[!vim] skip 'Need Vim for test_setmouse'
+[!vim:v8.1.1262] skip 'Need at least v8.1.1262 for test_setmouse'
+
+# <C-LeftMouse> and <C-RightMouse>
+vim ex 'call test_setmouse(5,15)'
+vim ex 'call feedkeys(\"\\<C-LeftMouse>\", \"x\")'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '^\Q[6,7]\E$'
+vim ex 'call feedkeys(\"\\<C-RightMouse>\", \"x\")'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '^\Q[5,15]\E$'
+
+# g<LeftMouse> and g<RightMouse>
+vim ex 'call test_setmouse(5,15)'
+vim ex 'call feedkeys(\"g\\<LeftMouse>\", \"x\")'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '^\Q[6,7]\E$'
+vim ex 'call feedkeys(\"g\\<RightMouse>\", \"x\")'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '^\Q[5,15]\E$'
 
 -- go.mod --
 module mod.com/p
