@@ -1,7 +1,8 @@
 #!/usr/bin/env vbash
 
-set -eu
+set -euo pipefail
 
+cd "${BASH_SOURCE%/*}"
 
 # Usage; either:
 #
@@ -32,8 +33,7 @@ fi
 vbashVersion="$(go list -m -f={{.Version}} github.com/myitcv/vbash)"
 
 # Build base layer image
-echo running docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=${GO_VERSION}" -t govim/govim:base_${GO_VERSION}_${vbashVersion} -f Dockerfile.base .
-docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=${GO_VERSION}" -t govim/govim:base_${GO_VERSION}_${vbashVersion} -f Dockerfile.base .
+docker build --build-arg "GH_USER=$GH_USER" --build-arg "GH_TOKEN=$GH_TOKEN" --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=${GO_VERSION}" -t govim/govim:base_${GO_VERSION}_${vbashVersion} -f Dockerfile.base .
 
 
 # Build Vim images
@@ -41,8 +41,7 @@ for i in $(echo "$VIM_VERSIONS" | tr ',' '\n')
 do
 	for j in $(echo "$GO_VERSIONS" | tr ',' '\n')
 	do
-		echo running docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$j" --build-arg "VIM_VERSION=$i" -t govim/govim:${j}_${i} -f Dockerfile.nvim .
-		docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$j" --build-arg "VIM_VERSION=$i" -t govim/govim:${j}_vim_${i}_v1 -f Dockerfile.vim .
+		docker build --build-arg "GH_USER=$GH_USER" --build-arg "GH_TOKEN=$GH_TOKEN" --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$j" --build-arg "VIM_VERSION=$i" -t govim/govim:${j}_vim_${i}_v1 -f Dockerfile.vim .
 	done
 done
 
@@ -52,7 +51,6 @@ for i in $(echo "$NEOVIM_VERSIONS" | tr ',' '\n')
 do
 	for j in $(echo "$GO_VERSIONS" | tr ',' '\n')
 	do
-		echo running docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$j" --build-arg "VIM_VERSION=$i" -t govim/govim:${j}_${i} -f Dockerfile.nvim .
-		docker build --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$j" --build-arg "NEOVIM_VERSION=$i" -t govim/govim:${j}_nvim_${i}_v1 -f Dockerfile.nvim .
+		docker build --build-arg "GH_USER=$GH_USER" --build-arg "GH_TOKEN=$GH_TOKEN" --build-arg "VBASHVERSION=$vbashVersion" --build-arg "GO_VERSION=$j" --build-arg "NEOVIM_VERSION=$i" -t govim/govim:${j}_nvim_${i}_v1 -f Dockerfile.nvim .
 	done
 done

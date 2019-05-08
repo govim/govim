@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+cd "${BASH_SOURCE%/*}"
+
 # Usage; either:
 #
 #   buildGovimImage.sh
