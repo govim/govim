@@ -78,7 +78,7 @@ func NewTestDriver(name string, govimPath, testHomePath, testPluginPath string, 
 	if err := copyDir(testPluginPath, govimPath); err != nil {
 		return nil, fmt.Errorf("failed to copy %v to %v: %v", govimPath, testPluginPath, err)
 	}
-	srcVimrc := filepath.Join(govimPath, "minimal.vimrc")
+	srcVimrc := filepath.Join(govimPath, "cmd", "govim", "config", "minimal.vimrc")
 	dstVimrc := filepath.Join(testHomePath, ".vimrc")
 	if err := copyFile(dstVimrc, srcVimrc); err != nil {
 		return nil, fmt.Errorf("failed to copy %v to %v: %v", srcVimrc, dstVimrc, err)

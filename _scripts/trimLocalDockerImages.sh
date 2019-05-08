@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -eu
+set -euo pipefail
 
 # trimLocalDockerImages trims down your local Docker image cache to contain
 # just the matrix implied by GO_VERSIONS and VIM_VERSIONS.
