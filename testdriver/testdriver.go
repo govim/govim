@@ -19,6 +19,7 @@ import (
 
 	"github.com/kr/pty"
 	"github.com/myitcv/govim"
+	"github.com/rogpeppe/go-internal/semver"
 	"github.com/rogpeppe/go-internal/testscript"
 	"gopkg.in/tomb.v2"
 )
@@ -502,6 +503,48 @@ func Sleep(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("failed to parse duration %q: %v", args[0], err)
 	}
 	time.Sleep(d)
+}
+
+func Condition(cond string) (bool, error) {
+	switch {
+	case strings.HasPrefix(cond, "vim"):
+		v := strings.TrimPrefix(cond, "vim")
+		if os.Getenv("VIM_FLAVOR") != "vim" {
+			return false, nil
+		}
+		if v == "" {
+			return true, nil
+		}
+		if v[0] != ':' {
+			return false, fmt.Errorf("failed to find version separator")
+		}
+		v = v[1:]
+		if !semver.IsValid(v) {
+			return false, fmt.Errorf("%v is not a valid semver version", v)
+		}
+		cmd := exec.Command("vim", "--version")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return false, fmt.Errorf("failed to run %v: %v\n%s", strings.Join(cmd.Args, " "), err, out)
+		}
+		lines := strings.Split(string(out), "\n")
+
+		av := "v"
+		av += strings.Fields(lines[0])[4] // 5th element is the major.minor
+		patch := strings.Fields(lines[1])[2]
+		patchI := strings.Index(patch, "-")
+		if patchI == -1 {
+			return false, fmt.Errorf("failed to parse patch version from %v", patch)
+		}
+		patch = patch[patchI+1:]
+		av += "." + patch
+		if !semver.IsValid(av) {
+			return false, fmt.Errorf("failed to calculate valid Vim version; got %v", av)
+		}
+		return semver.Compare(av, v) >= 0, nil
+	default:
+		return false, fmt.Errorf("unknown condition %v", cond)
+	}
 }
 
 type signallingPlugin struct {
