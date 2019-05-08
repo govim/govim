@@ -81,7 +81,6 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 				TextDocument: b.ToTextDocumentIdentifier(),
 				Range:        *ran,
 			}
-			v.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
 			edits, err = v.server.RangeFormatting(context.Background(), params)
 			if err != nil {
 				return fmt.Errorf("failed to call gopls.RangeFormatting: %v\nParams were: %v", err, pretty.Sprint(params))
@@ -90,7 +89,6 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			params := &protocol.DocumentFormattingParams{
 				TextDocument: b.ToTextDocumentIdentifier(),
 			}
-			v.Logf("Calling gopls.Formatting: %v", pretty.Sprint(params))
 			edits, err = v.server.Formatting(context.Background(), params)
 			if err != nil {
 				return fmt.Errorf("failed to call gopls.Formatting: %v\nParams were: %v", err, pretty.Sprint(params))
@@ -103,7 +101,6 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 		if flags.Range != nil {
 			params.Range = *ran
 		}
-		v.Logf("Calling gopls.CodeAction: %v", pretty.Sprint(params))
 		actions, err := v.server.CodeAction(context.Background(), params)
 		if err != nil {
 			return fmt.Errorf("failed to call gopls.CodeAction: %v\nParams were: %v", err, pretty.Sprint(params))
