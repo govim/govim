@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -15,10 +16,18 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"regexp"
 
 	"github.com/kr/pty"
 	"github.com/myitcv/govim/testdriver"
 	"github.com/rogpeppe/go-internal/testscript"
+	"gopkg.in/retry.v1"
+)
+
+const (
+	keyErrLog = "errLog"
 )
 
 var (
@@ -55,7 +64,8 @@ func TestScripts(t *testing.T) {
 		testscript.Run(t, testscript.Params{
 			Dir: "testdata",
 			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
-				"sleep": testdriver.Sleep,
+				"sleep":      testdriver.Sleep,
+				"errlogwait": errLogWait,
 			},
 			Condition: testdriver.Condition,
 			Setup: func(e *testscript.Env) error {
@@ -77,9 +87,12 @@ func TestScripts(t *testing.T) {
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
-				if os.Getenv("CI") == "true" && filepath.Base(e.WorkDir) == "script-complete_watched" {
-					td.Log = os.Stderr
-				}
+				errLog := new(lockingBuffer)
+				td.Log = io.MultiWriter(
+					errLog,
+					// os.Stderr,
+				)
+				e.Values[keyErrLog] = errLog
 				if *fLogGovim {
 					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
 					if err != nil {
@@ -173,4 +186,63 @@ func execvim() int {
 		return 1
 	}
 	return 0
+}
+
+type lockingBuffer struct {
+	lock sync.Mutex
+	und  bytes.Buffer
+}
+
+func (l *lockingBuffer) Write(p []byte) (n int, err error) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	return l.und.Write(p)
+}
+
+func (l *lockingBuffer) Bytes() []byte {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	return l.und.Bytes()
+}
+
+func errLogWait(ts *testscript.TestScript, neg bool, args []string) {
+	if neg {
+		ts.Fatalf("errlogwait does not support negation")
+	}
+	errLogV := ts.Value(keyErrLog)
+	if errLogV == nil {
+		ts.Fatalf("errlogwait failed to find errLog")
+	}
+	errLog, ok := errLogV.(*lockingBuffer)
+	if !ok {
+		ts.Fatalf("errlogwait errLog was not the right type")
+	}
+
+	if len(args) != 1 {
+		ts.Fatalf("errlogwait expects a single argument, the regexp to search for")
+	}
+
+	reg, err := regexp.Compile(args[0])
+	if err != nil {
+		ts.Fatalf("errlogwait failed to regexp.Compile %q: %v", args[0], err)
+	}
+
+	strategy := retry.LimitTime(30*time.Second,
+		retry.Exponential{
+			Initial: 10 * time.Millisecond,
+			Factor:  1.5,
+		},
+	)
+
+	found := false
+	for a := retry.Start(strategy, nil); a.Next(); {
+		if reg.Find(errLog.Bytes()) != nil {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		ts.Fatalf("errlogwait failed to find %q; timed out", args[0])
+	}
 }

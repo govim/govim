@@ -10,6 +10,7 @@ vim ex 'e '$WORK/q/q.go
 vim expr '[winnr(), tabpagenr()]'
 stdout '^\Q[1,1]\E$'
 vim ex 'split '$WORK/p.go
+errlogwait '&protocol.DidOpenTextDocumentParams{\n\S+:\s+TextDocument:\s+protocol.TextDocumentItem{URI:"file://'$WORK/p.go
 vim ex 'call cursor(5,17)'
 vim ex 'GOVIMGoToDef'
 vim expr 'bufname(\"\")'
