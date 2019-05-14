@@ -41,11 +41,16 @@ type File interface {
 	GetPackage(ctx context.Context) Package
 	GetToken(ctx context.Context) *token.File
 	GetContent(ctx context.Context) []byte
+
+	// GetActiveReverseDeps returns the active files belonging to the reverse
+	// dependencies of this file's package.
+	GetActiveReverseDeps(ctx context.Context) []File
 }
 
 // Package represents a Go package that has been type-checked. It maintains
 // only the relevant fields of a *go/packages.Package.
 type Package interface {
+	PkgPath() string
 	GetFilenames() []string
 	GetSyntax() []*ast.File
 	GetErrors() []packages.Error
@@ -54,6 +59,7 @@ type Package interface {
 	GetTypesSizes() types.Sizes
 	IsIllTyped() bool
 	GetActionGraph(ctx context.Context, a *analysis.Analyzer) (*Action, error)
+	GetImport(pkgPath string) Package
 }
 
 // TextEdit represents a change to a section of a document.

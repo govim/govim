@@ -34,7 +34,6 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 		}
 		text = change.Text
 	}
-	s.log.Debugf(ctx, "didChange: %s", params.TextDocument.URI)
 	return s.cacheAndDiagnose(ctx, span.NewURI(params.TextDocument.URI), text)
 }
 
@@ -64,7 +63,7 @@ func (s *Server) applyChanges(ctx context.Context, params *protocol.DidChangeTex
 			return "", jsonrpc2.NewErrorf(jsonrpc2.CodeInternalError, "invalid range for content change")
 		}
 		start, end := spn.Start().Offset(), spn.End().Offset()
-		if end <= start {
+		if end < start {
 			return "", jsonrpc2.NewErrorf(jsonrpc2.CodeInternalError, "invalid range for content change")
 		}
 		var buf bytes.Buffer
