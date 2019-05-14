@@ -16,10 +16,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/myitcv/govim/internal/queue"
+	"github.com/rogpeppe/go-internal/semver"
 	"gopkg.in/tomb.v2"
 )
 
-//go:generate go run golang.org/x/tools/cmd/stringer -type=GenAttr,Complete,Range,Event,NArgs -linecomment -output gen_stringers_stringer.go
+//go:generate go run golang.org/x/tools/cmd/stringer -type=GenAttr,Complete,Range,Event,NArgs,Flavor -linecomment -output gen_stringers_stringer.go
+//go:generate go run _scripts/genconfig.go
 
 const (
 	funcHandlePref     = "function:"
@@ -32,6 +34,18 @@ const (
 var (
 	ErrShuttingDown = errors.New("govim shutting down")
 )
+
+type Flavor uint
+
+const (
+	FlavorVim  Flavor = iota // vim
+	FlavorGvim               // gvim
+)
+
+var Flavors = []Flavor{
+	FlavorVim,
+	FlavorGvim,
+}
 
 // callbackResp is the container for a response from a call to callVim. If the
 // call does not result in a value, e.g. ChannelEx, then val will be nil
@@ -111,6 +125,14 @@ type Govim interface {
 
 	// Schedule schdules f to run in the event queue
 	Schedule(func(Govim) error) chan struct{}
+
+	// Flavor returns the flavor of the editor to which the Govim instance is
+	// connected
+	Flavor() Flavor
+
+	// Version returns the semver version of the editor to which the Govim
+	// instance is connected
+	Version() string
 }
 
 type govimImpl struct {
@@ -142,6 +164,9 @@ type govimImpl struct {
 
 	eventQueue *queue.Queue
 	tomb       tomb.Tomb
+
+	flavor  Flavor
+	version string
 }
 
 type callback interface {
@@ -230,6 +255,30 @@ func (g *govimImpl) load() error {
 	if g.plugin != nil {
 		g.pluginErrCh = make(chan error)
 		err := g.DoProto(func() error {
+			var details struct {
+				Version    string
+				GuiRunning int
+			}
+
+			v, err := g.ChannelExpr(`{"Version": GOVIMEvalRedir("version"), "GuiRunning": has("gui_running")}`)
+			if err != nil {
+				return err
+			}
+			g.decodeJSON(v, &details)
+
+			version, err := ParseVimVersion([]byte(details.Version))
+			if err != nil {
+				return err
+			}
+			g.version = version
+
+			if details.GuiRunning == 1 {
+				g.flavor = FlavorGvim
+			} else {
+				g.flavor = FlavorVim
+			}
+			g.Logf("Loaded against %v %v\n", g.flavor, g.version)
+
 			return g.plugin.Init(g, g.pluginErrCh)
 		})
 		if err != nil {
@@ -294,7 +343,10 @@ type VimAutoCommandFunction func(g Govim, args ...json.RawMessage) error
 func (v VimAutoCommandFunction) isHandler() {}
 
 func (g *govimImpl) Run() error {
-	err := g.DoProto(g.run)
+	err := g.DoProto(func() error {
+		g.run()
+		return nil
+	})
 	g.tomb.Kill(err)
 	if g.plugin != nil {
 		return g.plugin.Shutdown()
@@ -803,10 +855,45 @@ func (g *govimImpl) Logf(format string, args ...interface{}) {
 	fmt.Fprint(g.log, t+": "+s+"\n")
 }
 
+func (g *govimImpl) Version() string {
+	return g.version
+}
+
+func (g *govimImpl) Flavor() Flavor {
+	return g.flavor
+}
+
 type errProto struct {
 	underlying error
 }
 
 func (e errProto) Error() string {
 	return fmt.Sprintf("protocol error: %v", e.underlying)
+}
+
+// ParseVimVersion takes b which is assumed to be the output from :version or --version
+// and returns the equivalent semver version.
+func ParseVimVersion(b []byte) (string, error) {
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	av := "v"
+	av += strings.Fields(lines[0])[4] // 5th element is the major.minor
+
+	// Depending on OS/build, the patch versions are printed on different lines
+	var patch string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "Included patches:") {
+			patch = strings.Fields(line)[2]
+			patchI := strings.Index(patch, "-")
+			if patchI == -1 {
+				return "", fmt.Errorf("failed to parse patch version from %v", patch)
+			}
+			patch = patch[patchI+1:]
+		}
+	}
+	av += "." + patch
+	if !semver.IsValid(av) {
+		return "", fmt.Errorf("failed to calculate valid Vim version from %q; got %v", b, av)
+	}
+
+	return av, nil
 }

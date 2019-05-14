@@ -1,5 +1,7 @@
 #!/usr/bin/env vbash
 
+set -u
+
 shopt -s globstar
 shopt -s extglob
 

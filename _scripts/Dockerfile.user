@@ -1,4 +1,4 @@
-FROM govim/govim:${GO_VERSION}_${VIM_FLAVOR}_${VERSION}_v1
+FROM govim/govim:${GO_VERSION}_${VIM_FLAVOR}_${VIM_VERSION}_v1
 
 ARG USER
 ARG UID

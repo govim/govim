@@ -19,6 +19,7 @@ import (
 
 	"github.com/kr/pty"
 	"github.com/myitcv/govim"
+	"github.com/myitcv/govim/testsetup"
 	"github.com/rogpeppe/go-internal/semver"
 	"github.com/rogpeppe/go-internal/testscript"
 	"gopkg.in/tomb.v2"
@@ -93,11 +94,15 @@ func NewTestDriver(name string, govimPath, testHomePath, testPluginPath string, 
 		"GOVIMTESTDRIVER_SOCKET="+res.driverListener.Addr().String(),
 	)
 
-	vimCmd := []string{"vim"}
+	_, cmd, err := testsetup.EnvLookupFlavorCommand()
+	if err != nil {
+		return nil, err
+	}
+
+	vimCmd := cmd
 	if e := os.Getenv("VIM_COMMAND"); e != "" {
 		vimCmd = strings.Fields(e)
 	}
-	// vimCmd = append(vimCmd, "-V15/tmp/vim.debug")
 
 	res.cmd = exec.Command(vimCmd[0], vimCmd[1:]...)
 	res.cmd.Env = env.Vars
@@ -514,52 +519,48 @@ func Sleep(ts *testscript.TestScript, neg bool, args []string) {
 }
 
 func Condition(cond string) (bool, error) {
+	envf, cmd, err := testsetup.EnvLookupFlavorCommand()
+	if err != nil {
+		return false, err
+	}
+	var f govim.Flavor
 	switch {
-	case strings.HasPrefix(cond, "vim"):
-		v := strings.TrimPrefix(cond, "vim")
-		if os.Getenv("VIM_FLAVOR") != "vim" {
-			return false, nil
-		}
-		if v == "" {
-			return true, nil
-		}
-		if v[0] != ':' {
-			return false, fmt.Errorf("failed to find version separator")
-		}
-		v = v[1:]
-		if !semver.IsValid(v) {
-			return false, fmt.Errorf("%v is not a valid semver version", v)
-		}
-		cmd := exec.Command("vim", "--version")
+	case strings.HasPrefix(cond, govim.FlavorVim.String()):
+		f = govim.FlavorVim
+	case strings.HasPrefix(cond, govim.FlavorGvim.String()):
+		f = govim.FlavorGvim
+	default:
+		return false, fmt.Errorf("unknown condition %v", cond)
+	}
+	v := strings.TrimPrefix(cond, f.String())
+	if envf != f {
+		return false, nil
+	}
+	if v == "" {
+		return true, nil
+	}
+	if v[0] != ':' {
+		return false, fmt.Errorf("failed to find version separator")
+	}
+	v = v[1:]
+	if !semver.IsValid(v) {
+		return false, fmt.Errorf("%v is not a valid semver version", v)
+	}
+	switch f {
+	case govim.FlavorVim, govim.FlavorGvim:
+		cmd := cmd.BuildCommand("-v", "--version")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return false, fmt.Errorf("failed to run %v: %v\n%s", strings.Join(cmd.Args, " "), err, out)
 		}
-		lines := strings.Split(string(out), "\n")
-
-		av := "v"
-		av += strings.Fields(lines[0])[4] // 5th element is the major.minor
-
-		// Depending on OS/build, the patch versions are printed on different lines
-		var patch string
-		for _, line := range lines {
-			if strings.HasPrefix(line, "Included patches:") {
-				patch = strings.Fields(line)[2]
-				patchI := strings.Index(patch, "-")
-				if patchI == -1 {
-					return false, fmt.Errorf("failed to parse patch version from %v", patch)
-				}
-				patch = patch[patchI+1:]
-			}
+		version, err := govim.ParseVimVersion(out)
+		if err != nil {
+			return false, err
 		}
-		av += "." + patch
-		if !semver.IsValid(av) {
-			return false, fmt.Errorf("failed to calculate valid Vim version; got %v", av)
-		}
-		return semver.Compare(av, v) >= 0, nil
-	default:
-		return false, fmt.Errorf("unknown condition %v", cond)
+		return semver.Compare(version, v) >= 0, nil
 	}
+
+	panic("should not reach here")
 }
 
 type signallingPlugin struct {
