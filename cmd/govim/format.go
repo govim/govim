@@ -162,6 +162,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 				return fmt.Errorf("saw an edit where start line != end line with replacement text %q; We can't currently handle this", e.NewText)
 			}
 			// This is a delete of line
+			v.ChannelEx("undojoin")
 			if res := v.ParseInt(v.ChannelCall("deletebufline", b.Num, start.Line(), end.Line()-1)); res != 0 {
 				return fmt.Errorf("deletebufline(%v, %v, %v) failed", b.Num, start.Line(), end.Line()-1)
 			}
@@ -175,6 +176,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 				e.NewText = e.NewText[:len(e.NewText)-1]
 			}
 			repl := strings.Split(e.NewText, "\n")
+			v.ChannelEx("undojoin")
 			v.ChannelCall("append", start.Line()-1, repl)
 		}
 	}
