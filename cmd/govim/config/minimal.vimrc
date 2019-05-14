@@ -1,6 +1,7 @@
-" This file represents the minimal .vimrc needed to work with govim
-" It is used as part of the automated tests for govim and so will
-" always be current
+" This file represents the minimal .vimrc needed to work with govim.
+"
+" We also include a number of suggested settings that we think the majority of
+" users will like/prefer.
 
 set nocompatible
 set nobackup
@@ -20,3 +21,13 @@ set mouse=a
 " does not work correctly beyond a certain column number (citation needed)
 " hence we use ttymouse=sgr
 set ttymouse=sgr
+
+" Suggestion: By default, govim populates the quickfix window with diagnostics
+" reported by gopls after a period of inactivity, the time period being
+" defined by updatetime (help updatetime). Here we suggest a short updatetime
+" time in order that govim/Vim are more responsive/IDE-like
+set updatetime=500
+
+" Suggestion: To make govim/Vim more responsive/IDE-like, we suggest a short
+" balloondelay
+set balloondelay=250

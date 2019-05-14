@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"sort"
 
+	"github.com/myitcv/govim"
+	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 	"github.com/myitcv/govim/cmd/govim/types"
 )
@@ -16,6 +17,19 @@ type quickfixEntry struct {
 	Lnum     int    `json:"lnum"`
 	Col      int    `json:"col"`
 	Text     string `json:"text"`
+}
+
+func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string) error {
+	return v.updateQuickfix()
+}
+
+func (v *vimstate) autoUpdateQuickfix(args ...json.RawMessage) error {
+	// TODO this double round-trip is not very efficient
+	if v.ParseInt(v.ChannelExprf("exists(%q)", config.GlobalQuickfixAutoDiagnosticsDisable)) != 0 &&
+		v.ParseInt(v.ChannelExpr(config.GlobalQuickfixAutoDiagnosticsDisable)) != 0 {
+		return nil
+	}
+	return v.updateQuickfix()
 }
 
 func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
@@ -44,7 +58,8 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 		diags := v.diagnostics[uri]
 		fn, err := uri.Filename()
 		if err != nil {
-			return fmt.Errorf("failed to resolve filename from URI %q: %v", uri, err)
+			v.Logf("updateQuickfix: failed to resolve filename from URI %q: %v", uri, err)
+			continue
 		}
 		var buf *types.Buffer
 		for _, b := range v.buffers {
@@ -55,7 +70,8 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 		if buf == nil {
 			byts, err := ioutil.ReadFile(fn)
 			if err != nil {
-				return fmt.Errorf("failed to read contents of %v: %v", fn, err)
+				v.Logf("updateQuickfix: failed to read contents of %v: %v", fn, err)
+				continue
 			}
 			// create a temp buffer
 			buf = &types.Buffer{
@@ -67,12 +83,14 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 		// make fn relative for reporting purposes
 		fn, err = filepath.Rel(cwd, fn)
 		if err != nil {
-			return fmt.Errorf("failed to call filepath.Rel(%q, %q): %v", cwd, fn, err)
+			v.Logf("updateQuickfix: failed to call filepath.Rel(%q, %q): %v", cwd, fn, err)
+			continue
 		}
 		for _, d := range diags {
 			p, err := types.PointFromPosition(buf, d.Range.Start)
 			if err != nil {
-				return fmt.Errorf("failed to resolve position: %v", err)
+				v.Logf("updateQuickfix: failed to resolve position: %v", err)
+				continue
 			}
 			fixes = append(fixes, quickfixEntry{
 				Filename: fn,

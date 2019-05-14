@@ -25,10 +25,8 @@ let s:plugindir = expand(expand("<sfile>:p:h:h"))
 let s:govim_status = "loading"
 let s:loadStatusCallbacks = []
 
-set balloondelay=250
 set ballooneval
 set balloonevalterm
-set updatetime=500
 
 " TODO these probably doesn't belong here?
 let g:govim_format_on_save = "goimports"

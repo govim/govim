@@ -1,12 +1,23 @@
+// Package config declares the configuration variables, functions and commands
+// used by govim
 package config
 
 const (
 	GlobalPrefix = "g:govim_"
 
 	// GlobalFormatOnSave is a string value variable that configures which tool
-	// to use for formatting on save.  Options are given by constants of type
-	// FormatOnSave
+	// to use for formatting on save. Options are given by constants of type
+	// FormatOnSave. Default: FormatOnSaveGoImports.
 	GlobalFormatOnSave = GlobalPrefix + "format_on_save"
+
+	// GlobalQuickfixAutoDiagnosticsDisable is a boolean (0 or 1 in VimScript)
+	// variable that controls whether auto-population of the quickfix window
+	// with gopls diagnostics is disabled or not. When not disabled, govim waits
+	// for updatetime (help updatetime) before populating the quickfix window
+	// with the current gopls diagnostics. When disabled, the
+	// CommandQuickfixDiagnostics command can be used to manually trigger the
+	// population. Default: false (0)
+	GlobalQuickfixAutoDiagnosticsDisable = GlobalPrefix + "quickfix_auto_diagnotics_disable"
 )
 
 type Command string
@@ -32,6 +43,10 @@ const (
 	// CommandGoImports applies goimports to the selected range, or the entire
 	// file if no range is provided
 	CommandGoImports Command = "GoImports"
+
+	// CommandQuickfixDiagnostics populates the quickfix window with the current
+	// gopls-reported diagnostics
+	CommandQuickfixDiagnostics Command = "QuickfixDiagnostics"
 )
 
 type Function string
