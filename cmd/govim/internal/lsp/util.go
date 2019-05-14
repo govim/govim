@@ -7,37 +7,43 @@ package lsp
 import (
 	"context"
 	"fmt"
-	"strings"
+	"io"
+	"os/exec"
 
-	"github.com/myitcv/govim/cmd/govim/internal/lsp/cache"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
-// findView returns the view corresponding to the given URI.
-// If the file is not already associated with a view, pick one using some heuristics.
-func (s *Server) findView(ctx context.Context, uri span.URI) *cache.View {
-	// first see if a view already has this file
-	for _, view := range s.views {
-		if view.FindFile(ctx, uri) != nil {
-			return view
-		}
+// This writes the version and environment information to a writer.
+func PrintVersionInfo(w io.Writer, verbose bool, markdown bool) {
+	if !verbose {
+		printBuildInfo(w, false)
+		return
 	}
-	var longest *cache.View
-	for _, view := range s.views {
-		if longest != nil && len(longest.Folder) > len(view.Folder) {
-			continue
-		}
-		if strings.HasPrefix(string(uri), string(view.Folder)) {
-			longest = view
-		}
+	fmt.Fprint(w, "#### Build info\n\n")
+	if markdown {
+		fmt.Fprint(w, "```\n")
 	}
-	if longest != nil {
-		return longest
+	printBuildInfo(w, true)
+	fmt.Fprint(w, "\n")
+	if markdown {
+		fmt.Fprint(w, "```\n")
 	}
-	//TODO: are there any more heuristics we can use?
-	return s.views[0]
+	fmt.Fprint(w, "\n#### Go info\n\n")
+	if markdown {
+		fmt.Fprint(w, "```\n")
+	}
+	cmd := exec.Command("go", "version")
+	cmd.Stdout = w
+	cmd.Run()
+	fmt.Fprint(w, "\n")
+	cmd = exec.Command("go", "env")
+	cmd.Stdout = w
+	cmd.Run()
+	if markdown {
+		fmt.Fprint(w, "```\n")
+	}
 }
 
 func newColumnMap(ctx context.Context, v source.View, uri span.URI) (source.File, *protocol.ColumnMapper, error) {

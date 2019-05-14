@@ -82,7 +82,9 @@ type Server struct {
 
 	textDocumentSyncKind protocol.TextDocumentSyncKind
 
-	views []*cache.View
+	viewMu  sync.Mutex
+	views   []*cache.View
+	viewMap map[span.URI]*cache.View
 
 	// undelivered is a cache of any diagnostics that the server
 	// failed to deliver for some reason.
@@ -110,8 +112,8 @@ func (s *Server) Exit(ctx context.Context) error {
 
 // Workspace
 
-func (s *Server) DidChangeWorkspaceFolders(context.Context, *protocol.DidChangeWorkspaceFoldersParams) error {
-	return notImplemented("DidChangeWorkspaceFolders")
+func (s *Server) DidChangeWorkspaceFolders(ctx context.Context, params *protocol.DidChangeWorkspaceFoldersParams) error {
+	return s.changeFolders(ctx, params.Event)
 }
 
 func (s *Server) DidChangeConfiguration(context.Context, *protocol.DidChangeConfigurationParams) error {
@@ -231,7 +233,7 @@ func (s *Server) Formatting(ctx context.Context, params *protocol.DocumentFormat
 }
 
 func (s *Server) RangeFormatting(ctx context.Context, params *protocol.DocumentRangeFormattingParams) ([]protocol.TextEdit, error) {
-	return s.rangeFormatting(ctx, params)
+	return nil, notImplemented("RangeFormatting")
 }
 
 func (s *Server) OnTypeFormatting(context.Context, *protocol.DocumentOnTypeFormattingParams) ([]protocol.TextEdit, error) {
