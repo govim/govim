@@ -2,8 +2,8 @@
 # already has the relevant import required for the completion.
 
 vim ex 'e main.go'
-vim ex 'call cursor(11,16)'
-vim ex 'call feedkeys(\"i\\<C-X>\\<C-O>\\<C-N>\\<C-N>\\<ESC>\", \"x\")'
+vim ex 'call cursor(11,17)'
+vim ex 'call feedkeys(\"i\\<C-X>\\<C-O>\\<C-N>\\<ESC>\", \"xt\")'
 vim ex 'w'
 cmp main.go main.go.golden
 
@@ -21,7 +21,7 @@ const (
 )
 
 func main() {
-	fmt.Println()
+	fmt.Println(Con)
 }
 -- main.go.golden --
 package main
