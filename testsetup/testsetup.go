@@ -13,11 +13,16 @@ import (
 )
 
 const (
+	EnvTestSocket = "GOVIMTEST_SOCKET"
+
 	EnvVimFlavor  = "VIM_FLAVOR"
 	EnvVimCommand = "VIM_COMMAND"
 
 	EnvGithubUser  = "GH_USER"
 	EnvGithubToken = "GH_TOKEN"
+
+	EnvDisableIncrementalSync       = "GOVIM_DISABLE_INCREMENTALSYNC"
+	MinVimIncrementalSyncExperiment = "v8.1.1389"
 )
 
 var (
@@ -44,10 +49,10 @@ var (
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{
 		NeovimVersion("v0.3.5"),
-		VimVersion("v8.1.1295"),
-		GvimVersion("v8.1.1295"),
 		VimVersion("v8.1.1158"),
 		GvimVersion("v8.1.1158"),
+		VimVersion("v8.1.1389"),
+		GvimVersion("v8.1.1389"),
 	}
 )
 

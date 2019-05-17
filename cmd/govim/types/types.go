@@ -18,6 +18,7 @@ type Buffer struct {
 	Name     string
 	Contents []byte
 	Version  int
+	Listener int
 
 	// cc is lazily set whenever position information is required
 	cc *span.TokenConverter

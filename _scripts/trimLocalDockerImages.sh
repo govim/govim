@@ -27,8 +27,6 @@ do
 	done
 done
 
-cat $tf
-
 toRemove=$(docker images govim/govim | tail -n +2 | grep -v base_ | grep -v -f $tf || true)
 
 if [ "$toRemove" == "" ]

@@ -21,11 +21,18 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 	"github.com/myitcv/govim/cmd/govim/types"
 	"github.com/myitcv/govim/internal/plugin"
+	"github.com/myitcv/govim/testsetup"
 	"gopkg.in/tomb.v2"
+
+	"github.com/rogpeppe/go-internal/semver"
 )
 
 var (
 	fTail = flag.Bool("tail", false, "whether to also log output to stdout")
+
+	// gopls define InitializationOptions; they will make these well defined
+	// constants at some point
+	goplsInitOptIncrementalSync = "incrementalSync"
 )
 
 func main() {
@@ -53,7 +60,7 @@ func mainerr() error {
 	}
 	goplspath := args[0]
 
-	if sock := os.Getenv("GOVIMTEST_SOCKET"); sock != "" {
+	if sock := os.Getenv(testsetup.EnvTestSocket); sock != "" {
 		ln, err := net.Listen("tcp", sock)
 		if err != nil {
 			return fmt.Errorf("failed to listen on %v: %v", sock, err)
@@ -92,7 +99,7 @@ func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 		log = io.MultiWriter(tf, os.Stdout)
 	}
 
-	if os.Getenv("GOVIMTEST_SOCKET") != "" {
+	if os.Getenv(testsetup.EnvTestSocket) != "" {
 		fmt.Fprintf(os.Stderr, "New connection will log to %v\n", tf.Name())
 	}
 
@@ -147,7 +154,9 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandHello), g.helloComm)
 	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.balloonExpr)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufRead, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.bufReadPost, exprAutocmdCurrBufInfo)
-	g.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, g.bufTextChanged, exprAutocmdCurrBufInfo)
+	if !g.doIncrementalSync() {
+		g.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, g.bufTextChanged, exprAutocmdCurrBufInfo)
+	}
 	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, g.formatCurrentBuffer, "eval(expand('<abuf>'))")
 	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.complete)
 	g.DefineCommand(string(config.CommandGoToDef), g.gotoDef, govim.NArgsZeroOrOne)
@@ -158,6 +167,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandGoFmt), g.gofmtCurrentBufferRange, govim.RangeFile)
 	g.DefineCommand(string(config.CommandGoImports), g.goimportsCurrentBufferRange, govim.RangeFile)
 	g.DefineCommand(string(config.CommandQuickfixDiagnostics), g.quickfixDiagnostics)
+	g.DefineFunction(string(config.FunctionBufChanged), []string{"bufnr", "start", "end", "added", "changes"}, g.bufChanged)
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
@@ -227,6 +237,12 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	initParams.Capabilities.TextDocument.Hover.ContentFormat = []protocol.MarkupKind{protocol.PlainText}
 	initParams.Capabilities.Workspace.Configuration = true
 	initParams.Capabilities.Workspace.DidChangeConfiguration.DynamicRegistration = true
+	initOpts := make(map[string]interface{})
+	if g.doIncrementalSync() {
+		initOpts[goplsInitOptIncrementalSync] = true
+	}
+	initOpts["noDocsOnHover"] = true
+	initParams.InitializationOptions = initOpts
 
 	if _, err := g.server.Initialize(context.Background(), initParams); err != nil {
 		return fmt.Errorf("failed to initialise gopls: %v", err)
@@ -277,4 +293,17 @@ func (g *govimplugin) Shutdown() error {
 		}
 	}
 	return nil
+}
+
+func (g *govimplugin) doIncrementalSync() bool {
+	if g.Flavor() != govim.FlavorVim && g.Flavor() != govim.FlavorGvim {
+		return false
+	}
+	if semver.Compare(g.Version(), testsetup.MinVimIncrementalSyncExperiment) < 0 {
+		return false
+	}
+	if os.Getenv(testsetup.EnvDisableIncrementalSync) == "true" {
+		return false
+	}
+	return true
 }
