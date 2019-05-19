@@ -23,7 +23,7 @@ import (
 )
 
 var (
-	fLogGovim = flag.Bool("govimLog", false, "whether to log govim activity")
+	fDebugLog = flag.Bool("debugLog", false, "whether to log debugging info from vim, govim and the test shim")
 )
 
 func TestMain(m *testing.M) {
@@ -74,20 +74,17 @@ func TestScripts(t *testing.T) {
 					"CURRENT_GOPATH="+os.Getenv("GOPATH"),
 				)
 				testPluginPath := filepath.Join(e.WorkDir, "home", ".vim", "pack", "plugins", "start", "govim")
-				d := newplugin(string(goplspath))
-				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), govimPath, home, testPluginPath, e, d)
-				if err != nil {
-					t.Fatalf("failed to create new driver: %v", err)
-				}
+
 				errLog := new(testdriver.LockingBuffer)
 				outputs := []io.Writer{
 					errLog,
 				}
+				e.Values[testdriver.KeyErrLog] = errLog
 				if os.Getenv(testsetup.EnvTestscriptStderr) == "true" {
 					outputs = append(outputs, os.Stderr)
 				}
-				e.Values[testdriver.KeyErrLog] = errLog
-				if *fLogGovim {
+
+				if *fDebugLog {
 					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
 					if err != nil {
 						t.Fatalf("failed to create govim log file: %v", err)
@@ -96,7 +93,21 @@ func TestScripts(t *testing.T) {
 					t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
 				}
 
-				td.Log = io.MultiWriter(outputs...)
+				d := newplugin(string(goplspath))
+
+				config := &testdriver.Config{
+					Name:           filepath.Base(e.WorkDir),
+					GovimPath:      govimPath,
+					Log:            io.MultiWriter(outputs...),
+					TestHomePath:   home,
+					TestPluginPath: testPluginPath,
+					Env:            e,
+					Plugin:         d,
+				}
+				td, err := testdriver.NewTestDriver(config)
+				if err != nil {
+					t.Fatalf("failed to create new driver: %v", err)
+				}
 				if err := td.Run(); err != nil {
 					t.Fatalf("failed to run TestDriver: %v", err)
 				}

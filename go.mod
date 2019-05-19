@@ -3,6 +3,7 @@ module github.com/myitcv/govim
 go 1.12
 
 require (
+	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/kr/pretty v0.1.0
 	github.com/kr/pty v1.1.5

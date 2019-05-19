@@ -2,10 +2,12 @@
 package testdriver
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/acarl005/stripansi"
 	"io"
 	"io/ioutil"
 	"net"
@@ -38,7 +40,8 @@ type TestDriver struct {
 	driverListener net.Listener
 	govim          govim.Govim
 
-	Log io.Writer
+	Log   io.Writer
+	debug Debug
 
 	cmd *exec.Cmd
 
@@ -60,7 +63,22 @@ type TestDriver struct {
 	closed    bool
 }
 
-func NewTestDriver(name string, govimPath, testHomePath, testPluginPath string, env *testscript.Env, plug govim.Plugin) (*TestDriver, error) {
+type Config struct {
+	Name, GovimPath, TestHomePath, TestPluginPath string
+	Debug
+	Log io.Writer
+	*testscript.Env
+	Plugin govim.Plugin
+}
+
+type Debug struct {
+	Enabled      bool
+	VimLogLevel  int
+	VimLogPath   string
+	GovimLogPath string
+}
+
+func NewTestDriver(c *Config) (*TestDriver, error) {
 	res := &TestDriver{
 		quitVim:    make(chan bool),
 		quitGovim:  make(chan bool),
@@ -70,9 +88,14 @@ func NewTestDriver(name string, govimPath, testHomePath, testPluginPath string, 
 		doneQuitGovim:  make(chan bool),
 		doneQuitDriver: make(chan bool),
 
-		name: name,
+		name: c.Name,
 
-		plugin: plug,
+		plugin: c.Plugin,
+	}
+	if c.Log != nil {
+		res.Log = c.Log
+	} else {
+		res.Log = ioutil.Discard
 	}
 	gl, err := net.Listen("tcp4", "localhost:0")
 	if err != nil {
@@ -83,11 +106,11 @@ func NewTestDriver(name string, govimPath, testHomePath, testPluginPath string, 
 		return nil, fmt.Errorf("failed to create listener for driver: %v", err)
 	}
 
-	if err := copyDir(testPluginPath, govimPath); err != nil {
-		return nil, fmt.Errorf("failed to copy %v to %v: %v", govimPath, testPluginPath, err)
+	if err := copyDir(c.TestPluginPath, c.GovimPath); err != nil {
+		return nil, fmt.Errorf("failed to copy %v to %v: %v", c.GovimPath, c.TestPluginPath, err)
 	}
-	srcVimrc := filepath.Join(govimPath, "cmd", "govim", "config", "minimal.vimrc")
-	dstVimrc := filepath.Join(testHomePath, ".vimrc")
+	srcVimrc := filepath.Join(c.GovimPath, "cmd", "govim", "config", "minimal.vimrc")
+	dstVimrc := filepath.Join(c.TestHomePath, ".vimrc")
 	if err := copyFile(dstVimrc, srcVimrc); err != nil {
 		return nil, fmt.Errorf("failed to copy %v to %v: %v", srcVimrc, dstVimrc, err)
 	}
@@ -95,7 +118,7 @@ func NewTestDriver(name string, govimPath, testHomePath, testPluginPath string, 
 	res.govimListener = gl
 	res.driverListener = dl
 
-	env.Vars = append(env.Vars,
+	c.Env.Vars = append(c.Env.Vars,
 		"GOVIMTEST_SOCKET="+res.govimListener.Addr().String(),
 		"GOVIMTESTDRIVER_SOCKET="+res.driverListener.Addr().String(),
 	)
@@ -110,11 +133,44 @@ func NewTestDriver(name string, govimPath, testHomePath, testPluginPath string, 
 		vimCmd = strings.Fields(e)
 	}
 
+	if c.Debug.Enabled {
+		res.debug = c.Debug
+		vimCmd = append(vimCmd, fmt.Sprintf("-V%d%s", c.Debug.VimLogLevel, c.VimLogPath))
+	}
+
 	res.cmd = exec.Command(vimCmd[0], vimCmd[1:]...)
-	res.cmd.Env = env.Vars
-	res.cmd.Dir = env.WorkDir
+	res.cmd.Env = c.Env.Vars
+	res.cmd.Dir = c.Env.WorkDir
+
+	if res.debug.Enabled {
+		envlist := ""
+		for _, e := range c.Env.Vars {
+			if e != ":=:" {
+				envlist += " " + strings.ReplaceAll(e, " ", `\ `)
+			}
+		}
+
+		fmt.Printf("Test command:\n==========================\npushd %s && %s %s && popd\n==========================\n", c.Env.WorkDir, envlist, strings.Join(res.cmd.Args, " "))
+	}
 
 	return res, nil
+}
+
+func (d *TestDriver) Logf(format string, a ...interface{}) {
+	fmt.Fprintf(d.Log, format+"\n", a...)
+}
+func (d *TestDriver) LogStripANSI(r io.Reader) {
+	scanner := bufio.NewScanner(r)
+	for {
+		ok := scanner.Scan()
+		if !ok {
+			if scanner.Err() != nil {
+				fmt.Fprintf(d.Log, "Erroring copying log: %+v\n", scanner.Err())
+			}
+			return
+		}
+		fmt.Fprint(d.Log, stripansi.Strip(scanner.Text()))
+	}
 }
 
 func copyDir(dst, src string) error {
@@ -169,16 +225,20 @@ func (d *TestDriver) Wait() error {
 }
 
 func (d *TestDriver) runVim() error {
+	d.Logf("Starting vim")
 	thepty, err := pty.Start(d.cmd)
 	if err != nil {
 		close(d.doneQuitVim)
-		return fmt.Errorf("failed to start %v: %v", strings.Join(d.cmd.Args, " "), err)
+		err := fmt.Errorf("failed to start %v: %v", strings.Join(d.cmd.Args, " "), err)
+		d.Logf("error: %+v", err)
+		return err
 	}
 	d.tombgo(func() error {
 		defer func() {
 			thepty.Close()
 			close(d.doneQuitVim)
 		}()
+		d.Logf("Waiting for command to exit")
 		if err := d.cmd.Wait(); err != nil {
 			select {
 			case <-d.quitVim:
@@ -188,7 +248,14 @@ func (d *TestDriver) runVim() error {
 		}
 		return nil
 	})
-	io.Copy(ioutil.Discard, thepty)
+
+	if d.debug.Enabled {
+		d.LogStripANSI(thepty)
+	} else {
+		io.Copy(ioutil.Discard, thepty)
+	}
+
+	d.Logf("Vim running")
 	return nil
 }
 
@@ -247,6 +314,16 @@ func (d *TestDriver) tombgo(f func() error) {
 		err := f()
 		if err != nil {
 			fmt.Printf(">>> %v\n", err)
+			if d.debug.Enabled {
+				fmt.Printf("Govim debug logs:\n==========================\n")
+				f, err := os.Open(d.debug.GovimLogPath)
+				if err != nil {
+					fmt.Printf("Error opening debug logs: %+v\n", err)
+				} else {
+					io.Copy(os.Stdout, f)
+				}
+				fmt.Printf("==========================\n")
+			}
 			d.Close()
 		}
 		return err
@@ -261,6 +338,8 @@ func (d *TestDriver) listenGovim() error {
 			close(d.doneQuitDriver)
 		}
 	}()
+	d.Logf("Waiting for govim connection on %s...", d.govimListener.Addr().String())
+	d.govimListener.(*net.TCPListener).SetDeadline(time.Now().Add(10 * time.Second))
 	conn, err := d.govimListener.Accept()
 	if err != nil {
 		select {
@@ -270,6 +349,8 @@ func (d *TestDriver) listenGovim() error {
 			return fmt.Errorf("failed to accept connection on %v: %v", d.govimListener.Addr(), err)
 		}
 	}
+	d.Logf("Accepted govim connection on %s", d.govimListener.Addr().String())
+
 	var log io.Writer = ioutil.Discard
 	if d.Log != nil {
 		log = d.Log
@@ -303,6 +384,8 @@ func (d *TestDriver) listenDriver() error {
 	err := d.govim.DoProto(func() error {
 	Accept:
 		for {
+			d.Logf("Waiting for govim driver connection on %s...", d.driverListener.Addr().String())
+			d.driverListener.(*net.TCPListener).SetDeadline(time.Now().Add(10 * time.Second))
 			conn, err := d.driverListener.Accept()
 			if err != nil {
 				select {
@@ -312,6 +395,7 @@ func (d *TestDriver) listenDriver() error {
 					panic(fmt.Errorf("failed to accept connection to driver on %v: %v", d.driverListener.Addr(), err))
 				}
 			}
+			d.Logf("Accepted driver connection on", d.driverListener.Addr().String())
 			dec := json.NewDecoder(conn)
 			var args []interface{}
 			if err := dec.Decode(&args); err != nil {
@@ -385,6 +469,22 @@ func (d *TestDriver) listenDriver() error {
 // Vim is a sidecar that effectively drives Vim via a simple JSON-based
 // API
 func Vim() (exitCode int) {
+	logFile := os.Getenv("GOVIMTESTDRIVER_LOG")
+	var l io.Writer
+	if logFile != "" {
+		var err error
+		l, err = os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			panic(fmt.Sprintf("Could not open log file: %+v", err))
+		}
+	} else {
+		l = ioutil.Discard
+	}
+	log := func(format string, args ...interface{}) {
+		fmt.Fprintf(l, "[vim test client] "+format, args...)
+	}
+	log("logging enabled")
+
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -392,13 +492,20 @@ func Vim() (exitCode int) {
 		}
 		exitCode = -1
 		fmt.Fprintln(os.Stderr, r)
+		log("panic with error: %+v", r)
 	}()
+
 	ef := func(format string, args ...interface{}) {
+		log(format, args...)
 		panic(fmt.Sprintf(format, args...))
 	}
+
 	fs := flag.NewFlagSet("vim", flag.PanicOnError)
 	bang := fs.Bool("bang", false, "expect command to fail")
 	indent := fs.Bool("indent", false, "pretty indent resulting JSON")
+
+	log("starting vim driver client and parsing flags...")
+
 	fs.Parse(os.Args[1:])
 	args := fs.Args()
 	fn := args[0]
