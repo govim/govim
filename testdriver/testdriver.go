@@ -278,7 +278,7 @@ func (d *TestDriver) runGovim() error {
 
 func (d *TestDriver) listenDriver() error {
 	defer close(d.doneQuitDriver)
-	err := d.govim.DoProto(func() {
+	err := d.govim.DoProto(func() error {
 	Accept:
 		for {
 			conn, err := d.driverListener.Accept()
@@ -351,6 +351,7 @@ func (d *TestDriver) listenDriver() error {
 			}
 			conn.Close()
 		}
+		return nil
 	})
 
 	if err != nil {

@@ -80,7 +80,7 @@ type Govim interface {
 
 	// DoProto is used as a wrapper around function calls that jump the "interface"
 	// between the user and protocol aspects of govim.
-	DoProto(f func()) error
+	DoProto(f func() error) error
 
 	// SubOnViewportChange creates a subscription to the OnViewportChange event
 	// exposed by Govim
@@ -213,13 +213,9 @@ func (g *govimImpl) load() error {
 
 	if g.plugin != nil {
 		g.pluginErrCh = make(chan error)
-		var err error
-		perr := g.DoProto(func() {
-			err = g.plugin.Init(g, g.pluginErrCh)
+		err := g.DoProto(func() error {
+			return g.plugin.Init(g, g.pluginErrCh)
 		})
-		if perr != nil {
-			return perr
-		}
 		if err != nil {
 			return err
 		}
@@ -297,7 +293,7 @@ func (g *govimImpl) Run() error {
 }
 
 // run is the main loop that handles call from Vim
-func (g *govimImpl) run() {
+func (g *govimImpl) run() error {
 	g.eventQueue = queue.NewQueue()
 	g.tomb.Go(g.runEventQueue)
 	g.tomb.Go(g.load)
@@ -499,8 +495,8 @@ func (g *govimImpl) defineFunction(isRange bool, name string, params []string, f
 		callbackTyp = "rangefunction"
 	}
 	ch := make(unscheduledCallback)
-	err = g.DoProto(func() {
-		g.callVim(ch, callbackTyp, args...)
+	err = g.DoProto(func() error {
+		return g.callVim(ch, callbackTyp, args...)
 	})
 	return g.handleChannelError(ch, err, "failed to define %q in Vim: %v", name)
 }
@@ -547,8 +543,8 @@ func (g *govimImpl) DefineAutoCommand(group string, events Events, patts Pattern
 	args := []interface{}{funcHandle, def.String(), exprs}
 	callbackTyp := "autocmd"
 	ch := make(unscheduledCallback)
-	err = g.DoProto(func() {
-		g.callVim(ch, callbackTyp, args...)
+	err = g.DoProto(func() error {
+		return g.callVim(ch, callbackTyp, args...)
 	})
 	return g.handleChannelError(ch, err, "failed to define autocmd %q in Vim: %v", def.String())
 }
@@ -668,8 +664,8 @@ func (g *govimImpl) DefineCommand(name string, f VimCommandFunction, attrs ...Co
 	}
 	args := []interface{}{name, attrMap}
 	ch := make(unscheduledCallback)
-	err = g.DoProto(func() {
-		g.callVim(ch, "command", args...)
+	err = g.DoProto(func() error {
+		return g.callVim(ch, "command", args...)
 	})
 	return g.handleChannelError(ch, err, "failed to define %q in Vim: %v", name)
 }
@@ -684,7 +680,7 @@ func (g *govimImpl) unscheduledCallCallback(typ string, vs ...interface{}) unsch
 // channel defined handler in Vim. The Vim handler switches on typ. The Vim
 // handler does not return a value, instead it will acknowledge success by
 // sending a zero-length string.
-func (g *govimImpl) callVim(ch callback, typ string, vs ...interface{}) {
+func (g *govimImpl) callVim(ch callback, typ string, vs ...interface{}) error {
 	g.callbackRespsLock.Lock()
 	id := g.callVimNextID
 	g.callVimNextID++
@@ -693,6 +689,7 @@ func (g *govimImpl) callVim(ch callback, typ string, vs ...interface{}) {
 	args := []interface{}{id, typ}
 	args = append(args, vs...)
 	g.sendJSONMsg(0, args)
+	return nil
 }
 
 // readJSONMsg is a low-level protocol primitive for reading a JSON msg sent by Vim.
