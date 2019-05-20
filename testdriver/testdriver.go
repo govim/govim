@@ -531,12 +531,19 @@ func Condition(cond string) (bool, error) {
 
 		av := "v"
 		av += strings.Fields(lines[0])[4] // 5th element is the major.minor
-		patch := strings.Fields(lines[1])[2]
-		patchI := strings.Index(patch, "-")
-		if patchI == -1 {
-			return false, fmt.Errorf("failed to parse patch version from %v", patch)
+
+		// Depending on OS/build, the patch versions are printed on different lines
+		var patch string
+		for _, line := range lines {
+			if strings.HasPrefix(line, "Included patches:") {
+				patch = strings.Fields(line)[2]
+				patchI := strings.Index(patch, "-")
+				if patchI == -1 {
+					return false, fmt.Errorf("failed to parse patch version from %v", patch)
+				}
+				patch = patch[patchI+1:]
+			}
 		}
-		patch = patch[patchI+1:]
 		av += "." + patch
 		if !semver.IsValid(av) {
 			return false, fmt.Errorf("failed to calculate valid Vim version; got %v", av)
