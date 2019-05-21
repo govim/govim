@@ -9,6 +9,9 @@ vim ex 'call cursor(5,15)'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[5,15]\E$'
 
+# Hack around timings issue
+sleep 10s
+
 # Each block below is simply repeated for each of the default
 # mappings we have defined for GOVIMGoToDef and GOVIMGoToPrevDef
 # where we can test/trigger the mapping. For example, we can't
