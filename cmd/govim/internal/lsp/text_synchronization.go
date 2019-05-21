@@ -13,6 +13,10 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
+func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) error {
+	return s.cacheAndDiagnose(ctx, span.NewURI(params.TextDocument.URI), []byte(params.TextDocument.Text))
+}
+
 func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDocumentParams) error {
 	if len(params.ContentChanges) < 1 {
 		return jsonrpc2.NewErrorf(jsonrpc2.CodeInternalError, "no content changes provided")
@@ -34,7 +38,19 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 		}
 		text = change.Text
 	}
-	return s.cacheAndDiagnose(ctx, span.NewURI(params.TextDocument.URI), text)
+	return s.cacheAndDiagnose(ctx, span.NewURI(params.TextDocument.URI), []byte(text))
+}
+
+func (s *Server) cacheAndDiagnose(ctx context.Context, uri span.URI, content []byte) error {
+	view := s.session.ViewOf(uri)
+	if err := view.SetContent(ctx, uri, content); err != nil {
+		return err
+	}
+	go func() {
+		ctx := view.BackgroundContext()
+		s.Diagnostics(ctx, view, uri)
+	}()
+	return nil
 }
 
 func (s *Server) applyChanges(ctx context.Context, params *protocol.DidChangeTextDocumentParams) (string, error) {
@@ -48,12 +64,17 @@ func (s *Server) applyChanges(ctx context.Context, params *protocol.DidChangeTex
 	}
 
 	uri := span.NewURI(params.TextDocument.URI)
-	view := s.findView(ctx, uri)
-	file, m, err := newColumnMap(ctx, view, uri)
+	view := s.session.ViewOf(uri)
+	f, m, err := getSourceFile(ctx, view, uri)
 	if err != nil {
 		return "", jsonrpc2.NewErrorf(jsonrpc2.CodeInternalError, "file not found")
 	}
-	content := file.GetContent(ctx)
+	fset := f.FileSet()
+	filename, err := f.URI().Filename()
+	if err != nil {
+		return "", jsonrpc2.NewErrorf(jsonrpc2.CodeInternalError, "no filename for %s", uri)
+	}
+	content := f.GetContent(ctx)
 	for _, change := range params.ContentChanges {
 		spn, err := m.RangeSpan(*change.Range)
 		if err != nil {
@@ -71,6 +92,9 @@ func (s *Server) applyChanges(ctx context.Context, params *protocol.DidChangeTex
 		buf.WriteString(change.Text)
 		buf.Write(content[end:])
 		content = buf.Bytes()
+
+		// Update column mapper along with the content.
+		m = protocol.NewColumnMapper(f.URI(), filename, fset, nil, content)
 	}
 	return string(content), nil
 }
@@ -81,6 +105,6 @@ func (s *Server) didSave(ctx context.Context, params *protocol.DidSaveTextDocume
 
 func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocumentParams) error {
 	uri := span.NewURI(params.TextDocument.URI)
-	view := s.findView(ctx, uri)
+	view := s.session.ViewOf(uri)
 	return view.SetContent(ctx, uri, nil)
 }

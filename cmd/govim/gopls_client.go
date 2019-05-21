@@ -10,6 +10,10 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
+const (
+	goplsConfigNoDocsOnHover = "noDocsOnHover"
+)
+
 var _ protocol.Client = (*govimplugin)(nil)
 
 func (g *govimplugin) ShowMessage(context.Context, *protocol.ShowMessageParams) error {
@@ -47,6 +51,7 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Confi
 		return nil, fmt.Errorf("govim gopls client: expected %v item(s) in params; got %v", want, got)
 	}
 	conf := make(map[string]interface{})
+	conf[goplsConfigNoDocsOnHover] = true
 	return []interface{}{conf}, nil
 }
 func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {

@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/tools/go/ast/astutil"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/snippet"
+	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
 type CompletionItem struct {
@@ -44,7 +45,7 @@ type CompletionItem struct {
 	//
 	//     foo(${1:})
 	//
-	Snippet *snippet.Builder
+	plainSnippet *snippet.Builder
 
 	// PlaceholderSnippet is the LSP snippet for the completion ite, containing
 	// placeholders. The LSP specification contains details about LSP snippets.
@@ -56,7 +57,21 @@ type CompletionItem struct {
 	//
 	//     foo(${1:a int}, ${2: b int}, ${3: c int})
 	//
-	PlaceholderSnippet *snippet.Builder
+	placeholderSnippet *snippet.Builder
+}
+
+// Snippet is a convenience function that determines the snippet that should be
+// used for an item, depending on if the callee wants placeholders or not.
+func (i *CompletionItem) Snippet(usePlaceholders bool) string {
+	if usePlaceholders {
+		if i.placeholderSnippet != nil {
+			return i.placeholderSnippet.String()
+		}
+	}
+	if i.plainSnippet != nil {
+		return i.plainSnippet.String()
+	}
+	return i.InsertText
 }
 
 type CompletionItemKind int
@@ -112,8 +127,8 @@ type completer struct {
 	// items is the list of completion items returned.
 	items []CompletionItem
 
-	// prefix is the already-typed portion of the completion candidates.
-	prefix Prefix
+	// surrounding describes the identifier surrounding the position.
+	surrounding *Selection
 
 	// expectedType is the type we expect the completion candidate to be.
 	// It may not be set.
@@ -152,13 +167,32 @@ type compLitInfo struct {
 	maybeInFieldName bool
 }
 
-type Prefix struct {
-	content string
-	pos     token.Pos
+// A Selection represents the cursor position and surrounding identifier.
+type Selection struct {
+	Content string
+	Range   span.Range
+	Cursor  token.Pos
 }
 
-func (p Prefix) Content() string { return p.content }
-func (p Prefix) Pos() token.Pos  { return p.pos }
+func (p Selection) Prefix() string {
+	return p.Content[:p.Cursor-p.Range.Start]
+}
+
+func (c *completer) setSurrounding(ident *ast.Ident) {
+	if c.surrounding != nil {
+		return
+	}
+
+	if !(ident.Pos() <= c.pos && c.pos <= ident.End()) {
+		return
+	}
+
+	c.surrounding = &Selection{
+		Content: ident.Name,
+		Range:   span.NewRange(c.view.Session().Cache().FileSet(), ident.Pos(), ident.End()),
+		Cursor:  c.pos,
+	}
+}
 
 // found adds a candidate completion.
 //
@@ -183,31 +217,34 @@ func (c *completer) found(obj types.Object, weight float64) {
 // Completion returns a list of possible candidates for completion, given a
 // a file and a position.
 //
-// The prefix is computed based on the preceding identifier and can be used by
+// The selection is computed based on the preceding identifier and can be used by
 // the client to score the quality of the completion. For instance, some clients
 // may tolerate imperfect matches as valid completion results, since users may make typos.
-func Completion(ctx context.Context, f File, pos token.Pos) ([]CompletionItem, Prefix, error) {
+func Completion(ctx context.Context, f GoFile, pos token.Pos) ([]CompletionItem, *Selection, error) {
 	file := f.GetAST(ctx)
+	if file == nil {
+		return nil, nil, fmt.Errorf("no AST for %s", f.URI())
+	}
 	pkg := f.GetPackage(ctx)
 	if pkg == nil || pkg.IsIllTyped() {
-		return nil, Prefix{}, fmt.Errorf("package for %s is ill typed", f.URI())
+		return nil, nil, fmt.Errorf("package for %s is ill typed", f.URI())
 	}
 
 	// Completion is based on what precedes the cursor.
 	// Find the path to the position before pos.
 	path, _ := astutil.PathEnclosingInterval(file, pos-1, pos-1)
 	if path == nil {
-		return nil, Prefix{}, fmt.Errorf("cannot find node enclosing position")
+		return nil, nil, fmt.Errorf("cannot find node enclosing position")
 	}
 	// Skip completion inside comments.
 	for _, g := range file.Comments {
 		if g.Pos() <= pos && pos <= g.End() {
-			return nil, Prefix{}, nil
+			return nil, nil, nil
 		}
 	}
 	// Skip completion inside any kind of literal.
 	if _, ok := path[0].(*ast.BasicLit); ok {
-		return nil, Prefix{}, nil
+		return nil, nil, nil
 	}
 
 	clInfo := enclosingCompositeLiteral(path, pos, pkg.GetTypesInfo())
@@ -225,12 +262,9 @@ func Completion(ctx context.Context, f File, pos token.Pos) ([]CompletionItem, P
 		enclosingCompositeLiteral: clInfo,
 	}
 
-	// Set the filter prefix.
+	// Set the filter surrounding.
 	if ident, ok := path[0].(*ast.Ident); ok {
-		c.prefix = Prefix{
-			content: ident.Name[:pos-ident.Pos()],
-			pos:     ident.Pos(),
-		}
+		c.setSurrounding(ident)
 	}
 
 	c.expectedType = expectedType(c)
@@ -238,9 +272,9 @@ func Completion(ctx context.Context, f File, pos token.Pos) ([]CompletionItem, P
 	// Struct literals are handled entirely separately.
 	if c.wantStructFieldCompletions() {
 		if err := c.structLiteralFieldName(); err != nil {
-			return nil, Prefix{}, err
+			return nil, nil, err
 		}
-		return c.items, c.prefix, nil
+		return c.items, c.surrounding, nil
 	}
 
 	switch n := path[0].(type) {
@@ -248,9 +282,9 @@ func Completion(ctx context.Context, f File, pos token.Pos) ([]CompletionItem, P
 		// Is this the Sel part of a selector?
 		if sel, ok := path[1].(*ast.SelectorExpr); ok && sel.Sel == n {
 			if err := c.selector(sel); err != nil {
-				return nil, Prefix{}, err
+				return nil, nil, err
 			}
-			return c.items, c.prefix, nil
+			return c.items, c.surrounding, nil
 		}
 		// reject defining identifiers
 		if obj, ok := pkg.GetTypesInfo().Defs[n]; ok {
@@ -262,11 +296,11 @@ func Completion(ctx context.Context, f File, pos token.Pos) ([]CompletionItem, P
 					qual := types.RelativeTo(pkg.GetTypes())
 					of += ", of " + types.ObjectString(obj, qual)
 				}
-				return nil, Prefix{}, fmt.Errorf("this is a definition%s", of)
+				return nil, nil, fmt.Errorf("this is a definition%s", of)
 			}
 		}
 		if err := c.lexical(); err != nil {
-			return nil, Prefix{}, err
+			return nil, nil, err
 		}
 
 	// The function name hasn't been typed yet, but the parens are there:
@@ -274,22 +308,31 @@ func Completion(ctx context.Context, f File, pos token.Pos) ([]CompletionItem, P
 	case *ast.TypeAssertExpr:
 		// Create a fake selector expression.
 		if err := c.selector(&ast.SelectorExpr{X: n.X}); err != nil {
-			return nil, Prefix{}, err
+			return nil, nil, err
 		}
 
 	case *ast.SelectorExpr:
+		// The go parser inserts a phantom "_" Sel node when the selector is
+		// not followed by an identifier or a "(". The "_" isn't actually in
+		// the text, so don't think it is our surrounding.
+		// TODO: Find a way to differentiate between phantom "_" and real "_",
+		//       perhaps by checking if "_" is present in file contents.
+		if n.Sel.Name != "_" || c.pos != n.Sel.Pos() {
+			c.setSurrounding(n.Sel)
+		}
+
 		if err := c.selector(n); err != nil {
-			return nil, Prefix{}, err
+			return nil, nil, err
 		}
 
 	default:
 		// fallback to lexical completions
 		if err := c.lexical(); err != nil {
-			return nil, Prefix{}, err
+			return nil, nil, err
 		}
 	}
 
-	return c.items, c.prefix, nil
+	return c.items, c.surrounding, nil
 }
 
 func (c *completer) wantStructFieldCompletions() bool {
@@ -605,6 +648,15 @@ func (c *completer) expectedCompositeLiteralType() types.Type {
 	return nil
 }
 
+// typeModifier represents an operator that changes the expected type.
+type typeModifier int
+
+const (
+	dereference typeModifier = iota // dereference ("*") operator
+	reference                       // reference ("&") operator
+	chanRead                        // channel read ("<-") operator
+)
+
 // expectedType returns the expected type for an expression at the query position.
 func expectedType(c *completer) types.Type {
 	if c.enclosingCompositeLiteral != nil {
@@ -612,19 +664,18 @@ func expectedType(c *completer) types.Type {
 	}
 
 	var (
-		derefCount int // count of deref "*" operators
-		refCount   int // count of reference "&" operators
-		typ        types.Type
+		modifiers []typeModifier
+		typ       types.Type
 	)
 
 Nodes:
-	for _, node := range c.path {
-		switch expr := node.(type) {
+	for i, node := range c.path {
+		switch node := node.(type) {
 		case *ast.BinaryExpr:
 			// Determine if query position comes from left or right of op.
-			e := expr.X
-			if c.pos < expr.OpPos {
-				e = expr.Y
+			e := node.X
+			if c.pos < node.OpPos {
+				e = node.Y
 			}
 			if tv, ok := c.info.Types[e]; ok {
 				typ = tv.Type
@@ -632,12 +683,12 @@ Nodes:
 			}
 		case *ast.AssignStmt:
 			// Only rank completions if you are on the right side of the token.
-			if c.pos > expr.TokPos {
-				i := indexExprAtPos(c.pos, expr.Rhs)
-				if i >= len(expr.Lhs) {
-					i = len(expr.Lhs) - 1
+			if c.pos > node.TokPos {
+				i := indexExprAtPos(c.pos, node.Rhs)
+				if i >= len(node.Lhs) {
+					i = len(node.Lhs) - 1
 				}
-				if tv, ok := c.info.Types[expr.Lhs[i]]; ok {
+				if tv, ok := c.info.Types[node.Lhs[i]]; ok {
 					typ = tv.Type
 					break Nodes
 				}
@@ -645,13 +696,13 @@ Nodes:
 			return nil
 		case *ast.CallExpr:
 			// Only consider CallExpr args if position falls between parens.
-			if expr.Lparen <= c.pos && c.pos <= expr.Rparen {
-				if tv, ok := c.info.Types[expr.Fun]; ok {
+			if node.Lparen <= c.pos && c.pos <= node.Rparen {
+				if tv, ok := c.info.Types[node.Fun]; ok {
 					if sig, ok := tv.Type.(*types.Signature); ok {
 						if sig.Params().Len() == 0 {
 							return nil
 						}
-						i := indexExprAtPos(c.pos, expr.Args)
+						i := indexExprAtPos(c.pos, node.Args)
 						// Make sure not to run past the end of expected parameters.
 						if i >= sig.Params().Len() {
 							i = sig.Params().Len() - 1
@@ -664,21 +715,65 @@ Nodes:
 			return nil
 		case *ast.ReturnStmt:
 			if sig := c.enclosingFunction; sig != nil {
-				// Find signature result that corresponds to our return expression.
-				if resultIdx := indexExprAtPos(c.pos, expr.Results); resultIdx < len(expr.Results) {
+				// Find signature result that corresponds to our return statement.
+				if resultIdx := indexExprAtPos(c.pos, node.Results); resultIdx < len(node.Results) {
 					if resultIdx < sig.Results().Len() {
 						typ = sig.Results().At(resultIdx).Type()
 						break Nodes
 					}
 				}
 			}
-
+			return nil
+		case *ast.CaseClause:
+			if swtch, ok := findSwitchStmt(c.path[i+1:], c.pos, node).(*ast.SwitchStmt); ok {
+				if tv, ok := c.info.Types[swtch.Tag]; ok {
+					typ = tv.Type
+					break Nodes
+				}
+			}
+			return nil
+		case *ast.SliceExpr:
+			// Make sure position falls within the brackets (e.g. "foo[a:<>]").
+			if node.Lbrack < c.pos && c.pos <= node.Rbrack {
+				typ = types.Typ[types.Int]
+				break Nodes
+			}
+			return nil
+		case *ast.IndexExpr:
+			// Make sure position falls within the brackets (e.g. "foo[<>]").
+			if node.Lbrack < c.pos && c.pos <= node.Rbrack {
+				if tv, ok := c.info.Types[node.X]; ok {
+					switch t := tv.Type.Underlying().(type) {
+					case *types.Map:
+						typ = t.Key()
+					case *types.Slice, *types.Array:
+						typ = types.Typ[types.Int]
+					default:
+						return nil
+					}
+					break Nodes
+				}
+			}
+			return nil
+		case *ast.SendStmt:
+			// Make sure we are on right side of arrow (e.g. "foo <- <>").
+			if c.pos > node.Arrow+1 {
+				if tv, ok := c.info.Types[node.Chan]; ok {
+					if ch, ok := tv.Type.Underlying().(*types.Chan); ok {
+						typ = ch.Elem()
+						break Nodes
+					}
+				}
+			}
 			return nil
 		case *ast.StarExpr:
-			derefCount++
+			modifiers = append(modifiers, dereference)
 		case *ast.UnaryExpr:
-			if expr.Op == token.AND {
-				refCount++
+			switch node.Op {
+			case token.AND:
+				modifiers = append(modifiers, reference)
+			case token.ARROW:
+				modifiers = append(modifiers, chanRead)
 			}
 		default:
 			if breaksExpectedTypeInference(node) {
@@ -688,21 +783,46 @@ Nodes:
 	}
 
 	if typ != nil {
-		// For every "*" deref operator, add another pointer layer to expected type.
-		for i := 0; i < derefCount; i++ {
-			typ = types.NewPointer(typ)
-		}
-		// For every "&" ref operator, remove a pointer layer from expected type.
-		for i := 0; i < refCount; i++ {
-			if ptr, ok := typ.(*types.Pointer); ok {
-				typ = ptr.Elem()
-			} else {
-				break
+		for _, mod := range modifiers {
+			switch mod {
+			case dereference:
+				// For every "*" deref operator, add another pointer layer to expected type.
+				typ = types.NewPointer(typ)
+			case reference:
+				// For every "&" ref operator, remove a pointer layer from expected type.
+				typ = deref(typ)
+			case chanRead:
+				// For every "<-" operator, add another layer of channelness.
+				typ = types.NewChan(types.SendRecv, typ)
 			}
 		}
 	}
 
 	return typ
+}
+
+// findSwitchStmt returns an *ast.CaseClause's corresponding *ast.SwitchStmt or
+// *ast.TypeSwitchStmt. path should start from the case clause's first ancestor.
+func findSwitchStmt(path []ast.Node, pos token.Pos, c *ast.CaseClause) ast.Stmt {
+	// Make sure position falls within a "case <>:" clause.
+	if exprAtPos(pos, c.List) == nil {
+		return nil
+	}
+	// A case clause is always nested within a block statement in a switch statement.
+	if len(path) < 2 {
+		return nil
+	}
+	if _, ok := path[0].(*ast.BlockStmt); !ok {
+		return nil
+	}
+	switch s := path[1].(type) {
+	case *ast.SwitchStmt:
+		return s
+	case *ast.TypeSwitchStmt:
+		return s
+	default:
+		return nil
+	}
 }
 
 // breaksExpectedTypeInference reports if an expression node's type is unrelated
@@ -723,7 +843,7 @@ func breaksExpectedTypeInference(n ast.Node) bool {
 // func (<>) foo(<>) (<>) {}
 //
 func preferTypeNames(path []ast.Node, pos token.Pos) bool {
-	for _, p := range path {
+	for i, p := range path {
 		switch n := p.(type) {
 		case *ast.FuncDecl:
 			if r := n.Recv; r != nil && r.Pos() <= pos && pos <= r.End() {
@@ -738,6 +858,13 @@ func preferTypeNames(path []ast.Node, pos token.Pos) bool {
 				}
 			}
 			return false
+		case *ast.CaseClause:
+			_, isTypeSwitch := findSwitchStmt(path[i+1:], pos, n).(*ast.TypeSwitchStmt)
+			return isTypeSwitch
+		case *ast.TypeAssertExpr:
+			if n.Lparen < pos && pos <= n.Rparen {
+				return true
+			}
 		}
 	}
 	return false

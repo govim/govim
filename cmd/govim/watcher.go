@@ -169,7 +169,8 @@ func (m *modWatcher) watch() {
 }
 
 func ofInterest(path string) bool {
-	return filepath.Base(path) == "go.mod" || filepath.Ext(path) == ".go"
+	// TODO when https://github.com/golang/go/issues/32178 is fixed re-add go.mod here
+	return filepath.Ext(path) == ".go"
 }
 
 func (v *vimstate) handleEvent(event fsnotify.Event) error {

@@ -18,33 +18,105 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
-// View abstracts the underlying architecture of the package using the source
-// package. The view provides access to files and their contents, so the source
+// Cache abstracts the core logic of dealing with the environment from the
+// higher level logic that processes the information to produce results.
+// The cache provides access to files and their contents, so the source
 // package does not directly access the file system.
-type View interface {
-	Logger() xlog.Logger
+// A single cache is intended to be process wide, and is the primary point of
+// sharing between all consumers.
+// A cache may have many active sessions at any given time.
+type Cache interface {
+	// NewSession creates a new Session manager and returns it.
+	NewSession(log xlog.Logger) Session
+
+	// FileSet returns the shared fileset used by all files in the system.
 	FileSet() *token.FileSet
-	BuiltinPackage() *ast.Package
-	GetFile(ctx context.Context, uri span.URI) (File, error)
-	SetContent(ctx context.Context, uri span.URI, content []byte) error
 }
 
-// File represents a Go source file that has been type-checked. It is the input
-// to most of the exported functions in this package, as it wraps up the
-// building blocks for most queries. Users of the source package can abstract
-// the loading of packages into their own caching systems.
+// Session represents a single connection from a client.
+// This is the level at which things like open files are maintained on behalf
+// of the client.
+// A session may have many active views at any given time.
+type Session interface {
+	// NewView creates a new View and returns it.
+	NewView(name string, folder span.URI) View
+
+	// Cache returns the cache that created this session.
+	Cache() Cache
+
+	// Returns the logger in use for this session.
+	Logger() xlog.Logger
+
+	// View returns a view with a mathing name, if the session has one.
+	View(name string) View
+
+	// ViewOf returns a view corresponding to the given URI.
+	ViewOf(uri span.URI) View
+
+	// Views returns the set of active views built by this session.
+	Views() []View
+
+	// Shutdown the session and all views it has created.
+	Shutdown(ctx context.Context)
+}
+
+// View represents a single workspace.
+// This is the level at which we maintain configuration like working directory
+// and build tags.
+type View interface {
+	// Session returns the session that created this view.
+	Session() Session
+
+	// Name returns the name this view was constructed with.
+	Name() string
+
+	// Folder returns the root folder for this view.
+	Folder() span.URI
+
+	// BuiltinPackage returns the ast for the special "builtin" package.
+	BuiltinPackage() *ast.Package
+
+	// GetFile returns the file object for a given uri.
+	GetFile(ctx context.Context, uri span.URI) (File, error)
+
+	// Called to set the effective contents of a file from this view.
+	SetContent(ctx context.Context, uri span.URI, content []byte) error
+
+	// BackgroundContext returns a context used for all background processing
+	// on behalf of this view.
+	BackgroundContext() context.Context
+
+	// Env returns the current set of environment overrides on this view.
+	Env() []string
+
+	// SetEnv is used to adjust the environment applied to the view.
+	SetEnv([]string)
+
+	// Shutdown closes this view, and detaches it from it's session.
+	Shutdown(ctx context.Context)
+
+	// Ignore returns true if this file should be ignored by this view.
+	Ignore(span.URI) bool
+}
+
+// File represents a source file of any type.
 type File interface {
 	URI() span.URI
 	View() View
-	GetAST(ctx context.Context) *ast.File
-	GetFileSet(ctx context.Context) *token.FileSet
-	GetPackage(ctx context.Context) Package
-	GetToken(ctx context.Context) *token.File
 	GetContent(ctx context.Context) []byte
+	FileSet() *token.FileSet
+	GetToken(ctx context.Context) *token.File
+}
+
+// GoFile represents a Go source file that has been type-checked.
+type GoFile interface {
+	File
+	GetAST(ctx context.Context) *ast.File
+	GetPackage(ctx context.Context) Package
 
 	// GetActiveReverseDeps returns the active files belonging to the reverse
 	// dependencies of this file's package.
-	GetActiveReverseDeps(ctx context.Context) []File
+	GetActiveReverseDeps(ctx context.Context) []GoFile
 }
 
 // Package represents a Go package that has been type-checked. It maintains
