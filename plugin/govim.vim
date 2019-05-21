@@ -72,6 +72,14 @@ function s:callbackAutoCommand(name, exprs)
   return l:resp[1]
 endfunction
 
+function s:doShutdown()
+  if s:govim_status != "initcomplete"
+    " TODO anything to do here other than return?
+    return
+  endif
+  call ch_close(s:channel)
+endfunction
+
 function s:buildCurrentViewport()
   let l:currTabNr = tabpagenr()
   let l:currWinNr = winnr()
@@ -320,3 +328,5 @@ else
   let job = job_start(start, opts)
   let s:channel = job_getchannel(job)
 endif
+
+au VimLeave * call s:doShutdown()

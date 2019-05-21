@@ -203,7 +203,14 @@ func (d *TestDriver) Close() {
 	select {
 	case <-d.doneQuitVim:
 	default:
-		d.govim.ChannelEx("qall!")
+		func() {
+			defer func() {
+				if r := recover(); r != nil && r != govim.ErrShuttingDown {
+					panic(r)
+				}
+			}()
+			d.govim.ChannelEx("qall!")
+		}()
 		<-d.doneQuitVim
 	}
 	select {

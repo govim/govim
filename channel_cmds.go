@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-
-	"gopkg.in/tomb.v2"
 )
 
 func (g *govimImpl) handleChannelError(ch unscheduledCallback, err error, format string, args ...interface{}) error {
@@ -20,7 +18,7 @@ func (g *govimImpl) handleChannelValueAndError(ch unscheduledCallback, err error
 	args = append([]interface{}{}, args...)
 	select {
 	case <-g.tomb.Dying():
-		return nil, tomb.ErrDying
+		panic(ErrShuttingDown)
 	case resp := <-ch:
 		if resp.errString != "" {
 			args = append(args, resp.errString)
@@ -126,6 +124,9 @@ func (g *govimImpl) DoProto(f func() error) (err error) {
 				}
 				err = r
 			case error:
+				if r == ErrShuttingDown {
+					panic(r)
+				}
 				err = r
 			default:
 				panic(r)
