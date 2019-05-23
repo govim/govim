@@ -37,8 +37,11 @@ Environment is:
   VIM_COMMAND=$VIM_COMMAND
 EOD
 
-echo -e "machine github.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc
-echo -e "machine githubusercontent.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc
+if [ "${GH_USER:-}" != "" ] && [ "${GH_TOKEN:-}" != "" ]
+then
+	echo -e "machine github.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc
+	echo -e "machine githubusercontent.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc
+fi
 
 go version
 vim --version
