@@ -330,3 +330,10 @@ else
 endif
 
 au VimLeave * call s:doShutdown()
+
+function GOVIMEvalRedir(expr)
+  redir => l:output
+  silent! execute a:expr
+  redir END
+  return l:output
+endfunction

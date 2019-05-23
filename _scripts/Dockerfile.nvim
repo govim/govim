@@ -20,11 +20,11 @@ RUN apt-get update && \
     unzip \
     && apt-get clean
 
-ARG NEOVIM_VERSION
+ARG VIM_VERSION
 RUN cd /tmp && \
   git clone https://github.com/neovim/neovim && \
   cd neovim && \
-  git checkout $NEOVIM_VERSION && \
+  git checkout $VIM_VERSION && \
   make CMAKE_INSTALL_PREFIX=/neovim && \
   make install
 

@@ -138,6 +138,7 @@ func (t *testplugin) Init(g govim.Govim, errCh chan error) (err error) {
 	t.DefineFunction("Func1", []string{}, t.func1)
 	t.DefineFunction("Func2", []string{}, t.func2)
 	t.DefineFunction("TriggerUnscheduled", []string{}, t.triggerUnscheduled)
+	t.DefineFunction("VersionCheck", []string{}, t.versionCheck)
 	return nil
 }
 
@@ -214,4 +215,8 @@ func (t *testpluginvim) triggerUnscheduled(args ...json.RawMessage) (interface{}
 		})
 	}()
 	return nil, nil
+}
+
+func (t *testpluginvim) versionCheck(args ...json.RawMessage) (interface{}, error) {
+	return fmt.Sprintf("%v %v", t.Flavor(), t.Version()), nil
 }
