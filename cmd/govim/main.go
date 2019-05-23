@@ -225,9 +225,15 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	initParams := &protocol.InitializeParams{}
 	initParams.RootURI = string(span.FileURI(wd))
 	initParams.Capabilities.TextDocument.Hover.ContentFormat = []protocol.MarkupKind{protocol.PlainText}
+	initParams.Capabilities.Workspace.Configuration = true
+	initParams.Capabilities.Workspace.DidChangeConfiguration.DynamicRegistration = true
 
 	if _, err := g.server.Initialize(context.Background(), initParams); err != nil {
 		return fmt.Errorf("failed to initialise gopls: %v", err)
+	}
+
+	if err := g.server.Initialized(context.Background(), &protocol.InitializedParams{}); err != nil {
+		return fmt.Errorf("failed to call gopls.Initialized: %v", err)
 	}
 
 	// Temporary fix for the fact that gopls does not yet support watching (via
@@ -262,6 +268,9 @@ func goModPath(wd string) (string, error) {
 }
 
 func (g *govimplugin) Shutdown() error {
+	if err := g.server.Shutdown(context.Background()); err != nil {
+		return err
+	}
 	if g.modWatcher != nil {
 		if err := g.modWatcher.close(); err != nil {
 			return err

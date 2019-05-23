@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
@@ -28,8 +29,9 @@ func (g *govimplugin) LogMessage(ctxt context.Context, params *protocol.LogMessa
 func (g *govimplugin) Telemetry(context.Context, interface{}) error {
 	panic("not implemented yet")
 }
-func (g *govimplugin) RegisterCapability(context.Context, *protocol.RegistrationParams) error {
-	panic("not implemented yet")
+func (g *govimplugin) RegisterCapability(ctxt context.Context, params *protocol.RegistrationParams) error {
+	g.Logf("RegisterCapability: %v", pretty.Sprint(params))
+	return nil
 }
 func (g *govimplugin) UnregisterCapability(context.Context, *protocol.UnregistrationParams) error {
 	panic("not implemented yet")
@@ -37,8 +39,15 @@ func (g *govimplugin) UnregisterCapability(context.Context, *protocol.Unregistra
 func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFolder, error) {
 	panic("not implemented yet")
 }
-func (g *govimplugin) Configuration(context.Context, *protocol.ConfigurationParams) ([]interface{}, error) {
-	panic("not implemented yet")
+func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ConfigurationParams) ([]interface{}, error) {
+	g.Logf("Configuration: %v", pretty.Sprint(params))
+	// Assert based on the current behaviour of gopls
+	want := 1
+	if got := len(params.Items); want != got {
+		return nil, fmt.Errorf("govim gopls client: expected %v item(s) in params; got %v", want, got)
+	}
+	conf := make(map[string]interface{})
+	return []interface{}{conf}, nil
 }
 func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {
 	panic("not implemented yet")
