@@ -3,6 +3,10 @@
 package config
 
 const (
+	internalFunctionPrefix = "_internal_"
+)
+
+const (
 	GlobalPrefix = "g:govim_"
 
 	// GlobalFormatOnSave is a string value variable that configures which tool
@@ -52,13 +56,13 @@ const (
 type Function string
 
 const (
-	// FunctionBalloonExpr is not intended to be called by the user. Instead it
-	// is automatically set as the value of balloonexpr by govim.
-	FunctionBalloonExpr Function = "BalloonExpr"
+	// FunctionBalloonExpr is an internal function used by govim for balloonexpr
+	// in Vim
+	FunctionBalloonExpr Function = internalFunctionPrefix + "BalloonExpr"
 
-	// FunctionComplete is not intended to be called by the user. Instead it is
-	// automatically set as the value of omnifunc by govim.
-	FunctionComplete Function = "Complete"
+	// FunctionComplete is an internal function used by govim as for omnifunc in
+	// Vim
+	FunctionComplete Function = internalFunctionPrefix + "Complete"
 
 	// FunctionHover returns the same text that would be returned by a
 	// mouse-based hover, but instead uses the cursor position for the

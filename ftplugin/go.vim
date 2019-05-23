@@ -1,5 +1,5 @@
-setlocal balloonexpr=GOVIMBalloonExpr()
-setlocal omnifunc=GOVIMComplete
+setlocal balloonexpr=GOVIM_internal_BalloonExpr()
+setlocal omnifunc=GOVIM_internal_Complete
 nnoremap <buffer> <silent> gd :GOVIMGoToDef<cr>
 nnoremap <buffer> <silent> <C-]> :GOVIMGoToDef<cr>
 nnoremap <buffer> <silent> <C-LeftMouse> <LeftMouse>:GOVIMGoToDef<cr>
