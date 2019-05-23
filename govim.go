@@ -3,6 +3,7 @@ package govim
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,6 +27,10 @@ const (
 	autoCommHandlePref = "autocommand:"
 
 	sysFuncPref = "govim:"
+)
+
+var (
+	ErrShuttingDown = errors.New("govim shutting down")
 )
 
 // callbackResp is the container for a response from a call to callVim. If the
@@ -193,6 +198,17 @@ func (g *govimImpl) Schedule(f func(Govim) error) chan struct{} {
 	return done
 }
 
+func (g *govimImpl) goHandleShutdown(f func() error) {
+	g.tomb.Go(func() error {
+		defer func() {
+			if r := recover(); r != nil && r != ErrShuttingDown {
+				panic(r)
+			}
+		}()
+		return f()
+	})
+}
+
 func (g *govimImpl) load() error {
 	g.funcHandlersLock.Lock()
 	g.funcHandlers[sysFuncOnViewportChange] = internalFunction(g.onViewportChange)
@@ -220,9 +236,9 @@ func (g *govimImpl) load() error {
 			return err
 		}
 
-		go func() {
-			g.tomb.Kill(<-g.pluginErrCh)
-		}()
+		g.tomb.Go(func() error {
+			return <-g.pluginErrCh
+		})
 	}
 
 	select {
@@ -280,14 +296,14 @@ func (v VimAutoCommandFunction) isHandler() {}
 func (g *govimImpl) Run() error {
 	err := g.DoProto(g.run)
 	g.tomb.Kill(err)
-	if err := g.tomb.Wait(); err != nil {
-		return err
-	}
 	if g.plugin != nil {
 		return g.plugin.Shutdown()
 	}
 	if g.pluginErrCh != nil {
 		close(g.pluginErrCh)
+	}
+	if err := g.tomb.Wait(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -295,8 +311,8 @@ func (g *govimImpl) Run() error {
 // run is the main loop that handles call from Vim
 func (g *govimImpl) run() error {
 	g.eventQueue = queue.NewQueue()
-	g.tomb.Go(g.runEventQueue)
-	g.tomb.Go(g.load)
+	g.goHandleShutdown(g.runEventQueue)
+	g.goHandleShutdown(g.load)
 
 	// the read loop
 	for {
@@ -448,7 +464,7 @@ GetWork:
 			}
 			continue GetWork
 		}
-		g.tomb.Go(func() error {
+		g.goHandleShutdown(func() error {
 			return work()
 		})
 		select {
@@ -745,7 +761,7 @@ func (g *govimImpl) sendJSONMsg(p1, p2 interface{}, ps ...interface{}) {
 	}
 	g.logVimEventf("sendJSONMsg: %s\n", logMsg)
 	if err := g.out.Encode(msg); err != nil {
-		g.errProto("failed to send msg %s: %v", logMsg, err)
+		panic(ErrShuttingDown)
 	}
 }
 
