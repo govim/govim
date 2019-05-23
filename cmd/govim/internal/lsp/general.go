@@ -10,11 +10,10 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strings"
 
 	"github.com/myitcv/govim/cmd/govim/internal/jsonrpc2"
-	"github.com/myitcv/govim/cmd/govim/internal/lsp/cache"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
@@ -125,10 +124,10 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 				}},
 			})
 		}
-		for _, view := range s.views {
+		for _, view := range s.session.Views() {
 			config, err := s.client.Configuration(ctx, &protocol.ConfigurationParams{
 				Items: []protocol.ConfigurationItem{{
-					ScopeURI: protocol.NewURI(view.Folder),
+					ScopeURI: protocol.NewURI(view.Folder()),
 					Section:  "gopls",
 				}},
 			})
@@ -142,11 +141,11 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 	}
 	buf := &bytes.Buffer{}
 	PrintVersionInfo(buf, true, false)
-	s.log.Infof(ctx, "%s", buf)
+	s.session.Logger().Infof(ctx, "%s", buf)
 	return nil
 }
 
-func (s *Server) processConfig(view *cache.View, config interface{}) error {
+func (s *Server) processConfig(view source.View, config interface{}) error {
 	// TODO: We should probably store and process more of the config.
 	if config == nil {
 		return nil // ignore error if you don't have a config
@@ -161,40 +160,31 @@ func (s *Server) processConfig(view *cache.View, config interface{}) error {
 		if !ok {
 			return fmt.Errorf("invalid config gopls.env type %T", env)
 		}
+		env := view.Env()
 		for k, v := range menv {
-			view.Config.Env = applyEnv(view.Config.Env, k, v)
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
+		view.SetEnv(env)
 	}
 	// Check if placeholders are enabled.
 	if usePlaceholders, ok := c["usePlaceholders"].(bool); ok {
 		s.usePlaceholders = usePlaceholders
 	}
-	// Check if enhancedHover is enabled.
-	if enhancedHover, ok := c["enhancedHover"].(bool); ok {
-		s.enhancedHover = enhancedHover
+	// Check if user has disabled documentation on hover.
+	if noDocsOnHover, ok := c["noDocsOnHover"].(bool); ok {
+		s.noDocsOnHover = noDocsOnHover
 	}
 	return nil
 }
 
-func applyEnv(env []string, k string, v interface{}) []string {
-	prefix := k + "="
-	value := prefix + fmt.Sprint(v)
-	for i, s := range env {
-		if strings.HasPrefix(s, prefix) {
-			env[i] = value
-			return env
-		}
-	}
-	return append(env, value)
-}
-
 func (s *Server) shutdown(ctx context.Context) error {
-	// TODO(rstambler): Cancel contexts here?
 	s.initializedMu.Lock()
 	defer s.initializedMu.Unlock()
 	if !s.isInitialized {
 		return jsonrpc2.NewErrorf(jsonrpc2.CodeInvalidRequest, "server not initialized")
 	}
+	// drop all the active views
+	s.session.Shutdown(ctx)
 	s.isInitialized = false
 	return nil
 }

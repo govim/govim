@@ -46,15 +46,28 @@ func PrintVersionInfo(w io.Writer, verbose bool, markdown bool) {
 	}
 }
 
-func newColumnMap(ctx context.Context, v source.View, uri span.URI) (source.File, *protocol.ColumnMapper, error) {
+func getSourceFile(ctx context.Context, v source.View, uri span.URI) (source.File, *protocol.ColumnMapper, error) {
 	f, err := v.GetFile(ctx, uri)
 	if err != nil {
 		return nil, nil, err
 	}
-	tok := f.GetToken(ctx)
-	if tok == nil {
-		return nil, nil, fmt.Errorf("no file information for %v", f.URI())
+	filename, err := f.URI().Filename()
+	if err != nil {
+		return nil, nil, err
 	}
-	m := protocol.NewColumnMapper(f.URI(), f.GetFileSet(ctx), tok, f.GetContent(ctx))
+	m := protocol.NewColumnMapper(f.URI(), filename, f.FileSet(), f.GetToken(ctx), f.GetContent(ctx))
+
 	return f, m, nil
+}
+
+func getGoFile(ctx context.Context, v source.View, uri span.URI) (source.GoFile, *protocol.ColumnMapper, error) {
+	f, m, err := getSourceFile(ctx, v, uri)
+	if err != nil {
+		return nil, nil, err
+	}
+	gof, ok := f.(source.GoFile)
+	if !ok {
+		return nil, nil, fmt.Errorf("not a go file %v", f.URI())
+	}
+	return gof, m, nil
 }

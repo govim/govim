@@ -6,6 +6,7 @@ package lsp
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
@@ -14,16 +15,19 @@ import (
 
 func (s *Server) documentLink(ctx context.Context, params *protocol.DocumentLinkParams) ([]protocol.DocumentLink, error) {
 	uri := span.NewURI(params.TextDocument.URI)
-	view := s.findView(ctx, uri)
-	f, m, err := newColumnMap(ctx, view, uri)
+	view := s.session.ViewOf(uri)
+	f, m, err := getGoFile(ctx, view, uri)
 	if err != nil {
 		return nil, err
 	}
-	// find the import block
-	ast := f.GetAST(ctx)
+	file := f.GetAST(ctx)
+	if file == nil {
+		return nil, fmt.Errorf("no AST for %v", uri)
+	}
+	// Add a Godoc link for each imported package.
 	var result []protocol.DocumentLink
-	for _, imp := range ast.Imports {
-		spn, err := span.NewRange(f.GetFileSet(ctx), imp.Pos(), imp.End()).Span()
+	for _, imp := range file.Imports {
+		spn, err := span.NewRange(f.FileSet(), imp.Pos(), imp.End()).Span()
 		if err != nil {
 			return nil, err
 		}
