@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,6 +19,8 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to get current position: %v", err)
 		}
+		v.synchroniseBuffer(b)
+
 		params := &protocol.CompletionParams{
 			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
 				TextDocument: protocol.TextDocumentIdentifier{
@@ -64,4 +67,18 @@ type completionResult struct {
 	Abbr string `json:"abbr"`
 	Word string `json:"word"`
 	Info string `json:"info"`
+}
+
+func (v *vimstate) synchroniseBuffer(b *types.Buffer) {
+	var buf string
+	expr := v.ChannelExpr(`join(getline(1, '$'), "\n")`)
+	v.Parse(expr, &buf)
+	bufBytes := []byte(buf)
+
+	if bytes.Equal(bufBytes, b.Contents) {
+		return
+	}
+	b.Contents = bufBytes
+	b.Version++
+	v.handleBufferEvent(b)
 }
