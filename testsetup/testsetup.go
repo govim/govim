@@ -21,8 +21,9 @@ const (
 )
 
 var (
-	VimCommand  = Command{"vim"}
-	GvimCommand = Command{"xvfb-run", "-a", "gvim", "-f"}
+	VimCommand    = Command{"vim"}
+	GvimCommand   = Command{"xvfb-run", "-a", "gvim", "-f"}
+	NeovimCommand = Command{"nvim"}
 )
 
 type Command []string
@@ -42,6 +43,7 @@ var (
 
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{
+		NeovimVersion("v0.3.5"),
 		VimVersion("v8.1.1295"),
 		GvimVersion("v8.1.1295"),
 		VimVersion("v8.1.1158"),
@@ -93,6 +95,22 @@ func (v gvimVersionType) Command() string {
 
 func (v gvimVersionType) Flavor() govim.Flavor {
 	return govim.FlavorGvim
+}
+
+func NeovimVersion(v string) neovimVersionType {
+	return neovimVersionType{baseVersionType: baseVersionType{v: v}}
+}
+
+type neovimVersionType struct {
+	baseVersionType
+}
+
+func (v neovimVersionType) Command() string {
+	return strings.Join(NeovimCommand, " ")
+}
+
+func (v neovimVersionType) Flavor() govim.Flavor {
+	return govim.FlavorNeovim
 }
 
 func EnvLookupFlavorCommand() (flav govim.Flavor, cmd Command, err error) {

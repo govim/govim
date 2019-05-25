@@ -38,13 +38,15 @@ var (
 type Flavor uint
 
 const (
-	FlavorVim  Flavor = iota // vim
-	FlavorGvim               // gvim
+	FlavorVim    Flavor = iota // vim
+	FlavorGvim                 // gvim
+	FlavorNeovim               // neovim
 )
 
 var Flavors = []Flavor{
 	FlavorVim,
 	FlavorGvim,
+	FlavorNeovim,
 }
 
 // callbackResp is the container for a response from a call to callVim. If the
