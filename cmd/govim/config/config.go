@@ -72,6 +72,14 @@ const (
 	// FunctionHello is a friendly function, largely for checking govim is
 	// working.
 	FunctionHello Function = "Hello"
+
+	// FunctionBufChanged is an internal function used by govim for handling
+	// delta-based changes in buffers.
+	FunctionBufChanged = internalFunctionPrefix + "BufChanged"
+
+	// FunctionEnrichDelta is an internal function used by govim for enriching
+	// listener_add based callbacks before calling FunctionBufChanged
+	FunctionEnrichDelta = internalFunctionPrefix + "EnrichDelta"
 )
 
 // FormatOnSave typed constants define the set of valid values that

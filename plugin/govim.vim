@@ -337,3 +337,20 @@ function GOVIMEvalRedir(expr)
   redir END
   return l:output
 endfunction
+
+function GOVIM_internal_EnrichDelta(bufnr, start, end, added, changes)
+  for l:change in a:changes
+    if l:change.added < 0
+      let l:change.type = "deleted"
+    else
+      if l:change.lnum != l:change.end
+        let l:change.type = "changed"
+        let l:change.lines = getbufline(a:bufnr, l:change.lnum, l:change.end-1+l:change.added)
+      elseif l:change.added > 0
+        let l:change.type = "inserted"
+        let l:change.lines = getbufline(a:bufnr, l:change.lnum, l:change.lnum+l:change.added-1)
+      endif
+    endif
+  endfor
+  call GOVIM_internal_BufChanged(a:bufnr, a:start, a:end, a:added, a:changes)
+endfunction

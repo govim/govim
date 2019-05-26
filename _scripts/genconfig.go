@@ -24,6 +24,15 @@ type build struct {
 	env        map[string]string
 }
 
+func (b build) dup() build {
+	res := b
+	res.env = make(map[string]string)
+	for k, v := range b.env {
+		res.env[k] = v
+	}
+	return res
+}
+
 type matrixstep func(build) []build
 
 func buildmatrix() []build {
@@ -42,16 +51,18 @@ func buildmatrix() []build {
 	}
 	for _, step := range steps {
 		for i := 0; i < len(thematrix); {
+			var newmat []build
+			newmat = append(newmat, thematrix[:i]...)
 			b := thematrix[i]
 			var post []build
 			if i < len(thematrix)-1 {
 				post = thematrix[i+1:]
 			}
 			nb := step(b)
-			thematrix = thematrix[:i]
-			thematrix = append(thematrix, nb...)
-			thematrix = append(thematrix, post...)
 			i += len(nb)
+			newmat = append(newmat, nb...)
+			newmat = append(newmat, post...)
+			thematrix = newmat
 		}
 	}
 	return thematrix
@@ -59,7 +70,7 @@ func buildmatrix() []build {
 
 func expGoVersions(b build) (res []build) {
 	for _, v := range testsetup.GoVersions {
-		gv := b
+		gv := b.dup()
 		gv.goversion = v
 		res = append(res, gv)
 	}
@@ -161,7 +172,15 @@ func writeTravisYml() {
 		if b.vimflavor == govim.FlavorNeovim {
 			continue
 		}
-		entries = append(entries, fmt.Sprintf("    - GO_VERSION=%q VIM_FLAVOR=%q VIM_VERSION=%q VIM_COMMAND=%q", b.goversion, b.vimflavor, b.vimversion, b.vimcommand))
+		var env []string
+		for k, v := range b.env {
+			env = append(env, fmt.Sprintf("%v=%q", k, v))
+		}
+		var space string
+		if len(env) > 0 {
+			space = " "
+		}
+		entries = append(entries, fmt.Sprintf("    - GO_VERSION=%q VIM_FLAVOR=%q VIM_VERSION=%q VIM_COMMAND=%q%v%v", b.goversion, b.vimflavor, b.vimversion, b.vimcommand, space, strings.Join(env, " ")))
 	}
 	writeFileFromTmpl(".travis.yml", travisYml, entries)
 }
