@@ -4,31 +4,9 @@ set -u
 
 source "${BASH_SOURCE%/*}/gen_maxVersions_genconfig.bash"
 
-validFlavor=0
-for i in $VALID_FLAVORS
-do
-	if [ "${VIM_FLAVOR:-}" == "$i" ]
-	then
-		validFlavor=1
-	fi
-done
-
-if [ $validFlavor -ne 1 ]
-then
-	echo "VIM_FLAVOR is not set to a valid value; must be one of: $VALID_FLAVORS"
-	exit 1
-fi
-
 if [ "${VIM_COMMAND:-}" == "" ]
 then
-	case "$VIM_FLAVOR" in
-		vim)
-			export VIM_COMMAND=$DEFAULT_VIM_COMMAND
-			;;
-		gvim)
-			export VIM_COMMAND=$DEFAULT_GVIM_COMMAND
-			;;
-	esac
+	eval "VIM_COMMAND=\"\$DEFAULT_${VIM_FLAVOR^^}_COMMAND\""
 fi
 
 cat <<EOD

@@ -235,11 +235,12 @@ func _() {
 	var x [1]struct{}
 	_ = x[FlavorVim-0]
 	_ = x[FlavorGvim-1]
+	_ = x[FlavorNeovim-2]
 }
 
-const _Flavor_name = "vimgvim"
+const _Flavor_name = "vimgvimneovim"
 
-var _Flavor_index = [...]uint8{0, 3, 7}
+var _Flavor_index = [...]uint8{0, 3, 7, 13}
 
 func (i Flavor) String() string {
 	if i >= Flavor(len(_Flavor_index)-1) {
