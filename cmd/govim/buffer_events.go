@@ -81,76 +81,31 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 			Version:                float64(b.Version),
 		},
 	}
-	var cchanges []protocol.TextDocumentContentChangeEvent
-
 	for _, c := range changes {
-		switch c.Type {
-		case "deleted":
-			contents = append(contents[:c.Lnum-1], contents[c.End-1:]...)
-			cchanges = append(cchanges, protocol.TextDocumentContentChangeEvent{
-				Range: &protocol.Range{
-					Start: protocol.Position{
-						Line:      float64(c.Lnum - 1),
-						Character: 0, // everything is line-based
-					},
-					End: protocol.Position{
-						Line:      float64(c.End - 1),
-						Character: 0, // everything is line-based
-					},
-				},
-				Text: "",
-			})
-		case "inserted":
-			post := contents[c.Lnum-1:]
-			contents = contents[:c.Lnum-1]
-			for _, l := range c.Lines {
-				contents = append(contents, []byte(l))
-			}
-			contents = append(contents, post...)
-			cchanges = append(cchanges, protocol.TextDocumentContentChangeEvent{
-				Range: &protocol.Range{
-					Start: protocol.Position{
-						Line:      float64(c.Lnum - 1),
-						Character: 0, // everything is line-based
-					},
-					End: protocol.Position{
-						Line:      float64(c.End - 1),
-						Character: 0, // everything is line-based
-					},
-				},
-				Text: strings.Join(c.Lines, "\n") + "\n",
-			})
-		case "changed":
-			post := contents[c.End-1:]
-			contents = contents[:c.Lnum-1]
-			for _, l := range c.Lines {
-				contents = append(contents, []byte(l))
-			}
-			contents = append(contents, post...)
-			currLine := c.Lnum - 1
-			i := c.End - c.Lnum
-			for _, l := range c.Lines {
-				start := protocol.Position{
-					Line:      float64(currLine),
+		var newcontents [][]byte
+		change := protocol.TextDocumentContentChangeEvent{
+			Range: &protocol.Range{
+				Start: protocol.Position{
+					Line:      float64(c.Lnum - 1),
 					Character: 0,
-				}
-				end := start
-				if i > 0 {
-					end.Line = float64(currLine + 1)
-				}
-				currLine++
-				i--
-				cchanges = append(cchanges, protocol.TextDocumentContentChangeEvent{
-					Range: &protocol.Range{
-						Start: start,
-						End:   end,
-					},
-					Text: l + "\n",
-				})
-			}
+				},
+			},
 		}
+		newcontents = append(newcontents, contents[:c.Lnum-1]...)
+		for _, l := range c.Lines {
+			newcontents = append(newcontents, []byte(l))
+		}
+		if len(c.Lines) > 0 {
+			change.Text = strings.Join(c.Lines, "\n") + "\n"
+		}
+		newcontents = append(newcontents, contents[c.End-1:]...)
+		change.Range.End = protocol.Position{
+			Line:      float64(c.End - 1),
+			Character: 0,
+		}
+		contents = newcontents
+		params.ContentChanges = append(params.ContentChanges, change)
 	}
-	params.ContentChanges = cchanges
 	// add back trailing newline
 	b.Contents = append(bytes.Join(contents, []byte("\n")), '\n')
 	return nil, v.server.DidChange(context.Background(), params)
