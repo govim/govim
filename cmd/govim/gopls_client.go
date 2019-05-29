@@ -24,10 +24,6 @@ func (g *govimplugin) ShowMessageRequest(context.Context, *protocol.ShowMessageR
 }
 func (g *govimplugin) LogMessage(ctxt context.Context, params *protocol.LogMessageParams) error {
 	g.logGoplsClientf("LogMessage callback: %v", pretty.Sprint(params))
-	switch params.Type {
-	case protocol.Error:
-		g.ChannelExf("echohl ErrorMsg | echom %q | echohl None", params.Message)
-	}
 	return nil
 }
 func (g *govimplugin) Telemetry(context.Context, interface{}) error {
