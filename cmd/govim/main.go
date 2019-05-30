@@ -302,8 +302,8 @@ func (g *govimplugin) doIncrementalSync() bool {
 	if semver.Compare(g.Version(), testsetup.MinVimIncrementalSync) < 0 {
 		return false
 	}
-	if os.Getenv(testsetup.EnvDisableIncrementalSync) == "true" {
-		return false
+	if os.Getenv(testsetup.EnvDisableIncrementalSync) == "false" {
+		return true
 	}
-	return true
+	return false
 }
