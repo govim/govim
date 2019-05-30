@@ -6,23 +6,21 @@ const (
 	internalFunctionPrefix = "_internal_"
 )
 
-const (
-	GlobalPrefix = "g:govim_"
+type Config struct {
+	// FormatOnSave is a string value that configures which tool to use for
+	// formatting on save. Options are given by constants of type FormatOnSave.
+	// Default: FormatOnSaveGoImports.
+	FormatOnSave FormatOnSave
 
-	// GlobalFormatOnSave is a string value variable that configures which tool
-	// to use for formatting on save. Options are given by constants of type
-	// FormatOnSave. Default: FormatOnSaveGoImports.
-	GlobalFormatOnSave = GlobalPrefix + "format_on_save"
-
-	// GlobalQuickfixAutoDiagnosticsDisable is a boolean (0 or 1 in VimScript)
-	// variable that controls whether auto-population of the quickfix window
-	// with gopls diagnostics is disabled or not. When not disabled, govim waits
-	// for updatetime (help updatetime) before populating the quickfix window
-	// with the current gopls diagnostics. When disabled, the
+	// QuickfixAutoDiagnosticsDisable is a boolean (0 or 1 in VimScript) that
+	// controls whether auto-population of the quickfix window with gopls
+	// diagnostics is disabled or not. When not disabled, govim waits for
+	// updatetime (help updatetime) before populating the quickfix window with
+	// the current gopls diagnostics. When disabled, the
 	// CommandQuickfixDiagnostics command can be used to manually trigger the
 	// population. Default: false (0)
-	GlobalQuickfixAutoDiagnosticsDisable = GlobalPrefix + "quickfix_auto_diagnotics_disable"
-)
+	QuickfixAutoDiagnosticsDisable bool
+}
 
 type Command string
 
@@ -80,6 +78,10 @@ const (
 	// FunctionEnrichDelta is an internal function used by govim for enriching
 	// listener_add based callbacks before calling FunctionBufChanged
 	FunctionEnrichDelta = internalFunctionPrefix + "EnrichDelta"
+
+	// FunctionSetConfig is an internal function used by govim for pushing config
+	// changes from Vim to govim.
+	FunctionSetConfig = internalFunctionPrefix + "SetConfig"
 )
 
 // FormatOnSave typed constants define the set of valid values that

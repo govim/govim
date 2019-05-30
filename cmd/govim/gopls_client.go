@@ -6,7 +6,6 @@ import (
 
 	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
-	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
@@ -71,8 +70,7 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 		v.diagnostics[span.URI(params.URI)] = params.Diagnostics
 		v.diagnosticsChanged = true
 
-		if v.ParseInt(v.ChannelExprf("exists(%q)", config.GlobalQuickfixAutoDiagnosticsDisable)) != 0 &&
-			v.ParseInt(v.ChannelExpr(config.GlobalQuickfixAutoDiagnosticsDisable)) != 0 {
+		if v.config.QuickfixAutoDiagnosticsDisable {
 			return nil
 		}
 		return v.updateQuickfix()
