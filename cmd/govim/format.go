@@ -139,8 +139,6 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 	preEventIgnore := v.ParseString(v.ChannelExpr("&eventignore"))
 	v.ChannelEx("set eventignore=all")
 	defer v.ChannelExf("set eventignore=%v", preEventIgnore)
-	v.ToggleOnViewportChange()
-	defer v.ToggleOnViewportChange()
 	vimEdits := editBatch{
 		Flush: v.doIncrementalSync(),
 		BufNr: b.Num,

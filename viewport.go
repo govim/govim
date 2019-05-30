@@ -3,72 +3,7 @@ package govim
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/kr/pretty"
 )
-
-const (
-	sysFuncOnViewportChange = sysFuncPref + "OnViewportChange"
-)
-
-// SubOnViewportChange creates a subscription to the OnViewportChange event
-// exposed by Govim
-func (g *govimImpl) SubOnViewportChange(f func(Viewport) error) *OnViewportChangeSub {
-	res := &OnViewportChangeSub{f: f}
-	g.onViewportChangeSubsLock.Lock()
-	g.onViewportChangeSubs = append(g.onViewportChangeSubs, res)
-	g.onViewportChangeSubsLock.Unlock()
-	return res
-}
-
-// UnsubOnViewportChange removes a subscription to the OnViewportChange event.
-// It panics if sub is not an active subscription.
-func (g *govimImpl) UnsubOnViewportChange(sub *OnViewportChangeSub) {
-	g.onViewportChangeSubsLock.Lock()
-	defer g.onViewportChangeSubsLock.Unlock()
-	for i, s := range g.onViewportChangeSubs {
-		if sub == s {
-			g.onViewportChangeSubs = append(g.onViewportChangeSubs[:i], g.onViewportChangeSubs[i+1:]...)
-			return
-		}
-	}
-	panic(fmt.Errorf("did not find subscription"))
-}
-
-func (g *govimImpl) ToggleOnViewportChange() {
-	select {
-	case <-g.tomb.Dying():
-		// we are already dying, nothing to do
-	case resp := <-g.unscheduledCallCallback("toggleUpdateViewport"):
-		if resp.errString != "" {
-			g.errProto("failed to toggle OnViewportChange: %v", resp.errString)
-		}
-	}
-}
-
-type OnViewportChangeSub struct {
-	f func(Viewport) error
-}
-
-func (g *govimImpl) onViewportChange(args ...json.RawMessage) (interface{}, error) {
-	var r Viewport
-	g.decodeJSON(args[0], &r)
-	g.currViewport = r
-	r = r.dup()
-
-	g.Logf("Viewport changed: %v", pretty.Sprint(r))
-
-	var subs []*OnViewportChangeSub
-	g.onViewportChangeSubsLock.Lock()
-	subs = append(subs, g.onViewportChangeSubs...)
-	g.onViewportChangeSubsLock.Unlock()
-	for _, s := range subs {
-		if err := s.f(r.dup()); err != nil {
-			return nil, err
-		}
-	}
-	return nil, nil
-}
 
 type Viewport struct {
 	Current WinInfo
@@ -94,11 +29,12 @@ type WinInfo struct {
 
 // Viewport returns the active Vim viewport
 func (g *govimImpl) Viewport() (vp Viewport, err error) {
-	// TODO right now we cannot rely on the Viewport() method having been
-	// updated by the plugin-initiated callback because it doesn't reliably get
-	// fired before other autocmds. This has the effect that a callback
-	// (function, command, autocmd) can therefore read the _wrong_ buffer. So
-	// for now we go the inefficient route of always re-reading the viewport
+	// Calling s:buildCurrentViewport is something of a legacy from the previous
+	// attempt to have Vim push viewport changes to the plugin. In that setup,
+	// we called s:buildCurrentViewport on a timer and pushed changes to govim
+	// if the viewport had changed. For easy of reverting the change to remove the
+	// viewport code, we leave s:buildCurrentViewport in place, not least because
+	// it's nice an efficient to do it as one-shot in VimScript.
 	res, err := g.Scheduled().ChannelExpr("s:buildCurrentViewport()")
 	if err != nil {
 		err = fmt.Errorf("failed to build current viewport: %v", err)
@@ -106,11 +42,6 @@ func (g *govimImpl) Viewport() (vp Viewport, err error) {
 	}
 	g.decodeJSON(res, &vp)
 	return
-}
-
-func (v Viewport) dup() Viewport {
-	v.Windows = append([]WinInfo{}, v.Windows...)
-	return v
 }
 
 func (wi *WinInfo) UnmarshalJSON(b []byte) error {
