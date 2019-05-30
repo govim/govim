@@ -25,6 +25,8 @@ const (
 
 	EnvDisableIncrementalSync = "GOVIM_DISABLE_INCREMENTALSYNC"
 	MinVimIncrementalSync     = "v8.1.1419"
+
+	EnvLogfileTmpl = "GOVIM_LOGFILE_TMPL"
 )
 
 var (

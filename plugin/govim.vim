@@ -8,11 +8,22 @@ let s:tmpdir = $TMPDIR
 if s:tmpdir == ""
   let s:tmpdir = "/tmp"
 endif
-let s:ch_logfile = system("mktemp ".s:tmpdir."/vim_channel_log_".strftime("%Y%m%d_%H%M_%S")."_XXXXXXXXXXXX 2>&1")
-if v:shell_error
-  throw s:ch_logfile
+let s:filetmpl = $GOVIM_LOGFILE_TMPL
+if s:filetmpl == ""
+  let s:filetmpl = "%v_%v_%v"
 endif
-let s:ch_logfile = trim(s:ch_logfile)
+let s:filetmpl = substitute(s:filetmpl, "%v", "vim_channel_log", "")
+let s:filetmpl = substitute(s:filetmpl, "%v", strftime("%Y%m%d_%H%M_%S"), "")
+if s:filetmpl =~ "%v"
+  let s:filetmpl = substitute(s:filetmpl, "%v", "XXXXXXXXXXXX", "")
+  let s:filetmpl = system("mktemp ".s:tmpdir."/".s:filetmpl." 2>&1")
+  if v:shell_error
+    throw s:filetmpl
+  endif
+else
+  let s:filetmpl = s:tmpdir."/".s:filetmpl
+endif
+let s:ch_logfile = trim(s:filetmpl)
 call ch_logfile(s:ch_logfile, "a")
 echom "Vim channel logfile: ".s:ch_logfile
 call feedkeys(" ") " to prevent press ENTER to continue
@@ -356,4 +367,7 @@ function s:applyVimEdits(batch)
       throw "Unknown edit type ".e.Type
     endif
   endfor
+  if a:batch.Flush
+    call listener_flush(a:batch.BufNr)
+  endif
 endfunction
