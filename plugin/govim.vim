@@ -29,8 +29,6 @@ echom "Vim channel logfile: ".s:ch_logfile
 call feedkeys(" ") " to prevent press ENTER to continue
 let s:channel = ""
 let s:timer = ""
-let s:currViewport = {}
-let s:sendUpdateViewport = 1
 let s:plugindir = expand(expand("<sfile>:p:h:h"))
 
 let s:govim_status = "loading"
@@ -110,21 +108,6 @@ function s:buildCurrentViewport()
   return l:viewport
 endfunction
 
-function s:updateViewport(timer)
-  if !s:sendUpdateViewport
-    return
-  endif
-  let l:viewport = s:buildCurrentViewport()
-  if s:currViewport != l:viewport
-    let s:currViewport = l:viewport
-    let l:resp = ch_evalexpr(s:channel, ["function", "govim:OnViewportChange", [l:viewport]])
-    if l:resp[0] != ""
-      " TODO disable the timer and the autocmd callback
-      throw l:resp[0]
-    endif
-  endif
-endfunction
-
 function GOVIMPluginStatus(...)
   if s:govim_status != "loaded" && s:govim_status != "failed" && len(a:000) != 0
     call extend(s:loadStatusCallbacks, a:000)
@@ -139,10 +122,7 @@ function s:define(channel, msg)
     let l:id = a:msg[0]
     let l:resp = ["callback", l:id, [""]]
     if a:msg[1] == "loaded"
-      let s:timer = timer_start(100, function('s:updateViewport'), {'repeat': -1})
-      au BufRead,BufNewFile,CursorMoved,CursorMovedI,BufWinEnter * call s:updateViewport(0)
       let s:govim_status = "loaded"
-      call s:updateViewport(0)
       for F in s:loadStatusCallbacks
         call call(F, [s:govim_status])
       endfor
@@ -150,12 +130,9 @@ function s:define(channel, msg)
       let s:govim_status = "initcomplete"
       " doautoall BufRead also triggers ftplugin stuff
       doautoall BufRead
-      call s:updateViewport(0)
       for F in s:loadStatusCallbacks
         call call(F, [s:govim_status])
       endfor
-    elseif a:msg[1] == "toggleUpdateViewport"
-      let s:sendUpdateViewport = !s:sendUpdateViewport
     elseif a:msg[1] == "currentViewport"
       let l:res = s:buildCurrentViewport()
     elseif a:msg[1] == "function"

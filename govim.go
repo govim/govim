@@ -27,8 +27,6 @@ const (
 	funcHandlePref     = "function:"
 	commHandlePref     = "command:"
 	autoCommHandlePref = "autocommand:"
-
-	sysFuncPref = "govim:"
 )
 
 var (
@@ -103,16 +101,6 @@ type Govim interface {
 	// between the user and protocol aspects of govim.
 	DoProto(f func() error) error
 
-	// SubOnViewportChange creates a subscription to the OnViewportChange event
-	// exposed by Govim
-	SubOnViewportChange(f func(Viewport) error) *OnViewportChangeSub
-
-	// UnsubOnViewportChange removes a subscription to the OnViewportChange event.
-	// It panics if sub is not an active subscription.
-	UnsubOnViewportChange(sub *OnViewportChangeSub)
-
-	ToggleOnViewportChange()
-
 	// Viewport returns the active Vim viewport
 	Viewport() (Viewport, error)
 
@@ -159,10 +147,6 @@ type govimImpl struct {
 	autocmdNextID int
 
 	loaded chan bool
-
-	currViewport             Viewport
-	onViewportChangeSubs     []*OnViewportChangeSub
-	onViewportChangeSubsLock sync.Mutex
 
 	eventQueue *queue.Queue
 	tomb       tomb.Tomb
@@ -237,9 +221,6 @@ func (g *govimImpl) goHandleShutdown(f func() error) {
 }
 
 func (g *govimImpl) load() error {
-	g.funcHandlersLock.Lock()
-	g.funcHandlers[sysFuncOnViewportChange] = internalFunction(g.onViewportChange)
-	g.funcHandlersLock.Unlock()
 	select {
 	case <-g.tomb.Dying():
 		return tomb.ErrDying
