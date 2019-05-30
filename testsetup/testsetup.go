@@ -21,8 +21,10 @@ const (
 	EnvGithubUser  = "GH_USER"
 	EnvGithubToken = "GH_TOKEN"
 
-	EnvDisableIncrementalSync       = "GOVIM_DISABLE_INCREMENTALSYNC"
-	MinVimIncrementalSyncExperiment = "v8.1.1389"
+	MinVimGovim = "v8.1.1158"
+
+	EnvDisableIncrementalSync = "GOVIM_DISABLE_INCREMENTALSYNC"
+	MinVimIncrementalSync     = "v8.1.1419"
 )
 
 var (
@@ -49,10 +51,10 @@ var (
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{
 		NeovimVersion("v0.3.5"),
-		VimVersion("v8.1.1158"),
-		GvimVersion("v8.1.1158"),
-		VimVersion("v8.1.1389"),
-		GvimVersion("v8.1.1389"),
+		VimVersion(MinVimGovim),
+		GvimVersion(MinVimGovim),
+		VimVersion(MinVimIncrementalSync),
+		GvimVersion(MinVimIncrementalSync),
 	}
 )
 

@@ -356,7 +356,4 @@ function s:applyVimEdits(batch)
       throw "Unknown edit type ".e.Type
     endif
   endfor
-  if a:batch.Flush
-    call listener_flush(a:batch.BufNr)
-  endif
 endfunction
