@@ -18,6 +18,60 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
+// FileIdentity uniquely identifies a file at a version from a FileSystem.
+type FileIdentity struct {
+	URI     span.URI
+	Version string
+}
+
+// FileHandle represents a handle to a specific version of a single file from
+// a specific file system.
+type FileHandle interface {
+	// FileSystem returns the file system this handle was acquired from.
+	FileSystem() FileSystem
+	// Return the Identity for the file.
+	Identity() FileIdentity
+	// Read reads the contents of a file and returns it along with its hash
+	// value.
+	// If the file is not available, retruns a nil slice and an error.
+	Read(ctx context.Context) ([]byte, string, error)
+}
+
+// FileSystem is the interface to something that provides file contents.
+type FileSystem interface {
+	// GetFile returns a handle for the specified file.
+	GetFile(uri span.URI) FileHandle
+}
+
+// ParseGoHandle represents a handle to the ast for a file.
+type ParseGoHandle interface {
+	// File returns a file handle to get the ast for.
+	File() FileHandle
+	// Mode returns the parse mode of this handle.
+	Mode() ParseMode
+	// Parse returns the parsed AST for the file.
+	// If the file is not available, returns nil and an error.
+	Parse(ctx context.Context) (*ast.File, error)
+}
+
+// ParseMode controls the content of the AST produced when parsing a source file.
+type ParseMode int
+
+const (
+	// ParseHeader specifies that the main package declaration and imports are needed.
+	// This is the mode used when attempting to examine the package graph structure.
+	ParseHeader = ParseMode(iota)
+	// ParseExported specifies that the public symbols are needed, but things like
+	// private symbols and function bodies are not.
+	// This mode is used for things where a package is being consumed only as a
+	// dependency.
+	ParseExported
+	// ParseFull specifies the full AST is needed.
+	// This is used for files of direct interest where the entire contents must
+	// be considered.
+	ParseFull
+)
+
 // Cache abstracts the core logic of dealing with the environment from the
 // higher level logic that processes the information to produce results.
 // The cache provides access to files and their contents, so the source
@@ -26,11 +80,17 @@ import (
 // sharing between all consumers.
 // A cache may have many active sessions at any given time.
 type Cache interface {
+	// A FileSystem that reads file contents from external storage.
+	FileSystem
+
 	// NewSession creates a new Session manager and returns it.
 	NewSession(log xlog.Logger) Session
 
 	// FileSet returns the shared fileset used by all files in the system.
 	FileSet() *token.FileSet
+
+	// Parse returns a ParseHandle for the given file handle.
+	ParseGo(FileHandle, ParseMode) ParseGoHandle
 }
 
 // Session represents a single connection from a client.
@@ -58,6 +118,25 @@ type Session interface {
 
 	// Shutdown the session and all views it has created.
 	Shutdown(ctx context.Context)
+
+	// A FileSystem prefers the contents from overlays, and falls back to the
+	// content from the underlying cache if no overlay is present.
+	FileSystem
+
+	// DidOpen is invoked each time a file is opened in the editor.
+	DidOpen(uri span.URI)
+
+	// DidSave is invoked each time an open file is saved in the editor.
+	DidSave(uri span.URI)
+
+	// DidClose is invoked each time an open file is closed in the editor.
+	DidClose(uri span.URI)
+
+	// IsOpen can be called to check if the editor has a file currently open.
+	IsOpen(uri span.URI) bool
+
+	// Called to set the effective contents of a file from this session.
+	SetOverlay(uri span.URI, data []byte)
 }
 
 // View represents a single workspace.
@@ -92,6 +171,9 @@ type View interface {
 	// SetEnv is used to adjust the environment applied to the view.
 	SetEnv([]string)
 
+	// SetBuildFlags is used to adjust the build flags applied to the view.
+	SetBuildFlags([]string)
+
 	// Shutdown closes this view, and detaches it from it's session.
 	Shutdown(ctx context.Context)
 
@@ -103,7 +185,7 @@ type View interface {
 type File interface {
 	URI() span.URI
 	View() View
-	GetContent(ctx context.Context) []byte
+	Handle(ctx context.Context) FileHandle
 	FileSet() *token.FileSet
 	GetToken(ctx context.Context) *token.File
 }
@@ -111,12 +193,28 @@ type File interface {
 // GoFile represents a Go source file that has been type-checked.
 type GoFile interface {
 	File
+
+	// GetAnyAST returns an AST that may or may not contain function bodies.
+	// It should be used in scenarios where function bodies are not necessary.
+	GetAnyAST(ctx context.Context) *ast.File
+
+	// GetAST returns the full AST for the file.
 	GetAST(ctx context.Context) *ast.File
+
+	// GetPackage returns the package that this file belongs to.
 	GetPackage(ctx context.Context) Package
 
 	// GetActiveReverseDeps returns the active files belonging to the reverse
 	// dependencies of this file's package.
 	GetActiveReverseDeps(ctx context.Context) []GoFile
+}
+
+type ModFile interface {
+	File
+}
+
+type SumFile interface {
+	File
 }
 
 // Package represents a Go package that has been type-checked. It maintains
