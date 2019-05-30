@@ -299,7 +299,7 @@ func (g *govimplugin) doIncrementalSync() bool {
 	if g.Flavor() != govim.FlavorVim && g.Flavor() != govim.FlavorGvim {
 		return false
 	}
-	if semver.Compare(g.Version(), testsetup.MinVimIncrementalSyncExperiment) < 0 {
+	if semver.Compare(g.Version(), testsetup.MinVimIncrementalSync) < 0 {
 		return false
 	}
 	if os.Getenv(testsetup.EnvDisableIncrementalSync) == "true" {
