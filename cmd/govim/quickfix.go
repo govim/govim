@@ -7,7 +7,6 @@ import (
 	"sort"
 
 	"github.com/myitcv/govim"
-	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 	"github.com/myitcv/govim/cmd/govim/types"
 )
@@ -20,15 +19,6 @@ type quickfixEntry struct {
 }
 
 func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string) error {
-	return v.updateQuickfix()
-}
-
-func (v *vimstate) autoUpdateQuickfix(args ...json.RawMessage) error {
-	// TODO this double round-trip is not very efficient
-	if v.ParseInt(v.ChannelExprf("exists(%q)", config.GlobalQuickfixAutoDiagnosticsDisable)) != 0 &&
-		v.ParseInt(v.ChannelExpr(config.GlobalQuickfixAutoDiagnosticsDisable)) != 0 {
-		return nil
-	}
 	return v.updateQuickfix()
 }
 
