@@ -22,6 +22,7 @@ import (
 
 	"github.com/kr/pty"
 	"github.com/myitcv/govim/testdriver"
+	"github.com/myitcv/govim/testsetup"
 	"github.com/rogpeppe/go-internal/testscript"
 	"gopkg.in/retry.v1"
 )
@@ -88,10 +89,13 @@ func TestScripts(t *testing.T) {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
 				errLog := new(lockingBuffer)
-				td.Log = io.MultiWriter(
+				outputs := []io.Writer{
 					errLog,
-					// os.Stderr,
-				)
+				}
+				if os.Getenv(testsetup.EnvTestscriptStderr) == "true" {
+					outputs = append(outputs, os.Stderr)
+				}
+				td.Log = io.MultiWriter(outputs...)
 				e.Values[keyErrLog] = errLog
 				if *fLogGovim {
 					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
