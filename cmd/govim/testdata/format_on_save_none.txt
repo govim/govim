@@ -5,6 +5,7 @@ vim call 'govim#config#Set' '["FormatOnSave", ""]'
 vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.orig
+goplslogcount 0
 
 -- go.mod --
 module mod.com

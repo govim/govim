@@ -3,6 +3,7 @@
 vim normal '\"=GOVIMHello()\u000dp'
 vim ex 'w test'
 cmp test test.golden
+goplslogcount 0
 
 -- test.golden --
 Hello from function

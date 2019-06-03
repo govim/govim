@@ -12,11 +12,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/kr/pretty"
 	"github.com/kr/pty"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/testdriver"
 	"github.com/myitcv/govim/testsetup"
 	"github.com/rogpeppe/go-internal/testscript"
@@ -56,8 +60,9 @@ func TestScripts(t *testing.T) {
 		testscript.Run(t, testscript.Params{
 			Dir: "testdata",
 			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
-				"sleep":       testdriver.Sleep,
-				"errlogmatch": testdriver.ErrLogMatch,
+				"sleep":         testdriver.Sleep,
+				"errlogmatch":   testdriver.ErrLogMatch,
+				"goplslogcount": goplsLogCount,
 			},
 			Condition: testdriver.Condition,
 			Setup: func(e *testscript.Env) error {
@@ -183,4 +188,55 @@ func execvim() int {
 		return 1
 	}
 	return 0
+}
+
+func goplsLogCount(ts *testscript.TestScript, neg bool, args []string) {
+	if neg {
+		ts.Fatalf("goplsErrCount does not support neg")
+	}
+	errLogV := ts.Value(testdriver.KeyErrLog)
+	if errLogV == nil {
+		ts.Fatalf("errlogmatch failed to find %v value", testdriver.KeyErrLog)
+	}
+	errLog, ok := errLogV.(*testdriver.LockingBuffer)
+	if !ok {
+		ts.Fatalf("errlogmatch %v was not the right type", testdriver.KeyErrLog)
+	}
+
+	fs := flag.NewFlagSet("goplslogcount", flag.ContinueOnError)
+	fLevel := fs.String("level", "Error", "the log MessageType to search for")
+	if err := fs.Parse(args); err != nil {
+		ts.Fatalf("goplslogcount: failed to parse args %v: %v", args, err)
+	}
+
+	mt := protocol.ParseMessageType(*fLevel)
+	if mt == 0 {
+		ts.Fatalf("failed to parse MessageType from %q", *fLevel)
+	}
+
+	if len(fs.Args()) != 1 {
+		ts.Fatalf("goplslogcount expects a single argument, the expected count of errors")
+	}
+
+	want, err := strconv.Atoi(fs.Args()[0])
+	if err != nil {
+		ts.Fatalf("goplslogcount failed to parse expected count from %q: %v", fs.Args()[0], err)
+	}
+
+	logErr := fmt.Sprintf(`LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*`, int(mt))
+	reg, err := regexp.Compile(logErr)
+	if err != nil {
+		ts.Fatalf("goplslogcount failed to regexp.Compile %q: %v", logErr, err)
+	}
+
+	all, _ := errLog.Bytes()
+	matches := reg.FindAll(all, -1)
+	if got := len(matches); got != want {
+		// we found a match and were expecting it
+		var matchStrings []string
+		for _, m := range matches {
+			matchStrings = append(matchStrings, string(m))
+		}
+		ts.Fatalf("goplslogcount: expected %v errors, got %v: %v", want, got, pretty.Sprint(matchStrings))
+	}
 }
