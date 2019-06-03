@@ -1,7 +1,7 @@
-# Test that g:govim_format_on_save="" works
+# Test that govim#config#Set("FormatOnSave", "") works
 
 cp file.go.orig file.go
-vim ex 'let g:govim_format_on_save=\"\"'
+vim call 'govim#config#Set' '["FormatOnSave", ""]'
 vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.orig

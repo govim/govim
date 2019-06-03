@@ -1,4 +1,4 @@
-# Test that g:govim_format_on_save="gofmt" and GOVIMGoFmt work
+# Test that govim#config#Set("FormatOnSave", "gofmt") and GOVIMGoFmt work
 
 # We need to skip this entire test for now because of flakey Formatting method
 skip 'Temporarily disable pending https://github.com/golang/go/issues/31759'
@@ -21,7 +21,7 @@ cmp file.go file.go.gofmt
 
 # Format on save
 cp file.go.orig file.go
-vim ex 'let g:govim_format_on_save=\"gofmt\"'
+vim call govim#config#Set '["FormatOnSave", "gofmt"]'
 vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.gofmt

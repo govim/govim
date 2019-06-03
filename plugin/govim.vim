@@ -82,7 +82,7 @@ function s:callbackAutoCommand(name, exprs)
 endfunction
 
 function s:doShutdown()
-  if s:govim_status != "initcomplete"
+  if s:govim_status != "loaded" && s:govim_status != "initcomplete"
     " TODO anything to do here other than return?
     return
   endif

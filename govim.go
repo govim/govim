@@ -123,6 +123,18 @@ type Govim interface {
 	// Version returns the semver version of the editor to which the Govim
 	// instance is connected
 	Version() string
+
+	// Loaded returns a channel that can be used to wait until a Govim instance
+	// has finished loading. The Init phase will follow a successful load.
+	Loaded() chan struct{}
+
+	// Initialized returns a channel that can be used to wait until a Govim
+	// instance has completed the init phase, post loading.
+	Initialized() chan struct{}
+
+	// Shutdown returns a channel that can be used to wait until a Govim
+	// instance has completed the shutdown phase.
+	Shutdown() chan struct{}
 }
 
 type govimImpl struct {
@@ -146,7 +158,9 @@ type govimImpl struct {
 
 	autocmdNextID int
 
-	loaded chan bool
+	loaded      chan struct{}
+	initialized chan struct{}
+	shutdown    chan struct{}
 
 	eventQueue *queue.Queue
 	tomb       tomb.Tomb
@@ -180,7 +194,9 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, e
 
 		plugin: plug,
 
-		loaded: make(chan bool),
+		loaded:      make(chan struct{}),
+		initialized: make(chan struct{}),
+		shutdown:    make(chan struct{}),
 
 		flushEvents: make(chan struct{}),
 
@@ -202,7 +218,10 @@ func (g *govimImpl) Schedule(f func(Govim) error) chan struct{} {
 	g.eventQueue.Add(func() error {
 		defer func() {
 			close(done)
-			g.flushEvents <- struct{}{}
+			select {
+			case <-g.tomb.Dying():
+			case g.flushEvents <- struct{}{}:
+			}
 		}()
 		return f(g.Scheduled())
 	})
@@ -212,7 +231,7 @@ func (g *govimImpl) Schedule(f func(Govim) error) chan struct{} {
 func (g *govimImpl) goHandleShutdown(f func() error) {
 	g.tomb.Go(func() error {
 		defer func() {
-			if r := recover(); r != nil && r != ErrShuttingDown {
+			if r := recover(); r != nil && r != ErrShuttingDown && r != tomb.ErrDying {
 				panic(r)
 			}
 		}()
@@ -282,6 +301,7 @@ func (g *govimImpl) load() error {
 		}
 	}
 
+	close(g.initialized)
 	return nil
 }
 
@@ -331,11 +351,16 @@ func (g *govimImpl) Run() error {
 		return nil
 	})
 	g.tomb.Kill(err)
+	var shutdownErr error
 	if g.plugin != nil {
-		return g.plugin.Shutdown()
+		shutdownErr = g.plugin.Shutdown()
+		close(g.shutdown)
 	}
 	if g.pluginErrCh != nil {
 		close(g.pluginErrCh)
+	}
+	if shutdownErr != nil {
+		return shutdownErr
 	}
 	if err := g.tomb.Wait(); err != nil {
 		return err
@@ -844,6 +869,18 @@ func (g *govimImpl) Version() string {
 
 func (g *govimImpl) Flavor() Flavor {
 	return g.flavor
+}
+
+func (g *govimImpl) Loaded() chan struct{} {
+	return g.loaded
+}
+
+func (g *govimImpl) Initialized() chan struct{} {
+	return g.initialized
+}
+
+func (g *govimImpl) Shutdown() chan struct{} {
+	return g.shutdown
 }
 
 type errProto struct {

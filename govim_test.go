@@ -62,7 +62,9 @@ func TestScripts(t *testing.T) {
 					td.Log = tf
 					t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
 				}
-				td.Run()
+				if err := td.Run(); err != nil {
+					t.Fatalf("failed to run TestDriver: %v", err)
+				}
 				waitLock.Lock()
 				waitList = append(waitList, td.Wait)
 				waitLock.Unlock()

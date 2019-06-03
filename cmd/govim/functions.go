@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/myitcv/govim"
+	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 	"github.com/myitcv/govim/cmd/govim/types"
@@ -36,6 +37,21 @@ type vimstate struct {
 	// returns the matching words. This is by definition stateful. Hence we persist that
 	// state here
 	lastCompleteResults *protocol.CompletionList
+
+	config config.Config
+}
+
+func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
+	var c struct {
+		FormatOnSave                   config.FormatOnSave
+		QuickfixAutoDiagnosticsDisable int
+	}
+	v.Parse(args[0], &c)
+	v.config = config.Config{
+		FormatOnSave:                   c.FormatOnSave,
+		QuickfixAutoDiagnosticsDisable: c.QuickfixAutoDiagnosticsDisable != 0,
+	}
+	return nil, nil
 }
 
 func (v *vimstate) hello(args ...json.RawMessage) (interface{}, error) {

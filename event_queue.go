@@ -67,7 +67,7 @@ func (e eventQueueInst) handleUserQValueAndError(ch scheduledCallback, err error
 	case e.flushEvents <- struct{}{}:
 		select {
 		case <-e.govimImpl.tomb.Dying():
-			return nil, tomb.ErrDying
+			panic(tomb.ErrDying)
 		case resp := <-ch:
 			if resp.errString != "" {
 				args = append(args, resp.errString)

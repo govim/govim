@@ -25,14 +25,14 @@ func (v *vimstate) formatCurrentBuffer(args ...json.RawMessage) (err error) {
 	if !ok {
 		return fmt.Errorf("failed to resolve buffer %v", currBufNr)
 	}
-	tool := config.FormatOnSave(v.ParseString(v.ChannelExpr(config.GlobalFormatOnSave)))
+	tool := v.config.FormatOnSave
 	// TODO we should move this validation elsewhere...
 	switch tool {
 	case config.FormatOnSaveNone:
 		return nil
 	case config.FormatOnSaveGoFmt, config.FormatOnSaveGoImports:
 	default:
-		return fmt.Errorf("unknown format tool specified for %v: %v", config.GlobalFormatOnSave, tool)
+		return fmt.Errorf("unknown format tool specified: %v", tool)
 	}
 	return v.formatBufferRange(b, tool, govim.CommandFlags{})
 }
@@ -114,7 +114,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			return fmt.Errorf("don't know how to handle %v actions", len(actions))
 		}
 	default:
-		return fmt.Errorf("unknown format mode specified for %v: %v", config.GlobalFormatOnSave, mode)
+		return fmt.Errorf("unknown format mode specified: %v", mode)
 	}
 
 	// see :help wundo. The use of wundo! is significant. It first deletes

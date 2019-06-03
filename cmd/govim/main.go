@@ -28,6 +28,10 @@ import (
 	"github.com/rogpeppe/go-internal/semver"
 )
 
+const (
+	PluginPrefix = "GOVIM"
+)
+
 var (
 	fTail = flag.Bool("tail", false, "whether to also log output to stdout")
 
@@ -145,7 +149,7 @@ type govimplugin struct {
 }
 
 func newplugin(goplspath string) *govimplugin {
-	d := plugin.NewDriver("GOVIM")
+	d := plugin.NewDriver(PluginPrefix)
 	res := &govimplugin{
 		goplspath: goplspath,
 		Driver:    d,
@@ -182,6 +186,8 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandGoImports), g.goimportsCurrentBufferRange, govim.RangeFile)
 	g.DefineCommand(string(config.CommandQuickfixDiagnostics), g.quickfixDiagnostics)
 	g.DefineFunction(string(config.FunctionBufChanged), []string{"bufnr", "start", "end", "added", "changes"}, g.bufChanged)
+	g.DefineFunction(string(config.FunctionSetConfig), []string{"config"}, g.setConfig)
+	g.ChannelExf(`call govim#config#Set("_internal_Func", function("%v%v"))`, PluginPrefix, config.FunctionSetConfig)
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 

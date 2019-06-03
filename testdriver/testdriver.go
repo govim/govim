@@ -38,7 +38,7 @@ type TestDriver struct {
 
 	name string
 
-	plugin signallingPlugin
+	plugin govim.Plugin
 
 	quitVim    chan bool
 	quitGovim  chan bool
@@ -66,7 +66,7 @@ func NewTestDriver(name string, govimPath, testHomePath, testPluginPath string, 
 
 		name: name,
 
-		plugin: newSignallingPlugin(plug),
+		plugin: plug,
 	}
 	gl, err := net.Listen("tcp4", "localhost:0")
 	if err != nil {
@@ -145,13 +145,17 @@ func copyFile(dst, src string) error {
 	return w.Close()
 }
 
-func (d *TestDriver) Run() {
+func (d *TestDriver) Run() error {
 	d.tombgo(d.runVim)
-	d.tombgo(d.listenGovim)
+	if err := d.listenGovim(); err != nil {
+		return err
+	}
 	select {
 	case <-d.tomb.Dying():
-	case <-d.plugin.initDone:
+		return d.tomb.Err()
+	case <-d.govim.Initialized():
 	}
+	return nil
 }
 
 func (d *TestDriver) Wait() error {
@@ -561,25 +565,4 @@ func Condition(cond string) (bool, error) {
 	}
 
 	panic("should not reach here")
-}
-
-type signallingPlugin struct {
-	u        govim.Plugin
-	initDone chan bool
-}
-
-func newSignallingPlugin(g govim.Plugin) signallingPlugin {
-	return signallingPlugin{
-		u:        g,
-		initDone: make(chan bool),
-	}
-}
-
-func (s signallingPlugin) Init(d govim.Govim, errCh chan error) error {
-	defer close(s.initDone)
-	return s.u.Init(d, errCh)
-}
-
-func (s signallingPlugin) Shutdown() error {
-	return s.u.Shutdown()
 }
