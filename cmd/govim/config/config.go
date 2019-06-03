@@ -38,12 +38,10 @@ const (
 	// working.
 	CommandHello Command = "Hello"
 
-	// CommandGoFmt applies gofmt to the selected range, or the entire file if
-	// no range is provided
+	// CommandGoFmt applies gofmt to the entire buffer
 	CommandGoFmt Command = "GoFmt"
 
-	// CommandGoImports applies goimports to the selected range, or the entire
-	// file if no range is provided
+	// CommandGoImports applies goimports to the entire buffer
 	CommandGoImports Command = "GoImports"
 
 	// CommandQuickfixDiagnostics populates the quickfix window with the current
