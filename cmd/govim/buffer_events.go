@@ -72,7 +72,7 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 		return nil, nil
 	}
 
-	contents := bytes.Split(b.Contents[:len(b.Contents)-1], []byte("\n"))
+	contents := bytes.Split(b.Contents()[:len(b.Contents())-1], []byte("\n"))
 	b.Version++
 
 	params := &protocol.DidChangeTextDocumentParams{
@@ -107,7 +107,7 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 		params.ContentChanges = append(params.ContentChanges, change)
 	}
 	// add back trailing newline
-	b.Contents = append(bytes.Join(contents, []byte("\n")), '\n')
+	b.SetContents(append(bytes.Join(contents, []byte("\n")), '\n'))
 	return nil, v.server.DidChange(context.Background(), params)
 }
 
@@ -119,7 +119,7 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 			TextDocument: protocol.TextDocumentItem{
 				URI:     string(b.URI()),
 				Version: float64(b.Version),
-				Text:    string(b.Contents),
+				Text:    string(b.Contents()),
 			},
 		}
 		err := v.server.DidOpen(context.Background(), params)
@@ -133,7 +133,7 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 		},
 		ContentChanges: []protocol.TextDocumentContentChangeEvent{
 			{
-				Text: string(b.Contents),
+				Text: string(b.Contents()),
 			},
 		},
 	}

@@ -20,12 +20,7 @@ func (v *vimstate) currentBufferInfo(expr json.RawMessage) *types.Buffer {
 		Contents string
 	}
 	v.Parse(expr, &buf)
-	res := &types.Buffer{
-		Num:      buf.Num,
-		Name:     buf.Name,
-		Contents: []byte(buf.Contents),
-	}
-	return res
+	return types.NewBuffer(buf.Num, buf.Name, []byte(buf.Contents))
 }
 
 func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {

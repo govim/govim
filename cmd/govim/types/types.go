@@ -16,12 +16,29 @@ import (
 type Buffer struct {
 	Num      int
 	Name     string
-	Contents []byte
+	contents []byte
 	Version  int
 	Listener int
 
 	// cc is lazily set whenever position information is required
 	cc *span.TokenConverter
+}
+
+func NewBuffer(num int, name string, contents []byte) *Buffer {
+	return &Buffer{
+		Num:      num,
+		Name:     name,
+		contents: contents,
+	}
+}
+
+func (b *Buffer) Contents() []byte {
+	return b.contents
+}
+
+func (b *Buffer) SetContents(cs []byte) {
+	b.contents = cs
+	b.cc = nil
 }
 
 // A WatchedFile is a file we are watching but that is not loaded as a buffer
@@ -51,7 +68,7 @@ func (b *Buffer) ToTextDocumentIdentifier() protocol.TextDocumentIdentifier {
 
 func (b *Buffer) tokenConvertor() *span.TokenConverter {
 	if b.cc == nil {
-		b.cc = span.NewContentConverter(b.Name, b.Contents)
+		b.cc = span.NewContentConverter(b.Name, b.contents)
 	}
 	return b.cc
 }
@@ -84,7 +101,7 @@ func PointFromVim(b *Buffer, line, col int) (Point, error) {
 		return Point{}, fmt.Errorf("failed to calculate offset within buffer %v: %v", b.Num, err)
 	}
 	p := span.NewPoint(line, col, off)
-	utf16col, err := span.ToUTF16Column(p, b.Contents)
+	utf16col, err := span.ToUTF16Column(p, b.contents)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate UTF16 char value: %v", err)
 	}
@@ -106,7 +123,7 @@ func PointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 		return Point{}, fmt.Errorf("failed to calculate offset within buffer %v: %v", b.Num, err)
 	}
 	p := span.NewPoint(sline, 1, soff)
-	p, err = span.FromUTF16Column(p, scol+1, b.Contents)
+	p, err = span.FromUTF16Column(p, scol+1, b.contents)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to translate char colum for buffer %v: %v", b.Num, err)
 	}
