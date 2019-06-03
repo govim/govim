@@ -64,11 +64,7 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 				continue
 			}
 			// create a temp buffer
-			buf = &types.Buffer{
-				Num:      -1,
-				Name:     fn,
-				Contents: byts,
-			}
+			buf = types.NewBuffer(-1, fn, byts)
 		}
 		// make fn relative for reporting purposes
 		fn, err = filepath.Rel(cwd, fn)
