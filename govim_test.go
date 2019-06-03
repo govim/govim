@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/internal/plugin"
 	"github.com/myitcv/govim/testdriver"
+	"github.com/myitcv/govim/testsetup"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
@@ -40,7 +42,8 @@ func TestScripts(t *testing.T) {
 		testscript.Run(t, testscript.Params{
 			Dir: "testdata",
 			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
-				"sleep": testdriver.Sleep,
+				"sleep":       testdriver.Sleep,
+				"errlogmatch": testdriver.ErrLogMatch,
 			},
 			Condition: testdriver.Condition,
 			Setup: func(e *testscript.Env) error {
@@ -54,6 +57,15 @@ func TestScripts(t *testing.T) {
 				if err != nil {
 					t.Fatalf("failed to create new driver: %v", err)
 				}
+				errLog := new(testdriver.LockingBuffer)
+				outputs := []io.Writer{
+					errLog,
+				}
+				if os.Getenv(testsetup.EnvTestscriptStderr) == "true" {
+					outputs = append(outputs, os.Stderr)
+				}
+				td.Log = io.MultiWriter(outputs...)
+				e.Values[testdriver.KeyErrLog] = errLog
 				if *fLogGovim {
 					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
 					if err != nil {

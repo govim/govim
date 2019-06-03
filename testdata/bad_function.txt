@@ -1,0 +1,10 @@
+# Test the handling of functions that return errors
+
+# call a bad function
+! errlogmatch 'recvJSONMsg:.*got error whilst handling Bad'
+vim -bang expr 'Bad()'
+! stdout .+
+stderr '^\Qfailed to expr(Bad()) in Vim: Caught ''got error whilst handling Bad: this is a bad function''\E'
+errlogmatch 'recvJSONMsg:.*got error whilst handling Bad'
+! errlogmatch 'recvJSONMsg:.*got error whilst handling Bad'
+errlogmatch -start 'recvJSONMsg:.*got error whilst handling Bad'
