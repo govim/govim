@@ -30,7 +30,7 @@ func (g *govimplugin) Telemetry(context.Context, interface{}) error {
 	panic("not implemented yet")
 }
 func (g *govimplugin) RegisterCapability(ctxt context.Context, params *protocol.RegistrationParams) error {
-	g.Logf("RegisterCapability: %v", pretty.Sprint(params))
+	g.logGoplsClientf("RegisterCapability: %v", pretty.Sprint(params))
 	return nil
 }
 func (g *govimplugin) UnregisterCapability(context.Context, *protocol.UnregistrationParams) error {
@@ -40,7 +40,7 @@ func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFol
 	panic("not implemented yet")
 }
 func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ConfigurationParams) ([]interface{}, error) {
-	g.Logf("Configuration: %v", pretty.Sprint(params))
+	g.logGoplsClientf("Configuration: %v", pretty.Sprint(params))
 	// Assert based on the current behaviour of gopls
 	want := 1
 	if got := len(params.Items); want != got {
