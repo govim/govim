@@ -1,8 +1,5 @@
 # Test that govim#config#Set("FormatOnSave", "gofmt") and GOVIMGoFmt work
 
-# We need to skip this entire test for now because of flakey Formatting method
-skip 'Temporarily disable pending https://github.com/golang/go/issues/31759'
-
 # :GOVIMGoFmt whole file
 cp file.go.orig file.go
 vim ex 'e! file.go'
