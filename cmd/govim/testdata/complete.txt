@@ -7,7 +7,7 @@ vim ex 'call cursor(11,17)'
 vim ex 'call feedkeys(\"i\\<C-X>\\<C-O>\\<C-N>\\<ESC>\", \"xt\")'
 vim ex 'w'
 cmp main.go main.go.golden
-goplslogcount 0
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 -- go.mod --
 module mod.com

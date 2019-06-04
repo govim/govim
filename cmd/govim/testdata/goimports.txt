@@ -18,7 +18,7 @@ vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.goimports
 
-goplslogcount 0
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 # Format on save (bad syntax)
 cp file.go.bad file.go
@@ -29,7 +29,7 @@ vim expr 'getqflist()'
 stdout '^\Q[{"bufnr":1,"col":1,"lnum":3,"module":"","nr":0,"pattern":"","text":"expected declaration, found blah","type":"","valid":1,"vcol":0}]\E$'
 ! stderr .+
 
-goplslogcount 0
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
 
@@ -40,7 +40,7 @@ vim ex '3,5GOVIMGoImports'
 vim ex 'noautocmd w'
 cmp file.go file.go.goimports
 
-goplslogcount 0
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 -- go.mod --
 module mod.com

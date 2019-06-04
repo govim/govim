@@ -576,7 +576,7 @@ func Condition(cond string) (bool, error) {
 type LockingBuffer struct {
 	lock     sync.Mutex
 	und      bytes.Buffer
-	lastRead []byte
+	LastRead []byte
 }
 
 func (l *LockingBuffer) Write(p []byte) (n int, err error) {
@@ -585,13 +585,10 @@ func (l *LockingBuffer) Write(p []byte) (n int, err error) {
 	return l.und.Write(p)
 }
 
-func (l *LockingBuffer) Bytes() ([]byte, []byte) {
+func (l *LockingBuffer) Bytes() []byte {
 	l.lock.Lock()
 	defer l.lock.Unlock()
-	all := l.und.Bytes()
-	sinceLast := bytes.TrimPrefix(all, l.lastRead)
-	l.lastRead = all
-	return all, sinceLast
+	return l.und.Bytes()
 }
 
 func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
@@ -606,9 +603,24 @@ func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
 
 	fs := flag.NewFlagSet("errlogmatch", flag.ContinueOnError)
 	fStart := fs.Bool("start", false, "search from beginning, not last snapshot")
+	fLeaveLastRead := fs.Bool("leavelast", false, "do not adjust the LastRead field on the errlog")
 	fWait := fs.String("wait", "", "retry (with exp backoff) until this time period has elapsed")
+	fCount := fs.Int("count", -1, "number of instances to wait for/match")
 	if err := fs.Parse(args); err != nil {
 		ts.Fatalf("errlogmatch: failed to parse args %v: %v", args, err)
+	}
+
+	if *fWait != "" && neg {
+		ts.Fatalf("-wait is not compatible with negating the command")
+	}
+
+	switch {
+	case *fCount < 0:
+		// not active
+	default:
+		if neg {
+			ts.Fatalf("cannot use -count with negated match")
+		}
 	}
 
 	if len(fs.Args()) != 1 {
@@ -642,23 +654,39 @@ func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
 		strategy = retry.LimitCount(1, strategy)
 	}
 
+	var byts []byte
+	if !*fLeaveLastRead {
+		defer func() {
+			errLog.LastRead = byts
+		}()
+	}
+	var matches [][]byte
 	for a := retry.Start(strategy, nil); a.Next(); {
-		all, sinceLast := errLog.Bytes()
-		var toSearch []byte
-		if *fStart {
-			toSearch = all
-		} else {
-			toSearch = sinceLast
+		byts = errLog.Bytes()
+		toSearch := byts
+		if !*fStart {
+			toSearch = toSearch[len(errLog.LastRead):]
 		}
-		if reg.Find(toSearch) != nil {
-			if neg {
-				ts.Fatalf("errlogmatch found unexpected match")
+		matches = reg.FindAll(toSearch, -1)
+		if *fCount >= 0 {
+			if len(matches) == *fCount {
+				return
+			} else {
+				continue
 			}
-			// we found a match and were expecting it
+		}
+		if matches != nil {
+			if neg {
+				ts.Fatalf("errlogmatch found unexpected match (%q)", toSearch)
+			}
+			// we found a match or the correct count and were expecting it
 			return
 		}
 	}
 
+	if *fCount >= 0 {
+		ts.Fatalf("expected %v matches; found %v", *fCount, len(matches))
+	}
 	if !neg {
 		ts.Fatalf("errlogmatch failed to find match")
 	}

@@ -5,7 +5,7 @@ vim ex 'call cursor(6,6)'
 vim expr 'GOVIMHover()'
 stdout '^\Q"func fmt.Println(a ...interface{}) (n int, err error)"\E$'
 ! stderr .+
-goplslogcount 0
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 -- go.mod --
 module mod.com
