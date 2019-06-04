@@ -1,0 +1,55 @@
+# Test that we receive the expected number of diagnostics from gopls.
+#
+# We can't be sure of the order in which diagnostics will be received, hence
+# the first two waits both look from the start.
+
+[short] skip 'We do a long wait below'
+
+# Initial diagnostics
+vim ex 'e main1.go'
+errlogmatch -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main1.go
+errlogmatch -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main2.go
+
+# Make a non-error change. This is tricky because we aren't supposed
+# to receive any diagnostics. Hence we wait for an arbitrary period
+# of time and then check we have received no further diagnostics.
+vim ex 'call cursor(1,1)'
+vim ex 'call feedkeys(\"o// Hello\", \"xt\")'
+sleep $DEFAULT_ERRLOGMATCH_WAIT
+errlogmatch -count 1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main1.go
+errlogmatch -count 1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main2.go
+
+# Create an error
+vim ex 'call feedkeys(\"o/\", \"xt\")'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main1\.go","lnum":3,"col":1,"text":"expected declaration, found ''/''","buf":1\}\],"r"\]\]\]\]'
+vim ex 'copen'
+vim ex 'w! errors'
+vim ex 'cclose'
+cmp errors errors.intermediate.golden
+
+# Fix the error
+vim ex 'call feedkeys(\"A/ Goodbye\", \"xt\")'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\],"r"\]\]\]\]'
+vim ex 'w'
+cmp main1.go main1.go.res
+errlogmatch -count 3 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main1.go
+errlogmatch -count 1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main2.go
+vim ex 'copen'
+vim ex 'w! errors'
+vim ex 'cclose'
+cmp errors errors.empty.golden
+
+-- go.mod --
+module mod.com
+-- main1.go --
+package main
+-- main2.go --
+package main
+-- main1.go.res --
+package main
+
+// Hello
+// Goodbye
+-- errors.intermediate.golden --
+main1.go|3 col 1| expected declaration, found '/'
+-- errors.empty.golden --

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"strings"
 
 	"github.com/govim/govim"
@@ -170,19 +169,13 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 	g.logGoplsClientf("PublishDiagnostics callback: %v", pretty.Sprint(params))
 	g.diagnosticsChangedLock.Lock()
 	uri := span.URI(params.URI)
-	curr, ok := g.rawDiagnostics[uri]
+	_, ok := g.rawDiagnostics[uri]
 	g.rawDiagnostics[uri] = params
 	g.diagnosticsChanged = true
 	g.diagnosticsChangedQuickfix = true
 	g.diagnosticsChangedSigns = true
 	g.diagnosticsChangedLock.Unlock()
-	if !ok {
-		if len(params.Diagnostics) == 0 {
-			return nil
-		}
-	} else if reflect.DeepEqual(curr, params) {
-		// Whilst we await a solution https://github.com/golang/go/issues/32443
-		// use reflect.DeepEqual to avoid hard-coding the comparison
+	if !ok && len(params.Diagnostics) == 0 {
 		return nil
 	}
 
