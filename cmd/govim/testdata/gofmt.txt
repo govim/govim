@@ -6,6 +6,7 @@ vim ex 'e! file.go'
 vim ex 'GOVIMGoFmt'
 vim ex 'noautocmd w'
 cmp file.go file.go.gofmt
+goplslogcount 0
 
 skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
 
@@ -22,6 +23,7 @@ vim call govim#config#Set '["FormatOnSave", "gofmt"]'
 vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.gofmt
+goplslogcount 0
 
 -- go.mod --
 module mod.com

@@ -5,6 +5,7 @@ errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnostics
 vim ex 'copen'
 vim ex 'w errors'
 cmp errors errors.golden
+goplslogcount 0
 
 -- go.mod --
 module mod.com

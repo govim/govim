@@ -17,6 +17,7 @@ vim expr 'string([getcurpos()[1], getcurpos()[2]])'
 stdout '^\Q"[3, 7]"\E$'
 vim expr 'winlayout()'
 stdout '^\Q["col",[["leaf",1000],["leaf",1001]]]\E$'
+goplslogcount 0
 
 -- go.mod --
 module mod.com/p

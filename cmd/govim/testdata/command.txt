@@ -7,3 +7,4 @@ vim ex 'GOVIMHello'
 vim expr 'v:statusmsg'
 stdout '^\Q"Hello from command"\E$'
 ! stderr .+
+goplslogcount 0

@@ -17,6 +17,7 @@ vim ex 'e! file.go'
 vim ex 'GOVIMGoImports'
 vim ex 'noautocmd w'
 cmp file.go file.go.goimports
+goplslogcount 0
 
 skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
 
@@ -26,6 +27,7 @@ vim ex 'e! file.go'
 vim ex '3,5GOVIMGoImports'
 vim ex 'noautocmd w'
 cmp file.go file.go.goimports
+goplslogcount 0
 
 -- go.mod --
 module mod.com

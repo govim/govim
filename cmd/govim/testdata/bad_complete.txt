@@ -7,6 +7,7 @@
 vim ex 'e main.go'
 vim ex 'call cursor(5,1)'
 vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\", \"x\")'
+goplslogcount 0
 
 -- go.mod --
 module mod.com
