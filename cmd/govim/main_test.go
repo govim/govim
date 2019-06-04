@@ -204,6 +204,7 @@ func goplsLogCount(ts *testscript.TestScript, neg bool, args []string) {
 	}
 
 	fs := flag.NewFlagSet("goplslogcount", flag.ContinueOnError)
+	fStart := fs.Bool("start", false, "search from the start of the error log")
 	fLevel := fs.String("level", "Error", "the log MessageType to search for")
 	if err := fs.Parse(args); err != nil {
 		ts.Fatalf("goplslogcount: failed to parse args %v: %v", args, err)
@@ -229,8 +230,14 @@ func goplsLogCount(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("goplslogcount failed to regexp.Compile %q: %v", logErr, err)
 	}
 
-	all, _ := errLog.Bytes()
-	matches := reg.FindAll(all, -1)
+	all, sinceLast := errLog.Bytes()
+	var toSearch []byte
+	if *fStart {
+		toSearch = all
+	} else {
+		toSearch = sinceLast
+	}
+	matches := reg.FindAll(toSearch, -1)
 	if got := len(matches); got != want {
 		// we found a match and were expecting it
 		var matchStrings []string

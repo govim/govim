@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
@@ -83,7 +82,8 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			}
 			edits, err = v.server.RangeFormatting(context.Background(), params)
 			if err != nil {
-				return fmt.Errorf("failed to call gopls.RangeFormatting: %v\nParams were: %v", err, pretty.Sprint(params))
+				v.Logf("gopls.RangeFormatting returned an error; nothing to do")
+				return nil
 			}
 		} else {
 			params := &protocol.DocumentFormattingParams{
@@ -91,7 +91,8 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			}
 			edits, err = v.server.Formatting(context.Background(), params)
 			if err != nil {
-				return fmt.Errorf("failed to call gopls.Formatting: %v\nParams were: %v", err, pretty.Sprint(params))
+				v.Logf("gopls.Formatting returned an error; nothing to do")
+				return nil
 			}
 		}
 	case config.FormatOnSaveGoImports:
@@ -103,7 +104,8 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 		}
 		actions, err := v.server.CodeAction(context.Background(), params)
 		if err != nil {
-			return fmt.Errorf("failed to call gopls.CodeAction: %v\nParams were: %v", err, pretty.Sprint(params))
+			v.Logf("gopls.CodeAction returned an error; nothing to do")
+			return nil
 		}
 		switch len(actions) {
 		case 0:
