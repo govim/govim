@@ -4,19 +4,31 @@
 vim expr 'govim#config#Get().FormatOnSave'
 stdout '^"goimports"$'
 
-# goimports
-cp file.go.orig file.go
-vim call 'govim#config#Set' '["FormatOnSave", "goimports"]'
-vim ex 'e! file.go'
-vim ex 'w'
-cmp file.go file.go.goimports
-
 # :GOVIMGoImports whole file
 cp file.go.orig file.go
 vim ex 'e! file.go'
 vim ex 'GOVIMGoImports'
 vim ex 'noautocmd w'
 cmp file.go file.go.goimports
+
+# Format on save
+cp file.go.orig file.go
+vim call 'govim#config#Set' '["FormatOnSave", "goimports"]'
+vim ex 'e! file.go'
+vim ex 'w'
+cmp file.go file.go.goimports
+
+goplslogcount 0
+
+# Format on save (bad syntax)
+cp file.go.bad file.go
+vim ex 'e! file.go'
+vim ex 'w'
+cmp file.go file.go.bad
+vim expr 'getqflist()'
+stdout '^\Q[{"bufnr":1,"col":1,"lnum":3,"module":"","nr":0,"pattern":"","text":"expected declaration, found blah","type":"","valid":1,"vcol":0}]\E$'
+! stderr .+
+
 goplslogcount 0
 
 skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
@@ -27,6 +39,7 @@ vim ex 'e! file.go'
 vim ex '3,5GOVIMGoImports'
 vim ex 'noautocmd w'
 cmp file.go file.go.goimports
+
 goplslogcount 0
 
 -- go.mod --
@@ -39,6 +52,10 @@ const ( x = 5
 y = os.PathSeparator
  )
 
+-- file.go.bad --
+package blah
+
+blah
 -- file.go.goimports --
 package blah
 
