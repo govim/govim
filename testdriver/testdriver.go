@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,7 +23,12 @@ import (
 	"github.com/myitcv/govim/testsetup"
 	"github.com/rogpeppe/go-internal/semver"
 	"github.com/rogpeppe/go-internal/testscript"
+	"gopkg.in/retry.v1"
 	"gopkg.in/tomb.v2"
+)
+
+const (
+	KeyErrLog = "errLog"
 )
 
 // TODO - this code is a mess and needs to be fixed
@@ -565,4 +571,96 @@ func Condition(cond string) (bool, error) {
 	}
 
 	panic("should not reach here")
+}
+
+type LockingBuffer struct {
+	lock     sync.Mutex
+	und      bytes.Buffer
+	lastRead []byte
+}
+
+func (l *LockingBuffer) Write(p []byte) (n int, err error) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	return l.und.Write(p)
+}
+
+func (l *LockingBuffer) Bytes() ([]byte, []byte) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	all := l.und.Bytes()
+	sinceLast := bytes.TrimPrefix(all, l.lastRead)
+	l.lastRead = all
+	return all, sinceLast
+}
+
+func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
+	errLogV := ts.Value(KeyErrLog)
+	if errLogV == nil {
+		ts.Fatalf("errlogmatch failed to find %v value", KeyErrLog)
+	}
+	errLog, ok := errLogV.(*LockingBuffer)
+	if !ok {
+		ts.Fatalf("errlogmatch %v was not the right type", KeyErrLog)
+	}
+
+	fs := flag.NewFlagSet("errlogmatch", flag.ContinueOnError)
+	fStart := fs.Bool("start", false, "search from beginning, not last snapshot")
+	fWait := fs.String("wait", "", "retry (with exp backoff) until this time period has elapsed")
+	if err := fs.Parse(args); err != nil {
+		ts.Fatalf("errlogmatch: failed to parse args %v: %v", args, err)
+	}
+
+	if len(fs.Args()) != 1 {
+		ts.Fatalf("errlogmatch expects a single argument, the regexp to search for")
+	}
+
+	reg, err := regexp.Compile(fs.Args()[0])
+	if err != nil {
+		ts.Fatalf("errlogmatch failed to regexp.Compile %q: %v", fs.Args()[0], err)
+	}
+
+	wait := time.Duration(0)
+	if *fWait != "" {
+		pwait, err := time.ParseDuration(*fWait)
+		if err != nil {
+			ts.Fatalf("errlogmatch: failed to parse -maxwait duration %q: %v", *fWait, err)
+		}
+		wait = pwait
+	}
+
+	strategy := retry.LimitTime(wait,
+		retry.Exponential{
+			Initial: 10 * time.Millisecond,
+			Factor:  1.5,
+		},
+	)
+
+	// If we are not waiting, limit to one-shot (i.e. effectively negate the effect of
+	// the retry
+	if *fWait == "" {
+		strategy = retry.LimitCount(1, strategy)
+	}
+
+	for a := retry.Start(strategy, nil); a.Next(); {
+		all, sinceLast := errLog.Bytes()
+		var toSearch []byte
+		if *fStart {
+			toSearch = all
+		} else {
+			toSearch = sinceLast
+		}
+		if reg.Find(toSearch) != nil {
+			if neg {
+				ts.Fatalf("errlogmatch found unexpected match")
+			}
+			// we found a match and were expecting it
+			return
+		}
+	}
+
+	if !neg {
+		ts.Fatalf("errlogmatch failed to find match")
+	}
+	// we didn't find a match, but this is expected
 }
