@@ -59,21 +59,37 @@ func (g *govimplugin) Event(context.Context, *interface{}) error {
 
 func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.PublishDiagnosticsParams) error {
 	g.logGoplsClientf("PublishDiagnostics callback: %v", pretty.Sprint(params))
-	g.Schedule(func(govim.Govim) error {
-		v := g.vimstate
-		// TODO improve the efficiency of this. When we are watching files not yet loaded
-		// in Vim, we will likely have a reference to the file in vimstate. At this point
-		// we will need a lookup from URI -> Buffer which might give us nothing, at which
-		// point we fall back to the file. For now we simply check buffers first, then fall
-		// back to loading the file from disk
+	g.diagnosticsLock.Lock()
+	defer g.diagnosticsLock.Unlock()
 
-		v.diagnostics[span.URI(params.URI)] = params.Diagnostics
-		v.diagnosticsChanged = true
-
-		if v.config.QuickfixAutoDiagnosticsDisable {
+	uri := span.URI(params.URI)
+	curr, ok := g.diagnostics[uri]
+	updt := params.Diagnostics
+	if !ok {
+		g.diagnostics[uri] = updt
+		if len(params.Diagnostics) > 0 {
+			goto Schedule
+		} else {
 			return nil
 		}
-		return v.updateQuickfix()
+	}
+	if len(curr) != len(updt) {
+		g.diagnostics[uri] = updt
+		goto Schedule
+	}
+	if len(curr) == 0 {
+		return nil
+	}
+	// Let's not try and be too clever for now diff diagnostics.
+	// Instead be pessimistic.
+	g.diagnostics[uri] = updt
+
+Schedule:
+	g.Schedule(func(govim.Govim) error {
+		if g.vimstate.config.QuickfixAutoDiagnosticsDisable {
+			return nil
+		}
+		return g.vimstate.updateQuickfix()
 	})
 	return nil
 }
