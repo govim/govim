@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/myitcv/govim"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 	"github.com/myitcv/govim/cmd/govim/types"
 )
@@ -23,14 +24,15 @@ func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string)
 }
 
 func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
-	defer func() {
-		v.diagnosticsChanged = false
-	}()
-	if !v.diagnosticsChanged {
-		return nil
+	v.diagnosticsLock.Lock()
+	diags := make(map[span.URI][]protocol.Diagnostic)
+	for k, v := range v.diagnostics {
+		diags[k] = v
 	}
+	v.diagnosticsLock.Unlock()
+
 	var fns []span.URI
-	for u := range v.diagnostics {
+	for u := range diags {
 		fns = append(fns, u)
 	}
 	sort.Slice(fns, func(i, j int) bool {
@@ -45,7 +47,7 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 
 	// now update the quickfix window based on the current diagnostics
 	for _, uri := range fns {
-		diags := v.diagnostics[uri]
+		diags := diags[uri]
 		fn, err := uri.Filename()
 		if err != nil {
 			v.Logf("updateQuickfix: failed to resolve filename from URI %q: %v", uri, err)

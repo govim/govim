@@ -6,7 +6,6 @@ import (
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/internal/span"
 	"github.com/myitcv/govim/cmd/govim/types"
 	"github.com/myitcv/govim/internal/plugin"
 )
@@ -23,10 +22,6 @@ type vimstate struct {
 	// watchedFiles is a map of files that we are handling via file watching
 	// events, rather than via open Buffers in Vim
 	watchedFiles map[string]*types.WatchedFile
-
-	// diagnostics gives us the current diagnostics by URI
-	diagnostics        map[span.URI][]protocol.Diagnostic
-	diagnosticsChanged bool
 
 	// jumpStack is akin to the Vim concept of a tagstack
 	jumpStack    []protocol.Location

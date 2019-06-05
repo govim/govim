@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/myitcv/govim"
@@ -146,18 +147,22 @@ type govimplugin struct {
 	tomb tomb.Tomb
 
 	modWatcher *modWatcher
+
+	// diagnostics gives us the current diagnostics by URI
+	diagnostics     map[span.URI][]protocol.Diagnostic
+	diagnosticsLock sync.Mutex
 }
 
 func newplugin(goplspath string) *govimplugin {
 	d := plugin.NewDriver(PluginPrefix)
 	res := &govimplugin{
-		goplspath: goplspath,
-		Driver:    d,
+		diagnostics: make(map[span.URI][]protocol.Diagnostic),
+		goplspath:   goplspath,
+		Driver:      d,
 		vimstate: &vimstate{
 			Driver:       d,
 			buffers:      make(map[int]*types.Buffer),
 			watchedFiles: make(map[string]*types.WatchedFile),
-			diagnostics:  make(map[span.URI][]protocol.Diagnostic),
 		},
 	}
 	res.vimstate.govimplugin = res
