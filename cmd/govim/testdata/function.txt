@@ -3,7 +3,7 @@
 vim normal '\"=GOVIMHello()\u000dp'
 vim ex 'w test'
 cmp test test.golden
-goplslogcount 0
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 -- test.golden --
 Hello from function

@@ -12,7 +12,7 @@ vim expr 'bufname(\"\")'
 stdout '^\Q"'$WORK'/p.go"\E$'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[8,7]\E$'
-goplslogcount 0
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 -- go.mod --
 module mod.com/p

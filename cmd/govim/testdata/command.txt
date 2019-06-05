@@ -7,4 +7,4 @@ vim ex 'GOVIMHello'
 vim expr 'v:statusmsg'
 stdout '^\Q"Hello from command"\E$'
 ! stderr .+
-goplslogcount 0
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'

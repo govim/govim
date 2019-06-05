@@ -5,7 +5,7 @@ errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnostics
 vim ex 'copen'
 vim ex 'w errors'
 cmp errors errors.golden
-goplslogcount 0
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 -- go.mod --
 module mod.com
