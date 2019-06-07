@@ -17,6 +17,7 @@ type quickfixEntry struct {
 	Lnum     int    `json:"lnum"`
 	Col      int    `json:"col"`
 	Text     string `json:"text"`
+	Buf      int    `json:"buf"`
 }
 
 func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string) error {
@@ -89,9 +90,14 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 				Lnum:     p.Line(),
 				Col:      p.Col(),
 				Text:     d.Message,
+				Buf:      buf.Num,
 			})
 		}
 	}
 	v.ChannelCall("setqflist", fixes, "r")
+
+	if err := v.redefineSigns(fixes); err != nil {
+		v.Logf("updateQuickfix: failed to place/remove signs: %v", err)
+	}
 	return nil
 }

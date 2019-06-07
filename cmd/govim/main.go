@@ -204,6 +204,9 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineFunction(string(config.FunctionSetUserBusy), []string{"isBusy"}, g.vimstate.setUserBusy)
 	g.DefineCommand(string(config.CommandReferences), g.vimstate.references)
 	g.DefineFunction(string(config.FunctionDumpPopups), []string{}, g.vimstate.dumpPopups)
+	if err := g.vimstate.signDefine(); err != nil {
+		return fmt.Errorf("failed to define signs: %v", err)
+	}
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
