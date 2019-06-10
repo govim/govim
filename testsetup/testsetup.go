@@ -21,10 +21,15 @@ const (
 	EnvGithubUser  = "GH_USER"
 	EnvGithubToken = "GH_TOKEN"
 
+	EnvDisableIncrementalSync = "GOVIM_DISABLE_INCREMENTALSYNC"
+
+	// MinVimGovim represents the bare minimum version of Vim required to
+	// use govim
 	MinVimGovim = "v8.1.1158"
 
-	EnvDisableIncrementalSync = "GOVIM_DISABLE_INCREMENTALSYNC"
-	MinVimIncrementalSync     = "v8.1.1419"
+	// MinVimIncrementalSync is the minimum version of Vim required to use
+	// incremental sync
+	MinVimIncrementalSync = "v8.1.1512"
 
 	EnvLogfileTmpl      = "GOVIM_LOGFILE_TMPL"
 	EnvTestscriptStderr = "GOVIM_TESTSCRIPT_STDERR"
