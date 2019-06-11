@@ -6,7 +6,7 @@ require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/kr/pretty v0.1.0
-	github.com/kr/pty v1.1.3
+	github.com/kr/pty v1.1.5
 	github.com/myitcv/vbash v0.0.4
 	github.com/rogpeppe/go-internal v1.3.0
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58
