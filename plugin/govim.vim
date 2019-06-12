@@ -34,6 +34,8 @@ let s:plugindir = expand(expand("<sfile>:p:h:h"))
 let s:govim_status = "loading"
 let s:loadStatusCallbacks = []
 
+let s:userBusy = 0
+
 set ballooneval
 set balloonevalterm
 
@@ -115,6 +117,13 @@ function GOVIMPluginStatus(...)
   return s:govim_status
 endfunction
 
+function s:userBusy(busy)
+  if s:userBusy != a:busy
+    let s:userBusy = a:busy
+    call GOVIM_internal_SetUserBusy(s:userBusy)
+  endif
+endfunction
+
 function s:define(channel, msg)
   " format is [type, ...]
   " type is function, command or autocmd
@@ -130,6 +139,8 @@ function s:define(channel, msg)
       let s:govim_status = "initcomplete"
       " doautoall BufRead also triggers ftplugin stuff
       doautoall BufRead
+      au CursorMoved,CursorMovedI *.go :call s:userBusy(1)
+      au CursorHold,CursorHoldI *.go :call s:userBusy(0)
       for F in s:loadStatusCallbacks
         call call(F, [s:govim_status])
       endfor

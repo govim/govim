@@ -149,8 +149,9 @@ type govimplugin struct {
 	modWatcher *modWatcher
 
 	// diagnostics gives us the current diagnostics by URI
-	diagnostics     map[span.URI][]protocol.Diagnostic
-	diagnosticsLock sync.Mutex
+	diagnostics        map[span.URI][]protocol.Diagnostic
+	diagnosticsLock    sync.Mutex
+	diagnosticsChanged bool
 }
 
 func newplugin(goplspath string) *govimplugin {
@@ -193,6 +194,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineFunction(string(config.FunctionBufChanged), []string{"bufnr", "start", "end", "added", "changes"}, g.bufChanged)
 	g.DefineFunction(string(config.FunctionSetConfig), []string{"config"}, g.setConfig)
 	g.ChannelExf(`call govim#config#Set("_internal_Func", function("%v%v"))`, PluginPrefix, config.FunctionSetConfig)
+	g.DefineFunction(string(config.FunctionSetUserBusy), []string{"isBusy"}, g.setUserBusy)
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 

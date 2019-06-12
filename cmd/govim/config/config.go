@@ -80,6 +80,10 @@ const (
 	// FunctionSetConfig is an internal function used by govim for pushing config
 	// changes from Vim to govim.
 	FunctionSetConfig = internalFunctionPrefix + "SetConfig"
+
+	// FunctionSetUserBusy is an internal function used by govim for indicated
+	// whether the user is busy or not (based on cursor movement)
+	FunctionSetUserBusy = internalFunctionPrefix + "SetUserBusy"
 )
 
 // FormatOnSave typed constants define the set of valid values that
