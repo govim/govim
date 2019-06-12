@@ -29,7 +29,13 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 	for k, v := range v.diagnostics {
 		diags[k] = v
 	}
+	doWork := v.diagnosticsChanged
+	v.diagnosticsChanged = false
 	v.diagnosticsLock.Unlock()
+
+	if !doWork {
+		return nil
+	}
 
 	var fns []span.URI
 	for u := range diags {

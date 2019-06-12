@@ -34,6 +34,9 @@ type vimstate struct {
 	lastCompleteResults *protocol.CompletionList
 
 	config config.Config
+
+	// userBusy indicates the user is moving the cusor doing something
+	userBusy bool
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
@@ -56,4 +59,14 @@ func (v *vimstate) hello(args ...json.RawMessage) (interface{}, error) {
 func (v *vimstate) helloComm(flags govim.CommandFlags, args ...string) error {
 	v.ChannelEx(`echom "Hello from command"`)
 	return nil
+}
+
+func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
+	var isBusy int
+	v.Parse(args[0], &isBusy)
+	v.userBusy = isBusy != 0
+	if v.userBusy || v.config.QuickfixAutoDiagnosticsDisable {
+		return nil, nil
+	}
+	return nil, v.updateQuickfix()
 }
