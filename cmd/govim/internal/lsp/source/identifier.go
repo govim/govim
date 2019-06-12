@@ -25,14 +25,21 @@ type IdentifierInfo struct {
 		Range  span.Range
 		Object types.Object
 	}
-	Declaration struct {
-		Range  span.Range
-		Node   ast.Node
-		Object types.Object
-	}
+	decl declaration
 
 	ident            *ast.Ident
 	wasEmbeddedField bool
+	qf               types.Qualifier
+}
+
+type declaration struct {
+	rng  span.Range
+	node ast.Node
+	obj  types.Object
+}
+
+func (i *IdentifierInfo) DeclarationRange() span.Range {
+	return i.decl.rng
 }
 
 // Identifier returns identifier information for a position
@@ -72,7 +79,10 @@ func identifier(ctx context.Context, v View, f GoFile, pos token.Pos) (*Identifi
 		return result, err
 	}
 
-	result := &IdentifierInfo{File: f}
+	result := &IdentifierInfo{
+		File: f,
+		qf:   qualifier(file, pkg.GetTypes(), pkg.GetTypesInfo()),
+	}
 
 	switch node := path[0].(type) {
 	case *ast.Ident:
@@ -91,21 +101,21 @@ func identifier(ctx context.Context, v View, f GoFile, pos token.Pos) (*Identifi
 	}
 	result.Name = result.ident.Name
 	result.Range = span.NewRange(f.FileSet(), result.ident.Pos(), result.ident.End())
-	result.Declaration.Object = pkg.GetTypesInfo().ObjectOf(result.ident)
-	if result.Declaration.Object == nil {
+	result.decl.obj = pkg.GetTypesInfo().ObjectOf(result.ident)
+	if result.decl.obj == nil {
 		return nil, fmt.Errorf("no object for ident %v", result.Name)
 	}
 
 	var err error
 
 	// Handle builtins separately.
-	if result.Declaration.Object.Parent() == types.Universe {
+	if result.decl.obj.Parent() == types.Universe {
 		decl, ok := lookupBuiltinDecl(f.View(), result.Name).(ast.Node)
 		if !ok {
 			return nil, fmt.Errorf("no declaration for %s", result.Name)
 		}
-		result.Declaration.Node = decl
-		if result.Declaration.Range, err = posToRange(ctx, f.FileSet(), result.Name, decl.Pos()); err != nil {
+		result.decl.node = decl
+		if result.decl.rng, err = posToRange(ctx, f.FileSet(), result.Name, decl.Pos()); err != nil {
 			return nil, err
 		}
 		return result, nil
@@ -114,17 +124,17 @@ func identifier(ctx context.Context, v View, f GoFile, pos token.Pos) (*Identifi
 	if result.wasEmbeddedField {
 		// The original position was on the embedded field declaration, so we
 		// try to dig out the type and jump to that instead.
-		if v, ok := result.Declaration.Object.(*types.Var); ok {
+		if v, ok := result.decl.obj.(*types.Var); ok {
 			if typObj := typeToObject(v.Type()); typObj != nil {
-				result.Declaration.Object = typObj
+				result.decl.obj = typObj
 			}
 		}
 	}
 
-	if result.Declaration.Range, err = objToRange(ctx, f.FileSet(), result.Declaration.Object); err != nil {
+	if result.decl.rng, err = objToRange(ctx, f.FileSet(), result.decl.obj); err != nil {
 		return nil, err
 	}
-	if result.Declaration.Node, err = objToNode(ctx, v, result.Declaration.Object, result.Declaration.Range); err != nil {
+	if result.decl.node, err = objToNode(ctx, v, pkg.GetTypes(), result.decl.obj, result.decl.rng); err != nil {
 		return nil, err
 	}
 	typ := pkg.GetTypesInfo().TypeOf(result.ident)
@@ -170,7 +180,7 @@ func posToRange(ctx context.Context, fset *token.FileSet, name string, pos token
 	return span.NewRange(fset, pos, pos+token.Pos(len(name))), nil
 }
 
-func objToNode(ctx context.Context, v View, obj types.Object, rng span.Range) (ast.Decl, error) {
+func objToNode(ctx context.Context, v View, originPkg *types.Package, obj types.Object, rng span.Range) (ast.Decl, error) {
 	s, err := rng.Span()
 	if err != nil {
 		return nil, err
@@ -181,9 +191,16 @@ func objToNode(ctx context.Context, v View, obj types.Object, rng span.Range) (a
 	}
 	declFile, ok := f.(GoFile)
 	if !ok {
-		return nil, fmt.Errorf("not a go file %v", s.URI())
+		return nil, fmt.Errorf("%s is not a Go file", s.URI())
 	}
-	declAST := declFile.GetAST(ctx)
+	// If the object is exported from a different package,
+	// we don't need its full AST to find the definition.
+	var declAST *ast.File
+	if obj.Exported() && obj.Pkg() != originPkg {
+		declAST = declFile.GetAnyAST(ctx)
+	} else {
+		declAST = declFile.GetAST(ctx)
+	}
 	path, _ := astutil.PathEnclosingInterval(declAST, rng.Start, rng.End)
 	if path == nil {
 		return nil, fmt.Errorf("no path for range %v", rng)
@@ -239,7 +256,7 @@ func importSpec(f GoFile, fAST *ast.File, pkg Package, pos token.Pos) (*Identifi
 		if dest == nil {
 			return nil, fmt.Errorf("package %q has no files", importPath)
 		}
-		result.Declaration.Range = span.NewRange(f.FileSet(), dest.Name.Pos(), dest.Name.End())
+		result.decl.rng = span.NewRange(f.FileSet(), dest.Name.Pos(), dest.Name.End())
 		return result, nil
 	}
 	return nil, nil

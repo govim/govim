@@ -12,6 +12,7 @@ import (
 	"path"
 
 	"github.com/myitcv/govim/cmd/govim/internal/jsonrpc2"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/debug"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
@@ -68,6 +69,7 @@ func (s *Server) initialize(ctx context.Context, params *protocol.InitializePara
 			HoverProvider:              true,
 			DocumentHighlightProvider:  true,
 			DocumentLinkProvider:       &protocol.DocumentLinkOptions{},
+			ReferencesProvider:         true,
 			SignatureHelpProvider: &protocol.SignatureHelpOptions{
 				TriggerCharacters: []string{"(", ","},
 			},
@@ -140,7 +142,7 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 		}
 	}
 	buf := &bytes.Buffer{}
-	PrintVersionInfo(buf, true, false)
+	debug.PrintVersionInfo(buf, true, debug.PlainText)
 	s.session.Logger().Infof(ctx, "%s", buf)
 	return nil
 }
@@ -166,6 +168,18 @@ func (s *Server) processConfig(view source.View, config interface{}) error {
 		}
 		view.SetEnv(env)
 	}
+	// Get the build flags for the go/packages config.
+	if buildFlags := c["buildFlags"]; buildFlags != nil {
+		iflags, ok := buildFlags.([]interface{})
+		if !ok {
+			return fmt.Errorf("invalid config gopls.buildFlags type %T", buildFlags)
+		}
+		flags := make([]string, 0, len(iflags))
+		for _, flag := range iflags {
+			flags = append(flags, fmt.Sprintf("%s", flag))
+		}
+		view.SetBuildFlags(flags)
+	}
 	// Check if placeholders are enabled.
 	if usePlaceholders, ok := c["usePlaceholders"].(bool); ok {
 		s.usePlaceholders = usePlaceholders
@@ -173,6 +187,15 @@ func (s *Server) processConfig(view source.View, config interface{}) error {
 	// Check if user has disabled documentation on hover.
 	if noDocsOnHover, ok := c["noDocsOnHover"].(bool); ok {
 		s.noDocsOnHover = noDocsOnHover
+	}
+	// Check if the user has explicitly disabled any analyses.
+	if disabledAnalyses, ok := c["experimentalDisabledAnalyses"].([]interface{}); ok {
+		s.disabledAnalyses = make(map[string]struct{})
+		for _, a := range disabledAnalyses {
+			if a, ok := a.(string); ok {
+				s.disabledAnalyses[a] = struct{}{}
+			}
+		}
 	}
 	return nil
 }

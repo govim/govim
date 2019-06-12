@@ -9,6 +9,8 @@ vim ex 'call cursor(3,15)'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[3,15]\E$'
 
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/p.go
+
 # Each block below is simply repeated for each of the default
 # mappings we have defined for GOVIMGoToDef and GOVIMGoToPrevDef
 # where we can test/trigger the mapping. For example, we can't

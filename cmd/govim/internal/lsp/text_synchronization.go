@@ -14,7 +14,9 @@ import (
 )
 
 func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) error {
-	return s.cacheAndDiagnose(ctx, span.NewURI(params.TextDocument.URI), []byte(params.TextDocument.Text))
+	uri := span.NewURI(params.TextDocument.URI)
+	s.session.DidOpen(uri)
+	return s.cacheAndDiagnose(ctx, uri, []byte(params.TextDocument.Text))
 }
 
 func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDocumentParams) error {
@@ -64,18 +66,15 @@ func (s *Server) applyChanges(ctx context.Context, params *protocol.DidChangeTex
 	}
 
 	uri := span.NewURI(params.TextDocument.URI)
-	view := s.session.ViewOf(uri)
-	f, m, err := getSourceFile(ctx, view, uri)
+	content, _, err := s.session.GetFile(uri).Read(ctx)
 	if err != nil {
 		return "", jsonrpc2.NewErrorf(jsonrpc2.CodeInternalError, "file not found")
 	}
-	fset := f.FileSet()
-	filename, err := f.URI().Filename()
-	if err != nil {
-		return "", jsonrpc2.NewErrorf(jsonrpc2.CodeInternalError, "no filename for %s", uri)
-	}
-	content := f.GetContent(ctx)
+	fset := s.session.Cache().FileSet()
 	for _, change := range params.ContentChanges {
+		// Update column mapper along with the content.
+		m := protocol.NewColumnMapper(uri, uri.Filename(), fset, nil, content)
+
 		spn, err := m.RangeSpan(*change.Range)
 		if err != nil {
 			return "", err
@@ -92,19 +91,18 @@ func (s *Server) applyChanges(ctx context.Context, params *protocol.DidChangeTex
 		buf.WriteString(change.Text)
 		buf.Write(content[end:])
 		content = buf.Bytes()
-
-		// Update column mapper along with the content.
-		m = protocol.NewColumnMapper(f.URI(), filename, fset, nil, content)
 	}
 	return string(content), nil
 }
 
 func (s *Server) didSave(ctx context.Context, params *protocol.DidSaveTextDocumentParams) error {
-	return nil // ignore
+	s.session.DidSave(span.NewURI(params.TextDocument.URI))
+	return nil
 }
 
 func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocumentParams) error {
 	uri := span.NewURI(params.TextDocument.URI)
+	s.session.DidClose(uri)
 	view := s.session.ViewOf(uri)
 	return view.SetContent(ctx, uri, nil)
 }

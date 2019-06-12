@@ -48,11 +48,7 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 	// now update the quickfix window based on the current diagnostics
 	for _, uri := range fns {
 		diags := diags[uri]
-		fn, err := uri.Filename()
-		if err != nil {
-			v.Logf("updateQuickfix: failed to resolve filename from URI %q: %v", uri, err)
-			continue
-		}
+		fn := uri.Filename()
 		var buf *types.Buffer
 		for _, b := range v.buffers {
 			if b.URI() == uri {
@@ -69,7 +65,7 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 			buf = types.NewBuffer(-1, fn, byts)
 		}
 		// make fn relative for reporting purposes
-		fn, err = filepath.Rel(cwd, fn)
+		fn, err := filepath.Rel(cwd, fn)
 		if err != nil {
 			v.Logf("updateQuickfix: failed to call filepath.Rel(%q, %q): %v", cwd, fn, err)
 			continue
