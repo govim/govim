@@ -235,6 +235,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	stream := jsonrpc2.NewHeaderStream(stdout, stdin)
 	ctxt, cancel := context.WithCancel(context.Background())
 	conn, server, _ := protocol.NewClient(stream, g)
+	conn.RejectIfOverloaded = false
 	// override the handler with something that can handle the fact
 	// that we might get a govim.ErrShuttingDown
 	currHandler := conn.Handler
