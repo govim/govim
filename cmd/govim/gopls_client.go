@@ -85,13 +85,16 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 	g.diagnostics[uri] = updt
 
 Schedule:
-	g.diagnosticsChanged = true
 	g.Schedule(func(govim.Govim) error {
 		v := g.vimstate
+		v.diagnosticsChanged = true
 		if v.config.QuickfixAutoDiagnosticsDisable {
 			return nil
 		}
 		if v.userBusy {
+			return nil
+		}
+		if !v.quickfixIsDiagnostics {
 			return nil
 		}
 		return v.updateQuickfix()

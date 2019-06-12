@@ -37,6 +37,17 @@ type vimstate struct {
 
 	// userBusy indicates the user is moving the cusor doing something
 	userBusy bool
+
+	// quickfixIsDiagnostics is a flag that indicates the quickfix window is being
+	// used for diagnostics, and not, for example, locations of references. If
+	// the user calls GOVIMReferences, quickfixIsDiagnostics is set to false; whilst
+	// false the quickfix window will not update with diagnostics, until the user
+	// calls GOVIMQuickfixDiagnostics, which sets the flag to true.
+	quickfixIsDiagnostics bool
+
+	// diagnosticsChanged indicates that the quickfix window needs to be updated with
+	// the latest diagnostics
+	diagnosticsChanged bool
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
