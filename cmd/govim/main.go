@@ -198,7 +198,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
-	gopls := exec.Command(g.goplspath)
+	gopls := exec.Command(g.goplspath, "-rpc.trace")
 	stderr, err := gopls.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stderr pipe for gopls: %v", err)
