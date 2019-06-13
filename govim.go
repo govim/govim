@@ -262,7 +262,7 @@ func (g *govimImpl) load() error {
 				GuiRunning int
 			}
 
-			v, err := g.ChannelExpr(`{"Version": GOVIMEvalRedir("version"), "GuiRunning": has("gui_running")}`)
+			v, err := g.ChannelExpr(`{"Version": execute("version"), "GuiRunning": has("gui_running")}`)
 			if err != nil {
 				return err
 			}
@@ -901,13 +901,14 @@ func ParseVimVersion(b []byte) (string, error) {
 	// Depending on OS/build, the patch versions are printed on different lines
 	var patch string
 	for _, line := range lines {
-		if strings.HasPrefix(line, "Included patches:") {
+		if strings.Contains(line, ": ") {
 			patch = strings.Fields(line)[2]
 			patchI := strings.Index(patch, "-")
 			if patchI == -1 {
 				return "", fmt.Errorf("failed to parse patch version from %v", patch)
 			}
 			patch = patch[patchI+1:]
+			break
 		}
 	}
 	av += "." + patch
