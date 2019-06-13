@@ -28,11 +28,11 @@ $ go env
 ### What is the output of `:messages` in Vim?
 
 
-### Do the Vim channel or `govim` log files show anything interesting?
+### Do the Vim channel, `govim` or `gopls` log files show anything interesting?
 
 <!-- !! BEWARE THESE LOGFILES CONTAIN FILE CONTENTS !! -->
 
-<!-- The location of the logfiles is given by :messages in Vim -->
+<!-- The location of the logfiles is given by :GOVIMLogfilePaths in Vim -->
 
 
 ### How did you install `govim`?
