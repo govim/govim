@@ -1,0 +1,58 @@
+# Test that the quickfix window gets populated with locations for the
+# GOVIMReferences command
+
+# Ensure quickfix diagnostics are turned on
+vim call 'govim#config#Set' '["QuickfixAutoDiagnosticsDisable", 0]'
+
+# Initial location population
+vim ex 'e main.go'
+errlogmatch -wait 60s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'call cursor(8,24)'
+vim ex 'GOVIMReferences'
+vim ex 'copen'
+vim ex 'w locations'
+cmp locations locations.golden
+
+# For some reason what follows in version of Vim ~< 8.1.1512. Not investigated fully why
+# or the exact version at which things started working, so skip for now
+[vim] [!vim:v8.1.1512] skip
+[gvim] [!gvim:v8.1.1512] skip
+
+# Introduce an error - locations should remain
+vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
+vim expr 'bufname(\"\")'
+vim call append '[8, "\tfmt.Printf(\"%v\")"]'
+errlogmatch -wait 60s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'copen'
+vim ex 'w locations'
+cmp locations locations.golden
+
+# Now use quickfix for errors
+vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
+vim ex 'GOVIMQuickfixDiagnostics'
+vim ex 'copen'
+vim ex 'w errors'
+cmp errors errors.golden
+
+# Check for errors
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	v := 5
+	v += 1
+	fmt.Printf("v: %v\n", v)
+}
+-- locations.golden --
+main.go|6 col 2| v := 5
+main.go|7 col 2| v += 1
+main.go|8 col 24| fmt.Printf("v: %v\n", v)
+-- errors.golden --
+main.go|9 col 2| Printf format %v reads arg #1, but call has 0 args

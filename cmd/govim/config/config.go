@@ -47,6 +47,9 @@ const (
 	// CommandQuickfixDiagnostics populates the quickfix window with the current
 	// gopls-reported diagnostics
 	CommandQuickfixDiagnostics Command = "QuickfixDiagnostics"
+
+	// CommandReferences finds references to the identifier under the cursor.
+	CommandReferences = "References"
 )
 
 type Function string

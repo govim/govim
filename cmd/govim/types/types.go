@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 
@@ -71,6 +72,18 @@ func (b *Buffer) tokenConvertor() *span.TokenConverter {
 		b.cc = span.NewContentConverter(b.Name, b.contents)
 	}
 	return b.cc
+}
+
+// Line returns the 1-indexed line contents of b
+func (b *Buffer) Line(n int) (string, error) {
+	// TODO: this is inefficient because we are splitting the contents of
+	// the buffer again... even thought this may already have been done
+	// in the content converter, b.cc
+	lines := bytes.Split(b.Contents(), []byte("\n"))
+	if n >= len(lines) {
+		return "", fmt.Errorf("line %v is beyond the end of the buffer (no. of lines %v)", n, len(lines))
+	}
+	return string(lines[n-1]), nil
 }
 
 // Range represents a range within a Buffer. Create ranges using NewRange

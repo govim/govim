@@ -20,6 +20,8 @@ type quickfixEntry struct {
 }
 
 func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string) error {
+	v.diagnosticsChanged = true
+	v.quickfixIsDiagnostics = true
 	return v.updateQuickfix()
 }
 
