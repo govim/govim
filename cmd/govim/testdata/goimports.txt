@@ -7,6 +7,7 @@ stdout '^"goimports"$'
 # :GOVIMGoImports whole file
 cp file.go.orig file.go
 vim ex 'e! file.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'GOVIMGoImports'
 vim ex 'noautocmd w'
 cmp file.go file.go.goimports
@@ -15,6 +16,7 @@ cmp file.go file.go.goimports
 cp file.go.orig file.go
 vim call 'govim#config#Set' '["FormatOnSave", "goimports"]'
 vim ex 'e! file.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'w'
 cmp file.go file.go.goimports
 
@@ -23,6 +25,7 @@ errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v,
 # Format on save (bad syntax)
 cp file.go.bad file.go
 vim ex 'e! file.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'w'
 cmp file.go file.go.bad
 vim expr 'getqflist()'
