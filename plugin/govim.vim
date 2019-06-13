@@ -302,7 +302,7 @@ function s:install(force)
     let $GO111MODULE = "on"
     let $GOBIN = targetdir
     " TODO make work on Windows
-    let install = system("go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/cmd/gopls 2>&1")
+    let install = system("go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/gopls 2>&1")
     if v:shell_error
       throw install
     endif

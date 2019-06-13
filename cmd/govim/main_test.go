@@ -43,10 +43,10 @@ func TestScripts(t *testing.T) {
 	}
 	defer os.RemoveAll(td)
 
-	cmd := exec.Command("go", "install", raceOrNot(), "golang.org/x/tools/cmd/gopls")
+	cmd := exec.Command("go", "install", raceOrNot(), "golang.org/x/tools/gopls")
 	cmd.Env = append(os.Environ(), "GOBIN="+td)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("failed to install temp version of golang.org/x/tools/cmd/gopls: %v\n%s", err, out)
+		t.Fatalf("failed to install temp version of golang.org/x/tools/gopls: %v\n%s", err, out)
 	}
 
 	goplspath := filepath.Join(td, "gopls")
