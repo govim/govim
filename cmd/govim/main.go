@@ -93,24 +93,9 @@ func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 
 	d := newplugin(goplspath)
 
-	var tf *os.File
-	var err error
-	logfiletmpl := os.Getenv(testsetup.EnvLogfileTmpl)
-	if logfiletmpl == "" {
-		logfiletmpl = "%v_%v_%v"
-	}
-	logfiletmpl = strings.Replace(logfiletmpl, "%v", "govim_log", 1)
-	logfiletmpl = strings.Replace(logfiletmpl, "%v", time.Now().Format("20060102_1504_05.000000000"), 1)
-	if strings.Contains(logfiletmpl, "%v") {
-		logfiletmpl = strings.Replace(logfiletmpl, "%v", "*", 1)
-		tf, err = ioutil.TempFile("", logfiletmpl)
-
-	} else {
-		// append to existing file
-		tf, err = os.OpenFile(filepath.Join(os.TempDir(), logfiletmpl), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	}
+	tf, err := createLogFile("govim_log")
 	if err != nil {
-		return fmt.Errorf("failed to create log file: %v", err)
+		return err
 	}
 	defer tf.Close()
 
@@ -130,6 +115,28 @@ func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 
 	d.tomb.Kill(g.Run())
 	return d.tomb.Wait()
+}
+
+func createLogFile(prefix string) (*os.File, error) {
+	var tf *os.File
+	var err error
+	logfiletmpl := os.Getenv(testsetup.EnvLogfileTmpl)
+	if logfiletmpl == "" {
+		logfiletmpl = "%v_%v_%v"
+	}
+	logfiletmpl = strings.Replace(logfiletmpl, "%v", prefix, 1)
+	logfiletmpl = strings.Replace(logfiletmpl, "%v", time.Now().Format("20060102_1504_05.000000000"), 1)
+	if strings.Contains(logfiletmpl, "%v") {
+		logfiletmpl = strings.Replace(logfiletmpl, "%v", "*", 1)
+		tf, err = ioutil.TempFile("", logfiletmpl)
+	} else {
+		// append to existing file
+		tf, err = os.OpenFile(filepath.Join(os.TempDir(), logfiletmpl), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	}
+	if err != nil {
+		err = fmt.Errorf("failed to create log file: %v", err)
+	}
+	return tf, err
 }
 
 type govimplugin struct {
@@ -199,7 +206,14 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
-	gopls := exec.Command(g.goplspath, "-rpc.trace")
+	logfile, err := createLogFile("gopls_log")
+	if err != nil {
+		return err
+	}
+	logfile.Close()
+	g.Logf("gopls log file: %v", logfile.Name())
+
+	gopls := exec.Command(g.goplspath, "-rpc.trace", "-logfile", logfile.Name())
 	stderr, err := gopls.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stderr pipe for gopls: %v", err)

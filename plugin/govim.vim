@@ -39,9 +39,6 @@ let s:userBusy = 0
 set ballooneval
 set balloonevalterm
 
-" TODO these probably doesn't belong here?
-let g:govim_format_on_save = "goimports"
-
 function s:callbackFunction(name, args)
   let l:args = ["function", "function:".a:name, a:args]
   let l:resp = ch_evalexpr(s:channel, l:args)
@@ -71,6 +68,18 @@ function s:callbackCommand(name, flags, ...)
 endfunction
 
 function s:callbackAutoCommand(name, exprs)
+  " When govim is the process of loading, i.e. its Init(Govim) method is
+  " called, we make a number of calls to Vim to register functions, commands
+  " autocommands etc. In parallel to this, Vim is busily loading itself.
+  " Therefore (and this has been observed), it's entirely possible that before
+  " govim finishes its Init(Govim) that we receive callbacks for autocmd
+  " events. We _have_ to ignore these, and rely on the fact that the doautoall
+  " which is called once we are initcomplete will put everything in order.
+  " It's conceivable that calls to functions/commands _are_ valid during this
+  " phase, so we allow those (for now)
+  if s:govim_status != "initcomplete"
+    return
+  endif
   let l:exprVals = []
   for e in a:exprs
     call add(l:exprVals, eval(e))
@@ -139,6 +148,7 @@ function s:define(channel, msg)
       let s:govim_status = "initcomplete"
       " doautoall BufRead also triggers ftplugin stuff
       doautoall BufRead
+      doautoall FileType
       au CursorMoved,CursorMovedI *.go :call s:userBusy(1)
       au CursorHold,CursorHoldI *.go :call s:userBusy(0)
       for F in s:loadStatusCallbacks
@@ -329,13 +339,6 @@ else
 endif
 
 au VimLeave * call s:doShutdown()
-
-function GOVIMEvalRedir(expr)
-  redir => l:output
-  silent! execute a:expr
-  redir END
-  return l:output
-endfunction
 
 function GOVIM_internal_EnrichDelta(bufnr, start, end, added, changes)
   for l:change in a:changes
