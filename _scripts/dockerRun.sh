@@ -26,7 +26,7 @@ vim --version
 
 ./_scripts/revendorToolsInternal.sh
 
-go install golang.org/x/tools/cmd/gopls
+go install golang.org/x/tools/gopls
 
 # remove all generated files to ensure we are never stale
 rm -f $(git ls-files -- ':!:cmd/govim/internal' '**/gen_*.*' 'gen_*.*') .travis.yml
