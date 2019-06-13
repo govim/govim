@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +16,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/kr/pretty"
 	"github.com/myitcv/govim/internal/queue"
 	"github.com/rogpeppe/go-internal/semver"
 	"gopkg.in/tomb.v2"
@@ -251,7 +253,14 @@ func (g *govimImpl) load() error {
 	close(g.loaded)
 
 	if fi, ok := g.log.(*os.File); ok {
-		g.ChannelEx(`echom "govim logfile: ` + fi.Name() + `"`)
+		g.ChannelEx(`let s:govim_logfile="` + fi.Name() + `"`)
+	}
+	g.Logf("Go version %v", runtime.Version())
+
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		g.Logf("Build info: %v", pretty.Sprint(bi))
+	} else {
+		g.Logf("No build info available")
 	}
 
 	if g.plugin != nil {

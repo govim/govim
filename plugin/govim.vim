@@ -32,9 +32,9 @@ else
   let s:filetmpl = s:tmpdir."/".s:filetmpl
 endif
 let s:ch_logfile = trim(s:filetmpl)
+let s:govim_logfile="<unset>"
+let s:gopls_logfile="<unset>"
 call ch_logfile(s:ch_logfile, "a")
-echom "Vim channel logfile: ".s:ch_logfile
-call feedkeys(" ") " to prevent press ENTER to continue
 let s:channel = ""
 let s:timer = ""
 let s:plugindir = expand(expand("<sfile>:p:h:h"))
@@ -302,6 +302,7 @@ function s:govimExit(job, exitstatus)
 endfunction
 
 command -bar GOVIMPluginInstall echom "Installed to ".s:install(1)
+command -bar GOVIMLogfilePaths echom "Vim channel logfile: ".s:ch_logfile | echom "govim logfile: ".s:govim_logfile | echom "gopls logfile: ".s:gopls_logfile
 
 function s:install(force)
   let oldpath = getcwd()

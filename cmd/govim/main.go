@@ -125,7 +125,7 @@ func createLogFile(prefix string) (*os.File, error) {
 		logfiletmpl = "%v_%v_%v"
 	}
 	logfiletmpl = strings.Replace(logfiletmpl, "%v", prefix, 1)
-	logfiletmpl = strings.Replace(logfiletmpl, "%v", time.Now().Format("20060102_1504_05.000000000"), 1)
+	logfiletmpl = strings.Replace(logfiletmpl, "%v", time.Now().Format("20060102_1504_05"), 1)
 	if strings.Contains(logfiletmpl, "%v") {
 		logfiletmpl = strings.Replace(logfiletmpl, "%v", "*", 1)
 		tf, err = ioutil.TempFile("", logfiletmpl)
@@ -212,6 +212,8 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	}
 	logfile.Close()
 	g.Logf("gopls log file: %v", logfile.Name())
+
+	g.ChannelExf("let s:gopls_logfile=%q", logfile.Name())
 
 	gopls := exec.Command(g.goplspath, "-rpc.trace", "-logfile", logfile.Name())
 	stderr, err := gopls.StderrPipe()
