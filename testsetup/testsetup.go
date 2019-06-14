@@ -33,6 +33,8 @@ const (
 
 	EnvLogfileTmpl      = "GOVIM_LOGFILE_TMPL"
 	EnvTestscriptStderr = "GOVIM_TESTSCRIPT_STDERR"
+
+	LatestVim = "v8.1.1526"
 )
 
 var (
@@ -63,6 +65,8 @@ var (
 		GvimVersion(MinVimGovim),
 		VimVersion(MinVimIncrementalSync),
 		GvimVersion(MinVimIncrementalSync),
+		VimVersion(LatestVim),
+		GvimVersion(LatestVim),
 	}
 )
 

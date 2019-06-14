@@ -267,21 +267,32 @@ func (g *govimImpl) load() error {
 		g.pluginErrCh = make(chan error)
 		err := g.DoProto(func() error {
 			var details struct {
-				Version    string
-				GuiRunning int
+				Version     string
+				VersionLong int
+				GuiRunning  int
 			}
 
-			v, err := g.ChannelExpr(`{"Version": execute("version"), "GuiRunning": has("gui_running")}`)
+			// TODO when the minimum Vim version we require is >= v8.1.1526, then we can drop
+			// the legacy version parsing
+			v, err := g.ChannelExpr(`{"Version": execute("version"), "VersionLong": exists("v:versionlong")?v:versionlong:-1, "GuiRunning": has("gui_running")}`)
 			if err != nil {
 				return err
 			}
 			g.decodeJSON(v, &details)
 
-			version, err := ParseVimVersion([]byte(details.Version))
-			if err != nil {
-				return err
+			if details.VersionLong != -1 {
+				l := details.VersionLong
+				maj := l / 1000000
+				min := (l / 10000) % 10
+				pat := l % 10000
+				g.version = fmt.Sprintf("v%v.%v.%v", maj, min, pat)
+			} else {
+				version, err := ParseVimVersion([]byte(details.Version))
+				if err != nil {
+					return err
+				}
+				g.version = version
 			}
-			g.version = version
 
 			if details.GuiRunning == 1 {
 				g.flavor = FlavorGvim
@@ -902,6 +913,9 @@ func (e errProto) Error() string {
 
 // ParseVimVersion takes b which is assumed to be the output from :version or --version
 // and returns the equivalent semver version.
+//
+// TODO when the minimum Vim version we require is >= v8.1.1526, then we can drop
+// the legacy version parsing
 func ParseVimVersion(b []byte) (string, error) {
 	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
 	av := "v"
