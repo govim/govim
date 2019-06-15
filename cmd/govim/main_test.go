@@ -86,16 +86,17 @@ func TestScripts(t *testing.T) {
 				if os.Getenv(testsetup.EnvTestscriptStderr) == "true" {
 					outputs = append(outputs, os.Stderr)
 				}
-				td.Log = io.MultiWriter(outputs...)
 				e.Values[testdriver.KeyErrLog] = errLog
 				if *fLogGovim {
 					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
 					if err != nil {
 						t.Fatalf("failed to create govim log file: %v", err)
 					}
-					td.Log = tf
+					outputs = append(outputs, tf)
 					t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
 				}
+
+				td.Log = io.MultiWriter(outputs...)
 				if err := td.Run(); err != nil {
 					t.Fatalf("failed to run TestDriver: %v", err)
 				}
