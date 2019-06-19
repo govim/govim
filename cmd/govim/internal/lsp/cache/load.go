@@ -83,13 +83,13 @@ func (v *view) checkMetadata(ctx context.Context, f *goFile) ([]packages.Error, 
 	pkgs, err := packages.Load(v.buildConfig(), fmt.Sprintf("file=%s", f.filename()))
 	if len(pkgs) == 0 {
 		if err == nil {
-			err = fmt.Errorf("no packages found for %s", f.filename())
+			err = fmt.Errorf("go/packages.Load: no packages found for %s", f.filename())
 		}
 		// Return this error as a diagnostic to the user.
 		return []packages.Error{
 			{
 				Msg:  err.Error(),
-				Kind: packages.ListError,
+				Kind: packages.UnknownError,
 			},
 		}, err
 	}
@@ -112,7 +112,7 @@ func (v *view) parseImports(ctx context.Context, f *goFile) bool {
 		return true
 	}
 	// Get file content in case we don't already have it.
-	parsed, _ := v.session.cache.ParseGo(f.Handle(ctx), source.ParseHeader).Parse(ctx)
+	parsed, _ := v.session.cache.ParseGoHandle(f.Handle(ctx), source.ParseHeader).Parse(ctx)
 	if parsed == nil {
 		return true
 	}
@@ -145,12 +145,11 @@ func (v *view) link(ctx context.Context, pkgPath packagePath, pkg *packages.Pack
 	// If we haven't seen this package before.
 	if !ok {
 		m = &metadata{
-			pkgPath:        pkgPath,
-			id:             id,
-			typesSizes:     pkg.TypesSizes,
-			parents:        make(map[packageID]bool),
-			children:       make(map[packageID]bool),
-			missingImports: make(map[packagePath]struct{}),
+			pkgPath:    pkgPath,
+			id:         id,
+			typesSizes: pkg.TypesSizes,
+			parents:    make(map[packageID]bool),
+			children:   make(map[packageID]bool),
 		}
 		v.mcache.packages[id] = m
 		v.mcache.ids[pkgPath] = id
@@ -172,6 +171,7 @@ func (v *view) link(ctx context.Context, pkgPath packagePath, pkg *packages.Pack
 		m.parents[parent.id] = true
 		parent.children[id] = true
 	}
+	m.missingImports = make(map[packagePath]struct{})
 	for importPath, importPkg := range pkg.Imports {
 		if len(importPkg.Errors) > 0 {
 			m.missingImports[pkgPath] = struct{}{}

@@ -63,8 +63,11 @@ func Diagnostics(ctx context.Context, v View, f GoFile, disabledAnalyses map[str
 	}
 
 	// Prepare any additional reports for the errors in this package.
-	for _, pkgErr := range pkg.GetErrors() {
-		addReport(v, reports, packageErrorSpan(pkgErr).URI(), nil)
+	for _, err := range pkg.GetErrors() {
+		if err.Kind != packages.ListError {
+			continue
+		}
+		addReport(v, reports, packagesErrorSpan(err).URI(), nil)
 	}
 
 	// Run diagnostics for the package that this URI belongs to.
@@ -88,42 +91,55 @@ func Diagnostics(ctx context.Context, v View, f GoFile, disabledAnalyses map[str
 	return reports, nil
 }
 
+type diagnosticSet struct {
+	listErrors, parseErrors, typeErrors []Diagnostic
+}
+
 func diagnostics(ctx context.Context, v View, pkg Package, reports map[span.URI][]Diagnostic) bool {
-	var listErrors, parseErrors, typeErrors []packages.Error
+	diagSets := make(map[span.URI]*diagnosticSet)
 	for _, err := range pkg.GetErrors() {
-		switch err.Kind {
-		case packages.ParseError:
-			parseErrors = append(parseErrors, err)
-		case packages.TypeError:
-			typeErrors = append(typeErrors, err)
-		default:
-			listErrors = append(listErrors, err)
-		}
-	}
-	// Don't report type errors if there are parse errors or list errors.
-	diags := typeErrors
-	if len(parseErrors) > 0 {
-		diags = parseErrors
-	} else if len(listErrors) > 0 {
-		diags = listErrors
-	}
-	for _, diag := range diags {
-		spn := packageErrorSpan(diag)
-		if spn.IsPoint() && diag.Kind == packages.TypeError {
-			spn = pointToSpan(ctx, v, spn)
-		}
-		diagnostic := Diagnostic{
+		diag := Diagnostic{
+			Span:     packagesErrorSpan(err),
+			Message:  err.Msg,
 			Source:   "LSP",
-			Span:     spn,
-			Message:  diag.Msg,
 			Severity: SeverityError,
 		}
-		if _, ok := reports[spn.URI()]; ok {
-			reports[spn.URI()] = append(reports[spn.URI()], diagnostic)
+		set, ok := diagSets[diag.Span.URI()]
+		if !ok {
+			set = &diagnosticSet{}
+			diagSets[diag.Span.URI()] = set
+		}
+		switch err.Kind {
+		case packages.ParseError:
+			set.parseErrors = append(set.parseErrors, diag)
+		case packages.TypeError:
+			if diag.Span.IsPoint() {
+				diag.Span = pointToSpan(ctx, v, diag.Span)
+			}
+			set.typeErrors = append(set.typeErrors, diag)
+		default:
+			set.listErrors = append(set.listErrors, diag)
 		}
 	}
-	// Returns true if we've sent non-empty diagnostics.
-	return len(diags) != 0
+	var nonEmptyDiagnostics bool // track if we actually send non-empty diagnostics
+	for uri, set := range diagSets {
+		// Don't report type errors if there are parse errors or list errors.
+		diags := set.typeErrors
+		if len(set.parseErrors) > 0 {
+			diags = set.parseErrors
+		} else if len(set.listErrors) > 0 {
+			diags = set.listErrors
+		}
+		if len(diags) > 0 {
+			nonEmptyDiagnostics = true
+		}
+		for _, diag := range diags {
+			if _, ok := reports[uri]; ok {
+				reports[uri] = append(reports[uri], diag)
+			}
+		}
+	}
+	return nonEmptyDiagnostics
 }
 
 func analyses(ctx context.Context, v View, pkg Package, disabledAnalyses map[string]struct{}, reports map[span.URI][]Diagnostic) error {
@@ -163,30 +179,31 @@ func addReport(v View, reports map[span.URI][]Diagnostic, uri span.URI, diagnost
 	}
 }
 
-// parseDiagnosticMessage attempts to parse a standard error message by stripping off the trailing error message.
-// Works only on errors where the message is prefixed by ": ".
-// e.g.:
+func packagesErrorSpan(err packages.Error) span.Span {
+	if err.Pos == "" {
+		return parseDiagnosticMessage(err.Msg)
+	}
+	return span.Parse(err.Pos)
+}
+
+// parseDiagnosticMessage attempts to parse a standard `go list` error message
+// by stripping off the trailing error message.
+//
+// It works only on errors whose message is prefixed by colon,
+// followed by a space (": "). For example:
+//
 //   attributes.go:13:1: expected 'package', found 'type'
+//
 func parseDiagnosticMessage(input string) span.Span {
 	input = strings.TrimSpace(input)
-
 	msgIndex := strings.Index(input, ": ")
 	if msgIndex < 0 {
 		return span.Parse(input)
 	}
-
 	return span.Parse(input[:msgIndex])
 }
 
-func packageErrorSpan(pkgErr packages.Error) span.Span {
-	if pkgErr.Pos == "" {
-		return parseDiagnosticMessage(pkgErr.Msg)
-	}
-	return span.Parse(pkgErr.Pos)
-}
-
 func pointToSpan(ctx context.Context, v View, spn span.Span) span.Span {
-	// Don't set a range if it's anything other than a type error.
 	f, err := v.GetFile(ctx, spn.URI())
 	if err != nil {
 		v.Session().Logger().Errorf(ctx, "Could find file for diagnostic: %v", spn.URI())
@@ -234,33 +251,35 @@ func singleDiagnostic(uri span.URI, format string, a ...interface{}) map[span.UR
 	}
 }
 
-func runAnalyses(ctx context.Context, v View, pkg Package, disabledAnalyses map[string]struct{}, report func(a *analysis.Analyzer, diag analysis.Diagnostic) error) error {
+var Analyzers = []*analysis.Analyzer{
 	// The traditional vet suite:
+	asmdecl.Analyzer,
+	assign.Analyzer,
+	atomic.Analyzer,
+	atomicalign.Analyzer,
+	bools.Analyzer,
+	buildtag.Analyzer,
+	cgocall.Analyzer,
+	composite.Analyzer,
+	copylock.Analyzer,
+	httpresponse.Analyzer,
+	loopclosure.Analyzer,
+	lostcancel.Analyzer,
+	nilfunc.Analyzer,
+	printf.Analyzer,
+	shift.Analyzer,
+	stdmethods.Analyzer,
+	structtag.Analyzer,
+	tests.Analyzer,
+	unmarshal.Analyzer,
+	unreachable.Analyzer,
+	unsafeptr.Analyzer,
+	unusedresult.Analyzer,
+}
+
+func runAnalyses(ctx context.Context, v View, pkg Package, disabledAnalyses map[string]struct{}, report func(a *analysis.Analyzer, diag analysis.Diagnostic) error) error {
 	var analyzers []*analysis.Analyzer
-	for _, a := range []*analysis.Analyzer{
-		asmdecl.Analyzer,
-		assign.Analyzer,
-		atomic.Analyzer,
-		atomicalign.Analyzer,
-		bools.Analyzer,
-		buildtag.Analyzer,
-		cgocall.Analyzer,
-		composite.Analyzer,
-		copylock.Analyzer,
-		httpresponse.Analyzer,
-		loopclosure.Analyzer,
-		lostcancel.Analyzer,
-		nilfunc.Analyzer,
-		printf.Analyzer,
-		shift.Analyzer,
-		stdmethods.Analyzer,
-		structtag.Analyzer,
-		tests.Analyzer,
-		unmarshal.Analyzer,
-		unreachable.Analyzer,
-		unsafeptr.Analyzer,
-		unusedresult.Analyzer,
-	} {
+	for _, a := range Analyzers {
 		if _, ok := disabledAnalyses[a.Name]; ok {
 			continue
 		}
