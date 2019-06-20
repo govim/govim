@@ -3,7 +3,6 @@ module github.com/myitcv/govim
 go 1.12
 
 require (
-	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/kr/pretty v0.1.0
 	github.com/kr/pty v1.1.5
@@ -15,5 +14,5 @@ require (
 	golang.org/x/tools/gopls v0.0.0-20190618233249-04b924abaa25
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
-	honnef.co/go/tools v0.0.0-20190315113450-95959eaf5e3c
+	honnef.co/go/tools v0.0.0-20190614002413-cb51c254f01b
 )
