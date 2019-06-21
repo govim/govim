@@ -193,7 +193,7 @@ func (c *completer) setSurrounding(ident *ast.Ident) {
 // found adds a candidate completion.
 //
 // Only the first candidate of a given name is considered.
-func (c *completer) found(obj types.Object, weight float64) {
+func (c *completer) found(obj types.Object, score float64) {
 	if obj.Pkg() != nil && obj.Pkg() != c.types && !obj.Exported() {
 		return // inaccessible
 	}
@@ -201,13 +201,34 @@ func (c *completer) found(obj types.Object, weight float64) {
 		return
 	}
 	c.seen[obj] = true
-	if c.matchingType(obj) {
-		weight *= highScore
+
+	cand := candidate{
+		obj:   obj,
+		score: score,
 	}
+
+	if c.matchingType(&cand) {
+		cand.score *= highScore
+	}
+
 	if c.wantTypeName() && !isTypeName(obj) {
-		weight *= lowScore
+		cand.score *= lowScore
 	}
-	c.items = append(c.items, c.item(obj, weight))
+
+	c.items = append(c.items, c.item(cand))
+}
+
+// candidate represents a completion candidate.
+type candidate struct {
+	// obj is the types.Object to complete to.
+	obj types.Object
+
+	// score is used to rank candidates.
+	score float64
+
+	// expandFuncCall is true if obj should be invoked in the completion.
+	// For example, expandFuncCall=true yields "foo()", expandFuncCall=false yields "foo".
+	expandFuncCall bool
 }
 
 // Completion returns a list of possible candidates for completion, given a
@@ -664,6 +685,10 @@ type typeInference struct {
 
 	// wantTypeName is true if we expect the name of a type.
 	wantTypeName bool
+
+	// modifiers are prefixes such as "*", "&" or "<-" that influence how
+	// a candidate type relates to the expected type.
+	modifiers []typeModifier
 }
 
 // expectedType returns information about the expected type for an expression at
@@ -796,25 +821,30 @@ Nodes:
 		}
 	}
 
-	if typ != nil {
-		for _, mod := range modifiers {
-			switch mod {
-			case dereference:
-				// For every "*" deref operator, add another pointer layer to expected type.
-				typ = types.NewPointer(typ)
-			case reference:
-				// For every "&" ref operator, remove a pointer layer from expected type.
-				typ = deref(typ)
-			case chanRead:
-				// For every "<-" operator, add another layer of channelness.
-				typ = types.NewChan(types.SendRecv, typ)
+	return typeInference{
+		objType:   typ,
+		modifiers: modifiers,
+	}
+}
+
+// applyTypeModifiers applies the list of type modifiers to a type.
+func (ti typeInference) applyTypeModifiers(typ types.Type) types.Type {
+	for _, mod := range ti.modifiers {
+		switch mod {
+		case dereference:
+			// For every "*" deref operator, remove a pointer layer from candidate type.
+			typ = deref(typ)
+		case reference:
+			// For every "&" ref operator, add another pointer layer to candidate type.
+			typ = types.NewPointer(typ)
+		case chanRead:
+			// For every "<-" operator, remove a layer of channelness.
+			if ch, ok := typ.(*types.Chan); ok {
+				typ = ch.Elem()
 			}
 		}
 	}
-
-	return typeInference{
-		objType: typ,
-	}
+	return typ
 }
 
 // findSwitchStmt returns an *ast.CaseClause's corresponding *ast.SwitchStmt or
@@ -906,20 +936,41 @@ Nodes:
 
 // matchingType reports whether an object is a good completion candidate
 // in the context of the expected type.
-func (c *completer) matchingType(obj types.Object) bool {
-	actual := obj.Type()
+func (c *completer) matchingType(cand *candidate) bool {
+	objType := cand.obj.Type()
 
-	// Use a function's return type as its type.
-	if sig, ok := actual.(*types.Signature); ok {
-		if sig.Results().Len() == 1 {
-			actual = sig.Results().At(0).Type()
+	// Default to invoking *types.Func candidates. This is so function
+	// completions in an empty statement (or other cases with no expected type)
+	// are invoked by default.
+	cand.expandFuncCall = isFunc(cand.obj)
+
+	typeMatches := func(actual types.Type) bool {
+		// Take into account any type modifiers on the expected type.
+		actual = c.expectedType.applyTypeModifiers(actual)
+
+		if c.expectedType.objType != nil {
+			// AssignableTo covers the case where the types are equal, but also handles
+			// cases like assigning a concrete type to an interface type.
+			return types.AssignableTo(types.Default(actual), types.Default(c.expectedType.objType))
 		}
+
+		return false
 	}
 
-	if c.expectedType.objType != nil {
-		// AssignableTo covers the case where the types are equal, but also handles
-		// cases like assigning a concrete type to an interface type.
-		return types.AssignableTo(types.Default(actual), types.Default(c.expectedType.objType))
+	if typeMatches(objType) {
+		// If obj's type matches, we don't want to expand to an invocation of obj.
+		cand.expandFuncCall = false
+		return true
+	}
+
+	// Try using a function's return type as its type.
+	if sig, ok := objType.Underlying().(*types.Signature); ok && sig.Results().Len() == 1 {
+		if typeMatches(sig.Results().At(0).Type()) {
+			// If obj's return value matches the expected type, we need to invoke obj
+			// in the completion.
+			cand.expandFuncCall = true
+			return true
+		}
 	}
 
 	return false
