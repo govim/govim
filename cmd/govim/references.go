@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
@@ -84,7 +85,14 @@ func (v *vimstate) references(flags govim.CommandFlags, args ...string) error {
 	}
 	sort.Slice(locs, func(i, j int) bool {
 		lhs, rhs := locs[i], locs[j]
-		return lhs.Filename <= rhs.Filename && lhs.Lnum <= rhs.Lnum && lhs.Col < rhs.Col
+		cmp := strings.Compare(lhs.Filename, rhs.Filename)
+		if cmp == 0 {
+			cmp = lhs.Lnum - rhs.Lnum
+		}
+		if cmp == 0 {
+			cmp = lhs.Col - rhs.Col
+		}
+		return cmp < 0
 	})
 	v.ChannelCall("setqflist", locs, "r")
 	v.ChannelEx("copen")
