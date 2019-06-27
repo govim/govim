@@ -82,10 +82,6 @@ type metadata struct {
 	files             []string
 	typesSizes        types.Sizes
 	parents, children map[packageID]bool
-
-	// missingImports is the set of unresolved imports for this package.
-	// It contains any packages with `go list` errors.
-	missingImports map[packagePath]struct{}
 }
 
 type packageCache struct {
@@ -116,9 +112,8 @@ func (v *view) Folder() span.URI {
 // Config returns the configuration used for the view's interaction with the
 // go/packages API. It is shared across all views.
 func (v *view) buildConfig() *packages.Config {
-	//TODO:should we cache the config and/or overlay somewhere?
+	// TODO: Should we cache the config and/or overlay somewhere?
 	return &packages.Config{
-		Context:    v.backgroundCtx,
 		Dir:        v.folder.Filename(),
 		Env:        v.env,
 		BuildFlags: v.buildFlags,
@@ -233,6 +228,12 @@ func (f *goFile) invalidateContent() {
 	f.handleMu.Lock()
 	defer f.handleMu.Unlock()
 
+	f.view.mcache.mu.Lock()
+	defer f.view.mcache.mu.Unlock()
+
+	f.view.pcache.mu.Lock()
+	defer f.view.pcache.mu.Unlock()
+
 	f.invalidateAST()
 	f.handle = nil
 }
@@ -240,25 +241,18 @@ func (f *goFile) invalidateContent() {
 // invalidateAST invalidates the AST of a Go file,
 // including any position and type information that depends on it.
 func (f *goFile) invalidateAST() {
-	f.view.pcache.mu.Lock()
-	defer f.view.pcache.mu.Unlock()
-
+	f.mu.Lock()
 	f.ast = nil
 	f.token = nil
+	pkgs := f.pkgs
+	f.mu.Unlock()
 
 	// Remove the package and all of its reverse dependencies from the cache.
-	if f.pkg != nil {
-		f.view.remove(f.pkg.id, map[packageID]struct{}{})
+	for id, pkg := range pkgs {
+		if pkg != nil {
+			f.view.remove(id, map[packageID]struct{}{})
+		}
 	}
-}
-
-// invalidatePackage removes the specified package and dependents from the
-// package cache.
-func (v *view) invalidatePackage(id packageID) {
-	v.pcache.mu.Lock()
-	defer v.pcache.mu.Unlock()
-
-	v.remove(id, make(map[packageID]struct{}))
 }
 
 // remove invalidates a package and its reverse dependencies in the view's
@@ -281,7 +275,9 @@ func (v *view) remove(id packageID, seen map[packageID]struct{}) {
 	for _, filename := range m.files {
 		if f, _ := v.findFile(span.FileURI(filename)); f != nil {
 			if gof, ok := f.(*goFile); ok {
-				gof.pkg = nil
+				gof.mu.Lock()
+				delete(gof.pkgs, id)
+				gof.mu.Unlock()
 			}
 		}
 	}
@@ -305,10 +301,6 @@ func (v *view) GetFile(ctx context.Context, uri span.URI) (source.File, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
-	}
-
 	return v.getFile(uri)
 }
 
@@ -327,6 +319,7 @@ func (v *view) getFile(uri span.URI) (viewFile, error) {
 			fileBase: fileBase{
 				view:  v,
 				fname: filename,
+				kind:  source.Mod,
 			},
 		}
 	case ".sum":
@@ -334,6 +327,7 @@ func (v *view) getFile(uri span.URI) (viewFile, error) {
 			fileBase: fileBase{
 				view:  v,
 				fname: filename,
+				kind:  source.Sum,
 			},
 		}
 	default:
@@ -342,10 +336,15 @@ func (v *view) getFile(uri span.URI) (viewFile, error) {
 			fileBase: fileBase{
 				view:  v,
 				fname: filename,
+				kind:  source.Go,
 			},
 		}
 		v.session.filesWatchMap.Watch(uri, func() {
-			f.(*goFile).invalidateContent()
+			gof, ok := f.(*goFile)
+			if !ok {
+				return
+			}
+			gof.invalidateContent()
 		})
 	}
 	v.mapFile(uri, f)

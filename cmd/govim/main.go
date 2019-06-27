@@ -256,13 +256,13 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	// override the handler with something that can handle the fact
 	// that we might get a govim.ErrShuttingDown
 	currHandler := conn.Handler
-	conn.Handler = func(ctxt context.Context, conn *jsonrpc2.Conn, req *jsonrpc2.Request) {
+	conn.Handler = func(ctxt context.Context, req *jsonrpc2.Request) {
 		defer func() {
 			if r := recover(); r != nil && r != govim.ErrShuttingDown {
 				panic(r)
 			}
 		}()
-		currHandler(ctxt, conn, req)
+		currHandler(ctxt, req)
 	}
 	g.tomb.Go(func() error {
 		return conn.Run(ctxt)
