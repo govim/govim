@@ -76,7 +76,7 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	var isBusy int
 	v.Parse(args[0], &isBusy)
 	v.userBusy = isBusy != 0
-	if v.userBusy || v.config.QuickfixAutoDiagnosticsDisable {
+	if v.userBusy || v.config.QuickfixAutoDiagnosticsDisable || !v.quickfixIsDiagnostics {
 		return nil, nil
 	}
 	return nil, v.updateQuickfix()
