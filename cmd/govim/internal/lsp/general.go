@@ -26,11 +26,11 @@ func (s *Server) initialize(ctx context.Context, params *protocol.InitializePara
 	}
 	s.isInitialized = true // mark server as initialized now
 
-	// TODO(iancottrell): Change this default to protocol.Incremental and remove the option
-	s.textDocumentSyncKind = protocol.Full
+	// TODO: Remove the option once we are certain there are no issues here.
+	s.textDocumentSyncKind = protocol.Incremental
 	if opts, ok := params.InitializationOptions.(map[string]interface{}); ok {
-		if opt, ok := opts["incrementalSync"].(bool); ok && opt {
-			s.textDocumentSyncKind = protocol.Incremental
+		if opt, ok := opts["noIncrementalSync"].(bool); ok && opt {
+			s.textDocumentSyncKind = protocol.Full
 		}
 	}
 
@@ -200,6 +200,10 @@ func (s *Server) processConfig(view source.View, config interface{}) error {
 				s.disabledAnalyses[a] = struct{}{}
 			}
 		}
+	}
+	// Check if deep completions are enabled.
+	if useDeepCompletions, ok := c["useDeepCompletions"].(bool); ok {
+		s.useDeepCompletions = useDeepCompletions
 	}
 	return nil
 }

@@ -1,3 +1,7 @@
+// Copyright 2019 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package cache
 
 import (
@@ -36,6 +40,7 @@ func (c *cache) TokenHandle(fh source.FileHandle) source.TokenHandle {
 	})
 	return &tokenHandle{
 		handle: h,
+		file:   fh,
 	}
 }
 
@@ -84,5 +89,6 @@ func tokenFile(ctx context.Context, c *cache, fh source.FileHandle) (*token.File
 	if tok == nil {
 		return nil, fmt.Errorf("no token.File for %s", fh.Identity().URI)
 	}
+	tok.SetLinesForContent(buf)
 	return tok, nil
 }

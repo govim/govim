@@ -220,9 +220,10 @@ func (v *vimstate) handleEvent(event fsnotify.Event) error {
 			v.watchedFiles[path] = wf
 			params := &protocol.DidOpenTextDocumentParams{
 				TextDocument: protocol.TextDocumentItem{
-					URI:     string(wf.URI()),
-					Version: float64(0),
-					Text:    string(wf.Contents),
+					LanguageID: "go",
+					URI:        string(wf.URI()),
+					Version:    float64(0),
+					Text:       string(wf.Contents),
 				},
 			}
 			err := v.server.DidOpen(context.Background(), params)

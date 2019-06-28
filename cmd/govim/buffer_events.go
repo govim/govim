@@ -117,9 +117,10 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 	if b.Version == 0 {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
-				URI:     string(b.URI()),
-				Version: float64(b.Version),
-				Text:    string(b.Contents()),
+				LanguageID: "go",
+				URI:        string(b.URI()),
+				Version:    float64(b.Version),
+				Text:       string(b.Contents()),
 			},
 		}
 		err := v.server.DidOpen(context.Background(), params)
