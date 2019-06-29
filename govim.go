@@ -219,10 +219,14 @@ func (g *govimImpl) Schedule(f func(Govim) error) chan struct{} {
 	done := make(chan struct{})
 	g.eventQueue.Add(func() error {
 		defer func() {
+			if r := recover(); r != nil && r != ErrShuttingDown && r != tomb.ErrDying {
+				panic(r)
+			}
 			close(done)
 			select {
 			case <-g.tomb.Dying():
-			case g.flushEvents <- struct{}{}:
+			default:
+				g.flushEvents <- struct{}{}
 			}
 		}()
 		return f(g.Scheduled())

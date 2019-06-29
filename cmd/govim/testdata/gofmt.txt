@@ -3,6 +3,7 @@
 # :GOVIMGoFmt whole file
 cp file.go.orig file.go
 vim ex 'e! file.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'GOVIMGoFmt'
 vim ex 'noautocmd w'
 cmp file.go file.go.gofmt
