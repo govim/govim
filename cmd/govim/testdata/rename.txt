@@ -1,0 +1,54 @@
+# Test that renaming of identifiers works
+
+# For some reason this test triggers an unusual bug in Vim
+# that causes it to segfault. For now we aren't going to bump
+# the minimum required version for govim (or just the rename
+# functionality) rather we just disable this test and we'll see
+# if we get any reports of problems
+[vim] [!vim:v8.1.1700] skip
+[gvim] [!gvim:v8.1.1700] skip
+
+vim ex 'e main.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'call cursor(6,7)'
+vim ex 'call execute(\"GOVIMRename banana\")'
+vim ex 'silent noautocmd wall'
+vim -indent call execute '["ls"]'
+#stdout '"\n  1 %a   \\"main.go\\"                      line 7\n  2 #a   \"'$WORK/other.go'\" line 0"'
+#! stderr .+
+cmp main.go main.go.banana
+cmp other.go other.go.banana
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+var i int
+
+func main() {
+	i += i + 5
+	fmt.Printf("i: %v\n", i)
+}
+-- main.go.banana --
+package main
+
+var banana int
+
+func main() {
+	banana += banana + 5
+	fmt.Printf("i: %v\n", banana)
+}
+-- other.go --
+package main
+
+func DoIt() {
+	i = 6 + i
+}
+-- other.go.banana --
+package main
+
+func DoIt() {
+	banana = 6 + banana
+}
