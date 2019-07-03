@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/tools/go/ast/astutil"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/snippet"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
@@ -263,6 +264,8 @@ type CompletionOptions struct {
 // the client to score the quality of the completion. For instance, some clients
 // may tolerate imperfect matches as valid completion results, since users may make typos.
 func Completion(ctx context.Context, view View, f GoFile, pos token.Pos, opts CompletionOptions) ([]CompletionItem, *Selection, error) {
+	ctx, ts := trace.StartSpan(ctx, "source.Completion")
+	defer ts.End()
 	file := f.GetAST(ctx)
 	if file == nil {
 		return nil, nil, fmt.Errorf("no AST for %s", f.URI())
@@ -727,6 +730,9 @@ type typeInference struct {
 
 	// assertableFrom is a type that must be assertable to our candidate type.
 	assertableFrom types.Type
+
+	// convertibleTo is a type our candidate type must be convertible to.
+	convertibleTo types.Type
 }
 
 // expectedType returns information about the expected type for an expression at
@@ -741,8 +747,9 @@ func expectedType(c *completer) typeInference {
 	}
 
 	var (
-		modifiers []typeModifier
-		typ       types.Type
+		modifiers     []typeModifier
+		typ           types.Type
+		convertibleTo types.Type
 	)
 
 Nodes:
@@ -774,6 +781,13 @@ Nodes:
 		case *ast.CallExpr:
 			// Only consider CallExpr args if position falls between parens.
 			if node.Lparen <= c.pos && c.pos <= node.Rparen {
+				// For type conversions like "int64(foo)" we can only infer our
+				// desired type is convertible to int64.
+				if typ := typeConversion(node, c.info); typ != nil {
+					convertibleTo = typ
+					break Nodes
+				}
+
 				if tv, ok := c.info.Types[node.Fun]; ok {
 					if sig, ok := tv.Type.(*types.Signature); ok {
 						if sig.Params().Len() == 0 {
@@ -860,8 +874,9 @@ Nodes:
 	}
 
 	return typeInference{
-		objType:   typ,
-		modifiers: modifiers,
+		objType:       typ,
+		modifiers:     modifiers,
+		convertibleTo: convertibleTo,
 	}
 }
 
@@ -1016,14 +1031,28 @@ func (c *completer) matchingType(cand *candidate) bool {
 	// are invoked by default.
 	cand.expandFuncCall = isFunc(cand.obj)
 
-	typeMatches := func(actual types.Type) bool {
+	typeMatches := func(candType types.Type) bool {
 		// Take into account any type modifiers on the expected type.
-		actual = c.expectedType.applyTypeModifiers(actual)
+		candType = c.expectedType.applyTypeModifiers(candType)
 
 		if c.expectedType.objType != nil {
+			wantType := types.Default(c.expectedType.objType)
+
+			// Handle untyped values specially since AssignableTo gives false negatives
+			// for them (see https://golang.org/issue/32146).
+			if candBasic, ok := candType.(*types.Basic); ok && candBasic.Info()&types.IsUntyped > 0 {
+				if wantBasic, ok := wantType.Underlying().(*types.Basic); ok {
+					// Check that their constant kind (bool|int|float|complex|string) matches.
+					// This doesn't take into account the constant value, so there will be some
+					// false positives due to integer sign and overflow.
+					return candBasic.Info()&types.IsConstType == wantBasic.Info()&types.IsConstType
+				}
+				return false
+			}
+
 			// AssignableTo covers the case where the types are equal, but also handles
 			// cases like assigning a concrete type to an interface type.
-			return types.AssignableTo(types.Default(actual), types.Default(c.expectedType.objType))
+			return types.AssignableTo(candType, wantType)
 		}
 
 		return false
@@ -1043,6 +1072,10 @@ func (c *completer) matchingType(cand *candidate) bool {
 			cand.expandFuncCall = true
 			return true
 		}
+	}
+
+	if c.expectedType.convertibleTo != nil {
+		return types.ConvertibleTo(objType, c.expectedType.convertibleTo)
 	}
 
 	return false
