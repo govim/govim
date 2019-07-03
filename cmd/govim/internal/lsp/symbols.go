@@ -9,10 +9,13 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
 func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSymbolParams) ([]protocol.DocumentSymbol, error) {
+	ctx, ts := trace.StartSpan(ctx, "lsp.Server.documentSymbol")
+	defer ts.End()
 	uri := span.NewURI(params.TextDocument.URI)
 	view := s.session.ViewOf(uri)
 	f, m, err := getGoFile(ctx, view, uri)

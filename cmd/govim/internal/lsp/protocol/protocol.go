@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/myitcv/govim/cmd/govim/internal/jsonrpc2"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/xlog"
 )
 
@@ -15,7 +16,10 @@ const defaultMessageBufferSize = 20
 const defaultRejectIfOverloaded = false
 
 func canceller(ctx context.Context, conn *jsonrpc2.Conn, id jsonrpc2.ID) {
-	conn.Notify(context.Background(), "$/cancelRequest", &CancelParams{ID: id})
+	ctx = detatchContext(ctx)
+	ctx, span := trace.StartSpan(ctx, "protocol.canceller")
+	defer span.End()
+	conn.Notify(ctx, "$/cancelRequest", &CancelParams{ID: id})
 }
 
 func NewClient(stream jsonrpc2.Stream, client Client) (*jsonrpc2.Conn, Server, xlog.Logger) {

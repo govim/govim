@@ -12,6 +12,7 @@ import (
 
 const (
 	goplsConfigNoDocsOnHover = "noDocsOnHover"
+	goplsConfigHoverKind     = "hoverKind"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -48,6 +49,7 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Confi
 	}
 	conf := make(map[string]interface{})
 	conf[goplsConfigNoDocsOnHover] = true
+	conf[goplsConfigHoverKind] = "NoDocumentation"
 	return []interface{}{conf}, nil
 }
 func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {

@@ -119,6 +119,10 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 		return fmt.Errorf("unknown format mode specified: %v", mode)
 	}
 
+	if len(edits) == 0 {
+		return nil
+	}
+
 	// see :help wundo. The use of wundo! is significant. It first deletes
 	// the temp file we created, but only recreates it if there is something
 	// to write.  This is inherently racey... because theorectically the file
