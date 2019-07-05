@@ -14,8 +14,8 @@ env:
     - GO_VERSION="go1.12.5" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.1158" VIM_COMMAND="xvfb-run -a gvim -f"
     - GO_VERSION="go1.12.5" VIM_FLAVOR="vim" VIM_VERSION="v8.1.1512" VIM_COMMAND="vim"
     - GO_VERSION="go1.12.5" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.1512" VIM_COMMAND="xvfb-run -a gvim -f"
-    - GO_VERSION="go1.12.5" VIM_FLAVOR="vim" VIM_VERSION="v8.1.1608" VIM_COMMAND="vim"
-    - GO_VERSION="go1.12.5" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.1608" VIM_COMMAND="xvfb-run -a gvim -f"
+    - GO_VERSION="go1.12.5" VIM_FLAVOR="vim" VIM_VERSION="v8.1.1640" VIM_COMMAND="vim"
+    - GO_VERSION="go1.12.5" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.1640" VIM_COMMAND="xvfb-run -a gvim -f"
 
 # Add this before_install until we have a definitive resolution on
 # https://travis-ci.community/t/files-in-checkout-have-eol-changed-from-lf-to-crlf/349/2
