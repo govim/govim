@@ -12,6 +12,7 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/ast/astutil"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/fuzzy"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/snippet"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
@@ -149,6 +150,9 @@ type completer struct {
 
 	// deepState contains the current state of our deep completion search.
 	deepState deepCompletionState
+
+	// matcher does fuzzy matching of the candidates for the surrounding prefix.
+	matcher *fuzzy.Matcher
 }
 
 type compLitInfo struct {
@@ -187,15 +191,16 @@ func (c *completer) setSurrounding(ident *ast.Ident) {
 	if c.surrounding != nil {
 		return
 	}
-
 	if !(ident.Pos() <= c.pos && c.pos <= ident.End()) {
 		return
 	}
-
 	c.surrounding = &Selection{
 		Content: ident.Name,
 		Range:   span.NewRange(c.view.Session().Cache().FileSet(), ident.Pos(), ident.End()),
 		Cursor:  c.pos,
+	}
+	if c.surrounding.Prefix() != "" {
+		c.matcher = fuzzy.NewMatcher(c.surrounding.Prefix(), fuzzy.Symbol)
 	}
 }
 
