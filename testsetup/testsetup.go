@@ -34,7 +34,7 @@ const (
 	EnvLogfileTmpl      = "GOVIM_LOGFILE_TMPL"
 	EnvTestscriptStderr = "GOVIM_TESTSCRIPT_STDERR"
 
-	LatestVim = "v8.1.1608"
+	LatestVim = "v8.1.1640"
 )
 
 var (
