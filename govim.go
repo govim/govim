@@ -18,6 +18,7 @@ import (
 
 	"github.com/kr/pretty"
 	"github.com/myitcv/govim/internal/queue"
+	"github.com/myitcv/govim/internal/transport"
 	"github.com/rogpeppe/go-internal/semver"
 	"gopkg.in/tomb.v2"
 )
@@ -169,6 +170,8 @@ type govimImpl struct {
 
 	flavor  Flavor
 	version string
+
+	transport transport.Transport
 }
 
 type callback interface {
@@ -204,6 +207,8 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, e
 
 		callVimNextID: 1,
 		callbackResps: make(map[int]callback),
+
+		transport: transport.NewVimTransport(in, out, log),
 	}
 
 	return g, nil
@@ -520,7 +525,7 @@ func (g *govimImpl) run() error {
 				} else {
 					resp[1] = res
 				}
-				g.sendJSONMsg(id, resp)
+				g.transport.SendJSON(id, resp)
 				return nil
 			})
 		case "log":
@@ -788,7 +793,7 @@ func (g *govimImpl) callVim(ch callback, typ string, vs ...interface{}) error {
 	g.callbackRespsLock.Unlock()
 	args := []interface{}{id, typ}
 	args = append(args, vs...)
-	g.sendJSONMsg(0, args)
+	g.transport.SendJSON(0, args)
 	return nil
 }
 
@@ -831,22 +836,6 @@ func (g *govimImpl) parseInt(m json.RawMessage) int {
 	var i int
 	g.decodeJSON(m, &i)
 	return i
-}
-
-// sendJSONMsg is a low-level protocol primitive for sending a JSON msg that will be
-// understood by Vim. See https://vimhelp.org/channel.txt.html#channel-use
-func (g *govimImpl) sendJSONMsg(p1, p2 interface{}, ps ...interface{}) {
-	msg := []interface{}{p1, p2}
-	msg = append(msg, ps...)
-	// TODO could use a multi-writer here
-	logMsg, err := json.Marshal(msg)
-	if err != nil {
-		g.errProto("failed to create log message: %v", err)
-	}
-	g.logVimEventf("sendJSONMsg: %s\n", logMsg)
-	if err := g.out.Encode(msg); err != nil {
-		panic(ErrShuttingDown)
-	}
 }
 
 // decodeJSON is a low-level protocol primitive for decoding a JSON value.
