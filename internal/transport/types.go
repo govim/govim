@@ -20,8 +20,7 @@ type Transport interface {
 	Initialized() chan struct{}
 	IsShutdown() chan struct{}
 
-	Receive() (json.RawMessage, error)
-	Send(callback Callback, msgType string, params ...interface{}) error
+	Read() (int, json.RawMessage, error)
 	SendJSON(p1, p2 interface{}, ps ...interface{})
 }
 

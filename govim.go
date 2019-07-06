@@ -141,8 +141,6 @@ type Govim interface {
 }
 
 type govimImpl struct {
-	in  *json.Decoder
-	out *json.Encoder
 	log io.Writer
 
 	funcHandlers     map[string]handler
@@ -191,8 +189,6 @@ func (u unscheduledCallback) isCallback() {}
 
 func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, error) {
 	g := &govimImpl{
-		in:  json.NewDecoder(in),
-		out: json.NewEncoder(out),
 		log: log,
 
 		funcHandlers: make(map[string]handler),
@@ -406,7 +402,11 @@ func (g *govimImpl) run() error {
 	// the read loop
 	for {
 		g.Logf("run: waiting to read a JSON message\n")
-		id, msg := g.readJSONMsg()
+		id, msg, err := g.transport.Read()
+		if err != nil {
+			g.errProto("reading from input: %v", err)
+			continue
+		}
 		g.logVimEventf("recvJSONMsg: [%v] %s\n", id, msg)
 		args := g.parseJSONArgSlice(msg)
 		typ := g.parseString(args[0])
@@ -795,23 +795,6 @@ func (g *govimImpl) callVim(ch callback, typ string, vs ...interface{}) error {
 	args = append(args, vs...)
 	g.transport.SendJSON(0, args)
 	return nil
-}
-
-// readJSONMsg is a low-level protocol primitive for reading a JSON msg sent by Vim.
-// There is more structure to the messages that we receive, hence we can be
-// more specific in our return type. See
-// https://vimhelp.org/channel.txt.html#channel-use for more details.
-func (g *govimImpl) readJSONMsg() (int, json.RawMessage) {
-	var msg [2]json.RawMessage
-	if err := g.in.Decode(&msg); err != nil {
-		if err == io.EOF {
-			// explicitly setting underlying here
-			panic(errProto{underlying: err})
-		}
-		g.errProto("failed to read JSON msg: %v", err)
-	}
-	i := g.parseInt(msg[0])
-	return i, msg[1]
 }
 
 // parseJSONArgSlice is a low-level protocol primitive for parsing a slice of
