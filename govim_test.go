@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	fLogGovim = flag.Bool("govimLog", false, "whether to log govim activity")
+	fDebugLog = flag.Bool("debugLog", false, "whether to log debugging info from vim, govim and the test shim")
 )
 
 func TestMain(m *testing.M) {
@@ -52,28 +52,59 @@ func TestScripts(t *testing.T) {
 					"HOME="+home,
 				)
 				testPluginPath := filepath.Join(e.WorkDir, "home", ".vim", "pack", "plugins", "start", "govim")
-				d := newTestPlugin(plugin.NewDriver(""))
-				td, err := testdriver.NewTestDriver(filepath.Base(e.WorkDir), ".", home, testPluginPath, e, d)
-				if err != nil {
-					t.Fatalf("failed to create new driver: %v", err)
-				}
+
+				var vimDebugLogPath, govimDebugLogPath string
+
 				errLog := new(testdriver.LockingBuffer)
 				outputs := []io.Writer{
 					errLog,
 				}
+				e.Values[testdriver.KeyErrLog] = errLog
 				if os.Getenv(testsetup.EnvTestscriptStderr) == "true" {
 					outputs = append(outputs, os.Stderr)
 				}
-				e.Values[testdriver.KeyErrLog] = errLog
-				if *fLogGovim {
+
+				if *fDebugLog {
+					fmt.Printf("Vim home path is at %s\n", home)
+
+					vimDebugLog, err := ioutil.TempFile("", "govim_test_script_vim_debug_log*")
+					if err != nil {
+						t.Fatalf("failed to create govim log file: %v", err)
+					}
+					vimDebugLogPath = vimDebugLog.Name()
+					fmt.Printf("Vim debug logging enabled for %v at %v\n", filepath.Base(e.WorkDir), vimDebugLog.Name())
 					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
 					if err != nil {
 						t.Fatalf("failed to create govim log file: %v", err)
 					}
 					outputs = append(outputs, tf)
-					t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
+					govimDebugLogPath = tf.Name()
+					fmt.Printf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
 				}
-				td.Log = io.MultiWriter(outputs...)
+				d := newTestPlugin(plugin.NewDriver(""))
+
+				config := &testdriver.Config{
+					Name:           filepath.Base(e.WorkDir),
+					GovimPath:      ".",
+					TestHomePath:   home,
+					TestPluginPath: testPluginPath,
+					Env:            e,
+					Plugin:         d,
+					Log:            io.MultiWriter(outputs...),
+					Debug: testdriver.Debug{
+						Enabled: *fDebugLog,
+						// FYI increasing this to 8 or above seems to cause Vim to do something weird with stdout, which means some tests fail
+						VimLogLevel:  7,
+						VimLogPath:   vimDebugLogPath,
+						GovimLogPath: govimDebugLogPath,
+					},
+				}
+
+				td, err := testdriver.NewTestDriver(config)
+				if err != nil {
+					t.Fatalf("failed to create new driver: %v", err)
+				}
+
 				if err := td.Run(); err != nil {
 					t.Fatalf("failed to run TestDriver: %v", err)
 				}
