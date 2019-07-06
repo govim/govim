@@ -1,0 +1,19 @@
+# Test that the quickfix window gets populated with error messages from gopls
+# in the edge case of an error that references the end of file.
+
+vim ex 'e main.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'copen'
+vim ex 'w errors'
+cmp errors errors.golden
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+var _ *
+-- errors.golden --
+main.go|3 col 8| expected ';', found 'EOF'
