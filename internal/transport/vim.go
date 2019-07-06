@@ -3,8 +3,11 @@ package transport
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/myitcv/govim/internal/queue"
+	"gopkg.in/tomb.v2"
 	"io"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -12,19 +15,45 @@ type vimTransport struct {
 	in  *json.Decoder
 	out *json.Encoder
 	log io.Writer
+
+	// callVimNextID represents the next ID to use in a call to the Vim
+	// channel handler. This then allows us to direct the response.
+	callVimNextID     int
+	callbackResps     map[int]Callback
+	callbackRespsLock sync.Mutex
+
+	eventQueue *queue.Queue
+	tomb       tomb.Tomb
 }
 
-func NewVimTransport(in io.Reader, out io.Writer, log io.Writer) Transport {
+func NewVimTransport(in io.Reader, out io.Writer, log io.Writer, eventQueue *queue.Queue) Transport {
 	return &vimTransport{
 		in:  json.NewDecoder(in),
 		out: json.NewEncoder(out),
 		log: log,
+
+		callVimNextID: 1,
+		callbackResps: make(map[int]Callback),
+
+		eventQueue: eventQueue,
 	}
 }
 
 func (v *vimTransport) Start() error {
+	v.tomb.Go(v.run)
 	return nil
 }
+
+func (v *vimTransport) run() error {
+	for {
+		select {
+		case <-v.tomb.Dying():
+			return tomb.ErrDying
+		}
+	}
+	return nil
+}
+
 func (v *vimTransport) Close() error {
 	return nil
 }
@@ -41,7 +70,68 @@ func (v *vimTransport) IsShutdown() chan struct{} {
 	return nil
 }
 
-func (v *vimTransport) Read() (int, json.RawMessage, error) {
+func (v *vimTransport) Read() (int, string, []json.RawMessage, error) {
+	for {
+		id, msg, err := v.readNextJSON()
+		if err != nil {
+			return id, "", nil, err
+		}
+		v.logVimEventf("recvJSONMsg: [%v] %s\n", id, msg)
+		args := v.parseJSONArgSlice(msg)
+		messageType := v.parseString(args[0])
+		args = args[1:]
+
+		if messageType == "callback" {
+			// This case is a "return" from a call to callVim. Format of args
+			// will be [id, [string, val]]
+			id := v.parseInt(args[0])
+			resp := v.parseJSONArgSlice(args[1])
+			msg := v.parseString(resp[0])
+			var val json.RawMessage
+			if len(resp) == 2 {
+				val = resp[1]
+			}
+			toSend := CallbackResp{
+				ErrString: msg,
+				Val:       val,
+			}
+			v.callbackRespsLock.Lock()
+			ch, ok := v.callbackResps[id]
+			delete(v.callbackResps, id)
+			v.callbackRespsLock.Unlock()
+			if !ok {
+				err = fmt.Errorf("run: received response for callback %v, but not response chan defined", id)
+				return id, "", nil, err
+			}
+			switch ch := ch.(type) {
+			case ScheduledCallback:
+				v.eventQueue.Add(func() error {
+					select {
+					case ch <- toSend:
+					case <-v.tomb.Dying():
+						return tomb.ErrDying
+					}
+					return nil
+				})
+			case UnscheduledCallback:
+				v.tomb.Go(func() error {
+					select {
+					case ch <- toSend:
+					case <-v.tomb.Dying():
+						return tomb.ErrDying
+					}
+					return nil
+				})
+			default:
+				panic(fmt.Errorf("unknown type of callback responser: %T", ch))
+			}
+		} else {
+			return id, messageType, args, nil
+		}
+	}
+}
+
+func (v *vimTransport) readNextJSON() (int, json.RawMessage, error) {
 	var msg [2]json.RawMessage
 	if err := v.in.Decode(&msg); err != nil {
 		if err == io.EOF {
@@ -52,6 +142,18 @@ func (v *vimTransport) Read() (int, json.RawMessage, error) {
 	}
 	i := v.parseInt(msg[0])
 	return i, msg[1], nil
+}
+
+func (v *vimTransport) Send(callback Callback, callbackType string, params ...interface{}) error {
+	v.callbackRespsLock.Lock()
+	id := v.callVimNextID
+	v.callVimNextID++
+	v.callbackResps[id] = callback
+	v.callbackRespsLock.Unlock()
+	args := []interface{}{id, callbackType}
+	args = append(args, params...)
+	v.SendJSON(0, args)
+	return nil
 }
 
 // sendJSONMsg is a low-level protocol primitive for sending a JSON msg that will be
@@ -95,6 +197,22 @@ func (v *vimTransport) parseInt(m json.RawMessage) int {
 	var i int
 	v.decodeJSON(m, &i)
 	return i
+}
+
+// parseJSONArgSlice is a low-level protocol primitive for parsing a slice of
+// raw encoded JSON values
+func (v *vimTransport) parseJSONArgSlice(m json.RawMessage) []json.RawMessage {
+	var i []json.RawMessage
+	v.decodeJSON(m, &i)
+	return i
+}
+
+// parseString is a low-level protocol primtive for parsing a string from a
+// raw encoded JSON value
+func (v *vimTransport) parseString(m json.RawMessage) string {
+	var s string
+	v.decodeJSON(m, &s)
+	return s
 }
 
 // decodeJSON is a low-level protocol primitive for decoding a JSON value.

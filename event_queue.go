@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/myitcv/govim/internal/transport"
 	"gopkg.in/tomb.v2"
 )
 
@@ -14,31 +15,31 @@ type eventQueueInst struct {
 var _ Govim = eventQueueInst{}
 
 func (e eventQueueInst) ChannelRedraw(force bool) error {
-	ch := make(scheduledCallback)
+	ch := make(transport.ScheduledCallback)
 	err := e.govimImpl.channelRedrawImpl(ch, force)
 	return e.handleUserQError(ch, err, channelRedrawErrMsg, force)
 }
 
 func (e eventQueueInst) ChannelEx(expr string) error {
-	ch := make(scheduledCallback)
+	ch := make(transport.ScheduledCallback)
 	err := e.govimImpl.channelExImpl(ch, expr)
 	return e.handleUserQError(ch, err, channelExErrMsg, expr)
 }
 
 func (e eventQueueInst) ChannelNormal(expr string) error {
-	ch := make(scheduledCallback)
+	ch := make(transport.ScheduledCallback)
 	err := e.govimImpl.channelNormalImpl(ch, expr)
 	return e.handleUserQError(ch, err, channelNormalErrMsg, expr)
 }
 
 func (e eventQueueInst) ChannelExpr(expr string) (json.RawMessage, error) {
-	ch := make(scheduledCallback)
+	ch := make(transport.ScheduledCallback)
 	err := e.govimImpl.channelExprImpl(ch, expr)
 	return e.handleUserQValueAndError(ch, err, channelExprErrMsg, expr)
 }
 
 func (e eventQueueInst) ChannelCall(fn string, args ...interface{}) (json.RawMessage, error) {
-	ch := make(scheduledCallback)
+	ch := make(transport.ScheduledCallback)
 	err := e.govimImpl.channelCallImpl(ch, fn, args...)
 	return e.handleUserQValueAndError(ch, err, channelCallErrMsg, fn, args)
 }
@@ -51,12 +52,12 @@ func (e eventQueueInst) Schedule(f func(Govim) error) chan struct{} {
 	panic(fmt.Errorf("attempt to schedule work on the event queue from the event queue itself"))
 }
 
-func (e eventQueueInst) handleUserQError(ch scheduledCallback, err error, format string, args ...interface{}) error {
+func (e eventQueueInst) handleUserQError(ch transport.ScheduledCallback, err error, format string, args ...interface{}) error {
 	_, err = e.handleUserQValueAndError(ch, err, format, args...)
 	return err
 }
 
-func (e eventQueueInst) handleUserQValueAndError(ch scheduledCallback, err error, format string, args ...interface{}) (json.RawMessage, error) {
+func (e eventQueueInst) handleUserQValueAndError(ch transport.ScheduledCallback, err error, format string, args ...interface{}) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -69,11 +70,11 @@ func (e eventQueueInst) handleUserQValueAndError(ch scheduledCallback, err error
 		case <-e.govimImpl.tomb.Dying():
 			panic(tomb.ErrDying)
 		case resp := <-ch:
-			if resp.errString != "" {
-				args = append(args, resp.errString)
+			if resp.ErrString != "" {
+				args = append(args, resp.ErrString)
 				return nil, fmt.Errorf(format, args...)
 			}
-			return resp.val, nil
+			return resp.Val, nil
 		}
 	}
 }

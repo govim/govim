@@ -5,15 +5,16 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/myitcv/govim/internal/transport"
 	"gopkg.in/tomb.v2"
 )
 
-func (g *govimImpl) handleChannelError(ch unscheduledCallback, err error, format string, args ...interface{}) error {
+func (g *govimImpl) handleChannelError(ch transport.UnscheduledCallback, err error, format string, args ...interface{}) error {
 	_, err = g.handleChannelValueAndError(ch, err, format, args)
 	return err
 }
 
-func (g *govimImpl) handleChannelValueAndError(ch unscheduledCallback, err error, format string, args ...interface{}) (json.RawMessage, error) {
+func (g *govimImpl) handleChannelValueAndError(ch transport.UnscheduledCallback, err error, format string, args ...interface{}) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -22,24 +23,24 @@ func (g *govimImpl) handleChannelValueAndError(ch unscheduledCallback, err error
 	case <-g.tomb.Dying():
 		panic(ErrShuttingDown)
 	case resp := <-ch:
-		if resp.errString != "" {
-			args = append(args, resp.errString)
+		if resp.ErrString != "" {
+			args = append(args, resp.ErrString)
 			return nil, fmt.Errorf(format, args...)
 		}
-		return resp.val, nil
+		return resp.Val, nil
 	}
 }
 
 // ChannelRedraw implements Govim.ChannelRedraw
 func (g *govimImpl) ChannelRedraw(force bool) error {
-	ch := make(unscheduledCallback)
+	ch := make(transport.UnscheduledCallback)
 	err := g.channelRedrawImpl(ch, force)
 	return g.handleChannelError(ch, err, channelRedrawErrMsg, force)
 }
 
 const channelRedrawErrMsg = "failed to redraw (force = %v) in Vim: %v"
 
-func (g *govimImpl) channelRedrawImpl(ch callback, force bool) error {
+func (g *govimImpl) channelRedrawImpl(ch transport.Callback, force bool) error {
 	<-g.loaded
 	var sForce string
 	if force {
@@ -52,14 +53,14 @@ func (g *govimImpl) channelRedrawImpl(ch callback, force bool) error {
 
 // ChannelEx implements Govim.ChannelEx
 func (g *govimImpl) ChannelEx(expr string) error {
-	ch := make(unscheduledCallback)
+	ch := make(transport.UnscheduledCallback)
 	err := g.channelExImpl(ch, expr)
 	return g.handleChannelError(ch, err, channelExErrMsg, expr)
 }
 
 const channelExErrMsg = "failed to ex(%v) in Vim: %v"
 
-func (g *govimImpl) channelExImpl(ch callback, expr string) error {
+func (g *govimImpl) channelExImpl(ch transport.Callback, expr string) error {
 	<-g.loaded
 	return g.DoProto(func() error {
 		return g.callVim(ch, "ex", expr)
@@ -68,14 +69,14 @@ func (g *govimImpl) channelExImpl(ch callback, expr string) error {
 
 // ChannelNormal implements Govim.ChannelNormal
 func (g *govimImpl) ChannelNormal(expr string) error {
-	ch := make(unscheduledCallback)
+	ch := make(transport.UnscheduledCallback)
 	err := g.channelNormalImpl(ch, expr)
 	return g.handleChannelError(ch, err, channelNormalErrMsg, expr)
 }
 
 const channelNormalErrMsg = "failed to normal(%v) in Vim: %v"
 
-func (g *govimImpl) channelNormalImpl(ch callback, expr string) error {
+func (g *govimImpl) channelNormalImpl(ch transport.Callback, expr string) error {
 	<-g.loaded
 	return g.DoProto(func() error {
 		return g.callVim(ch, "normal", expr)
@@ -84,14 +85,14 @@ func (g *govimImpl) channelNormalImpl(ch callback, expr string) error {
 
 // ChannelExpr implements Govim.ChannelExpr
 func (g *govimImpl) ChannelExpr(expr string) (json.RawMessage, error) {
-	ch := make(unscheduledCallback)
+	ch := make(transport.UnscheduledCallback)
 	err := g.channelExprImpl(ch, expr)
 	return g.handleChannelValueAndError(ch, err, channelExprErrMsg, expr)
 }
 
 const channelExprErrMsg = "failed to expr(%v) in Vim: %v"
 
-func (g *govimImpl) channelExprImpl(ch callback, expr string) error {
+func (g *govimImpl) channelExprImpl(ch transport.Callback, expr string) error {
 	<-g.loaded
 	return g.DoProto(func() error {
 		return g.callVim(ch, "expr", expr)
@@ -100,14 +101,14 @@ func (g *govimImpl) channelExprImpl(ch callback, expr string) error {
 
 // ChannelCall implements Govim.ChannelCall
 func (g *govimImpl) ChannelCall(fn string, args ...interface{}) (json.RawMessage, error) {
-	ch := make(unscheduledCallback)
+	ch := make(transport.UnscheduledCallback)
 	err := g.channelCallImpl(ch, fn, args...)
 	return g.handleChannelValueAndError(ch, err, channelCallErrMsg, fn, args)
 }
 
 const channelCallErrMsg = "failed to call(%v) in Vim: %v"
 
-func (g *govimImpl) channelCallImpl(ch callback, fn string, args ...interface{}) error {
+func (g *govimImpl) channelCallImpl(ch transport.Callback, fn string, args ...interface{}) error {
 	<-g.loaded
 	args = append([]interface{}{fn}, args...)
 	return g.DoProto(func() error {
