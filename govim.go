@@ -370,6 +370,7 @@ func (g *govimImpl) run() error {
 	g.goHandleShutdown(g.runEventQueue)
 	g.goHandleShutdown(g.load)
 	g.goHandleShutdown(g.transport.Start)
+	defer g.transport.Close()
 
 	// the read loop
 	for {
@@ -501,7 +502,6 @@ func (g *govimImpl) DefineRangeFunction(name string, params []string, f VimRange
 }
 
 func (g *govimImpl) defineFunction(isRange bool, name string, params []string, f handler) error {
-	var err error
 	if name == "" {
 		return fmt.Errorf("function name must not be empty")
 	}
@@ -525,16 +525,15 @@ func (g *govimImpl) defineFunction(isRange bool, name string, params []string, f
 	if isRange {
 		callbackTyp = "rangefunction"
 	}
-	ch := make(transport.UnscheduledCallback)
-	err = g.DoProto(func() error {
-		return g.callVim(ch, callbackTyp, args...)
-	})
-	return g.handleChannelError(ch, err, "failed to define %q in Vim: %v", name)
+
+	if _, err := g.transport.SendAndReceive(callbackTyp, args...); err != nil {
+		return fmt.Errorf("failed to define %q in Vim: %v", name, err)
+	}
+	return nil
 }
 
 func (g *govimImpl) DefineAutoCommand(group string, events Events, patts Patterns, nested bool, f VimAutoCommandFunction, exprs ...string) error {
 	<-g.loaded
-	var err error
 	g.funcHandlersLock.Lock()
 	funcHandle := fmt.Sprintf("%v%v", autoCommHandlePref, g.autocmdNextID)
 	g.autocmdNextID++
@@ -573,16 +572,14 @@ func (g *govimImpl) DefineAutoCommand(group string, events Events, patts Pattern
 	}
 	args := []interface{}{funcHandle, def.String(), exprs}
 	callbackTyp := "autocmd"
-	ch := make(transport.UnscheduledCallback)
-	err = g.DoProto(func() error {
-		return g.callVim(ch, callbackTyp, args...)
-	})
-	return g.handleChannelError(ch, err, "failed to define autocmd %q in Vim: %v", def.String())
+	if _, err := g.transport.SendAndReceive(callbackTyp, args...); err != nil {
+		return fmt.Errorf("failed to define autocmd %q in Vim: %v", def.String(), err)
+	}
+	return nil
 }
 
 func (g *govimImpl) DefineCommand(name string, f VimCommandFunction, attrs ...CommAttr) error {
 	<-g.loaded
-	var err error
 	if name == "" {
 		return fmt.Errorf("command name must not be empty")
 	}
@@ -693,12 +690,13 @@ func (g *govimImpl) DefineCommand(name string, f VimCommandFunction, attrs ...Co
 		sort.Strings(attrs)
 		attrMap["general"] = attrs
 	}
+	callbackTyp := "command"
 	args := []interface{}{name, attrMap}
-	ch := make(transport.UnscheduledCallback)
-	err = g.DoProto(func() error {
-		return g.callVim(ch, "command", args...)
-	})
-	return g.handleChannelError(ch, err, "failed to define %q in Vim: %v", name)
+
+	if _, err := g.transport.SendAndReceive(callbackTyp, args...); err != nil {
+		return fmt.Errorf("failed to define %q in Vim: %v", name, err)
+	}
+	return nil
 }
 
 func (g *govimImpl) unscheduledCallCallback(typ string, vs ...interface{}) transport.UnscheduledCallback {

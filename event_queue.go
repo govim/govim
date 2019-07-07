@@ -15,32 +15,36 @@ type eventQueueInst struct {
 var _ Govim = eventQueueInst{}
 
 func (e eventQueueInst) ChannelRedraw(force bool) error {
-	ch := make(transport.ScheduledCallback)
-	err := e.govimImpl.channelRedrawImpl(ch, force)
+	var sForce string
+	if force {
+		sForce = "force"
+	}
+	ch, err := e.govimImpl.transport.SendAndReceiveAsync("redraw", sForce)
 	return e.handleUserQError(ch, err, channelRedrawErrMsg, force)
 }
 
 func (e eventQueueInst) ChannelEx(expr string) error {
 	ch := make(transport.ScheduledCallback)
-	err := e.govimImpl.channelExImpl(ch, expr)
+	ch, err := e.govimImpl.transport.SendAndReceiveAsync("ex", expr)
 	return e.handleUserQError(ch, err, channelExErrMsg, expr)
 }
 
 func (e eventQueueInst) ChannelNormal(expr string) error {
 	ch := make(transport.ScheduledCallback)
-	err := e.govimImpl.channelNormalImpl(ch, expr)
+	ch, err := e.govimImpl.transport.SendAndReceiveAsync("normal", expr)
 	return e.handleUserQError(ch, err, channelNormalErrMsg, expr)
 }
 
 func (e eventQueueInst) ChannelExpr(expr string) (json.RawMessage, error) {
 	ch := make(transport.ScheduledCallback)
-	err := e.govimImpl.channelExprImpl(ch, expr)
+	ch, err := e.govimImpl.transport.SendAndReceiveAsync("expr", expr)
 	return e.handleUserQValueAndError(ch, err, channelExprErrMsg, expr)
 }
 
 func (e eventQueueInst) ChannelCall(fn string, args ...interface{}) (json.RawMessage, error) {
 	ch := make(transport.ScheduledCallback)
-	err := e.govimImpl.channelCallImpl(ch, fn, args...)
+	args = append([]interface{}{fn}, args...)
+	ch, err := e.govimImpl.transport.SendAndReceiveAsync("call", args...)
 	return e.handleUserQValueAndError(ch, err, channelCallErrMsg, fn, args)
 }
 

@@ -55,6 +55,7 @@ func (v *vimTransport) run() error {
 }
 
 func (v *vimTransport) Close() error {
+	v.tomb.Kill(ErrShuttingDown)
 	return nil
 }
 
@@ -154,6 +155,33 @@ func (v *vimTransport) Send(callback Callback, callbackType string, params ...in
 	args = append(args, params...)
 	v.SendJSON(0, args)
 	return nil
+}
+
+func (v *vimTransport) SendAndReceive(messageType string, args ...interface{}) (json.RawMessage, error) {
+	callback := make(UnscheduledCallback)
+	if err := v.Send(callback, messageType, args...); err != nil {
+		// protocol level error
+		return nil, err
+	}
+
+	select {
+	case <-v.tomb.Dying():
+		return nil, ErrShuttingDown
+	case resp := <-callback:
+		if resp.ErrString != "" {
+			return nil, fmt.Errorf("vim error: %s", resp.ErrString)
+		}
+		return resp.Val, nil
+	}
+}
+
+func (v *vimTransport) SendAndReceiveAsync(messageType string, args ...interface{}) (ScheduledCallback, error) {
+	callback := make(ScheduledCallback)
+	if err := v.Send(callback, messageType, args...); err != nil {
+		// protocol level error
+		return nil, err
+	}
+	return callback, nil
 }
 
 // sendJSONMsg is a low-level protocol primitive for sending a JSON msg that will be
