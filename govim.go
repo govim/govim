@@ -364,35 +364,15 @@ func (g *govimImpl) Run() error {
 	return nil
 }
 
-// run is the main loop that handles call from Vim
+// run starts other processes and waits for them to finish
 func (g *govimImpl) run() error {
 	g.goHandleShutdown(g.runEventQueue)
 	g.goHandleShutdown(g.load)
 	g.goHandleShutdown(g.transport.Start)
 	defer g.transport.Close()
 
-	// the read loop
-	for {
-		g.Logf("run: waiting to read a JSON message\n")
-		responseCallback, typ, args, err := g.transport.Read()
-		if err != nil {
-			panic(err)
-		}
-		switch typ {
-		case "":
-			continue
-		case "function":
-			g.handleFunc(args, responseCallback)
-		case "log":
-			var is []interface{}
-			for _, a := range args {
-				var i interface{}
-				g.decodeJSON(a, &i)
-				is = append(is, i)
-			}
-			fmt.Fprintln(g.log, is...)
-		}
-	}
+	<-g.tomb.Dying()
+	return g.tomb.Err()
 }
 
 func (g *govimImpl) handleFunc(args []json.RawMessage, responseCallback transport.ResponseCallback) error {

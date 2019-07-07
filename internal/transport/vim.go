@@ -14,6 +14,14 @@ import (
 type ResponseCallback func(p2 interface{}, ps ...interface{}) error
 type FuncHandler func(args []json.RawMessage, callback ResponseCallback) error
 
+type ErrTransportClosing struct {
+	underlying error
+}
+
+func (e ErrTransportClosing) Error() string {
+	return fmt.Sprintf("transport closing: %v", e.underlying)
+}
+
 type vimTransport struct {
 	in  *json.Decoder
 	out *json.Encoder
@@ -46,14 +54,21 @@ func NewVimTransport(in io.Reader, out io.Writer, log io.Writer, queuer queue.Qu
 
 func (v *vimTransport) Start() error {
 	v.tomb.Go(v.run)
-	return nil
+	<-v.tomb.Dying()
+	return v.tomb.Err()
 }
 
 func (v *vimTransport) run() error {
 	for {
-		select {
-		case <-v.tomb.Dying():
-			return tomb.ErrDying
+		v.Logf("run: waiting to read a JSON message\n")
+		if err := v.Read(); err != nil {
+			switch err.(type) {
+			case ErrTransportClosing:
+				return err
+			default:
+				panic(fmt.Errorf("error during read: %v", err))
+				// v.Logf("error during read: %v", err)
+			}
 		}
 	}
 	return nil
@@ -76,11 +91,11 @@ func (v *vimTransport) IsShutdown() chan struct{} {
 	return nil
 }
 
-func (v *vimTransport) Read() (func(p2 interface{}, ps ...interface{}) error, string, []json.RawMessage, error) {
+func (v *vimTransport) Read() error {
 	for {
 		callbackID, msg, err := v.readNextJSON()
 		if err != nil {
-			return nil, "", nil, err
+			return err
 		}
 		v.logVimEventf("recvJSONMsg: [%v] %s\n", callbackID, msg)
 		args := v.parseJSONArgSlice(msg)
@@ -90,16 +105,22 @@ func (v *vimTransport) Read() (func(p2 interface{}, ps ...interface{}) error, st
 		switch messageType {
 		case "callback":
 			if err := v.handleCallback(args); err != nil {
-				v.Logf("error handling callback: %v", err)
+				return fmt.Errorf("error handling callback: %v", err)
 			}
 		case "function":
 			if err := v.handleFunctionCall(args, callbackID); err != nil {
-				v.Logf("error handling function call: %v", err)
+				return fmt.Errorf("error handling function call: %v", err)
 			}
+		case "log":
+			var is []interface{}
+			for _, a := range args {
+				var i interface{}
+				v.decodeJSON(a, &i)
+				is = append(is, i)
+			}
+			fmt.Fprintln(v.log, is...)
 		default:
-			return func(p2 interface{}, ps ...interface{}) error {
-				return v.sendJSON(callbackID, p2, ps...)
-			}, messageType, args, nil
+			return fmt.Errorf("unrecognised messageType %s", messageType)
 		}
 	}
 }
@@ -162,7 +183,9 @@ func (v *vimTransport) readNextJSON() (int, json.RawMessage, error) {
 	if err := v.in.Decode(&msg); err != nil {
 		if err == io.EOF {
 			// explicitly setting underlying here
-			return 0, nil, fmt.Errorf("got EOF")
+			err = ErrTransportClosing{err}
+			v.tomb.Kill(err)
+			return 0, nil, err
 		}
 		return 0, nil, fmt.Errorf("failed to read JSON msg: %v", err)
 	}
