@@ -4,6 +4,10 @@ import (
 	"sync"
 )
 
+type Queuer interface {
+	Add(f func() error)
+}
+
 type Queue struct {
 	work    []func() error
 	lock    sync.Mutex

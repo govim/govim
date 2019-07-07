@@ -22,11 +22,11 @@ type vimTransport struct {
 	callbackResps     map[int]Callback
 	callbackRespsLock sync.Mutex
 
-	eventQueue *queue.Queue
-	tomb       tomb.Tomb
+	queuer queue.Queuer
+	tomb   tomb.Tomb
 }
 
-func NewVimTransport(in io.Reader, out io.Writer, log io.Writer, eventQueue *queue.Queue) Transport {
+func NewVimTransport(in io.Reader, out io.Writer, log io.Writer, queuer queue.Queuer) Transport {
 	return &vimTransport{
 		in:  json.NewDecoder(in),
 		out: json.NewEncoder(out),
@@ -35,7 +35,7 @@ func NewVimTransport(in io.Reader, out io.Writer, log io.Writer, eventQueue *que
 		callVimNextID: 1,
 		callbackResps: make(map[int]Callback),
 
-		eventQueue: eventQueue,
+		queuer: queuer,
 	}
 }
 
@@ -106,7 +106,7 @@ func (v *vimTransport) Read() (func(p2 interface{}, ps ...interface{}) error, st
 			}
 			switch ch := ch.(type) {
 			case ScheduledCallback:
-				v.eventQueue.Add(func() error {
+				v.queuer.Add(func() error {
 					select {
 					case ch <- toSend:
 					case <-v.tomb.Dying():
