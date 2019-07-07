@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -53,6 +54,13 @@ type vimstate struct {
 
 	// popupWinId is the id of the window currently being used for a hover-based popup
 	popupWinId int
+
+	// inBatch tracks whether we are gathering a batch of calls to Vim. Within a batch
+	// only calls to the call channel function can be made.
+	inBatch bool
+
+	// currBatch represents the batch we are collecting whilst inBatch
+	currBatch []interface{}
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
@@ -105,4 +113,71 @@ func (v *vimstate) dumpPopups(args ...json.RawMessage) (interface{}, error) {
 		sb.WriteString(v.ParseString(v.ChannelExprf(`join(getbufline(%v, 0, '$'), "\n")."\n"`, b.BufNr)))
 	}
 	return sb.String(), nil
+}
+
+func (v *vimstate) BatchStart() {
+	if v.inBatch {
+		panic(fmt.Errorf("called BatchStart whilst in a batch"))
+	}
+	v.inBatch = true
+}
+
+func (v *vimstate) ChannelExpr(expr string) json.RawMessage {
+	if v.inBatch {
+		panic(fmt.Errorf("cannot call ChannelExpr in batch"))
+	}
+	return v.Driver.ChannelExpr(expr)
+}
+func (v *vimstate) ChannelCall(name string, args ...interface{}) json.RawMessage {
+	if v.inBatch {
+		v.currBatch = append(v.currBatch, append([]interface{}{name}, args...))
+		return nil
+	} else {
+		return v.Driver.ChannelCall(name, args...)
+	}
+}
+func (v *vimstate) ChannelEx(expr string) {
+	if v.inBatch {
+		panic(fmt.Errorf("cannot call ChannelEx in batch"))
+	}
+	v.Driver.ChannelEx(expr)
+}
+func (v *vimstate) ChannelNormal(expr string) {
+	if v.inBatch {
+		panic(fmt.Errorf("cannot call ChannelNormal in batch"))
+	}
+	v.Driver.ChannelNormal(expr)
+}
+func (v *vimstate) ChannelRedraw(force bool) {
+	if v.inBatch {
+		panic(fmt.Errorf("cannot call ChannelRedraw in batch"))
+	}
+	v.Driver.ChannelRedraw(force)
+}
+func (v *vimstate) ChannelExprf(format string, args ...interface{}) json.RawMessage {
+	if v.inBatch {
+		panic(fmt.Errorf("cannot call ChannelExprf in batch"))
+	}
+	return v.Driver.ChannelExprf(format, args...)
+}
+func (v *vimstate) ChannelExf(format string, args ...interface{}) {
+	if v.inBatch {
+		panic(fmt.Errorf("cannot call ChannelExf in batch"))
+	}
+	v.Driver.ChannelExf(format, args...)
+}
+
+func (v *vimstate) BatchEnd() (res []json.RawMessage) {
+	if !v.inBatch {
+		panic(fmt.Errorf("called BatchEnd but not in a batch"))
+	}
+	v.inBatch = false
+	calls := v.currBatch
+	v.currBatch = nil
+	if len(calls) == 0 {
+		return
+	}
+	vs := v.ChannelCall("s:batchCall", calls...)
+	v.Parse(vs, &res)
+	return
 }

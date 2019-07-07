@@ -145,10 +145,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 	preEventIgnore := v.ParseString(v.ChannelExpr("&eventignore"))
 	v.ChannelEx("set eventignore=all")
 	defer v.ChannelExf("set eventignore=%v", preEventIgnore)
-	vimEdits := editBatch{
-		Flush: v.doIncrementalSync(),
-		BufNr: b.Num,
-	}
+	v.BatchStart()
 	for ie := len(edits) - 1; ie >= 0; ie-- {
 		e := edits[ie]
 		start, err := types.PointFromPosition(b, e.Range.Start)
@@ -169,11 +166,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			if e.NewText != "" {
 				return fmt.Errorf("saw an edit where start line != end line with replacement text %q; We can't currently handle this", e.NewText)
 			}
-			vimEdits.Edits = append(vimEdits.Edits, formatEdit{
-				Type:  "delete",
-				Start: start.Line(),
-				End:   end.Line() - 1,
-			})
+			v.ChannelCall("deletebufline", b.Num, start.Line(), end.Line()-1)
 		} else {
 			// do we have anything to do?
 			if e.NewText == "" {
@@ -184,26 +177,12 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 				e.NewText = e.NewText[:len(e.NewText)-1]
 			}
 			repl := strings.Split(e.NewText, "\n")
-			vimEdits.Edits = append(vimEdits.Edits, formatEdit{
-				Type:  "append",
-				Start: start.Line() - 1,
-				Lines: repl,
-			})
+			v.ChannelCall("appendbufline", b.Num, start.Line()-1, repl)
 		}
 	}
-	_, err = v.Govim.ChannelCall("s:applyVimEdits", vimEdits)
-	return err
-}
-
-type editBatch struct {
-	Flush bool
-	BufNr int
-	Edits []formatEdit
-}
-
-type formatEdit struct {
-	Type  string
-	Start int
-	End   int
-	Lines []string
+	if v.doIncrementalSync() {
+		v.ChannelCall("listener_flush", b.Num)
+	}
+	v.BatchEnd()
+	return nil
 }
