@@ -141,7 +141,7 @@ func createLogFile(prefix string) (*os.File, error) {
 
 type govimplugin struct {
 	plugin.Driver
-	*vimstate
+	vimstate *vimstate
 
 	goplspath   string
 	gopls       *os.Process
@@ -182,27 +182,27 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.vimstate.Driver.Govim = gg.Scheduled()
 	g.ChannelEx(`augroup govim`)
 	g.ChannelEx(`augroup END`)
-	g.DefineFunction(string(config.FunctionHello), []string{}, g.hello)
-	g.DefineCommand(string(config.CommandHello), g.helloComm)
-	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.balloonExpr)
-	g.DefineAutoCommand("", govim.Events{govim.EventBufRead, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.bufReadPost, exprAutocmdCurrBufInfo)
+	g.DefineFunction(string(config.FunctionHello), []string{}, g.vimstate.hello)
+	g.DefineCommand(string(config.CommandHello), g.vimstate.helloComm)
+	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.vimstate.balloonExpr)
+	g.DefineAutoCommand("", govim.Events{govim.EventBufRead, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.vimstate.bufReadPost, exprAutocmdCurrBufInfo)
 	if !g.doIncrementalSync() {
-		g.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, g.bufTextChanged, exprAutocmdCurrBufInfo)
+		g.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, g.vimstate.bufTextChanged, exprAutocmdCurrBufInfo)
 	}
-	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, g.formatCurrentBuffer, "eval(expand('<abuf>'))")
-	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.complete)
-	g.DefineCommand(string(config.CommandGoToDef), g.gotoDef, govim.NArgsZeroOrOne)
-	g.DefineCommand(string(config.CommandGoToPrevDef), g.gotoPrevDef, govim.NArgsZeroOrOne, govim.CountN(1))
-	g.DefineFunction(string(config.FunctionHover), []string{}, g.hover)
-	g.DefineAutoCommand("", govim.Events{govim.EventBufDelete}, govim.Patterns{"*.go"}, false, g.deleteCurrentBuffer, "eval(expand('<abuf>'))")
-	g.DefineCommand(string(config.CommandGoFmt), g.gofmtCurrentBufferRange)
-	g.DefineCommand(string(config.CommandGoImports), g.goimportsCurrentBufferRange)
-	g.DefineCommand(string(config.CommandQuickfixDiagnostics), g.quickfixDiagnostics)
-	g.DefineFunction(string(config.FunctionBufChanged), []string{"bufnr", "start", "end", "added", "changes"}, g.bufChanged)
-	g.DefineFunction(string(config.FunctionSetConfig), []string{"config"}, g.setConfig)
+	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, g.vimstate.formatCurrentBuffer, "eval(expand('<abuf>'))")
+	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.vimstate.complete)
+	g.DefineCommand(string(config.CommandGoToDef), g.vimstate.gotoDef, govim.NArgsZeroOrOne)
+	g.DefineCommand(string(config.CommandGoToPrevDef), g.vimstate.gotoPrevDef, govim.NArgsZeroOrOne, govim.CountN(1))
+	g.DefineFunction(string(config.FunctionHover), []string{}, g.vimstate.hover)
+	g.DefineAutoCommand("", govim.Events{govim.EventBufDelete}, govim.Patterns{"*.go"}, false, g.vimstate.deleteCurrentBuffer, "eval(expand('<abuf>'))")
+	g.DefineCommand(string(config.CommandGoFmt), g.vimstate.gofmtCurrentBufferRange)
+	g.DefineCommand(string(config.CommandGoImports), g.vimstate.goimportsCurrentBufferRange)
+	g.DefineCommand(string(config.CommandQuickfixDiagnostics), g.vimstate.quickfixDiagnostics)
+	g.DefineFunction(string(config.FunctionBufChanged), []string{"bufnr", "start", "end", "added", "changes"}, g.vimstate.bufChanged)
+	g.DefineFunction(string(config.FunctionSetConfig), []string{"config"}, g.vimstate.setConfig)
 	g.ChannelExf(`call govim#config#Set("_internal_Func", function("%v%v"))`, PluginPrefix, config.FunctionSetConfig)
-	g.DefineFunction(string(config.FunctionSetUserBusy), []string{"isBusy"}, g.setUserBusy)
-	g.DefineCommand(string(config.CommandReferences), g.references)
+	g.DefineFunction(string(config.FunctionSetUserBusy), []string{"isBusy"}, g.vimstate.setUserBusy)
+	g.DefineCommand(string(config.CommandReferences), g.vimstate.references)
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
