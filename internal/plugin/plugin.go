@@ -82,7 +82,7 @@ type BatchItem struct {
 	Args     []interface{}
 }
 
-func (d Driver) ChannelBatchCall(calls ...BatchItem) (res []json.RawMessage) {
+func (d Driver) ChannelBatchCall(calls []BatchItem) (res []json.RawMessage) {
 	if len(calls) == 0 {
 		return
 	}

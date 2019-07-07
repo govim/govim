@@ -356,22 +356,6 @@ function GOVIM_internal_EnrichDelta(bufnr, start, end, added, changes)
   call GOVIM_internal_BufChanged(a:bufnr, a:start, a:end, a:added, a:changes)
 endfunction
 
-function s:applyVimEdits(batch)
-  for e in a:batch.Edits
-    try | silent undojoin | catch | endtry
-    if e.Type == "delete"
-      call deletebufline(a:batch.BufNr, e.Start, e.End)
-    elseif e.Type == "append"
-      call appendbufline(a:batch.BufNr, e.Start, e.Lines)
-    else
-      throw "Unknown edit type ".e.Type
-    endif
-  endfor
-  if a:batch.Flush
-    call listener_flush(a:batch.BufNr)
-  endif
-endfunction
-
 function s:batchCall(...)
   let l:res = []
   for l:call in a:000

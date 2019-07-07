@@ -14,6 +14,7 @@ import (
 	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/types"
+	"github.com/myitcv/govim/internal/plugin"
 )
 
 func (v *vimstate) formatCurrentBuffer(args ...json.RawMessage) (err error) {
@@ -145,10 +146,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 	preEventIgnore := v.ParseString(v.ChannelExpr("&eventignore"))
 	v.ChannelEx("set eventignore=all")
 	defer v.ChannelExf("set eventignore=%v", preEventIgnore)
-	vimEdits := editBatch{
-		Flush: v.doIncrementalSync(),
-		BufNr: b.Num,
-	}
+	var calls []plugin.BatchItem
 	for ie := len(edits) - 1; ie >= 0; ie-- {
 		e := edits[ie]
 		start, err := types.PointFromPosition(b, e.Range.Start)
@@ -169,10 +167,9 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			if e.NewText != "" {
 				return fmt.Errorf("saw an edit where start line != end line with replacement text %q; We can't currently handle this", e.NewText)
 			}
-			vimEdits.Edits = append(vimEdits.Edits, formatEdit{
-				Type:  "delete",
-				Start: start.Line(),
-				End:   end.Line() - 1,
+			calls = append(calls, plugin.BatchItem{
+				Function: "deletebufline",
+				Args:     []interface{}{b.Num, start.Line(), end.Line() - 1},
 			})
 		} else {
 			// do we have anything to do?
@@ -184,26 +181,18 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 				e.NewText = e.NewText[:len(e.NewText)-1]
 			}
 			repl := strings.Split(e.NewText, "\n")
-			vimEdits.Edits = append(vimEdits.Edits, formatEdit{
-				Type:  "append",
-				Start: start.Line() - 1,
-				Lines: repl,
+			calls = append(calls, plugin.BatchItem{
+				Function: "appendbufline",
+				Args:     []interface{}{b.Num, start.Line() - 1, repl},
 			})
 		}
 	}
-	_, err = v.Govim.ChannelCall("s:applyVimEdits", vimEdits)
-	return err
-}
-
-type editBatch struct {
-	Flush bool
-	BufNr int
-	Edits []formatEdit
-}
-
-type formatEdit struct {
-	Type  string
-	Start int
-	End   int
-	Lines []string
+	if v.doIncrementalSync() {
+		calls = append(calls, plugin.BatchItem{
+			Function: "listener_flush",
+			Args:     []interface{}{b.Num},
+		})
+	}
+	v.ChannelBatchCall(calls)
+	return nil
 }

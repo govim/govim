@@ -213,7 +213,7 @@ func (t *testpluginvim) doubleHello(args ...json.RawMessage) (interface{}, error
 		{Function: "eval", Args: []interface{}{"'Hello'"}},
 		{Function: "eval", Args: []interface{}{"'World'"}},
 	}
-	results := t.ChannelBatchCall(calls...)
+	results := t.ChannelBatchCall(calls)
 	var msgs []string
 	for _, res := range results {
 		msgs = append(msgs, t.ParseString(res))
