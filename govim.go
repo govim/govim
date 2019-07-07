@@ -375,7 +375,7 @@ func (g *govimImpl) run() error {
 	// the read loop
 	for {
 		g.Logf("run: waiting to read a JSON message\n")
-		id, typ, args, err := g.transport.Read()
+		responseCallback, typ, args, err := g.transport.Read()
 		if err != nil {
 			panic(err)
 		}
@@ -452,8 +452,8 @@ func (g *govimImpl) run() error {
 				} else {
 					resp[1] = res
 				}
-				g.transport.SendJSON(id, resp)
-				return nil
+
+				return responseCallback(resp)
 			})
 		case "log":
 			var is []interface{}

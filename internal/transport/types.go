@@ -20,11 +20,10 @@ type Transport interface {
 	Initialized() chan struct{}
 	IsShutdown() chan struct{}
 
-	Read() (id int, messageType string, args []json.RawMessage, err error)
+	Read() (responseFunc func(p2 interface{}, ps ...interface{}) error, messageType string, args []json.RawMessage, err error)
 	Send(callback Callback, callbackType string, params ...interface{}) error
 	SendAndReceive(messageType string, args ...interface{}) (json.RawMessage, error)
 	SendAndReceiveAsync(messageType string, args ...interface{}) (ScheduledCallback, error)
-	SendJSON(p1, p2 interface{}, ps ...interface{})
 }
 
 type Callback interface {

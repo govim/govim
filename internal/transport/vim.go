@@ -71,13 +71,13 @@ func (v *vimTransport) IsShutdown() chan struct{} {
 	return nil
 }
 
-func (v *vimTransport) Read() (int, string, []json.RawMessage, error) {
+func (v *vimTransport) Read() (func(p2 interface{}, ps ...interface{}) error, string, []json.RawMessage, error) {
 	for {
-		id, msg, err := v.readNextJSON()
+		callbackID, msg, err := v.readNextJSON()
 		if err != nil {
-			return id, "", nil, err
+			return nil, "", nil, err
 		}
-		v.logVimEventf("recvJSONMsg: [%v] %s\n", id, msg)
+		v.logVimEventf("recvJSONMsg: [%v] %s\n", callbackID, msg)
 		args := v.parseJSONArgSlice(msg)
 		messageType := v.parseString(args[0])
 		args = args[1:]
@@ -102,7 +102,7 @@ func (v *vimTransport) Read() (int, string, []json.RawMessage, error) {
 			v.callbackRespsLock.Unlock()
 			if !ok {
 				err = fmt.Errorf("run: received response for callback %v, but not response chan defined", id)
-				return id, "", nil, err
+				return nil, "", nil, err
 			}
 			switch ch := ch.(type) {
 			case ScheduledCallback:
@@ -127,7 +127,9 @@ func (v *vimTransport) Read() (int, string, []json.RawMessage, error) {
 				panic(fmt.Errorf("unknown type of callback responser: %T", ch))
 			}
 		} else {
-			return id, messageType, args, nil
+			return func(p2 interface{}, ps ...interface{}) error {
+				return v.sendJSON(callbackID, p2, ps...)
+			}, messageType, args, nil
 		}
 	}
 }
@@ -141,8 +143,8 @@ func (v *vimTransport) readNextJSON() (int, json.RawMessage, error) {
 		}
 		return 0, nil, fmt.Errorf("failed to read JSON msg: %v", err)
 	}
-	i := v.parseInt(msg[0])
-	return i, msg[1], nil
+	callbackID := v.parseInt(msg[0])
+	return callbackID, msg[1], nil
 }
 
 func (v *vimTransport) Send(callback Callback, callbackType string, params ...interface{}) error {
@@ -153,8 +155,7 @@ func (v *vimTransport) Send(callback Callback, callbackType string, params ...in
 	v.callbackRespsLock.Unlock()
 	args := []interface{}{id, callbackType}
 	args = append(args, params...)
-	v.SendJSON(0, args)
-	return nil
+	return v.sendJSON(0, args)
 }
 
 func (v *vimTransport) SendAndReceive(messageType string, args ...interface{}) (json.RawMessage, error) {
@@ -186,18 +187,19 @@ func (v *vimTransport) SendAndReceiveAsync(messageType string, args ...interface
 
 // sendJSONMsg is a low-level protocol primitive for sending a JSON msg that will be
 // understood by Vim. See https://vimhelp.org/channel.txt.html#channel-use
-func (v *vimTransport) SendJSON(p1, p2 interface{}, ps ...interface{}) {
+func (v *vimTransport) sendJSON(p1, p2 interface{}, ps ...interface{}) error {
 	msg := []interface{}{p1, p2}
 	msg = append(msg, ps...)
 	// TODO could use a multi-writer here
 	logMsg, err := json.Marshal(msg)
 	if err != nil {
-		v.errProto("failed to create log message: %v", err)
+		return fmt.Errorf("failed to create log message: %v", err)
 	}
 	v.logVimEventf("sendJSONMsg: %s\n", logMsg)
 	if err := v.out.Encode(msg); err != nil {
-		panic(ErrShuttingDown)
+		return fmt.Errorf("failed to send message: %v", err)
 	}
+	return nil
 }
 
 func (v *vimTransport) errProto(format string, args ...interface{}) {
