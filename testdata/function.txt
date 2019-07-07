@@ -20,9 +20,15 @@ cmp stdout gophers.golden
 vim call Func1
 cmp stdout test.func2.golden
 
+# call a function that makes a batch of calls
+vim call DoubleHello
+cmp stdout test.DoubleHello.golden
+
 -- test.golden --
 "World"
 -- test.func2.golden --
 "World from Func2"
+-- test.DoubleHello.golden --
+["Hello","World"]
 -- gophers.golden --
 "London Gophers"

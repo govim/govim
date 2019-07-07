@@ -371,3 +371,12 @@ function s:applyVimEdits(batch)
     call listener_flush(a:batch.BufNr)
   endif
 endfunction
+
+function s:batchCall(...)
+  let l:res = []
+  for l:call in a:000
+    let F = function(l:call[0], l:call[1:-1])
+    call add(l:res, F())
+  endfor
+  return l:res
+endfunction

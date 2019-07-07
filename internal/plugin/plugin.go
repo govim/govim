@@ -77,6 +77,27 @@ func (d Driver) ChannelCall(name string, args ...interface{}) json.RawMessage {
 	return i
 }
 
+type BatchItem struct {
+	Function string
+	Args     []interface{}
+}
+
+func (d Driver) ChannelBatchCall(calls ...BatchItem) (res []json.RawMessage) {
+	if len(calls) == 0 {
+		return
+	}
+	var args []interface{}
+	for _, c := range calls {
+		args = append(args, append([]interface{}{c.Function}, c.Args...))
+	}
+	i, err := d.Govim.ChannelCall("s:batchCall", args...)
+	if err != nil {
+		d.Errorf("ChannelBatchCall(%v) failed: %v", args, err)
+	}
+	d.Parse(i, &res)
+	return
+}
+
 func (d Driver) ChannelEx(expr string) {
 	if err := d.Govim.ChannelEx(expr); err != nil {
 		d.Errorf("ChannelEx(%q) failed: %v", expr, err)
