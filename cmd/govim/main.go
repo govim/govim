@@ -203,6 +203,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.ChannelExf(`call govim#config#Set("_internal_Func", function("%v%v"))`, PluginPrefix, config.FunctionSetConfig)
 	g.DefineFunction(string(config.FunctionSetUserBusy), []string{"isBusy"}, g.vimstate.setUserBusy)
 	g.DefineCommand(string(config.CommandReferences), g.vimstate.references)
+	g.DefineFunction(string(config.FunctionDumpPopups), []string{}, g.vimstate.dumpPopups)
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
@@ -348,6 +349,19 @@ func (g *govimplugin) doIncrementalSync() bool {
 		return false
 	}
 	if os.Getenv(testsetup.EnvDisableIncrementalSync) == "true" {
+		return false
+	}
+	return true
+}
+
+func (g *govimplugin) usePopupWindows() bool {
+	if g.Flavor() != govim.FlavorVim && g.Flavor() != govim.FlavorGvim {
+		return false
+	}
+	if semver.Compare(g.Version(), testsetup.MinPopupWindowBalloon) < 0 {
+		return false
+	}
+	if os.Getenv(testsetup.EnvDisablePopupWindowBalloon) == "true" {
 		return false
 	}
 	return true

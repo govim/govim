@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/acarl005/stripansi"
 	"io"
 	"io/ioutil"
 	"net"
@@ -19,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/acarl005/stripansi"
 
 	"github.com/kr/pty"
 	"github.com/myitcv/govim"
@@ -503,6 +504,7 @@ func Vim() (exitCode int) {
 	fs := flag.NewFlagSet("vim", flag.PanicOnError)
 	bang := fs.Bool("bang", false, "expect command to fail")
 	indent := fs.Bool("indent", false, "pretty indent resulting JSON")
+	stringout := fs.Bool("stringout", false, "print resulting string rather than JSON encoded version of string")
 
 	log("starting vim driver client and parsing flags...")
 
@@ -607,12 +609,21 @@ func Vim() (exitCode int) {
 		if *bang {
 			ef("unexpected command success")
 		}
-		enc := json.NewEncoder(os.Stdout)
-		if *indent {
-			enc.SetIndent("", "  ")
-		}
-		if err := enc.Encode(vimResp[1]); err != nil {
-			ef("failed to format output of JSON: %v", err)
+		if *stringout {
+			switch vimResp[1].(type) {
+			case string:
+				fmt.Print(vimResp[1])
+			default:
+				ef("response type is %T, not string", vimResp[1])
+			}
+		} else {
+			enc := json.NewEncoder(os.Stdout)
+			if *indent {
+				enc.SetIndent("", "  ")
+			}
+			if err := enc.Encode(vimResp[1]); err != nil {
+				ef("failed to format output of JSON: %v", err)
+			}
 		}
 	}
 	conn.Close()

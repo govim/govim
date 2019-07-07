@@ -87,6 +87,10 @@ const (
 	// FunctionSetUserBusy is an internal function used by govim for indicated
 	// whether the user is busy or not (based on cursor movement)
 	FunctionSetUserBusy = internalFunctionPrefix + "SetUserBusy"
+
+	// FunctionDumpPopups is an internal function used by govim tests for capturing
+	// the text in all visible popups
+	FunctionDumpPopups = internalFunctionPrefix + "DumpPopups"
 )
 
 // FormatOnSave typed constants define the set of valid values that
