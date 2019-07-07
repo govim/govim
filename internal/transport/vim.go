@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+type ResponseCallback func(p2 interface{}, ps ...interface{}) error
+type FuncHandler func(args []json.RawMessage, callback ResponseCallback) error
+
 type vimTransport struct {
 	in  *json.Decoder
 	out *json.Encoder
@@ -22,11 +25,12 @@ type vimTransport struct {
 	callbackResps     map[int]Callback
 	callbackRespsLock sync.Mutex
 
-	queuer queue.Queuer
-	tomb   tomb.Tomb
+	queuer      queue.Queuer
+	funcHandler FuncHandler
+	tomb        tomb.Tomb
 }
 
-func NewVimTransport(in io.Reader, out io.Writer, log io.Writer, queuer queue.Queuer) Transport {
+func NewVimTransport(in io.Reader, out io.Writer, log io.Writer, queuer queue.Queuer, funcHandler FuncHandler) Transport {
 	return &vimTransport{
 		in:  json.NewDecoder(in),
 		out: json.NewEncoder(out),
@@ -35,7 +39,8 @@ func NewVimTransport(in io.Reader, out io.Writer, log io.Writer, queuer queue.Qu
 		callVimNextID: 1,
 		callbackResps: make(map[int]Callback),
 
-		queuer: queuer,
+		queuer:      queuer,
+		funcHandler: funcHandler,
 	}
 }
 
@@ -82,56 +87,74 @@ func (v *vimTransport) Read() (func(p2 interface{}, ps ...interface{}) error, st
 		messageType := v.parseString(args[0])
 		args = args[1:]
 
-		if messageType == "callback" {
-			// This case is a "return" from a call to callVim. Format of args
-			// will be [id, [string, val]]
-			id := v.parseInt(args[0])
-			resp := v.parseJSONArgSlice(args[1])
-			msg := v.parseString(resp[0])
-			var val json.RawMessage
-			if len(resp) == 2 {
-				val = resp[1]
+		switch messageType {
+		case "callback":
+			if err := v.handleCallback(args); err != nil {
+				v.Logf("error handling callback: %v", err)
 			}
-			toSend := CallbackResp{
-				ErrString: msg,
-				Val:       val,
+		case "function":
+			if err := v.handleFunctionCall(args, callbackID); err != nil {
+				v.Logf("error handling function call: %v", err)
 			}
-			v.callbackRespsLock.Lock()
-			ch, ok := v.callbackResps[id]
-			delete(v.callbackResps, id)
-			v.callbackRespsLock.Unlock()
-			if !ok {
-				err = fmt.Errorf("run: received response for callback %v, but not response chan defined", id)
-				return nil, "", nil, err
-			}
-			switch ch := ch.(type) {
-			case ScheduledCallback:
-				v.queuer.Add(func() error {
-					select {
-					case ch <- toSend:
-					case <-v.tomb.Dying():
-						return tomb.ErrDying
-					}
-					return nil
-				})
-			case UnscheduledCallback:
-				v.tomb.Go(func() error {
-					select {
-					case ch <- toSend:
-					case <-v.tomb.Dying():
-						return tomb.ErrDying
-					}
-					return nil
-				})
-			default:
-				panic(fmt.Errorf("unknown type of callback responser: %T", ch))
-			}
-		} else {
+		default:
 			return func(p2 interface{}, ps ...interface{}) error {
 				return v.sendJSON(callbackID, p2, ps...)
 			}, messageType, args, nil
 		}
 	}
+}
+func (v *vimTransport) handleFunctionCall(args []json.RawMessage, callbackID int) error {
+	responseCallback := func(p2 interface{}, ps ...interface{}) error {
+		return v.sendJSON(callbackID, p2, ps...)
+	}
+	return v.funcHandler(args, responseCallback)
+}
+
+func (v *vimTransport) handleCallback(args []json.RawMessage) error {
+	// This case is a "return" from a call to callVim. Format of args
+	// will be [id, [string, val]]
+	id := v.parseInt(args[0])
+	resp := v.parseJSONArgSlice(args[1])
+	msg := v.parseString(resp[0])
+	var val json.RawMessage
+	if len(resp) == 2 {
+		val = resp[1]
+	}
+	toSend := CallbackResp{
+		ErrString: msg,
+		Val:       val,
+	}
+	v.callbackRespsLock.Lock()
+	ch, ok := v.callbackResps[id]
+	delete(v.callbackResps, id)
+	v.callbackRespsLock.Unlock()
+	if !ok {
+		err := fmt.Errorf("run: received response for callback %v, but not response chan defined", id)
+		return err
+	}
+	switch ch := ch.(type) {
+	case ScheduledCallback:
+		v.queuer.Add(func() error {
+			select {
+			case ch <- toSend:
+			case <-v.tomb.Dying():
+				return tomb.ErrDying
+			}
+			return nil
+		})
+	case UnscheduledCallback:
+		v.tomb.Go(func() error {
+			select {
+			case ch <- toSend:
+			case <-v.tomb.Dying():
+				return tomb.ErrDying
+			}
+			return nil
+		})
+	default:
+		panic(fmt.Errorf("unknown type of callback responser: %T", ch))
+	}
+	return nil
 }
 
 func (v *vimTransport) readNextJSON() (int, json.RawMessage, error) {

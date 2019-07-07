@@ -174,11 +174,10 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, e
 
 		flushEvents: make(chan struct{}),
 
-		transport: transport.NewVimTransport(in, out, log, eventQueue),
-
 		eventQueue: eventQueue,
 	}
 
+	g.transport = transport.NewVimTransport(in, out, log, eventQueue, g.handleFunc)
 	return g, nil
 }
 
@@ -383,78 +382,7 @@ func (g *govimImpl) run() error {
 		case "":
 			continue
 		case "function":
-			fname := g.parseString(args[0])
-			fargs := args[1:]
-			fname, f := g.funcHandler(fname)
-			var line1, line2 int
-			var call func() (interface{}, error)
-
-			switch f := f.(type) {
-			case internalFunction:
-				fargs = g.parseJSONArgSlice(fargs[0])
-				call = func() (interface{}, error) {
-					return f(fargs...)
-				}
-			case VimRangeFunction:
-				line1 = g.parseInt(fargs[0])
-				line2 = g.parseInt(fargs[1])
-				fargs = g.parseJSONArgSlice(fargs[2])
-				call = func() (interface{}, error) {
-					return f(eventQueueInst{g}, line1, line2, fargs...)
-				}
-			case VimFunction:
-				fargs = g.parseJSONArgSlice(fargs[0])
-				call = func() (interface{}, error) {
-					return f(eventQueueInst{g}, fargs...)
-				}
-			case VimCommandFunction:
-				var flagVals CommandFlags
-				g.decodeJSON(fargs[0], &flagVals)
-				var args []string
-				for _, f := range fargs[1:] {
-					args = append(args, g.parseString(f))
-				}
-				call = func() (interface{}, error) {
-					err := f(eventQueueInst{g}, flagVals, args...)
-					return nil, err
-				}
-			case VimAutoCommandFunction:
-				fargs = g.parseJSONArgSlice(fargs[0])
-				call = func() (interface{}, error) {
-					err := f(g, fargs...)
-					return nil, err
-				}
-			default:
-				g.Errorf("unknown function type for %v %T", fname, f)
-			}
-			g.eventQueue.Add(func() error {
-				resp := [2]interface{}{"", ""}
-				var res interface{}
-				var err error
-				func() {
-					defer func() {
-						if r := recover(); r != nil {
-							stack := make([]byte, 20*(1<<10))
-							l := runtime.Stack(stack, true)
-							err = fmt.Errorf("caught panic: %v\n%s", r, stack[:l])
-						}
-						select {
-						case <-g.tomb.Dying():
-						case g.flushEvents <- struct{}{}:
-						}
-					}()
-					res, err = call()
-				}()
-				if err != nil {
-					errStr := fmt.Sprintf("got error whilst handling %v: %v", fname, err)
-					g.Logf(errStr)
-					resp[0] = errStr
-				} else {
-					resp[1] = res
-				}
-
-				return responseCallback(resp)
-			})
+			g.handleFunc(args, responseCallback)
 		case "log":
 			var is []interface{}
 			for _, a := range args {
@@ -465,6 +393,83 @@ func (g *govimImpl) run() error {
 			fmt.Fprintln(g.log, is...)
 		}
 	}
+}
+
+func (g *govimImpl) handleFunc(args []json.RawMessage, responseCallback transport.ResponseCallback) error {
+	fname := g.parseString(args[0])
+	fargs := args[1:]
+	fname, f := g.funcHandler(fname)
+	var line1, line2 int
+	var call func() (interface{}, error)
+
+	switch f := f.(type) {
+	case internalFunction:
+		fargs = g.parseJSONArgSlice(fargs[0])
+		call = func() (interface{}, error) {
+			return f(fargs...)
+		}
+	case VimRangeFunction:
+		line1 = g.parseInt(fargs[0])
+		line2 = g.parseInt(fargs[1])
+		fargs = g.parseJSONArgSlice(fargs[2])
+		call = func() (interface{}, error) {
+			return f(eventQueueInst{g}, line1, line2, fargs...)
+		}
+	case VimFunction:
+		fargs = g.parseJSONArgSlice(fargs[0])
+		call = func() (interface{}, error) {
+			return f(eventQueueInst{g}, fargs...)
+		}
+	case VimCommandFunction:
+		var flagVals CommandFlags
+		g.decodeJSON(fargs[0], &flagVals)
+		var args []string
+		for _, f := range fargs[1:] {
+			args = append(args, g.parseString(f))
+		}
+		call = func() (interface{}, error) {
+			err := f(eventQueueInst{g}, flagVals, args...)
+			return nil, err
+		}
+	case VimAutoCommandFunction:
+		fargs = g.parseJSONArgSlice(fargs[0])
+		call = func() (interface{}, error) {
+			err := f(g, fargs...)
+			return nil, err
+		}
+	default:
+		g.Errorf("unknown function type for %v %T", fname, f)
+	}
+	g.eventQueue.Add(func() error {
+		resp := [2]interface{}{"", ""}
+		var res interface{}
+		var err error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					stack := make([]byte, 20*(1<<10))
+					l := runtime.Stack(stack, true)
+					err = fmt.Errorf("caught panic: %v\n%s", r, stack[:l])
+				}
+				select {
+				case <-g.tomb.Dying():
+				case g.flushEvents <- struct{}{}:
+				}
+			}()
+			res, err = call()
+		}()
+		if err != nil {
+			errStr := fmt.Sprintf("got error whilst handling %v: %v", fname, err)
+			g.Logf(errStr)
+			resp[0] = errStr
+		} else {
+			resp[1] = res
+		}
+
+		return responseCallback(resp)
+	})
+
+	return nil
 }
 
 func (g *govimImpl) runEventQueue() error {
