@@ -50,7 +50,8 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 		var matches []completionResult
 		for _, i := range v.lastCompleteResults.Items {
 			matches = append(matches, completionResult{
-				Abbr: i.Detail,
+				Abbr: i.Label,
+				Menu: i.Detail,
 				Word: i.TextEdit.NewText,
 				Info: i.Detail,
 			})
@@ -64,4 +65,5 @@ type completionResult struct {
 	Abbr string `json:"abbr"`
 	Word string `json:"word"`
 	Info string `json:"info"`
+	Menu string `json:"menu"`
 }
