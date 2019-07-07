@@ -105,7 +105,7 @@ func (g *govimImpl) ChannelCall(fn string, args ...interface{}) (json.RawMessage
 	return g.handleChannelValueAndError(ch, err, channelCallErrMsg, fn, args)
 }
 
-const channelCallErrMsg = "failed to call(%v) in Vim: %v"
+const channelCallErrMsg = "failed to call %v(%v) in Vim: %v"
 
 func (g *govimImpl) channelCallImpl(ch callback, fn string, args ...interface{}) error {
 	<-g.loaded
