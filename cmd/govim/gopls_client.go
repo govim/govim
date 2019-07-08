@@ -48,8 +48,12 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Confi
 		return nil, fmt.Errorf("govim gopls client: expected %v item(s) in params; got %v", want, got)
 	}
 	conf := make(map[string]interface{})
-	conf[goplsConfigNoDocsOnHover] = true
-	conf[goplsConfigHoverKind] = "NoDocumentation"
+	if !g.usePopupWindows() {
+		conf[goplsConfigNoDocsOnHover] = true
+		conf[goplsConfigHoverKind] = "NoDocumentation"
+	} else {
+		conf[goplsConfigHoverKind] = "FullDocumentation"
+	}
 	return []interface{}{conf}, nil
 }
 func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {

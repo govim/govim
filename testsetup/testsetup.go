@@ -21,7 +21,8 @@ const (
 	EnvGithubUser  = "GH_USER"
 	EnvGithubToken = "GH_TOKEN"
 
-	EnvDisableIncrementalSync = "GOVIM_DISABLE_INCREMENTALSYNC"
+	EnvDisableIncrementalSync    = "GOVIM_DISABLE_INCREMENTALSYNC"
+	EnvDisablePopupWindowBalloon = "GOVIM_DISABLE_POPUPWINDOWBALLOON"
 
 	// MinVimGovim represents the bare minimum version of Vim required to
 	// use govim
@@ -31,10 +32,14 @@ const (
 	// incremental sync
 	MinVimIncrementalSync = "v8.1.1512"
 
+	// MinPopupWindowBalloon is the minimum version of Vim required to use popup
+	// windows for balloons
+	MinPopupWindowBalloon = "v8.1.1649"
+
 	EnvLogfileTmpl      = "GOVIM_LOGFILE_TMPL"
 	EnvTestscriptStderr = "GOVIM_TESTSCRIPT_STDERR"
 
-	LatestVim = "v8.1.1640"
+	// LatestVim = "v8.1.1649"
 )
 
 var (
@@ -65,8 +70,10 @@ var (
 		GvimVersion(MinVimGovim),
 		VimVersion(MinVimIncrementalSync),
 		GvimVersion(MinVimIncrementalSync),
-		VimVersion(LatestVim),
-		GvimVersion(LatestVim),
+		VimVersion(MinPopupWindowBalloon),
+		GvimVersion(MinPopupWindowBalloon),
+		// VimVersion(LatestVim),
+		// GvimVersion(LatestVim),
 	}
 )
 

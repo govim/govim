@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"sort"
+	"strings"
 
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/config"
@@ -48,6 +50,9 @@ type vimstate struct {
 	// diagnosticsChanged indicates that the quickfix window needs to be updated with
 	// the latest diagnostics
 	diagnosticsChanged bool
+
+	// popupWinId is the id of the window currently being used for a hover-based popup
+	popupWinId int
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
@@ -80,4 +85,24 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 		return nil, nil
 	}
 	return nil, v.updateQuickfix()
+}
+
+func (v *vimstate) dumpPopups(args ...json.RawMessage) (interface{}, error) {
+	var bufInfo []struct {
+		BufNr  int   `json:"bufnr"`
+		Popups []int `json:"popups"`
+	}
+	bi := v.ChannelExpr("getbufinfo()")
+	v.Parse(bi, &bufInfo)
+	sort.Slice(bufInfo, func(i, j int) bool {
+		return bufInfo[i].BufNr < bufInfo[j].BufNr
+	})
+	var sb strings.Builder
+	for _, b := range bufInfo {
+		if len(b.Popups) == 0 {
+			continue
+		}
+		sb.WriteString(v.ParseString(v.ChannelExprf(`join(getbufline(%v, 0, '$'), "\n")."\n"`, b.BufNr)))
+	}
+	return sb.String(), nil
 }
