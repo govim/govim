@@ -7,7 +7,7 @@ vim call 'govim#config#Set' '["QuickfixAutoDiagnosticsDisable", 0]'
 # Initial location population
 vim ex 'e main.go'
 errlogmatch -wait 60s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-vim ex 'call cursor(16,24)'
+vim ex 'call cursor(15,24)'
 vim ex 'GOVIMReferences'
 vim ex 'copen'
 vim ex 'w locations'
@@ -21,7 +21,7 @@ cmp locations locations.golden
 # Introduce an error - locations should remain
 vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
 vim expr 'bufname(\"\")'
-vim call append '[16, "\tfmt.Printf(\"%v\")"]'
+vim call append '[15, "\tfmt.Printf(\"%v\")"]'
 errlogmatch -wait 60s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
 vim ex 'w locations'
@@ -45,23 +45,30 @@ package main
 
 import "fmt"
 
+var v int
+
 func main() {
-	v := 5
-	v += 1
-	v += 1
+	v = 5
 	v += 1
 	v += 1
 	v += v + v + v + v
 	v += 1
 	v += 1
 	v += 1
-	v += 1
 	fmt.Printf("v: %v\n", v)
 }
+-- a.go --
+package main
+
+// deliberately named a.go because this would lexically appear before main.go
+
+func DoIt() {
+	v += 5
+	v += 6
+}
 -- locations.golden --
-main.go|6 col 2| v := 5
-main.go|7 col 2| v += 1
-main.go|8 col 2| v += 1
+main.go|5 col 5| var v int
+main.go|8 col 2| v = 5
 main.go|9 col 2| v += 1
 main.go|10 col 2| v += 1
 main.go|11 col 2| v += v + v + v + v
@@ -72,7 +79,8 @@ main.go|11 col 19| v += v + v + v + v
 main.go|12 col 2| v += 1
 main.go|13 col 2| v += 1
 main.go|14 col 2| v += 1
-main.go|15 col 2| v += 1
-main.go|16 col 24| fmt.Printf("v: %v\n", v)
+main.go|15 col 24| fmt.Printf("v: %v\n", v)
+a.go|6 col 2| v += 5
+a.go|7 col 2| v += 6
 -- errors.golden --
-main.go|17 col 2| Printf format %v reads arg #1, but call has 0 args
+main.go|16 col 2| Printf format %v reads arg #1, but call has 0 args
