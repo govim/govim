@@ -42,6 +42,9 @@ func (v *vimstate) references(flags govim.CommandFlags, args ...string) error {
 	if err != nil {
 		return fmt.Errorf("called to gopls.References failed: %v", err)
 	}
+	if len(refs) == 0 {
+		return fmt.Errorf("unexpected zero length of references")
+	}
 	for _, ref := range refs {
 		var buf *types.Buffer
 		for _, b := range v.buffers {
@@ -83,9 +86,18 @@ func (v *vimstate) references(flags govim.CommandFlags, args ...string) error {
 			Text:     line,
 		})
 	}
-	sort.Slice(locs, func(i, j int) bool {
-		lhs, rhs := locs[i], locs[j]
+	toSort := locs[1:]
+	// the first entry will always be the definition
+	sort.Slice(toSort, func(i, j int) bool {
+		lhs, rhs := toSort[i], toSort[j]
 		cmp := strings.Compare(lhs.Filename, rhs.Filename)
+		if cmp != 0 {
+			if lhs.Filename == locs[0].Filename {
+				return true
+			} else if rhs.Filename == locs[0].Filename {
+				return false
+			}
+		}
 		if cmp == 0 {
 			cmp = lhs.Lnum - rhs.Lnum
 		}
