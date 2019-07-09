@@ -177,7 +177,7 @@ func (v *vimstate) BatchEnd() (res []json.RawMessage) {
 	if len(calls) == 0 {
 		return
 	}
-	vs := v.ChannelCall("s:batchCall", calls...)
+	vs := v.ChannelCall("s:batchCall", calls)
 	v.Parse(vs, &res)
 	return
 }

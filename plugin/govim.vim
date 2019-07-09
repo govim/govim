@@ -356,9 +356,9 @@ function GOVIM_internal_EnrichDelta(bufnr, start, end, added, changes)
   call GOVIM_internal_BufChanged(a:bufnr, a:start, a:end, a:added, a:changes)
 endfunction
 
-function s:batchCall(...)
+function s:batchCall(calls)
   let l:res = []
-  for l:call in a:000
+  for l:call in a:calls
     let F = function(l:call[0], l:call[1:-1])
     call add(l:res, F())
   endfor
