@@ -115,7 +115,7 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}) (inter
 		// TODO we should only get an error when there is an error, rather than
 		// nothing to display: https://github.com/golang/go/issues/32971
 		v.Logf("failed to get hover details: %v", err)
-		return nil, nil
+		return "", nil
 	}
 	msg := strings.TrimSpace(hovRes.Contents.Value)
 	lines := strings.Split(msg, "\n")
