@@ -9,8 +9,9 @@ function! govim#config#Set(key,value)
       throw "Tried to set config for invalid key ".a:key
     endif
     let Func = s:validators[a:key]
-    if !call(Func, [a:value])
-      throw "Tried to set invalid value for key ".a:key.": ".a:value
+    let validRes = call(Func, [a:value])
+    if !validRes[0]
+      throw "Tried to set invalid value for key ".a:key.": ".validRes[1]
     endif
     let s:config[a:key] = a:value
   endif
@@ -34,16 +35,43 @@ function! s:pushConfig()
 endfunction
 
 function! s:validFormatOnSave(v)
-  return index(["", "gofmt", "goimports"], a:v) >= 0
+  let valid = ["", "gofmt", "goimports"]
+  if index(valid, a:v) < 0
+    return [v:false, "must be one of: ".string(valid)]
+  endif
+  return [v:true, ""]
 endfunction
 
 function! s:validQuickfixAutoDiagnosticsDisable(v)
-  return type(a:v) == 0
+  if type(a:v) != 0  && type(a:v) != 6
+    return [v:false, "must be of type number or bool"
+  endif
+  return [v:true, ""]
+endfunction
+
+function! s:validExperimentalMouseTriggeredHoverPopupOptions(v)
+  if has_key(a:v, "line")
+    if type(a:v["line"]) != 0
+      return [v:false, "line option must be of type number"]
+    endif
+  endif
+  if has_key(a:v, "col")
+    if type(a:v["col"]) != 0
+      return [v:false, "col option must be of type number"]
+    endif
+  endif
+  return [v:true, ""]
+endfunction
+
+function! s:validExperimentalCursorTriggeredHoverPopupOptions(v)
+  return s:validExperimentalMouseTriggeredHoverPopupOptions(a:v)
 endfunction
 
 let s:validators = {
       \ "FormatOnSave": function("s:validFormatOnSave"),
       \ "QuickfixAutoDiagnosticsDisable": function("s:validQuickfixAutoDiagnosticsDisable"),
+      \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
+      \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
       \ }
 
 call govim#config#Set("FormatOnSave", "goimports")

@@ -16,7 +16,7 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 		opts := map[string]interface{}{
 			"mousemoved": "any",
 		}
-		return v.showHover(posExpr, opts)
+		return v.showHover(posExpr, opts, v.config.ExperimentalMouseTriggeredHoverPopupOptions)
 	}
 	var vpos struct {
 		BufNum int `json:"bufnum"`
@@ -62,7 +62,7 @@ func (v *vimstate) hover(args ...json.RawMessage) (interface{}, error) {
 		opts := map[string]interface{}{
 			"mousemoved": "any",
 		}
-		return v.showHover(posExpr, opts)
+		return v.showHover(posExpr, opts, v.config.ExperimentalCursorTriggeredHoverPopupOptions)
 	}
 	b, pos, err := v.cursorPos()
 	if err != nil {
@@ -81,7 +81,7 @@ func (v *vimstate) hover(args ...json.RawMessage) (interface{}, error) {
 	return strings.TrimSpace(res.Contents.Value), nil
 }
 
-func (v *vimstate) showHover(posExpr string, opts map[string]interface{}) (interface{}, error) {
+func (v *vimstate) showHover(posExpr string, opts, userOpts map[string]interface{}) (interface{}, error) {
 	if v.popupWinId > 0 {
 		v.ChannelCall("popup_close", v.popupWinId)
 		v.popupWinId = 0
@@ -119,15 +119,44 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}) (inter
 	}
 	msg := strings.TrimSpace(hovRes.Contents.Value)
 	lines := strings.Split(msg, "\n")
-	opts["pos"] = "topleft"
-	opts["line"] = vpos.ScreenPos.Row + 1
-	opts["col"] = vpos.ScreenPos.Col
-	opts["mousemoved"] = "any"
-	opts["moved"] = "any"
-	opts["wrap"] = false
-	opts["close"] = "click"
+	if userOpts != nil {
+		opts = userOpts
+		var line, col int64
+		var err error
+		if lv, ok := opts["line"]; ok {
+			if line, err = rawToInt(lv); err != nil {
+				return nil, fmt.Errorf("failed to parse line option: %v", err)
+			}
+		}
+		if cv, ok := opts["col"]; ok {
+			if col, err = rawToInt(cv); err != nil {
+				return nil, fmt.Errorf("failed to parse col option: %v", err)
+			}
+		}
+		opts["line"] = line + int64(vpos.ScreenPos.Row)
+		opts["col"] = col + int64(vpos.ScreenPos.Col)
+	} else {
+		opts["pos"] = "topleft"
+		opts["line"] = vpos.ScreenPos.Row + 1
+		opts["col"] = vpos.ScreenPos.Col
+		opts["mousemoved"] = "any"
+		opts["moved"] = "any"
+		opts["wrap"] = false
+		opts["close"] = "click"
+	}
 	v.popupWinId = v.ParseInt(v.ChannelCall("popup_create", lines, opts))
 	v.ChannelRedraw(false)
 	return "", nil
+}
 
+func rawToInt(i interface{}) (int64, error) {
+	var n json.Number
+	if err := json.Unmarshal(i.(json.RawMessage), &n); err != nil {
+		return 0, fmt.Errorf("failed to parse number: %v", err)
+	}
+	v, err := n.Int64()
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse integer from line option: %v", err)
+	}
+	return v, nil
 }
