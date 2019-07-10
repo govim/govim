@@ -120,7 +120,10 @@ func (v *vimstate) showHover(posExpr string, opts, userOpts map[string]interface
 	msg := strings.TrimSpace(hovRes.Contents.Value)
 	lines := strings.Split(msg, "\n")
 	if userOpts != nil {
-		opts = userOpts
+		opts = make(map[string]interface{})
+		for k, v := range userOpts {
+			opts[k] = v
+		}
 		var line, col int64
 		var err error
 		if lv, ok := opts["line"]; ok {
