@@ -65,13 +65,27 @@ type vimstate struct {
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	var c struct {
-		FormatOnSave                   config.FormatOnSave
-		QuickfixAutoDiagnosticsDisable int
+		FormatOnSave                                 config.FormatOnSave
+		QuickfixAutoDiagnosticsDisable               int
+		ExperimentalMouseTriggeredHoverPopupOptions  map[string]json.RawMessage
+		ExperimentalCursorTriggeredHoverPopupOptions map[string]json.RawMessage
 	}
 	v.Parse(args[0], &c)
 	v.config = config.Config{
 		FormatOnSave:                   c.FormatOnSave,
 		QuickfixAutoDiagnosticsDisable: c.QuickfixAutoDiagnosticsDisable != 0,
+	}
+	if len(c.ExperimentalMouseTriggeredHoverPopupOptions) > 0 {
+		v.config.ExperimentalMouseTriggeredHoverPopupOptions = make(map[string]interface{})
+		for ck, cv := range c.ExperimentalMouseTriggeredHoverPopupOptions {
+			v.config.ExperimentalMouseTriggeredHoverPopupOptions[ck] = cv
+		}
+	}
+	if len(c.ExperimentalCursorTriggeredHoverPopupOptions) > 0 {
+		v.config.ExperimentalCursorTriggeredHoverPopupOptions = make(map[string]interface{})
+		for ck, cv := range c.ExperimentalCursorTriggeredHoverPopupOptions {
+			v.config.ExperimentalCursorTriggeredHoverPopupOptions[ck] = cv
+		}
 	}
 	return nil, nil
 }

@@ -20,6 +20,49 @@ type Config struct {
 	// CommandQuickfixDiagnostics command can be used to manually trigger the
 	// population. Default: false (0)
 	QuickfixAutoDiagnosticsDisable bool
+
+	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
+	// when creating hover-based popup windows triggered by the mouse hovering
+	// over an identifier. It corresponds to the second argument to popup_create
+	// (see :help popup_create-arguments). If set, these options define the
+	// options that will be used when creating hover popups. That is to say, the
+	// options set in ExperimentalMouseTriggeredHoverPopupOptions do no override
+	// defaults set in govim, the supplied map is used as is in the call to
+	// popup create. The only exceptions to this are the values of line and col.
+	// Because the position of the popup is relative to positin of where it was
+	// triggered, these values are interpreted as relative values. Hence a "line"
+	// value of -1 will mean the popup is placed on the line before the position
+	// at which the hover was triggered.
+	//
+	// The "filter" and "callback" options are not supported because they have a
+	// function-type value, and hence cannot be serialised to JSON.
+	//
+	// This is an experimental feature designed to help iterate on
+	// the most sensible out-of-the-box defaults for hover popups. It might go
+	// away in the future, be renamed etc.
+	ExperimentalMouseTriggeredHoverPopupOptions map[string]interface{}
+
+	// ExperimentalCursorTriggeredHoverPopupOptions is a map of options to apply
+	// when creating hover-based popup windows triggered by a call to
+	// GOVIMHover() which uses the cursor position for popup placement.  It
+	// corresponds to the second argument to popup_create (see :help
+	// popup_create-arguments). If set, these options define the options that
+	// will be used when creating hover popups. That is to say, the options set
+	// in ExperimentalCursorTriggeredHoverPopupOptions do no override defaults
+	// set in govim, the supplied map is used as is in the call to popup create.
+	// The only exceptions to this are the values of line and col.  Because the
+	// position of the popup is relative to positin of where it was triggered,
+	// these values are interpreted as relative values. Hence a "line" value of
+	// -1 will mean the popup is placed on the line before the position at which
+	// the hover was triggered.
+	//
+	// The "filter" and "callback" options are not supported because they have a
+	// function-type value, and hence cannot be serialised to JSON.
+	//
+	// This is an experimental feature designed to help iterate on the most
+	// sensible out-of-the-box defaults for hover popups. It might go away in
+	// the future, be renamed etc.
+	ExperimentalCursorTriggeredHoverPopupOptions map[string]interface{}
 }
 
 type Command string
