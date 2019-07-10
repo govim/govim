@@ -144,6 +144,7 @@ func (v *vimstate) showHover(posExpr string, opts, userOpts map[string]interface
 		opts["col"] = vpos.ScreenPos.Col
 		opts["mousemoved"] = "any"
 		opts["moved"] = "any"
+		opts["padding"] = []int{0, 1, 0, 1}
 		opts["wrap"] = false
 		opts["close"] = "click"
 	}
