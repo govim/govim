@@ -34,7 +34,7 @@ const (
 
 	// MinPopupWindowBalloon is the minimum version of Vim required to use popup
 	// windows for balloons
-	MinPopupWindowBalloon = "v8.1.1649"
+	MinPopupWindowBalloon = "v8.1.1657"
 
 	EnvLogfileTmpl      = "GOVIM_LOGFILE_TMPL"
 	EnvTestscriptStderr = "GOVIM_TESTSCRIPT_STDERR"
