@@ -12,7 +12,7 @@ import (
 
 func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 	if v.usePopupWindows() {
-		posExpr := `{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col, "screenpos": screenpos(v:beval_winnr, v:beval_lnum, v:beval_col)}`
+		posExpr := `{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col, "screenpos": screenpos(v:beval_winid, v:beval_lnum, v:beval_col)}`
 		opts := map[string]interface{}{
 			"mousemoved": "any",
 		}
@@ -58,7 +58,7 @@ func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
 
 func (v *vimstate) hover(args ...json.RawMessage) (interface{}, error) {
 	if v.usePopupWindows() {
-		posExpr := `{"bufnum": bufnr(""), "line": line("."), "col": col("."), "screenpos": screenpos(winnr(), line("."), col("."))}`
+		posExpr := `{"bufnum": bufnr(""), "line": line("."), "col": col("."), "screenpos": screenpos(win_getid(), line("."), col("."))}`
 		opts := map[string]interface{}{
 			"mousemoved": "any",
 		}
