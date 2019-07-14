@@ -1,0 +1,22 @@
+# Test completions for a file that does not yet exist on disk
+
+vim ex 'e main.go'
+vim ex 'r main.txt | 0d_'
+vim ex 'w main.go'
+cmp main.go main.txt
+
+-- go.mod --
+module mod.com
+
+-- main.txt --
+package main
+
+func main() {
+}
+-- main.go.golden --
+package main
+
+import "os/exec"
+
+func main() {
+}
