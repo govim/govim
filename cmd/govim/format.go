@@ -142,10 +142,8 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 		err = os.Remove(tf.Name())
 	}()
 
-	preEventIgnore := v.ParseString(v.ChannelExpr("&eventignore"))
-	v.ChannelEx("set eventignore=all")
-	defer v.ChannelExf("set eventignore=%v", preEventIgnore)
-	v.BatchStart()
+	// prepare the changes to make in Vim
+	var changes []textEdit
 	for ie := len(edits) - 1; ie >= 0; ie-- {
 		e := edits[ie]
 		start, err := types.PointFromPosition(b, e.Range.Start)
@@ -166,7 +164,12 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			if e.NewText != "" {
 				return fmt.Errorf("saw an edit where start line != end line with replacement text %q; We can't currently handle this", e.NewText)
 			}
-			v.ChannelCall("deletebufline", b.Num, start.Line(), end.Line()-1)
+			changes = append(changes, textEdit{
+				call:   "deletebufline",
+				buffer: b.Num,
+				start:  start.Line(),
+				end:    end.Line() - 1,
+			})
 		} else {
 			// do we have anything to do?
 			if e.NewText == "" {
@@ -177,12 +180,38 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 				e.NewText = e.NewText[:len(e.NewText)-1]
 			}
 			repl := strings.Split(e.NewText, "\n")
-			v.ChannelCall("appendbufline", b.Num, start.Line()-1, repl)
+			changes = append(changes, textEdit{
+				call:   "appendbufline",
+				buffer: b.Num,
+				start:  start.Line() - 1,
+				lines:  repl,
+			})
+		}
+	}
+
+	preEventIgnore := v.ParseString(v.ChannelExpr("&eventignore"))
+	v.ChannelEx("set eventignore=all")
+	defer v.ChannelExf("set eventignore=%v", preEventIgnore)
+	v.BatchStart()
+	for _, e := range changes {
+		switch e.call {
+		case "deletebufline":
+			v.BatchAssertChannelCall(AssertIsZero, "deletebufline", b.Num, e.start, e.end)
+		case "appendbufline":
+			v.BatchAssertChannelCall(AssertIsZero, "appendbufline", b.Num, e.start, e.lines)
 		}
 	}
 	if v.doIncrementalSync() {
-		v.ChannelCall("listener_flush", b.Num)
+		v.BatchAssertChannelCall(AssertIsZero, "listener_flush", b.Num)
 	}
 	v.BatchEnd()
 	return nil
+}
+
+type textEdit struct {
+	buffer int
+	call   string
+	start  int
+	end    int
+	lines  []string
 }
