@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
@@ -27,9 +28,9 @@ func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string)
 
 func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 	v.diagnosticsLock.Lock()
-	diags := make(map[span.URI][]protocol.Diagnostic)
+	filediags := make(map[span.URI][]protocol.Diagnostic)
 	for k, v := range v.diagnostics {
-		diags[k] = v
+		filediags[k] = v
 	}
 	doWork := v.diagnosticsChanged
 	v.diagnosticsChanged = false
@@ -39,14 +40,6 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 		return nil
 	}
 
-	var fns []span.URI
-	for u := range diags {
-		fns = append(fns, u)
-	}
-	sort.Slice(fns, func(i, j int) bool {
-		return string(fns[i]) < string(fns[j])
-	})
-
 	// TODO this will become fragile at some point
 	cwd := v.ParseString(v.ChannelCall("getcwd"))
 
@@ -54,8 +47,7 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 	fixes := []quickfixEntry{}
 
 	// now update the quickfix window based on the current diagnostics
-	for _, uri := range fns {
-		diags := diags[uri]
+	for uri, diags := range filediags {
 		fn := uri.Filename()
 		var buf *types.Buffer
 		for _, b := range v.buffers {
@@ -92,6 +84,17 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 			})
 		}
 	}
+	sort.Slice(fixes, func(i, j int) bool {
+		lhs, rhs := fixes[i], fixes[j]
+		cmp := strings.Compare(lhs.Filename, rhs.Filename)
+		if cmp == 0 {
+			cmp = lhs.Lnum - rhs.Lnum
+		}
+		if cmp == 0 {
+			cmp = lhs.Col - rhs.Col
+		}
+		return cmp < 0
+	})
 	v.ChannelCall("setqflist", fixes, "r")
 	return nil
 }

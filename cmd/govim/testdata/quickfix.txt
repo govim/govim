@@ -16,7 +16,13 @@ package main
 import "fmt"
 
 func main() {
-	fmt.Printf("This is a test %v\n")
+	fmt.Printf("This is a test %v\n", i, v)
 }
+
+func f1() string {}
+func f2() string {}
 -- errors.golden --
-main.go|6 col 2| Printf format %v reads arg #1, but call has 0 args
+main.go|6 col 36| undeclared name: i
+main.go|6 col 39| undeclared name: v
+main.go|9 col 19| missing return
+main.go|10 col 19| missing return
