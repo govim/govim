@@ -3,7 +3,7 @@
 package config
 
 const (
-	internalFunctionPrefix = "_internal_"
+	InternalFunctionPrefix = "_internal_"
 )
 
 type Config struct {
@@ -77,10 +77,6 @@ const (
 	// CommandGoToPrevDef respects &switchbuf
 	CommandGoToPrevDef Command = "GoToPrevDef"
 
-	// CommandHello is a friendly command, largely for checking govim is
-	// working.
-	CommandHello Command = "Hello"
-
 	// CommandGoFmt applies gofmt to the entire buffer
 	CommandGoFmt Command = "GoFmt"
 
@@ -92,7 +88,7 @@ const (
 	CommandQuickfixDiagnostics Command = "QuickfixDiagnostics"
 
 	// CommandReferences finds references to the identifier under the cursor.
-	CommandReferences = "References"
+	CommandReferences Command = "References"
 )
 
 type Function string
@@ -100,40 +96,32 @@ type Function string
 const (
 	// FunctionBalloonExpr is an internal function used by govim for balloonexpr
 	// in Vim
-	FunctionBalloonExpr Function = internalFunctionPrefix + "BalloonExpr"
+	FunctionBalloonExpr Function = InternalFunctionPrefix + "BalloonExpr"
 
 	// FunctionComplete is an internal function used by govim as for omnifunc in
 	// Vim
-	FunctionComplete Function = internalFunctionPrefix + "Complete"
+	FunctionComplete Function = InternalFunctionPrefix + "Complete"
 
 	// FunctionHover returns the same text that would be returned by a
 	// mouse-based hover, but instead uses the cursor position for the
 	// identifier.
 	FunctionHover Function = "Hover"
 
-	// FunctionHello is a friendly function, largely for checking govim is
-	// working.
-	FunctionHello Function = "Hello"
-
 	// FunctionBufChanged is an internal function used by govim for handling
 	// delta-based changes in buffers.
-	FunctionBufChanged = internalFunctionPrefix + "BufChanged"
+	FunctionBufChanged Function = InternalFunctionPrefix + "BufChanged"
 
 	// FunctionEnrichDelta is an internal function used by govim for enriching
 	// listener_add based callbacks before calling FunctionBufChanged
-	FunctionEnrichDelta = internalFunctionPrefix + "EnrichDelta"
+	FunctionEnrichDelta Function = InternalFunctionPrefix + "EnrichDelta"
 
 	// FunctionSetConfig is an internal function used by govim for pushing config
 	// changes from Vim to govim.
-	FunctionSetConfig = internalFunctionPrefix + "SetConfig"
+	FunctionSetConfig Function = InternalFunctionPrefix + "SetConfig"
 
 	// FunctionSetUserBusy is an internal function used by govim for indicated
 	// whether the user is busy or not (based on cursor movement)
-	FunctionSetUserBusy = internalFunctionPrefix + "SetUserBusy"
-
-	// FunctionDumpPopups is an internal function used by govim tests for capturing
-	// the text in all visible popups
-	FunctionDumpPopups = internalFunctionPrefix + "DumpPopups"
+	FunctionSetUserBusy Function = InternalFunctionPrefix + "SetUserBusy"
 )
 
 // FormatOnSave typed constants define the set of valid values that

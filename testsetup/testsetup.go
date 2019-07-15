@@ -21,6 +21,7 @@ const (
 	EnvGithubUser  = "GH_USER"
 	EnvGithubToken = "GH_TOKEN"
 
+	EnvLoadTestAPI               = "GOVIM_LOAD_TEST_API"
 	EnvDisableIncrementalSync    = "GOVIM_DISABLE_INCREMENTALSYNC"
 	EnvDisablePopupWindowBalloon = "GOVIM_DISABLE_POPUPWINDOWBALLOON"
 

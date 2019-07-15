@@ -39,6 +39,10 @@ var (
 	// gopls define InitializationOptions; they will make these well defined
 	// constants at some point
 	goplsInitOptIncrementalSync = "incrementalSync"
+
+	// exposeTestAPI is a rather hacky but clean way of only exposing certain
+	// functions, commands and autocommands to Vim when run from a test
+	exposeTestAPI = os.Getenv(testsetup.EnvLoadTestAPI) == "true"
 )
 
 func main() {
@@ -182,8 +186,6 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.vimstate.Driver.Govim = gg.Scheduled()
 	g.ChannelEx(`augroup govim`)
 	g.ChannelEx(`augroup END`)
-	g.DefineFunction(string(config.FunctionHello), []string{}, g.vimstate.hello)
-	g.DefineCommand(string(config.CommandHello), g.vimstate.helloComm)
 	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.vimstate.balloonExpr)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufRead, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.vimstate.bufReadPost, exprAutocmdCurrBufInfo)
 	if !g.doIncrementalSync() {
@@ -203,7 +205,8 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.ChannelExf(`call govim#config#Set("_internal_Func", function("%v%v"))`, PluginPrefix, config.FunctionSetConfig)
 	g.DefineFunction(string(config.FunctionSetUserBusy), []string{"isBusy"}, g.vimstate.setUserBusy)
 	g.DefineCommand(string(config.CommandReferences), g.vimstate.references)
-	g.DefineFunction(string(config.FunctionDumpPopups), []string{}, g.vimstate.dumpPopups)
+
+	g.InitTestAPI()
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 

@@ -26,6 +26,10 @@ var (
 	fDebugLog = flag.Bool("debugLog", false, "whether to log debugging info from vim, govim and the test shim")
 )
 
+func init() {
+	exposeTestAPI = true
+}
+
 func TestMain(m *testing.M) {
 	os.Exit(testscript.RunMain(m, map[string]func() int{
 		"vim":     testdriver.Vim,
@@ -165,6 +169,7 @@ func TestInstallScripts(t *testing.T) {
 				e.Vars = append(e.Vars,
 					"PLUGIN_PATH="+govimPath,
 					"CURRENT_GOPATH="+os.Getenv("GOPATH"),
+					testsetup.EnvLoadTestAPI+"=true",
 				)
 				return nil
 			},
