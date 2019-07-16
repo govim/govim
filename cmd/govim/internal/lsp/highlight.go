@@ -9,6 +9,7 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/xlog"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
@@ -29,7 +30,7 @@ func (s *Server) documentHighlight(ctx context.Context, params *protocol.TextDoc
 	}
 	spans, err := source.Highlight(ctx, f, rng.Start)
 	if err != nil {
-		view.Session().Logger().Errorf(ctx, "no highlight for %s: %v", spn, err)
+		xlog.Errorf(ctx, "no highlight for %s: %v", spn, err)
 	}
 	return toProtocolHighlight(m, spans), nil
 }

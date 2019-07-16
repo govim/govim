@@ -9,6 +9,7 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/xlog"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
@@ -29,7 +30,7 @@ func (s *Server) signatureHelp(ctx context.Context, params *protocol.TextDocumen
 	}
 	info, err := source.SignatureHelp(ctx, f, rng.Start)
 	if err != nil {
-		s.session.Logger().Infof(ctx, "no signature help for %s:%v:%v : %s", uri, int(params.Position.Line), int(params.Position.Character), err)
+		xlog.Infof(ctx, "no signature help for %s:%v:%v : %s", uri, int(params.Position.Line), int(params.Position.Character), err)
 		return nil, nil
 	}
 	return toProtocolSignatureHelp(info), nil

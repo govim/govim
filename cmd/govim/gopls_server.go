@@ -307,3 +307,10 @@ func (l loggingGoplsServer) SetTraceNotification(ctxt context.Context, params *p
 	l.Logf("gopls.SetTraceNotification() return; err: %v", err)
 	return err
 }
+
+func (l loggingGoplsServer) SelectionRange(ctxt context.Context, params *protocol.SelectionRangeParams) ([]protocol.SelectionRange, error) {
+	l.Logf("gopls.SelectionRange() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.SelectionRange(ctxt, params)
+	l.Logf("gopls.SelectionRange() return; err: %v; res\n", err, pretty.Sprint(res))
+	return res, err
+}

@@ -33,14 +33,14 @@ const (
 )
 
 func (i *IdentifierInfo) Hover(ctx context.Context, markdownSupported bool, hoverKind HoverKind) (string, error) {
-	ctx, ts := trace.StartSpan(ctx, "source.Hover")
-	defer ts.End()
+	ctx, done := trace.StartSpan(ctx, "source.Hover")
+	defer done()
 	h, err := i.decl.hover(ctx)
 	if err != nil {
 		return "", err
 	}
 	var b strings.Builder
-	if comment := formatDocumentation(hoverKind, h.comment); comment != "" {
+	if comment := formatDocumentation(h.comment, hoverKind); comment != "" {
 		b.WriteString(comment)
 		b.WriteRune('\n')
 	}
@@ -61,7 +61,7 @@ func (i *IdentifierInfo) Hover(ctx context.Context, markdownSupported bool, hove
 	return b.String(), nil
 }
 
-func formatDocumentation(hoverKind HoverKind, c *ast.CommentGroup) string {
+func formatDocumentation(c *ast.CommentGroup, hoverKind HoverKind) string {
 	switch hoverKind {
 	case SynopsisDocumentation:
 		return doc.Synopsis((c.Text()))
@@ -71,11 +71,21 @@ func formatDocumentation(hoverKind HoverKind, c *ast.CommentGroup) string {
 	return ""
 }
 
+func (i *IdentifierInfo) Documentation(ctx context.Context, hoverKind HoverKind) (string, error) {
+	h, err := i.decl.hover(ctx)
+	if err != nil {
+		return "", err
+	}
+	return formatDocumentation(h.comment, hoverKind), nil
+}
+
 func (d declaration) hover(ctx context.Context) (*documentation, error) {
-	ctx, ts := trace.StartSpan(ctx, "source.hover")
-	defer ts.End()
+	ctx, done := trace.StartSpan(ctx, "source.hover")
+	defer done()
 	obj := d.obj
 	switch node := d.node.(type) {
+	case *ast.ImportSpec:
+		return &documentation{node, nil}, nil
 	case *ast.GenDecl:
 		switch obj := obj.(type) {
 		case *types.TypeName, *types.Var, *types.Const, *types.Func:

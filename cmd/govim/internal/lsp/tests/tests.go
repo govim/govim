@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/tools/go/expect"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/packages/packagestest"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
@@ -33,11 +34,11 @@ const (
 	ExpectedDefinitionsCount       = 38
 	ExpectedTypeDefinitionsCount   = 2
 	ExpectedHighlightsCount        = 2
-	ExpectedReferencesCount        = 4
-	ExpectedRenamesCount           = 11
+	ExpectedReferencesCount        = 5
+	ExpectedRenamesCount           = 16
 	ExpectedSymbolsCount           = 1
 	ExpectedSignaturesCount        = 21
-	ExpectedLinksCount             = 2
+	ExpectedLinksCount             = 4
 )
 
 const (
@@ -117,14 +118,19 @@ type CompletionSnippet struct {
 }
 
 type Link struct {
-	Src    span.Span
-	Target string
+	Src          span.Span
+	Target       string
+	NotePosition token.Position
 }
 
 type Golden struct {
 	Filename string
 	Archive  *txtar.Archive
 	Modified bool
+}
+
+func Context(t testing.TB) context.Context {
+	return context.Background()
 }
 
 func Load(t testing.TB, exporter packagestest.Exporter, dir string) *Data {
@@ -193,7 +199,7 @@ func Load(t testing.TB, exporter packagestest.Exporter, dir string) *Data {
 	// Merge the exported.Config with the view.Config.
 	data.Config = *data.Exported.Config
 	data.Config.Fset = token.NewFileSet()
-	data.Config.Context = context.Background()
+	data.Config.Context = Context(nil)
 	data.Config.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 		panic("ParseFile should not be called")
 	}
@@ -523,10 +529,12 @@ func (data *Data) collectCompletionSnippets(spn span.Span, item token.Pos, plain
 	}
 }
 
-func (data *Data) collectLinks(spn span.Span, link string) {
+func (data *Data) collectLinks(spn span.Span, link string, note *expect.Note, fset *token.FileSet) {
+	position := fset.Position(note.Pos)
 	uri := spn.URI()
 	data.Links[uri] = append(data.Links[uri], Link{
-		Src:    spn,
-		Target: link,
+		Src:          spn,
+		Target:       link,
+		NotePosition: position,
 	})
 }

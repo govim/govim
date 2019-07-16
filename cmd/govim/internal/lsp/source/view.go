@@ -9,12 +9,12 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"sort"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/diff"
-	"github.com/myitcv/govim/cmd/govim/internal/lsp/xlog"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
@@ -111,7 +111,7 @@ type Cache interface {
 	FileSystem
 
 	// NewSession creates a new Session manager and returns it.
-	NewSession(log xlog.Logger) Session
+	NewSession(ctx context.Context) Session
 
 	// FileSet returns the shared fileset used by all files in the system.
 	FileSet() *token.FileSet
@@ -129,13 +129,10 @@ type Cache interface {
 // A session may have many active views at any given time.
 type Session interface {
 	// NewView creates a new View and returns it.
-	NewView(name string, folder span.URI) View
+	NewView(ctx context.Context, name string, folder span.URI) View
 
 	// Cache returns the cache that created this session.
 	Cache() Cache
-
-	// Returns the logger in use for this session.
-	Logger() xlog.Logger
 
 	// View returns a view with a mathing name, if the session has one.
 	View(name string) View
@@ -154,7 +151,7 @@ type Session interface {
 	FileSystem
 
 	// DidOpen is invoked each time a file is opened in the editor.
-	DidOpen(ctx context.Context, uri span.URI, text []byte)
+	DidOpen(ctx context.Context, uri span.URI, kind FileKind, text []byte)
 
 	// DidSave is invoked each time an open file is saved in the editor.
 	DidSave(uri span.URI)
@@ -321,4 +318,11 @@ func EditsToDiff(edits []TextEdit) []*diff.Op {
 		}
 	}
 	return ops
+}
+
+func sortTextEdits(d []TextEdit) {
+	// Use a stable sort to maintain the order of edits inserted at the same position.
+	sort.SliceStable(d, func(i int, j int) bool {
+		return span.Compare(d[i].Span, d[j].Span) < 0
+	})
 }

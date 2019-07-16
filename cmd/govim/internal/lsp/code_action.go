@@ -11,6 +11,7 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/xlog"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
@@ -57,7 +58,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 		if s.wantSuggestedFixes {
 			qf, err := quickFixes(ctx, view, gof)
 			if err != nil {
-				view.Session().Logger().Errorf(ctx, "quick fixes failed for %s: %v", uri, err)
+				xlog.Errorf(ctx, "quick fixes failed for %s: %v", uri, err)
 			}
 			codeActions = append(codeActions, qf...)
 		}

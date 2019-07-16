@@ -13,6 +13,7 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/telemetry/trace"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/xlog"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
@@ -20,8 +21,11 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 	uri := span.NewURI(params.TextDocument.URI)
 	text := []byte(params.TextDocument.Text)
 
+	// Confirm that the file's language ID is related to Go.
+	fileKind := source.DetectLanguage(params.TextDocument.LanguageID, uri.Filename())
+
 	// Open the file.
-	s.session.DidOpen(ctx, uri, text)
+	s.session.DidOpen(ctx, uri, fileKind, text)
 
 	// Run diagnostics on the newly-changed file.
 	view := s.session.ViewOf(uri)
@@ -66,8 +70,8 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 	go func() {
 		ctx := view.BackgroundContext()
 		//TODO: connect the remote span?
-		ctx, ts := trace.StartSpan(ctx, "lsp:background-worker")
-		defer ts.End()
+		ctx, done := trace.StartSpan(ctx, "lsp:background-worker")
+		defer done()
 		s.Diagnostics(ctx, view, uri)
 	}()
 	return nil
@@ -130,7 +134,7 @@ func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocu
 	defer func() {
 		for _, uri := range clear {
 			if err := s.publishDiagnostics(ctx, view, uri, []source.Diagnostic{}); err != nil {
-				s.session.Logger().Errorf(ctx, "failed to clear diagnostics for %s: %v", uri, err)
+				xlog.Errorf(ctx, "failed to clear diagnostics for %s: %v", uri, err)
 			}
 		}
 	}()
@@ -138,18 +142,18 @@ func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocu
 	// clear out all diagnostics for the package.
 	f, err := view.GetFile(ctx, uri)
 	if err != nil {
-		s.session.Logger().Errorf(ctx, "no file for %s: %v", uri, err)
+		xlog.Errorf(ctx, "no file for %s: %v", uri, err)
 		return nil
 	}
 	// For non-Go files, don't return any diagnostics.
 	gof, ok := f.(source.GoFile)
 	if !ok {
-		s.session.Logger().Errorf(ctx, "closing a non-Go file, no diagnostics to clear")
+		xlog.Errorf(ctx, "closing a non-Go file, no diagnostics to clear")
 		return nil
 	}
 	pkg := gof.GetPackage(ctx)
 	if pkg == nil {
-		s.session.Logger().Errorf(ctx, "no package available for %s", uri)
+		xlog.Errorf(ctx, "no package available for %s", uri)
 		return nil
 	}
 	for _, filename := range pkg.GetFilenames() {
