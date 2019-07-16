@@ -206,6 +206,11 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineFunction(string(config.FunctionSetUserBusy), []string{"isBusy"}, g.vimstate.setUserBusy)
 	g.DefineCommand(string(config.CommandReferences), g.vimstate.references)
 	g.DefineCommand(string(config.CommandRename), g.vimstate.rename, govim.NArgsZeroOrOne)
+	if g.placeSigns() {
+		if err := g.vimstate.signDefine(); err != nil {
+			return fmt.Errorf("failed to define signs: %v", err)
+		}
+	}
 
 	g.InitTestAPI()
 
@@ -354,6 +359,19 @@ func (g *govimplugin) usePopupWindows() bool {
 		return false
 	}
 	if os.Getenv(testsetup.EnvDisablePopupWindowBalloon) == "true" {
+		return false
+	}
+	return true
+}
+
+func (g *govimplugin) placeSigns() bool {
+	if g.Flavor() != govim.FlavorVim && g.Flavor() != govim.FlavorGvim {
+		return false
+	}
+	if semver.Compare(g.Version(), testsetup.MinSignPlace) < 0 {
+		return false
+	}
+	if os.Getenv(testsetup.EnvDisableSignPlace) == "true" {
 		return false
 	}
 	return true
