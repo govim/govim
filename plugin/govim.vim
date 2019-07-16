@@ -224,7 +224,7 @@ func s:defineCommand(name, attrs)
   if has_key(a:attrs, "nargs")
     let l:def .= " ". a:attrs["nargs"]
     if a:attrs["nargs"] != "-nargs=0"
-      let l:args = ", <args>"
+      let l:args = ", <f-args>"
     endif
   endif
   if has_key(a:attrs, "range")
