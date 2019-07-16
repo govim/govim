@@ -339,8 +339,7 @@ func (d *TestDriver) listenGovim() error {
 			close(d.doneQuitDriver)
 		}
 	}()
-	d.Logf("Waiting for govim connection on %s...", d.govimListener.Addr().String())
-	d.govimListener.(*net.TCPListener).SetDeadline(time.Now().Add(10 * time.Second))
+	d.Logf("Waiting for govim connection on %v...", d.govimListener.Addr())
 	conn, err := d.govimListener.Accept()
 	if err != nil {
 		select {
@@ -386,7 +385,6 @@ func (d *TestDriver) listenDriver() error {
 	Accept:
 		for {
 			d.Logf("Waiting for govim driver connection on %s...", d.driverListener.Addr().String())
-			d.driverListener.(*net.TCPListener).SetDeadline(time.Now().Add(10 * time.Second))
 			conn, err := d.driverListener.Accept()
 			if err != nil {
 				select {
@@ -396,7 +394,7 @@ func (d *TestDriver) listenDriver() error {
 					panic(fmt.Errorf("failed to accept connection to driver on %v: %v", d.driverListener.Addr(), err))
 				}
 			}
-			d.Logf("Accepted driver connection on", d.driverListener.Addr().String())
+			d.Logf("Accepted driver connection on %v", d.driverListener.Addr())
 			dec := json.NewDecoder(conn)
 			var args []interface{}
 			if err := dec.Decode(&args); err != nil {
