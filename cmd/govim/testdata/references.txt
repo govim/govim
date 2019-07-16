@@ -13,15 +13,13 @@ vim ex 'copen'
 vim ex 'w locations'
 cmp locations locations.golden
 
-# For some reason what follows in version of Vim ~< 8.1.1512. Not investigated fully why
-# or the exact version at which things started working, so skip for now
-[vim] [!vim:v8.1.1512] skip
-[gvim] [!gvim:v8.1.1512] skip
-
 # Introduce an error - locations should remain
 vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
 vim expr 'bufname(\"\")'
-vim call append '[15, "\tfmt.Printf(\"%v\")"]'
+vim ex 'call cursor(15,1)'
+vim ex 'call feedkeys(\"o\\tfmt.Printf(\\\"%v\\\")\\<ESC>\", \"xt\")'
+[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChanged'
+[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChanged'
 errlogmatch -wait 60s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
 vim ex 'w locations'
