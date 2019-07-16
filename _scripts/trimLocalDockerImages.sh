@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
-
-source "${BASH_SOURCE%/*}/gen_maxVersions_genconfig.bash"
+source "${BASH_SOURCE%/*}/common.bash"
 
 # trimLocalDockerImages trims down your local Docker image cache to contain
 # just the matrix implied by GO_VERSIONS and VIM_VERSIONS.
@@ -36,6 +34,6 @@ then
 fi
 
 echo Will remove $(echo "$toRemove" | awk '{print $2}')
-docker rmi -f $(echo "$toRemove" | awk '{print $3}')
+docker rmi -f $(echo "$toRemove" | awk '{print $2}' | sed -e 's+^+govim/govim:+')
 
 echo You might now want to run: docker image prune

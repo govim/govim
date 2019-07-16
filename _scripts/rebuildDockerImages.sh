@@ -1,8 +1,6 @@
 #!/usr/bin/env vbash
 
-set -euo pipefail
-
-source "${BASH_SOURCE%/*}/gen_maxVersions_genconfig.bash"
+source "${BASH_SOURCE%/*}/common.bash"
 
 cd "${BASH_SOURCE%/*}"
 

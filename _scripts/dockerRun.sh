@@ -1,8 +1,6 @@
 #!/usr/bin/env vbash
 
-set -u
-
-source "${BASH_SOURCE%/*}/gen_maxVersions_genconfig.bash"
+source "${BASH_SOURCE%/*}/common.bash"
 
 if [ "${VIM_COMMAND:-}" == "" ]
 then
@@ -17,6 +15,7 @@ EOD
 
 if [ "${GH_USER:-}" != "" ] && [ "${GH_TOKEN:-}" != "" ]
 then
+	echo -e "machine api.github.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc
 	echo -e "machine github.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc
 	echo -e "machine githubusercontent.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc
 fi
@@ -34,7 +33,7 @@ rm -f $(git ls-files -- ':!:cmd/govim/internal' '**/gen_*.*' 'gen_*.*') .travis.
 go generate $(go list ./... | grep -v 'govim/internal')
 go test $(go list ./... | grep -v 'govim/internal')
 
-if [ "${CI:-}" == "true" ]
+if [ "${CI:-}" == "true" ] && [ "${TRAVIS_BRANCH:-}_${TRAVIS_PULL_REQUEST_BRANCH:-}" == "master_" ]
 then
 	go test -race $(go list ./... | grep -v 'govim/internal')
 fi

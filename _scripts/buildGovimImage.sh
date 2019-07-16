@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+source "${BASH_SOURCE%/*}/common.bash"
 
-source "${BASH_SOURCE%/*}/gen_maxVersions_genconfig.bash"
-
-cd "${BASH_SOURCE%/*}"
+doBranchCheck
 
 # Usage; either:
 #
@@ -13,6 +11,8 @@ cd "${BASH_SOURCE%/*}"
 #
 # Note that VIM_FLAVOR can be one of vim, gvim or neovim and
 # VIM_VERSION is a version pertaining to any of them.
+
+cd "${BASH_SOURCE%/*}"
 
 if [ "$#" -eq 3 ]
 then
