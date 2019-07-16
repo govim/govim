@@ -24,6 +24,7 @@ const (
 	EnvLoadTestAPI               = "GOVIM_LOAD_TEST_API"
 	EnvDisableIncrementalSync    = "GOVIM_DISABLE_INCREMENTALSYNC"
 	EnvDisablePopupWindowBalloon = "GOVIM_DISABLE_POPUPWINDOWBALLOON"
+	EnvDisableSignPlace          = "GOVIM_DISABLE_SIGNPLACE"
 
 	// MinVimGovim represents the bare minimum version of Vim required to
 	// use govim
@@ -36,6 +37,10 @@ const (
 	// MinPopupWindowBalloon is the minimum version of Vim required to use popup
 	// windows for balloons
 	MinPopupWindowBalloon = "v8.1.1657"
+
+	// MinSignPlace is the minimum version of Vim required to use
+	// sign placement (i.e. supports sign_placelist() / sign_unplacelist())
+	MinSignPlace = "v8.1.1682"
 
 	EnvLogfileTmpl      = "GOVIM_LOGFILE_TMPL"
 	EnvTestscriptStderr = "GOVIM_TESTSCRIPT_STDERR"
