@@ -11,14 +11,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
-	"time"
-
-	"github.com/myitcv/govim/cmd/govim/internal/lsp/telemetry"
-	"github.com/myitcv/govim/cmd/govim/internal/lsp/telemetry/tag"
-	"github.com/myitcv/govim/cmd/govim/internal/lsp/telemetry/trace"
 )
 
 // Conn is a JSON RPC 2 client server connection.
@@ -55,47 +49,6 @@ type Request struct {
 	WireRequest
 }
 
-type rpcStats struct {
-	server bool
-	method string
-	close  func()
-	start  time.Time
-}
-
-func start(ctx context.Context, server bool, method string, id *ID) (context.Context, *rpcStats) {
-	if method == "" {
-		panic("no method in rpc stats")
-	}
-	s := &rpcStats{
-		server: server,
-		method: method,
-		start:  time.Now(),
-	}
-	mode := telemetry.Outbound
-	if server {
-		mode = telemetry.Inbound
-	}
-	ctx, s.close = trace.StartSpan(ctx, method,
-		tag.Tag{Key: telemetry.Method, Value: method},
-		tag.Tag{Key: telemetry.RPCDirection, Value: mode},
-		tag.Tag{Key: telemetry.RPCID, Value: id},
-	)
-	telemetry.Started.Record(ctx, 1)
-	return ctx, s
-}
-
-func (s *rpcStats) end(ctx context.Context, err *error) {
-	if err != nil && *err != nil {
-		ctx = telemetry.StatusCode.With(ctx, "ERROR")
-	} else {
-		ctx = telemetry.StatusCode.With(ctx, "OK")
-	}
-	elapsedTime := time.Since(s.start)
-	latencyMillis := float64(elapsedTime) / float64(time.Millisecond)
-	telemetry.Latency.Record(ctx, latencyMillis)
-	s.close()
-}
-
 // NewErrorf builds a Error struct for the suppied message and code.
 // If args is not empty, message and args will be passed to Sprintf.
 func NewErrorf(code int64, format string, args ...interface{}) *Error {
@@ -109,7 +62,7 @@ func NewErrorf(code int64, format string, args ...interface{}) *Error {
 // You must call Run for the connection to be active.
 func NewConn(s Stream) *Conn {
 	conn := &Conn{
-		handlers: []Handler{defaultHandler{}, &tracer{}},
+		handlers: []Handler{defaultHandler{}},
 		stream:   s,
 		pending:  make(map[ID]chan *WireResponse),
 		handling: make(map[ID]*Request),
@@ -450,50 +403,4 @@ func marshalToRaw(obj interface{}) (*json.RawMessage, error) {
 	}
 	raw := json.RawMessage(data)
 	return &raw, nil
-}
-
-type statsKeyType int
-
-const statsKey = statsKeyType(0)
-
-type tracer struct {
-}
-
-func (h *tracer) Deliver(ctx context.Context, r *Request, delivered bool) bool {
-	return false
-}
-
-func (h *tracer) Cancel(ctx context.Context, conn *Conn, id ID, cancelled bool) bool {
-	return false
-}
-
-func (h *tracer) Request(ctx context.Context, direction Direction, r *WireRequest) context.Context {
-	ctx, stats := start(ctx, direction == Receive, r.Method, r.ID)
-	ctx = context.WithValue(ctx, statsKey, stats)
-	return ctx
-}
-
-func (h *tracer) Response(ctx context.Context, direction Direction, r *WireResponse) context.Context {
-	return ctx
-}
-
-func (h *tracer) Done(ctx context.Context, err error) {
-	stats, ok := ctx.Value(statsKey).(*rpcStats)
-	if ok && stats != nil {
-		stats.end(ctx, &err)
-	}
-}
-
-func (h *tracer) Read(ctx context.Context, bytes int64) context.Context {
-	telemetry.SentBytes.Record(ctx, bytes)
-	return ctx
-}
-
-func (h *tracer) Wrote(ctx context.Context, bytes int64) context.Context {
-	telemetry.ReceivedBytes.Record(ctx, bytes)
-	return ctx
-}
-
-func (h *tracer) Error(ctx context.Context, err error) {
-	log.Printf("%v", err)
 }

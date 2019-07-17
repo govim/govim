@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
+	"github.com/myitcv/govim/cmd/govim/internal/imports"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/diff"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
@@ -207,7 +208,16 @@ type View interface {
 	// Ignore returns true if this file should be ignored by this view.
 	Ignore(span.URI) bool
 
-	Config() *packages.Config
+	Config(ctx context.Context) *packages.Config
+
+	// Process returns the process for this view.
+	// Note: this contains cached module and filesystem state, which must
+	// be invalidated after a 'go.mod' change.
+	//
+	// TODO(suzmue): the state cached in the process env is specific to each view,
+	// however, there is state that can be shared between views that is not currently
+	// cached, like the module cache.
+	ProcessEnv(ctx context.Context) *imports.ProcessEnv
 }
 
 // File represents a source file of any type.
@@ -216,19 +226,15 @@ type File interface {
 	View() View
 	Handle(ctx context.Context) FileHandle
 	FileSet() *token.FileSet
-	GetToken(ctx context.Context) *token.File
+	GetToken(ctx context.Context) (*token.File, error)
 }
 
 // GoFile represents a Go source file that has been type-checked.
 type GoFile interface {
 	File
 
-	// GetAnyAST returns an AST that may or may not contain function bodies.
-	// It should be used in scenarios where function bodies are not necessary.
-	GetAnyAST(ctx context.Context) *ast.File
-
 	// GetAST returns the full AST for the file.
-	GetAST(ctx context.Context) *ast.File
+	GetAST(ctx context.Context, mode ParseMode) (*ast.File, error)
 
 	// GetPackage returns the package that this file belongs to.
 	GetPackage(ctx context.Context) Package
@@ -255,7 +261,7 @@ type Package interface {
 	ID() string
 	PkgPath() string
 	GetFilenames() []string
-	GetSyntax() []*ast.File
+	GetSyntax(context.Context) []*ast.File
 	GetErrors() []packages.Error
 	GetTypes() *types.Package
 	GetTypesInfo() *types.Info

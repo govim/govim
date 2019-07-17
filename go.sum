@@ -43,10 +43,10 @@ golang.org/x/sys v0.0.0-20190429190828-d89cdac9e872/go.mod h1:h1NjWce9XRLGQEsW7w
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
 golang.org/x/tools v0.0.0-20190530171427-2b03ca6e44eb/go.mod h1:/rFqwRUd4F7ZHNgwSSTFct+R/Kf4OFW1sUzUTQQTgfc=
 golang.org/x/tools v0.0.0-20190710153321-831012c29e42/go.mod h1:jcCCGcm9btYwXyDqrUWc6MKQKKGJCWEQ3AfLSRIbEuI=
-golang.org/x/tools v0.0.0-20190716021316-fefcef05abb1 h1:zgTTk+1hZ1lfGM8FQX/Y4Fcv3HZXEfnrOJ8wZPQClOQ=
-golang.org/x/tools v0.0.0-20190716021316-fefcef05abb1/go.mod h1:jcCCGcm9btYwXyDqrUWc6MKQKKGJCWEQ3AfLSRIbEuI=
-golang.org/x/tools/gopls v0.0.0-20190716021316-fefcef05abb1 h1:SPZeUY8n6o3y9ywmf5fuTBdeo9M+ng/YmJuoJGdyyVk=
-golang.org/x/tools/gopls v0.0.0-20190716021316-fefcef05abb1/go.mod h1:vrCQzOKxvuiZLjCKSmbbov04oeBQQOb4VQqwYK2PWIY=
+golang.org/x/tools v0.0.0-20190716221150-e98af2309876 h1:XskQVJACjxHVCFlm4GsSEh6ZLclQPLobzuvB4DQYHtw=
+golang.org/x/tools v0.0.0-20190716221150-e98af2309876/go.mod h1:jcCCGcm9btYwXyDqrUWc6MKQKKGJCWEQ3AfLSRIbEuI=
+golang.org/x/tools/gopls v0.1.4-0.20190716221150-e98af2309876 h1:uAbjvnOw7ZluBIQNzp2dY5CnMxtl9H2sVQ7SwI99uLg=
+golang.org/x/tools/gopls v0.1.4-0.20190716221150-e98af2309876/go.mod h1:vrCQzOKxvuiZLjCKSmbbov04oeBQQOb4VQqwYK2PWIY=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 h1:qIbj1fsPNlZgppZ+VLlY7N33q108Sa+fhmuc+sWQYwY=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/errgo.v2 v2.1.0 h1:0vLT13EuvQ0hNvakwLuFZ/jYrLp5F3kcWHXdRggjCE8=

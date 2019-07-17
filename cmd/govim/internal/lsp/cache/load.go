@@ -20,7 +20,7 @@ func (v *view) loadParseTypecheck(ctx context.Context, f *goFile) ([]packages.Er
 
 	// If the AST for this file is trimmed, and we are explicitly type-checking it,
 	// don't ignore function bodies.
-	if f.astIsTrimmed() {
+	if f.wrongParseMode(ctx, source.ParseFull) {
 		v.pcache.mu.Lock()
 		f.invalidateAST(ctx)
 		v.pcache.mu.Unlock()
@@ -85,7 +85,7 @@ func (v *view) checkMetadata(ctx context.Context, f *goFile) (map[packageID]*met
 		return nil, nil, ctx.Err()
 	}
 
-	pkgs, err := packages.Load(v.Config(), fmt.Sprintf("file=%s", f.filename()))
+	pkgs, err := packages.Load(v.Config(ctx), fmt.Sprintf("file=%s", f.filename()))
 	if len(pkgs) == 0 {
 		if err == nil {
 			err = fmt.Errorf("go/packages.Load: no packages found for %s", f.filename())
