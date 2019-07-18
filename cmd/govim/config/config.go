@@ -89,6 +89,11 @@ const (
 
 	// CommandReferences finds references to the identifier under the cursor.
 	CommandReferences Command = "References"
+
+	// CommandRename renames the identifier under the cursor. If provided with an
+	// argument, that argument is used as the new name. If not, the user is
+	// prompted for the new identifier name.
+	CommandRename Command = "Rename"
 )
 
 type Function string

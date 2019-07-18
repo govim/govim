@@ -205,6 +205,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.ChannelExf(`call govim#config#Set("_internal_Func", function("%v%v"))`, PluginPrefix, config.FunctionSetConfig)
 	g.DefineFunction(string(config.FunctionSetUserBusy), []string{"isBusy"}, g.vimstate.setUserBusy)
 	g.DefineCommand(string(config.CommandReferences), g.vimstate.references)
+	g.DefineCommand(string(config.CommandRename), g.vimstate.rename, govim.NArgsZeroOrOne)
 
 	g.InitTestAPI()
 
