@@ -14,6 +14,8 @@ cd "${BASH_SOURCE%/*}"
 # Note that VIM_FLAVOR can be one of vim, gvim or neovim and
 # VIM_VERSION is a version pertaining to any of them.
 
+eval env
+
 if [ "$#" -eq 3 ]
 then
 	VIM_FLAVOR="$1"
