@@ -10,44 +10,54 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/jsonrpc2"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/xlog"
+	"github.com/myitcv/govim/cmd/govim/internal/xcontext"
 )
 
-const defaultMessageBufferSize = 20
-const defaultRejectIfOverloaded = false
+type DocumentUri = string
 
-func canceller(ctx context.Context, conn *jsonrpc2.Conn, id jsonrpc2.ID) {
-	ctx = detatchContext(ctx)
-	ctx, span := trace.StartSpan(ctx, "protocol.canceller")
-	defer span.End()
+type canceller struct{ jsonrpc2.EmptyHandler }
+
+type clientHandler struct {
+	canceller
+	client Client
+}
+
+type serverHandler struct {
+	canceller
+	server Server
+}
+
+func (canceller) Cancel(ctx context.Context, conn *jsonrpc2.Conn, id jsonrpc2.ID, cancelled bool) bool {
+	if cancelled {
+		return false
+	}
+	ctx = xcontext.Detach(ctx)
+	ctx, done := trace.StartSpan(ctx, "protocol.canceller")
+	defer done()
 	conn.Notify(ctx, "$/cancelRequest", &CancelParams{ID: id})
+	return true
 }
 
-func NewClient(stream jsonrpc2.Stream, client Client) (*jsonrpc2.Conn, Server, xlog.Logger) {
-	log := xlog.New(NewLogger(client))
+func NewClient(ctx context.Context, stream jsonrpc2.Stream, client Client) (context.Context, *jsonrpc2.Conn, Server) {
+	ctx = xlog.With(ctx, NewLogger(client))
 	conn := jsonrpc2.NewConn(stream)
-	conn.Capacity = defaultMessageBufferSize
-	conn.RejectIfOverloaded = defaultRejectIfOverloaded
-	conn.Handler = clientHandler(log, client)
-	conn.Canceler = jsonrpc2.Canceler(canceller)
-	return conn, &serverDispatcher{Conn: conn}, log
+	conn.AddHandler(&clientHandler{client: client})
+	return ctx, conn, &serverDispatcher{Conn: conn}
 }
 
-func NewServer(stream jsonrpc2.Stream, server Server) (*jsonrpc2.Conn, Client, xlog.Logger) {
+func NewServer(ctx context.Context, stream jsonrpc2.Stream, server Server) (context.Context, *jsonrpc2.Conn, Client) {
 	conn := jsonrpc2.NewConn(stream)
 	client := &clientDispatcher{Conn: conn}
-	log := xlog.New(NewLogger(client))
-	conn.Capacity = defaultMessageBufferSize
-	conn.RejectIfOverloaded = defaultRejectIfOverloaded
-	conn.Handler = serverHandler(log, server)
-	conn.Canceler = jsonrpc2.Canceler(canceller)
-	return conn, client, log
+	ctx = xlog.With(ctx, NewLogger(client))
+	conn.AddHandler(&serverHandler{server: server})
+	return ctx, conn, client
 }
 
-func sendParseError(ctx context.Context, log xlog.Logger, req *jsonrpc2.Request, err error) {
+func sendParseError(ctx context.Context, req *jsonrpc2.Request, err error) {
 	if _, ok := err.(*jsonrpc2.Error); !ok {
 		err = jsonrpc2.NewErrorf(jsonrpc2.CodeParseError, "%v", err)
 	}
 	if err := req.Reply(ctx, nil, err); err != nil {
-		log.Errorf(ctx, "%v", err)
+		xlog.Errorf(ctx, "%v", err)
 	}
 }

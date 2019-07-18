@@ -9,6 +9,7 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/xlog"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
@@ -34,7 +35,7 @@ func (s *Server) references(ctx context.Context, params *protocol.ReferenceParam
 	}
 	references, err := ident.References(ctx)
 	if err != nil {
-		view.Session().Logger().Errorf(ctx, "no references for %s: %v", ident.Name, err)
+		xlog.Errorf(ctx, "no references for %s: %v", ident.Name, err)
 	}
 	if params.Context.IncludeDeclaration {
 		// The declaration of this identifier may not be in the

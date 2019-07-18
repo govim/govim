@@ -10,6 +10,7 @@ import (
 
 	"golang.org/x/tools/go/packages"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
+	"github.com/myitcv/govim/cmd/govim/internal/lsp/xlog"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
 )
 
@@ -99,7 +100,10 @@ func (v *view) checkMetadata(ctx context.Context, f *goFile) (map[packageID]*met
 	}
 	// Track missing imports as we look at the package's errors.
 	missingImports := make(map[packagePath]struct{})
+
+	xlog.Debugf(ctx, "packages.Load: found %v packages", len(pkgs))
 	for _, pkg := range pkgs {
+		xlog.Debugf(ctx, "packages.Load: package %s with files %v", pkg.PkgPath, pkg.CompiledGoFiles)
 		// If the package comes back with errors from `go list`,
 		// don't bother type-checking it.
 		if len(pkg.Errors) > 0 {
@@ -152,17 +156,22 @@ func (v *view) runGopackages(ctx context.Context, f *goFile) (result bool) {
 			}
 		}
 
-		defer f.mu.Unlock()
+		f.mu.Unlock()
 	}()
 
 	if len(f.meta) == 0 || len(f.missingImports) > 0 {
 		return true
 	}
+
 	// Get file content in case we don't already have it.
-	parsed, _ := v.session.cache.ParseGoHandle(f.Handle(ctx), source.ParseHeader).Parse(ctx)
+	parsed, err := v.session.cache.ParseGoHandle(f.Handle(ctx), source.ParseHeader).Parse(ctx)
+	if err == context.Canceled {
+		return false
+	}
 	if parsed == nil {
 		return true
 	}
+
 	// Check if the package's name has changed, by checking if this is a filename
 	// we already know about, and if so, check if its package name has changed.
 	for _, m := range f.meta {
@@ -174,15 +183,18 @@ func (v *view) runGopackages(ctx context.Context, f *goFile) (result bool) {
 			}
 		}
 	}
+
 	// If the package's imports have changed, re-run `go list`.
 	if len(f.imports) != len(parsed.Imports) {
 		return true
 	}
+
 	for i, importSpec := range f.imports {
 		if importSpec.Path.Value != parsed.Imports[i].Path.Value {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -216,11 +228,13 @@ func (v *view) link(ctx context.Context, pkgPath packagePath, pkg *packages.Pack
 	for _, filename := range m.files {
 		f, err := v.getFile(ctx, span.FileURI(filename))
 		if err != nil {
-			v.session.log.Errorf(ctx, "no file %s: %v", filename, err)
+			xlog.Errorf(ctx, "no file %s: %v", filename, err)
+			continue
 		}
 		gof, ok := f.(*goFile)
 		if !ok {
-			v.session.log.Errorf(ctx, "not a Go file: %s", f.URI())
+			xlog.Errorf(ctx, "not a Go file: %s", f.URI())
+			continue
 		}
 		if gof.meta == nil {
 			gof.meta = make(map[packageID]*metadata)
@@ -244,7 +258,7 @@ func (v *view) link(ctx context.Context, pkgPath packagePath, pkg *packages.Pack
 		}
 		if _, ok := m.children[packageID(importPkg.ID)]; !ok {
 			if err := v.link(ctx, importPkgPath, importPkg, m, missingImports); err != nil {
-				v.session.log.Errorf(ctx, "error in dependency %s: %v", importPkgPath, err)
+				xlog.Errorf(ctx, "error in dependency %s: %v", importPkgPath, err)
 			}
 		}
 	}

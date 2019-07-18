@@ -18,13 +18,12 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/source"
 	"github.com/myitcv/govim/cmd/govim/internal/lsp/xlog"
 	"github.com/myitcv/govim/cmd/govim/internal/span"
+	"github.com/myitcv/govim/cmd/govim/internal/xcontext"
 )
 
 type session struct {
 	cache *cache
 	id    string
-	// the logger to use to communicate back with the client
-	log xlog.Logger
 
 	viewMu  sync.Mutex
 	views   []*view
@@ -64,11 +63,11 @@ func (s *session) Cache() source.Cache {
 	return s.cache
 }
 
-func (s *session) NewView(name string, folder span.URI) source.View {
+func (s *session) NewView(ctx context.Context, name string, folder span.URI) source.View {
 	index := atomic.AddInt64(&viewIndex, 1)
 	s.viewMu.Lock()
 	defer s.viewMu.Unlock()
-	ctx := context.Background()
+	ctx = xcontext.Detach(ctx)
 	backgroundCtx, cancel := context.WithCancel(ctx)
 	v := &view{
 		session:       s,
@@ -178,11 +177,8 @@ func (s *session) removeView(ctx context.Context, view *view) error {
 	return fmt.Errorf("view %s for %v not found", view.Name(), view.Folder())
 }
 
-func (s *session) Logger() xlog.Logger {
-	return s.log
-}
-
-func (s *session) DidOpen(ctx context.Context, uri span.URI, text []byte) {
+// TODO: Propagate the language ID through to the view.
+func (s *session) DidOpen(ctx context.Context, uri span.URI, _ source.FileKind, text []byte) {
 	// Mark the file as open.
 	s.openFiles.Store(uri, true)
 
@@ -197,12 +193,12 @@ func (s *session) DidOpen(ctx context.Context, uri span.URI, text []byte) {
 		if strings.HasPrefix(string(uri), string(view.Folder())) {
 			f, err := view.GetFile(ctx, uri)
 			if err != nil {
-				s.log.Errorf(ctx, "error getting file for %s", uri)
+				xlog.Errorf(ctx, "error getting file for %s", uri)
 				return
 			}
 			gof, ok := f.(*goFile)
 			if !ok {
-				s.log.Errorf(ctx, "%s is not a Go file", uri)
+				xlog.Errorf(ctx, "%s is not a Go file", uri)
 				return
 			}
 			// Mark file as open.
@@ -274,7 +270,7 @@ func (s *session) openOverlay(ctx context.Context, uri span.URI, data []byte) {
 	}
 	_, hash, err := s.cache.GetFile(uri).Read(ctx)
 	if err != nil {
-		s.log.Errorf(ctx, "failed to read %s: %v", uri, err)
+		xlog.Errorf(ctx, "failed to read %s: %v", uri, err)
 		return
 	}
 	if hash == s.overlays[uri].hash {

@@ -24,6 +24,7 @@ func (g *govimplugin) ShowMessageRequest(context.Context, *protocol.ShowMessageR
 	panic("not implemented yet")
 }
 func (g *govimplugin) LogMessage(ctxt context.Context, params *protocol.LogMessageParams) error {
+	defer absorbShutdownErr()
 	g.logGoplsClientf("LogMessage callback: %v", pretty.Sprint(params))
 	return nil
 }
@@ -31,6 +32,7 @@ func (g *govimplugin) Telemetry(context.Context, interface{}) error {
 	panic("not implemented yet")
 }
 func (g *govimplugin) RegisterCapability(ctxt context.Context, params *protocol.RegistrationParams) error {
+	defer absorbShutdownErr()
 	g.logGoplsClientf("RegisterCapability: %v", pretty.Sprint(params))
 	return nil
 }
@@ -41,6 +43,7 @@ func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFol
 	panic("not implemented yet")
 }
 func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ConfigurationParams) ([]interface{}, error) {
+	defer absorbShutdownErr()
 	g.logGoplsClientf("Configuration: %v", pretty.Sprint(params))
 	// Assert based on the current behaviour of gopls
 	want := 1
@@ -64,6 +67,7 @@ func (g *govimplugin) Event(context.Context, *interface{}) error {
 }
 
 func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.PublishDiagnosticsParams) error {
+	defer absorbShutdownErr()
 	g.logGoplsClientf("PublishDiagnostics callback: %v", pretty.Sprint(params))
 	g.diagnosticsLock.Lock()
 	defer g.diagnosticsLock.Unlock()
@@ -106,6 +110,12 @@ Schedule:
 		return v.updateQuickfix()
 	})
 	return nil
+}
+
+func absorbShutdownErr() {
+	if r := recover(); r != nil && r != govim.ErrShuttingDown {
+		panic(r)
+	}
 }
 
 func (g *govimplugin) logGoplsClientf(format string, args ...interface{}) {
