@@ -674,6 +674,7 @@ func (g *govimImpl) DefineCommand(name string, f VimCommandFunction, attrs ...Co
 	var completeFlag *CommAttr
 	genAttrs := make(map[CommAttr]bool)
 	for _, iattr := range attrs {
+		iattr := iattr
 		switch attr := iattr.(type) {
 		case NArgs:
 			switch attr {
