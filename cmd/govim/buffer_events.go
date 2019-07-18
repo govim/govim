@@ -13,36 +13,42 @@ import (
 )
 
 func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
-	b := v.currentBufferInfo(args[0])
-	if cb, ok := v.buffers[b.Num]; ok {
+	nb := v.currentBufferInfo(args[0])
+	if cb, ok := v.buffers[nb.Num]; ok {
 		// reload of buffer, e.v. e!
-		b.Version = cb.Version + 1
-	} else if wf, ok := v.watchedFiles[b.Name]; ok {
+		cb.SetContents(nb.Contents())
+		cb.Version++
+		return v.handleBufferEvent(cb)
+	}
+
+	v.buffers[nb.Num] = nb
+	if wf, ok := v.watchedFiles[nb.Name]; ok {
 		// We are now picking up from a file that was previously watched. If we subsequently
 		// close this buffer then we will handle that event and delete the entry in v.buffers
 		// at which point the file watching will take back over again.
-		delete(v.watchedFiles, b.Name)
-		b.Version = wf.Version + 1
+		delete(v.watchedFiles, nb.Name)
+		nb.Version = wf.Version + 1
 	} else {
 		// first time we have seen the buffer
 		if v.doIncrementalSync() {
-			b.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), b.Num))
+			nb.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), nb.Num))
 		}
-		b.Version = 0
+		nb.Version = 0
 	}
-	return v.handleBufferEvent(b)
+	return v.handleBufferEvent(nb)
 }
 
 // bufTextChanged is fired as a result of the TextChanged,TextChangedI autocmds; it is mutually
 // exclusive with bufChanged
 func (v *vimstate) bufTextChanged(args ...json.RawMessage) error {
-	b := v.currentBufferInfo(args[0])
-	cb, ok := v.buffers[b.Num]
+	nb := v.currentBufferInfo(args[0])
+	cb, ok := v.buffers[nb.Num]
 	if !ok {
-		return fmt.Errorf("have not seen buffer %v (%v) - this should be impossible", b.Num, b.Name)
+		return fmt.Errorf("have not seen buffer %v (%v) - this should be impossible", nb.Num, nb.Name)
 	}
-	b.Version = cb.Version + 1
-	return v.handleBufferEvent(b)
+	cb.SetContents(nb.Contents())
+	cb.Version++
+	return v.handleBufferEvent(cb)
 }
 
 type bufChangedChange struct {
@@ -112,8 +118,6 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 }
 
 func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
-	v.buffers[b.Num] = b
-
 	if b.Version == 0 {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
