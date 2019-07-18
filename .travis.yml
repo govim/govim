@@ -2,6 +2,10 @@
 language: generic
 sudo: required
 
+branches:
+  only:
+    - master
+
 os:
   - linux
 
