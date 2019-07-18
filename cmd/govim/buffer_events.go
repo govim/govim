@@ -26,7 +26,7 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	} else {
 		// first time we have seen the buffer
 		if v.doIncrementalSync() {
-			b.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+config.FunctionEnrichDelta, b.Num))
+			b.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), b.Num))
 		}
 		b.Version = 0
 	}
