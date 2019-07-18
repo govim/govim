@@ -192,6 +192,12 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 	preEventIgnore := v.ParseString(v.ChannelExpr("&eventignore"))
 	v.ChannelEx("set eventignore=all")
 	defer v.ChannelExf("set eventignore=%v", preEventIgnore)
+	if v.doIncrementalSync() {
+		v.ChannelCall("listener_remove", b.Listener)
+		defer func() {
+			b.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), b.Num))
+		}()
+	}
 	v.BatchStart()
 	for _, e := range changes {
 		switch e.call {
@@ -204,8 +210,25 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 	if v.doIncrementalSync() {
 		v.BatchAssertChannelCall(AssertIsZero, "listener_flush", b.Num)
 	}
+	newContentsRes := v.BatchChannelExprf(`join(getbufline(%v, 0, "$"), "\n")."\n"`, b.Num)
 	v.BatchEnd()
-	return nil
+
+	var newContents string
+	v.Parse(newContentsRes(), &newContents)
+	b.SetContents([]byte(newContents))
+	b.Version++
+	params := &protocol.DidChangeTextDocumentParams{
+		TextDocument: protocol.VersionedTextDocumentIdentifier{
+			TextDocumentIdentifier: b.ToTextDocumentIdentifier(),
+			Version:                float64(b.Version),
+		},
+		ContentChanges: []protocol.TextDocumentContentChangeEvent{
+			{
+				Text: newContents,
+			},
+		},
+	}
+	return v.server.DidChange(context.Background(), params)
 }
 
 type textEdit struct {
