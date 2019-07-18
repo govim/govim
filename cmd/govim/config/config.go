@@ -94,6 +94,19 @@ const (
 	// argument, that argument is used as the new name. If not, the user is
 	// prompted for the new identifier name.
 	CommandRename Command = "Rename"
+
+	// CommandStringFn applies a transformation function to text. Without a
+	// range the current line is used as input. Visual ranges can also be used,
+	// with the exception of visual blocks. The command takes one or more
+	// arguments: the transformation functions to apply. Tab completion can be
+	// used to complete against the defined transformation functions.
+	//
+	// The goal with this command is to expose standard library functions to
+	// help manipulate text. Wherever possible, functions will directly map to
+	// their standard library equivalents, for example, strconv.Quote. In this
+	// case, the format is $importpath.$function. In some situations, poetic
+	// license may be required.
+	CommandStringFn Command = "StringFn"
 )
 
 type Function string
@@ -127,6 +140,10 @@ const (
 	// FunctionSetUserBusy is an internal function used by govim for indicated
 	// whether the user is busy or not (based on cursor movement)
 	FunctionSetUserBusy Function = InternalFunctionPrefix + "SetUserBusy"
+
+	// FunctionStringFnComplete is an internal function used by govim to provide
+	// completion of arguments to CommandStringFn
+	FunctionStringFnComplete Function = InternalFunctionPrefix + "StringFnComplete"
 )
 
 // FormatOnSave typed constants define the set of valid values that
