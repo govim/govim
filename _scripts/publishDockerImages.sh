@@ -1,5 +1,5 @@
 #!/usr/bin/env vbash
 
-set -u
+source "${BASH_SOURCE%/*}/common.bash"
 
 docker push govim/govim

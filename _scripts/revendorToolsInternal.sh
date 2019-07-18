@@ -1,6 +1,6 @@
 #!/usr/bin/env vbash
 
-set -u
+source "${BASH_SOURCE%/*}/common.bash"
 
 shopt -s globstar
 shopt -s extglob
