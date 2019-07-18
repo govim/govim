@@ -28,7 +28,7 @@ func (g *govimplugin) InitTestAPI() {
 	}
 
 	g.DefineFunction(string(FunctionHello), []string{}, g.vimstate.hello)
-	g.DefineCommand(string(CommandHello), g.vimstate.helloComm)
+	g.DefineCommand(string(CommandHello), g.vimstate.helloComm, govim.NArgsZeroOrOne)
 	g.DefineFunction(string(FunctionDumpPopups), []string{}, g.vimstate.dumpPopups)
 }
 
@@ -37,7 +37,11 @@ func (v *vimstate) hello(args ...json.RawMessage) (interface{}, error) {
 }
 
 func (v *vimstate) helloComm(flags govim.CommandFlags, args ...string) error {
-	v.ChannelEx(`echom "Hello from command"`)
+	msg := "Hello from command"
+	if len(args) == 1 {
+		msg += "; special note: " + args[0]
+	}
+	v.ChannelExf("echom %q", msg)
 	return nil
 }
 
