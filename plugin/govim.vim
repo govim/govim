@@ -357,10 +357,53 @@ function GOVIM_internal_EnrichDelta(bufnr, start, end, added, changes)
 endfunction
 
 function s:batchCall(calls)
-  let l:res = []
+  " calls is a [][]interface. Each call c in calls has the following structure:
+  "
+  " c[0] is the type; 'call' or 'expr'
+  " c[1] is the must function to assert, e.g. s:mustBeZero
+  "
+  " For a call:
+  " c[2] is the function name
+  " c[3:-1] are the args to the function
+  "
+  " For an expr:
+  " c[2] is the expression to evaluate
+  "
+  let l:results = []
   for l:call in a:calls
-    let F = function(l:call[0], l:call[1:-1])
-    call add(l:res, F())
+    let l:type = l:call[0]
+    let Must = function(l:call[1])
+    if l:type == "call"
+      let l:fn = l:call[2]
+      let l:args = l:call[3:-1]
+      let F = function(l:fn, l:args)
+      let l:res = F()
+      let l:check = Must(l:res)
+      if !l:check[0]
+        throw "failed to call ".l:fn."(".string(l:args)."): ".l:check[1]
+      endif
+    elseif l:type == "expr"
+      let l:expr = l:call[2]
+      let l:res = eval(l:expr)
+      let l:check = Must(l:res)
+      if !l:check[0]
+        throw "failed to eval ".l:expr.": ".l:check[1]
+      endif
+    else
+      throw "Unknown batch type: ".l:type
+    endif
+    call add(l:results, l:res)
   endfor
-  return l:res
+  return l:results
+endfunction
+
+function s:mustNothing(v)
+  return [v:true, ""]
+endfunction
+
+function s:mustBeZero(v)
+  if a:v != 0
+    return [v:false, "got non-zero return value"]
+  endif
+  return [v:true, ""]
 endfunction

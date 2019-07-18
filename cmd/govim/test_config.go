@@ -18,8 +18,12 @@ const (
 )
 
 const (
-	FunctionHello      config.Function = "Hello"
-	FunctionDumpPopups config.Function = config.InternalFunctionPrefix + "DumpPopups"
+	FunctionHello             config.Function = "Hello"
+	FunctionDumpPopups        config.Function = config.InternalFunctionPrefix + "DumpPopups"
+	FunctionSimpleBatch       config.Function = "SimpleBatch"
+	FunctionCancelBatch       config.Function = "CancelBatch"
+	FunctionBadBatch          config.Function = "BadBatch"
+	FunctionAssertFailedBatch config.Function = "AssertFailedBatch"
 )
 
 func (g *govimplugin) InitTestAPI() {
@@ -30,6 +34,10 @@ func (g *govimplugin) InitTestAPI() {
 	g.DefineFunction(string(FunctionHello), []string{}, g.vimstate.hello)
 	g.DefineCommand(string(CommandHello), g.vimstate.helloComm, govim.NArgsZeroOrOne)
 	g.DefineFunction(string(FunctionDumpPopups), []string{}, g.vimstate.dumpPopups)
+	g.DefineFunction(string(FunctionSimpleBatch), []string{}, g.vimstate.simpleBatch)
+	g.DefineFunction(string(FunctionCancelBatch), []string{}, g.vimstate.cancelBatch)
+	g.DefineFunction(string(FunctionBadBatch), []string{}, g.vimstate.badBatch)
+	g.DefineFunction(string(FunctionAssertFailedBatch), []string{}, g.vimstate.assertFailedBatch)
 }
 
 func (v *vimstate) hello(args ...json.RawMessage) (interface{}, error) {
@@ -63,4 +71,35 @@ func (v *vimstate) dumpPopups(args ...json.RawMessage) (interface{}, error) {
 		sb.WriteString(v.ParseString(v.ChannelExprf(`join(getbufline(%v, 0, '$'), "\n")."\n"`, b.BufNr)))
 	}
 	return sb.String(), nil
+}
+
+func (v *vimstate) simpleBatch(args ...json.RawMessage) (interface{}, error) {
+	v.BatchStart()
+	defer v.BatchCancelIfNotEnded()
+	v.BatchChannelCall("eval", "5")
+	v.BatchChannelExprf("4")
+	res := v.BatchEnd()
+	return res, nil
+}
+
+func (v *vimstate) cancelBatch(args ...json.RawMessage) (interface{}, error) {
+	v.BatchStart()
+	defer v.BatchCancelIfNotEnded()
+	return "did not run", nil
+}
+
+func (v *vimstate) badBatch(args ...json.RawMessage) (interface{}, error) {
+	v.BatchStart()
+	defer v.BatchCancelIfNotEnded()
+	v.BatchChannelCall("execute", "throw \"failed\"")
+	res := v.BatchEnd()
+	return res, nil
+}
+
+func (v *vimstate) assertFailedBatch(args ...json.RawMessage) (interface{}, error) {
+	v.BatchStart()
+	defer v.BatchCancelIfNotEnded()
+	v.BatchAssertChannelExprf(AssertIsZero, "1")
+	res := v.BatchEnd()
+	return res, nil
 }

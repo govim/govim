@@ -52,12 +52,8 @@ type vimstate struct {
 	// popupWinId is the id of the window currently being used for a hover-based popup
 	popupWinId int
 
-	// inBatch tracks whether we are gathering a batch of calls to Vim. Within a batch
-	// only calls to the call channel function can be made.
-	inBatch bool
-
-	// currBatch represents the batch we are collecting whilst inBatch
-	currBatch []interface{}
+	// currBatch represents the batch we are collecting
+	currBatch *batch
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
@@ -97,69 +93,85 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	return nil, v.updateQuickfix()
 }
 
-func (v *vimstate) BatchStart() {
-	if v.inBatch {
-		panic(fmt.Errorf("called BatchStart whilst in a batch"))
-	}
-	v.inBatch = true
+type batch struct {
+	calls   []interface{}
+	results []json.RawMessage
 }
 
-func (v *vimstate) ChannelExpr(expr string) json.RawMessage {
-	if v.inBatch {
-		panic(fmt.Errorf("cannot call ChannelExpr in batch"))
-	}
-	return v.Driver.ChannelExpr(expr)
-}
-func (v *vimstate) ChannelCall(name string, args ...interface{}) json.RawMessage {
-	if v.inBatch {
-		v.currBatch = append(v.currBatch, append([]interface{}{name}, args...))
-		return nil
-	} else {
-		return v.Driver.ChannelCall(name, args...)
+func (b *batch) result() batchResult {
+	i := len(b.calls) - 1
+	return func() json.RawMessage {
+		if b.results == nil {
+			panic(fmt.Errorf("tried to get result from incomplete Batch"))
+		}
+		return b.results[i]
 	}
 }
-func (v *vimstate) ChannelEx(expr string) {
-	if v.inBatch {
-		panic(fmt.Errorf("cannot call ChannelEx in batch"))
+
+func (v *vimstate) BatchStart() {
+	if v.currBatch != nil {
+		panic(fmt.Errorf("called BatchStart whilst in a batch"))
 	}
-	v.Driver.ChannelEx(expr)
+	v.currBatch = &batch{}
 }
-func (v *vimstate) ChannelNormal(expr string) {
-	if v.inBatch {
-		panic(fmt.Errorf("cannot call ChannelNormal in batch"))
-	}
-	v.Driver.ChannelNormal(expr)
+
+type batchResult func() json.RawMessage
+
+type AssertExpr string
+
+const (
+	AssertNothing AssertExpr = "s:mustNothing"
+	AssertIsZero  AssertExpr = "s:mustBeZero"
+)
+
+func (v *vimstate) BatchChannelExprf(format string, args ...interface{}) batchResult {
+	return v.BatchAssertChannelExprf(AssertNothing, format, args...)
 }
-func (v *vimstate) ChannelRedraw(force bool) {
-	if v.inBatch {
-		panic(fmt.Errorf("cannot call ChannelRedraw in batch"))
+
+func (v *vimstate) BatchAssertChannelExprf(m AssertExpr, format string, args ...interface{}) batchResult {
+	if v.currBatch == nil {
+		panic(fmt.Errorf("cannot call BatchChannelExprf: not in batch"))
 	}
-	v.Driver.ChannelRedraw(force)
+	v.currBatch.calls = append(v.currBatch.calls, []interface{}{
+		"expr",
+		m,
+		fmt.Sprintf(format, args...),
+	})
+	return v.currBatch.result()
 }
-func (v *vimstate) ChannelExprf(format string, args ...interface{}) json.RawMessage {
-	if v.inBatch {
-		panic(fmt.Errorf("cannot call ChannelExprf in batch"))
-	}
-	return v.Driver.ChannelExprf(format, args...)
+func (v *vimstate) BatchChannelCall(name string, args ...interface{}) batchResult {
+	return v.BatchAssertChannelCall(AssertNothing, name, args...)
 }
-func (v *vimstate) ChannelExf(format string, args ...interface{}) {
-	if v.inBatch {
-		panic(fmt.Errorf("cannot call ChannelExf in batch"))
+
+func (v *vimstate) BatchAssertChannelCall(a AssertExpr, name string, args ...interface{}) batchResult {
+	if v.currBatch == nil {
+		panic(fmt.Errorf("cannot call BatchChannelCall: not in batch"))
 	}
-	v.Driver.ChannelExf(format, args...)
+	callargs := []interface{}{
+		"call",
+		a,
+		name,
+	}
+	callargs = append(callargs, args...)
+	v.currBatch.calls = append(v.currBatch.calls, callargs)
+	return v.currBatch.result()
+}
+
+func (v *vimstate) BatchCancelIfNotEnded() {
+	v.currBatch = nil
 }
 
 func (v *vimstate) BatchEnd() (res []json.RawMessage) {
-	if !v.inBatch {
+	if v.currBatch == nil {
 		panic(fmt.Errorf("called BatchEnd but not in a batch"))
 	}
-	v.inBatch = false
-	calls := v.currBatch
+	b := v.currBatch
 	v.currBatch = nil
-	if len(calls) == 0 {
+	if len(b.calls) == 0 {
 		return
 	}
-	vs := v.ChannelCall("s:batchCall", calls)
+	vs := v.ChannelCall("s:batchCall", b.calls)
 	v.Parse(vs, &res)
+	b.results = res
 	return
 }
