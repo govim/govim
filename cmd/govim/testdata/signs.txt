@@ -1,0 +1,132 @@
+# Test that signs are placed/removed as quickfix entries are updated. There are four entries from the start:
+#   main.go|6 col 36| undeclared name: i
+#   main.go|6 col 39| undeclared name: v
+#   main.go|9 col 19| missing return
+#   main.go|10 col 19| missing return
+
+# Since signs are placed/removed using sign_placelist()/sign_unplacelist() they require v8.1.1682.
+[vim] [!vim:v8.1.1682] skip
+[gvim] [!gvim:v8.1.1682] skip
+
+vim ex 'e main.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+
+# Assert that the error sign is defined
+vim -indent expr 'sign_getdefined()'
+! stderr .+
+cmp stdout defined.golden
+
+
+# There must be only one sign per line
+vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+! stderr .+
+cmp stdout placed_openfile.golden
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+
+# Removing one of the two quickfix entires on one line shouldn't remove the sign
+vim ex 'call cursor(6,36)'
+vim ex 'call feedkeys(\"3x\", \"x\")' # Remove "i, " from Printf-line
+[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+! stderr .+
+cmp stdout placed_openfile.golden
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+
+# Removing lines should also remove the signs
+vim ex 'call cursor(9,1)'
+vim ex 'call feedkeys(\"2dd\", \"x\")' # Remove line 9 & 10
+[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+! stderr .+
+cmp stdout placed_onesign.golden
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+
+# Fixing the last quickfix entry should remove the last sign
+vim call append '[5, "\tvar v string"]'
+[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+! stderr .+
+cmp stdout placed_nosign.golden
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("This is a test %v\n", i, v)
+}
+
+func f1() string {}
+func f2() string {}
+
+-- defined.golden --
+[
+  {
+    "name": "govimerr",
+    "text": "\u003e\u003e",
+    "texthl": "Error"
+  }
+]
+-- placed_openfile.golden --
+[
+  {
+    "bufnr": 1,
+    "signs": [
+      {
+        "group": "govim",
+        "id": 1,
+        "lnum": 6,
+        "name": "govimerr",
+        "priority": 10
+      },
+      {
+        "group": "govim",
+        "id": 2,
+        "lnum": 9,
+        "name": "govimerr",
+        "priority": 10
+      },
+      {
+        "group": "govim",
+        "id": 3,
+        "lnum": 10,
+        "name": "govimerr",
+        "priority": 10
+      }
+    ]
+  }
+]
+-- placed_onesign.golden --
+[
+  {
+    "bufnr": 1,
+    "signs": [
+      {
+        "group": "govim",
+        "id": 1,
+        "lnum": 6,
+        "name": "govimerr",
+        "priority": 10
+      }
+    ]
+  }
+]
+-- placed_nosign.golden --
+[
+  {
+    "bufnr": 1,
+    "signs": []
+  }
+]
