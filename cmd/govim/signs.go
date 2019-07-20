@@ -31,6 +31,11 @@ func (v *vimstate) signDefine() error {
 	return nil
 }
 
+// getPlacedDict is the representation of arguments used in vim's sign_getplaced()
+type getPlacedDict struct {
+	Group string `json:"group"`
+}
+
 // bufferSigns represents a single element in the response from a sign_getplaced() call
 type bufferSigns struct {
 	Signs []struct {
@@ -41,19 +46,6 @@ type bufferSigns struct {
 		Group string `json:"group"`
 	} `json:"signs"`
 	BufNr int `json:"bufnr"`
-}
-
-// signGetPlaced returns all signs placed by govim in a specific buffer
-func (v *vimstate) signGetPlaced(buf int) (bufferSigns, error) {
-	argDict := struct {
-		Group string `json:"group"`
-	}{signGroup}
-
-	var out []bufferSigns
-	v.Parse(v.ChannelCall("sign_getplaced", buf, argDict), &out)
-	// out[0] should always exist and be the only element since sign_getplaced is
-	// called with a signle buffer as argument
-	return out[0], nil
 }
 
 // placeDict is the representation of arguments used in vim's sign_place() and sign_placelist()
@@ -83,9 +75,23 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 	remove := make(map[bufLine]int) // Value is sign ID, used to unplace duplicates
 	place := make(map[bufLine]int)  // Value is insert order, used to avoid sorting
 
-	// Assume all existing signs should be removed, unless found in quickfix entry list
+	// One call per buffer is needed since sign_getplaced() doesn't support getting
+	// signs from all buffers within a specific sign group.
+	v.BatchStart()
 	for buf := range v.buffers {
-		placed, _ := v.signGetPlaced(buf)
+		v.BatchChannelCall("sign_getplaced", buf, getPlacedDict{signGroup})
+	}
+
+	bufs := make([]bufferSigns, 0)
+	for _, res := range v.BatchEnd() {
+		var tmp []bufferSigns
+		v.Parse(res, &tmp)
+		bufs = append(bufs, tmp...)
+	}
+
+	v.BatchStart()
+	// Assume all existing signs should be removed, unless found in quickfix entry list
+	for _, placed := range bufs {
 		for _, sign := range placed.Signs {
 			bl := bufLine{placed.BufNr, sign.Lnum}
 			if _, exist := remove[bl]; exist {
@@ -130,8 +136,7 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 				Lnum:   bl.line,
 				Name:   errorSign}
 		}
-
-		v.ChannelCall("sign_placelist", placeList)
+		v.BatchChannelCall("sign_placelist", placeList)
 	}
 
 	// Remove signs on all lines that didn't have a corresponding quickfix entry
@@ -140,7 +145,9 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 		for bl, id := range remove {
 			unplaceList = append(unplaceList, unplaceDict{Buffer: bl.buf, Group: signGroup, ID: id})
 		}
-		v.ChannelCall("sign_unplacelist", unplaceList)
+		v.BatchChannelCall("sign_unplacelist", unplaceList)
 	}
+	v.BatchEnd()
+
 	return nil
 }
