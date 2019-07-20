@@ -5,8 +5,8 @@
 #   main.go|10 col 19| missing return
 
 # Since signs are placed/removed using sign_placelist()/sign_unplacelist() they require v8.1.1682.
-[vim] [!vim:v8.1.1652] skip
-[gvim] [!gvim:v8.1.1652] skip
+[vim] [!vim:v8.1.1682] skip
+[gvim] [!gvim:v8.1.1682] skip
 
 vim ex 'e main.go'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
