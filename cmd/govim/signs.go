@@ -7,23 +7,25 @@ import (
 // Using a sign group creates a separate namespace for all signs placed by govim
 const signGroup = "govim"
 
-type signDef struct {
-	name          string // Name of the sign
-	text          string // One or two chars shown in the gutter
-	textHighlight string // Highlight used
-}
+// Name of different sign types used, only one at the moment, errors.
+const (
+	errorSign = "govimerr"
+)
 
-// Only one sign type at the moment, errors.
-var errorSign = signDef{"govimerr", ">>", "Error"}
+// defineDict is the representation of arguments used in vim's sign_define()
+type defineDict struct {
+	Text          string `json:"text"`   // One or two chars shown in the gutter
+	TextHighlight string `json:"texthl"` // Highlight used
+}
 
 // signDefine defines the govim error sign and must be called once before placing any signs
 func (v *vimstate) signDefine() error {
-	argDict := struct {
-		Text          string `json:"text"`
-		TextHighlight string `json:"texthl"`
-	}{errorSign.text, errorSign.textHighlight}
+	arg := defineDict{
+		Text:          ">>",
+		TextHighlight: "Error",
+	}
 
-	if v.ParseInt(v.ChannelCall("sign_define", errorSign.name, argDict)) != 0 {
+	if v.ParseInt(v.ChannelCall("sign_define", errorSign, arg)) != 0 {
 		return fmt.Errorf("sign_define failed")
 	}
 	return nil
@@ -46,16 +48,12 @@ func (v *vimstate) signGetPlaced(buf int) (bufferSigns, error) {
 	argDict := struct {
 		Group string `json:"group"`
 	}{signGroup}
-	resp := v.ParseJSONArgSlice(v.ChannelCall("sign_getplaced", buf, argDict))
 
-	if len(resp) != 1 {
-		// Should never get here since sign_getplaced is called with a single buffer as argument
-		return bufferSigns{}, fmt.Errorf("sign_getplaced failed")
-	}
-
-	var out bufferSigns
-	v.Parse(resp[0], &out)
-	return out, nil
+	var out []bufferSigns
+	v.Parse(v.ChannelCall("sign_getplaced", buf, argDict), &out)
+	// out[0] should always exist and be the only element since sign_getplaced is
+	// called with a signle buffer as argument
+	return out[0], nil
 }
 
 // placeDict is the representation of arguments used in vim's sign_place() and sign_placelist()
@@ -75,7 +73,7 @@ type unplaceDict struct {
 	ID     int    `json:"id,omitempty"`
 }
 
-// redefineSigns ensures that there is only one govim sign per buffer and line
+// redefineSigns ensures that there is only one govim sign per buffer line
 // by calculating a difference between current state and the list of quickfix entries
 func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 	type bufLine struct {
@@ -130,7 +128,7 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 				Buffer: bl.buf,
 				Group:  signGroup,
 				Lnum:   bl.line,
-				Name:   errorSign.name}
+				Name:   errorSign}
 		}
 
 		v.ChannelCall("sign_placelist", placeList)
