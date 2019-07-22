@@ -1,0 +1,31 @@
+# This test ensures that formatting changes at the end of a file works as
+# expected. It should probably be replaced by a suite of []protocol.TextEdit
+# tests
+
+vim ex 'e main.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'w'
+cmp main.go main.go.golden
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+func main() {
+	println("Hello, world!")
+}
+
+
+
+
+
+
+
+-- main.go.golden --
+package main
+
+func main() {
+	println("Hello, world!")
+}
