@@ -152,6 +152,9 @@ const (
 	// FunctionStringFnComplete is an internal function used by govim to provide
 	// completion of arguments to CommandStringFn
 	FunctionStringFnComplete Function = InternalFunctionPrefix + "StringFnComplete"
+
+	// FunctionMotion moves the cursor according to the arguments provided.
+	FunctionMotion Function = "Motion"
 )
 
 // FormatOnSave typed constants define the set of valid values that

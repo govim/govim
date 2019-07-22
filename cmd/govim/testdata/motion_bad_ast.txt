@@ -1,0 +1,22 @@
+# Test that basic motions work in presence of syntax errors
+
+vim ex 'e main.go'
+
+# Next start of File.Decl
+vim ex 'normal ]]'
+vim ex 'normal ]]'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '\[8,29\]'
+
+-- go.mod --
+module mod
+
+-- main.go --
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	fmt.Println("hello, world!")
