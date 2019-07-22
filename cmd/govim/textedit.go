@@ -61,12 +61,17 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 			blines = append(blines, []byte(newLines[0]))
 		}
 		if start.Line() != end.Line() {
+			// We can't delete beyond the end of the buffer. So the start end end here are
+			// both min() reduced
+			delstart := min(start.Line()+1, len(blines))
+			delend := min(end.Line(), len(blines))
 			changes = append(changes, textEdit{
 				call:   "deletebufline",
 				buffer: b.Num,
-				start:  start.Line() + 1,
-				end:    end.Line(),
+				start:  delstart,
+				end:    delend,
 			})
+			blines = blines[:delstart-1]
 		}
 		if len(newLines) > 1 {
 			changes = append(changes, textEdit{
@@ -141,4 +146,11 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 		},
 	}
 	return v.server.DidChange(context.Background(), params)
+}
+
+func min(i, j int) int {
+	if i < j {
+		return i
+	}
+	return j
 }
