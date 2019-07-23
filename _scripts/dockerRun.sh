@@ -28,18 +28,18 @@ vim --version
 go install golang.org/x/tools/gopls
 
 # remove all generated files to ensure we are never stale
-rm -f $(git ls-files -- ':!:cmd/govim/internal' '**/gen_*.*' 'gen_*.*') .travis.yml
+rm -f $(git ls-files -- ':!:cmd/govim/internal/golang_org_x_tools' '**/gen_*.*' 'gen_*.*') .travis.yml
 
-go generate $(go list ./... | grep -v 'govim/internal')
-go test $(go list ./... | grep -v 'govim/internal')
+go generate $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
+go test $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 
 if [ "${CI:-}" == "true" ] && [ "${TRAVIS_BRANCH:-}_${TRAVIS_PULL_REQUEST_BRANCH:-}" == "master_" ]
 then
-	go test -race $(go list ./... | grep -v 'govim/internal')
+	go test -race $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 fi
 
-go vet $(go list ./... | grep -v 'govim/internal')
-go run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/internal')
+go vet $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
+go run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 
 if [ "${CI:-}" == "true" ]
 then
@@ -47,6 +47,6 @@ then
 	# https://github.com/golang/go/issues/27868#issuecomment-431413621
 	go list all > /dev/null
 
-	diff <(echo -n) <(gofmt -d $(git ls-files '**/*.go' '*.go' | grep -v cmd/govim/internal))
+	diff <(echo -n) <(gofmt -d $(git ls-files '**/*.go' '*.go' | grep -v cmd/govim/internal/golang_org_x_tools))
 	test -z "$(git status --porcelain)" || (git status; git diff; false)
 fi

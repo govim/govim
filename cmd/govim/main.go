@@ -21,7 +21,7 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/myitcv/govim/cmd/govim/types"
+	"github.com/myitcv/govim/cmd/govim/internal/types"
 	"github.com/myitcv/govim/internal/plugin"
 	"github.com/myitcv/govim/testsetup"
 	"gopkg.in/tomb.v2"
