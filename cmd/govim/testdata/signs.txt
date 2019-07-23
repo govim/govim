@@ -8,6 +8,9 @@
 [vim] [!vim:v8.1.1682] skip
 [gvim] [!gvim:v8.1.1682] skip
 
+# Ensure sign placment are enabled
+vim call 'govim#config#Set' '["QuickfixSignsDisable", 0]'
+
 vim ex 'e main.go'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 

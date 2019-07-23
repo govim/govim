@@ -49,6 +49,13 @@ function! s:validQuickfixAutoDiagnosticsDisable(v)
   return [v:true, ""]
 endfunction
 
+function! s:validQuickfixSignsDisable(v)
+  if type(a:v) != 0  && type(a:v) != 6
+    return [v:false, "must be of type number or bool"
+  endif
+  return [v:true, ""]
+endfunction
+
 function! s:validExperimentalMouseTriggeredHoverPopupOptions(v)
   if has_key(a:v, "line")
     if type(a:v["line"]) != 0
@@ -70,6 +77,7 @@ endfunction
 let s:validators = {
       \ "FormatOnSave": function("s:validFormatOnSave"),
       \ "QuickfixAutoDiagnosticsDisable": function("s:validQuickfixAutoDiagnosticsDisable"),
+      \ "QuickfixSignsDisable": function("s:validQuickfixSignsDisable"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
       \ }

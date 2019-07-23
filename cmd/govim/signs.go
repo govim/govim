@@ -82,7 +82,7 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 		v.BatchChannelCall("sign_getplaced", buf, getPlacedDict{signGroup})
 	}
 
-	bufs := make([]bufferSigns, 0)
+	var bufs []bufferSigns
 	for _, res := range v.BatchEnd() {
 		var tmp []bufferSigns
 		v.Parse(res, &tmp)
@@ -110,6 +110,10 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 	// delete existing entries from the list of signs to removed
 	inx := 0
 	for _, f := range fixes {
+		if v.config.QuickfixSignsDisable {
+			break // Don't place new signs if disabled in config
+		}
+
 		bl := bufLine{f.Buf, f.Lnum}
 		if _, exist := remove[bl]; exist {
 			delete(remove, bl)

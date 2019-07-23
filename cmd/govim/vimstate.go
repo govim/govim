@@ -60,12 +60,14 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	var c struct {
 		FormatOnSave                                 config.FormatOnSave
 		QuickfixAutoDiagnosticsDisable               int
+		QuickfixSignsDisable                         int
 		ExperimentalMouseTriggeredHoverPopupOptions  map[string]json.RawMessage
 		ExperimentalCursorTriggeredHoverPopupOptions map[string]json.RawMessage
 	}
 	v.Parse(args[0], &c)
 	v.config = config.Config{
 		FormatOnSave:                   c.FormatOnSave,
+		QuickfixSignsDisable:           c.QuickfixSignsDisable != 0,
 		QuickfixAutoDiagnosticsDisable: c.QuickfixAutoDiagnosticsDisable != 0,
 	}
 	if len(c.ExperimentalMouseTriggeredHoverPopupOptions) > 0 {
