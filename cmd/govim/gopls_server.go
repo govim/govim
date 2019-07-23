@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/kr/pretty"
-	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 )
 
 type loggingGoplsServer struct {

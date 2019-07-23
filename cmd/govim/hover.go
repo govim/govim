@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/myitcv/govim/cmd/govim/internal/lsp/protocol"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/types"
 )
 
