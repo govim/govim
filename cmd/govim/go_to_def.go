@@ -8,7 +8,7 @@ import (
 	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/types"
+	"github.com/myitcv/govim/cmd/govim/internal/types"
 )
 
 func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/types"
+	"github.com/myitcv/govim/cmd/govim/internal/types"
 )
 
 func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
