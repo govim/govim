@@ -1,0 +1,140 @@
+# Test that the config can be used to enable/disable quickfix features
+
+# Default behaviour is quickfix autodiagnostics & sign placment enabled
+vim ex 'e main.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'copen'
+vim ex 'w errors'
+vim ex 'cclose'
+cmp errors errors.golden
+[vim] [vim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+[vim] [vim:v8.1.1682] cmp stdout signs.golden
+[gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+[gvim] [gvim:v8.1.1682] cmp stdout signs.golden
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+# There must be no quickfix entries or signs when both are explicitly disabled
+vim call 'govim#config#Set' '["QuickfixAutoDiagnosticsDisable", 1]'
+vim call 'govim#config#Set' '["QuickfixSignsDisable", 1]'
+vim ex 'cexpr []' # clear quickfix list
+vim expr 'sign_unplace(\"*\")' # clear signs
+vim call append '[10,""]'
+[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChanged'
+[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChanged'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'copen'
+vim ex 'w errors'
+vim ex 'cclose'
+cmp errors empty
+[vim] [vim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+[vim] [vim:v8.1.1682] cmp stdout nosigns.golden
+[gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+[gvim] [gvim:v8.1.1682] cmp stdout nosigns.golden
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+# Enabling quickfix autodiagnostics should give quickfix entries but no signs
+vim call 'govim#config#Set' '["QuickfixAutoDiagnosticsDisable", 0]'
+vim call append '[10,""]'
+[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChanged'
+[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChanged'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'copen'
+vim ex 'w errors'
+vim ex 'cclose'
+cmp errors errors.golden
+[vim] [vim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+[vim] [vim:v8.1.1682] cmp stdout nosigns.golden
+[gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+[gvim] [gvim:v8.1.1682] cmp stdout nosigns.golden
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+## Enabling signs should place signs
+vim call 'govim#config#Set' '["QuickfixSignsDisable", 0]'
+vim call append '[10,""]'
+[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChanged'
+[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChanged'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'copen'
+vim ex 'w errors'
+vim ex 'cclose'
+cmp errors errors.golden
+[vim] [vim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+[vim] [vim:v8.1.1682] cmp stdout signs.golden
+[gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+[gvim] [gvim:v8.1.1682] cmp stdout signs.golden
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+# Signs should not be placed with quickfix autodiagnostics disabled
+vim call 'govim#config#Set' '["QuickfixAutoDiagnosticsDisable", 1]'
+vim ex 'cexpr []' # clear quickfix list
+vim expr 'sign_unplace(\"*\")' # clear signs
+vim call append '[10,""]'
+[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChanged'
+[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChanged'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'copen'
+vim ex 'w errors'
+vim ex 'cclose'
+cmp errors empty
+[vim] [vim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+[vim] [vim:v8.1.1682] cmp stdout nosigns.golden
+[gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+[gvim] [gvim:v8.1.1682] cmp stdout nosigns.golden
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("Test is a test %v\n", i, v)
+}
+
+func f1() string {}
+func f2() string {}
+-- errors.golden --
+main.go|6 col 36| undeclared name: i
+main.go|6 col 39| undeclared name: v
+main.go|9 col 19| missing return
+main.go|10 col 19| missing return
+-- signs.golden --
+[
+  {
+    "bufnr": 1,
+    "signs": [
+      {
+        "group": "govim",
+        "id": 1,
+        "lnum": 6,
+        "name": "govimerr",
+        "priority": 10
+      },
+      {
+        "group": "govim",
+        "id": 2,
+        "lnum": 9,
+        "name": "govimerr",
+        "priority": 10
+      },
+      {
+        "group": "govim",
+        "id": 3,
+        "lnum": 10,
+        "name": "govimerr",
+        "priority": 10
+      }
+    ]
+  }
+]
+-- nosigns.golden --
+[
+  {
+    "bufnr": 1,
+    "signs": []
+  }
+]
+-- empty --

@@ -21,6 +21,14 @@ type Config struct {
 	// population. Default: false (0)
 	QuickfixAutoDiagnosticsDisable bool
 
+	// QuickfixSignsDisable is a boolean (0 or 1 in VimScript) that controls
+	// whether quickfix entries should be annotated with signs in the gutter.
+	// Signs are placed when gopls diagnostics updates the quickfix list, either
+	// automatically when QuickfixAutoDiagnosticsDisable is false, or when the
+	// user run :GOVIMQuickfixDiagnostics.
+	// Default: false (0)
+	QuickfixSignsDisable bool
+
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
 	// over an identifier. It corresponds to the second argument to popup_create
