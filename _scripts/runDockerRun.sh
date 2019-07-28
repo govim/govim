@@ -10,6 +10,7 @@ proxy=""
 
 if [ "${CI:-}" != "true" ]
 then
+	go mod download
 	modcache="$(go env GOPATH | sed -e 's/:/\n/' | head -n 1)/pkg/mod/cache/download"
 	proxy="-v $modcache:/cache -e GOPROXY=file:///cache"
 fi
