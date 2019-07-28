@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-
-	"gopkg.in/tomb.v2"
 )
 
 func (g *govimImpl) handleChannelError(ch unscheduledCallback, err error, format string, args ...interface{}) error {
@@ -126,9 +124,6 @@ func (g *govimImpl) DoProto(f func() error) (err error) {
 				}
 				err = r
 			case error:
-				if r == tomb.ErrDying {
-					panic(ErrShuttingDown)
-				}
 				if r == ErrShuttingDown {
 					panic(r)
 				}

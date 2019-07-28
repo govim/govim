@@ -3,8 +3,6 @@ package govim
 import (
 	"encoding/json"
 	"fmt"
-
-	"gopkg.in/tomb.v2"
 )
 
 type eventQueueInst struct {
@@ -63,11 +61,11 @@ func (e eventQueueInst) handleUserQValueAndError(ch scheduledCallback, err error
 	args = append([]interface{}{}, args...)
 	select {
 	case <-e.govimImpl.tomb.Dying():
-		return nil, tomb.ErrDying
+		return nil, ErrShuttingDown
 	case e.flushEvents <- struct{}{}:
 		select {
 		case <-e.govimImpl.tomb.Dying():
-			panic(tomb.ErrDying)
+			return nil, ErrShuttingDown
 		case resp := <-ch:
 			if resp.errString != "" {
 				args = append(args, resp.errString)

@@ -219,7 +219,7 @@ func (g *govimImpl) Schedule(f func(Govim) error) chan struct{} {
 	done := make(chan struct{})
 	g.eventQueue.Add(func() error {
 		defer func() {
-			if r := recover(); r != nil && r != ErrShuttingDown && r != tomb.ErrDying {
+			if r := recover(); r != nil && r != ErrShuttingDown {
 				panic(r)
 			}
 			close(done)
@@ -237,7 +237,7 @@ func (g *govimImpl) Schedule(f func(Govim) error) chan struct{} {
 func (g *govimImpl) goHandleShutdown(f func() error) {
 	g.tomb.Go(func() error {
 		defer func() {
-			if r := recover(); r != nil && r != ErrShuttingDown && r != tomb.ErrDying {
+			if r := recover(); r != nil && r != ErrShuttingDown {
 				panic(r)
 			}
 		}()
@@ -248,7 +248,7 @@ func (g *govimImpl) goHandleShutdown(f func() error) {
 func (g *govimImpl) load() error {
 	select {
 	case <-g.tomb.Dying():
-		return tomb.ErrDying
+		return ErrShuttingDown
 	case resp := <-g.unscheduledCallCallback("loaded"):
 		if resp.errString != "" {
 			return fmt.Errorf("failed to signal loaded to Vim: %v", resp.errString)
@@ -318,7 +318,7 @@ func (g *govimImpl) load() error {
 
 	select {
 	case <-g.tomb.Dying():
-		return tomb.ErrDying
+		return ErrShuttingDown
 	case resp := <-g.unscheduledCallCallback("initcomplete"):
 		if resp.errString != "" {
 			return fmt.Errorf("failed to signal initcomplete to Vim: %v", resp.errString)
@@ -434,7 +434,7 @@ func (g *govimImpl) run() error {
 					select {
 					case ch <- toSend:
 					case <-g.tomb.Dying():
-						return tomb.ErrDying
+						return ErrShuttingDown
 					}
 					return nil
 				})
@@ -443,7 +443,7 @@ func (g *govimImpl) run() error {
 					select {
 					case ch <- toSend:
 					case <-g.tomb.Dying():
-						return tomb.ErrDying
+						return ErrShuttingDown
 					}
 					return nil
 				})
@@ -543,7 +543,7 @@ GetWork:
 		if wait != nil {
 			select {
 			case <-g.tomb.Dying():
-				return tomb.ErrDying
+				return ErrShuttingDown
 			case <-wait:
 			}
 			continue GetWork
@@ -553,7 +553,7 @@ GetWork:
 		})
 		select {
 		case <-g.tomb.Dying():
-			return tomb.ErrDying
+			return ErrShuttingDown
 		case <-g.flushEvents:
 		}
 	}

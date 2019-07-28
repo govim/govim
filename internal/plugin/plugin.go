@@ -57,14 +57,17 @@ func (d Driver) do(f func() error) (err error) {
 	return f()
 }
 
-func (d Driver) Errorf(format string, args ...interface{}) {
+func (d Driver) errorf(check error, format string, args ...interface{}) {
+	if check == govim.ErrShuttingDown {
+		panic(check)
+	}
 	panic(ErrDriver{Underlying: fmt.Errorf(format, args...)})
 }
 
 func (d Driver) ChannelExpr(expr string) json.RawMessage {
 	i, err := d.Govim.ChannelExpr(expr)
 	if err != nil {
-		d.Errorf("ChannelExpr(%q) failed: %v", expr, err)
+		d.errorf(err, "ChannelExpr(%q) failed: %v", expr, err)
 	}
 	return i
 }
@@ -72,39 +75,39 @@ func (d Driver) ChannelExpr(expr string) json.RawMessage {
 func (d Driver) ChannelCall(name string, args ...interface{}) json.RawMessage {
 	i, err := d.Govim.ChannelCall(name, args...)
 	if err != nil {
-		d.Errorf("ChannelCall(%q) failed: %v", name, err)
+		d.errorf(err, "ChannelCall(%q) failed: %v", name, err)
 	}
 	return i
 }
 
 func (d Driver) ChannelEx(expr string) {
 	if err := d.Govim.ChannelEx(expr); err != nil {
-		d.Errorf("ChannelEx(%q) failed: %v", expr, err)
+		d.errorf(err, "ChannelEx(%q) failed: %v", expr, err)
 	}
 }
 
 func (d Driver) ChannelNormal(expr string) {
 	if err := d.Govim.ChannelNormal(expr); err != nil {
-		d.Errorf("ChannelNormal(%q) failed: %v", expr, err)
+		d.errorf(err, "ChannelNormal(%q) failed: %v", expr, err)
 	}
 }
 
 func (d Driver) ChannelRedraw(force bool) {
 	if err := d.Govim.ChannelRedraw(force); err != nil {
-		d.Errorf("ChannelRedraw(%v) failed: %v", force, err)
+		d.errorf(err, "ChannelRedraw(%v) failed: %v", force, err)
 	}
 }
 
 func (d Driver) Parse(j json.RawMessage, i interface{}) {
 	if err := json.Unmarshal(j, i); err != nil {
-		d.Errorf("failed to parse from %q: %v", j, err)
+		d.errorf(err, "failed to parse from %q: %v", j, err)
 	}
 }
 
 func (d Driver) ParseString(j json.RawMessage) string {
 	var v string
 	if err := json.Unmarshal(j, &v); err != nil {
-		d.Errorf("failed to parse string from %q: %v", j, err)
+		d.errorf(err, "failed to parse string from %q: %v", j, err)
 	}
 	return v
 }
@@ -112,7 +115,7 @@ func (d Driver) ParseString(j json.RawMessage) string {
 func (d Driver) ParseJSONArgSlice(j json.RawMessage) []json.RawMessage {
 	var v []json.RawMessage
 	if err := json.Unmarshal(j, &v); err != nil {
-		d.Errorf("failed to parse []json.RawMessage from %q: %v", j, err)
+		d.errorf(err, "failed to parse []json.RawMessage from %q: %v", j, err)
 	}
 	return v
 }
@@ -120,7 +123,7 @@ func (d Driver) ParseJSONArgSlice(j json.RawMessage) []json.RawMessage {
 func (d Driver) ParseInt(j json.RawMessage) int {
 	var v int
 	if err := json.Unmarshal(j, &v); err != nil {
-		d.Errorf("failed to parse int from %q: %v", j, err)
+		d.errorf(err, "failed to parse int from %q: %v", j, err)
 	}
 	return v
 }
@@ -128,7 +131,7 @@ func (d Driver) ParseInt(j json.RawMessage) int {
 func (d Driver) ParseUint(j json.RawMessage) uint {
 	var v uint
 	if err := json.Unmarshal(j, &v); err != nil {
-		d.Errorf("failed to parse int from %q: %v", j, err)
+		d.errorf(err, "failed to parse int from %q: %v", j, err)
 	}
 	return v
 }
@@ -143,19 +146,19 @@ func (d Driver) ChannelExf(format string, args ...interface{}) {
 
 func (d Driver) DefineFunction(name string, args []string, f DriverFunction) {
 	if err := d.Govim.DefineFunction(d.prefix+name, args, d.doFunction(f)); err != nil {
-		d.Errorf("failed to DefineFunction %q: %v", name, err)
+		d.errorf(err, "failed to DefineFunction %q: %v", name, err)
 	}
 }
 
 func (d Driver) DefineRangeFunction(name string, args []string, f DriverRangeFunction) {
 	if err := d.Govim.DefineRangeFunction(d.prefix+name, args, d.doRangeFunction(f)); err != nil {
-		d.Errorf("failed to DefineRangeFunction %q: %v", name, err)
+		d.errorf(err, "failed to DefineRangeFunction %q: %v", name, err)
 	}
 }
 
 func (d Driver) DefineCommand(name string, f DriverCommandFunction, attrs ...govim.CommAttr) {
 	if err := d.Govim.DefineCommand(d.prefix+name, d.doCommandFunction(f), attrs...); err != nil {
-		d.Errorf("failed to DefineCommand %q: %v", name, err)
+		d.errorf(err, "failed to DefineCommand %q: %v", name, err)
 	}
 }
 
@@ -164,14 +167,14 @@ func (d Driver) DefineAutoCommand(group string, events govim.Events, patts govim
 		group = strings.ToLower(d.prefix)
 	}
 	if err := d.Govim.DefineAutoCommand(group, events, patts, nested, d.doAutoCommandFunction(f), exprs...); err != nil {
-		d.Errorf("failed to DefineAutoCommand: %v", err)
+		d.errorf(err, "failed to DefineAutoCommand: %v", err)
 	}
 }
 
 func (d Driver) Viewport() govim.Viewport {
 	vp, err := d.Govim.Viewport()
 	if err != nil {
-		d.Errorf("failed to get Viewport: %v", err)
+		d.errorf(err, "failed to get Viewport: %v", err)
 	}
 	return vp
 }
