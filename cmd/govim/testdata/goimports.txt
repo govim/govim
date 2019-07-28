@@ -1,14 +1,19 @@
 # Test that govim#config#Set("FormatOnSave", "goimports") and GOVIMGoImports work
 
+# Notice below: file.go and file.go.orig are identical. This is so that we
+# don't need to copy file.go.orig to file.go before opening file.go Because
+# doing so triggers govim to consider the file change from a file watcher
+# perspective which throws the observed diagnostics etc.
+
 # Ensure the default is goimports
 vim expr 'govim#config#Get().FormatOnSave'
 stdout '^"goimports"$'
 
 # :GOVIMGoImports whole file
-cp file.go.orig file.go
 vim ex 'e! file.go'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'GOVIMGoImports'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'noautocmd w'
 cmp file.go file.go.goimports
 
@@ -18,6 +23,7 @@ vim call 'govim#config#Set' '["FormatOnSave", "goimports"]'
 vim ex 'e! file.go'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'w'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 cmp file.go file.go.goimports
 
 errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
@@ -25,7 +31,7 @@ errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v,
 # Format on save (bad syntax)
 cp file.go.bad file.go
 vim ex 'e! file.go'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
+errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","setqflist".*'
 vim ex 'w'
 cmp file.go file.go.bad
 vim expr 'getqflist()'
@@ -47,6 +53,13 @@ errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v,
 
 -- go.mod --
 module mod.com
+
+-- file.go --
+package blah
+
+const ( x = 5
+y = os.PathSeparator
+ )
 
 -- file.go.orig --
 package blah
