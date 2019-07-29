@@ -29,7 +29,7 @@ const (
 	ExpectedCompletionsCount       = 144
 	ExpectedCompletionSnippetCount = 15
 	ExpectedDiagnosticsCount       = 17
-	ExpectedFormatCount            = 5
+	ExpectedFormatCount            = 6
 	ExpectedImportCount            = 2
 	ExpectedDefinitionsCount       = 38
 	ExpectedTypeDefinitionsCount   = 2
@@ -195,10 +195,12 @@ func Load(t testing.TB, exporter packagestest.Exporter, dir string) *Data {
 		filename := data.Exported.File(testModule, fragment)
 		data.fragments[filename] = fragment
 	}
+	data.Exported.Config.Logf = t.Logf
 
 	// Merge the exported.Config with the view.Config.
 	data.Config = *data.Exported.Config
 	data.Config.Fset = token.NewFileSet()
+	data.Config.Logf = t.Logf
 	data.Config.Context = Context(nil)
 	data.Config.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 		panic("ParseFile should not be called")

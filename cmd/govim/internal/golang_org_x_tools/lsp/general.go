@@ -15,7 +15,8 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/xlog"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/tag"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -155,7 +156,7 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 	}
 	buf := &bytes.Buffer{}
 	debug.PrintVersionInfo(buf, true, debug.PlainText)
-	xlog.Infof(ctx, "%s", buf)
+	log.Print(ctx, buf.String())
 	return nil
 }
 
@@ -210,7 +211,7 @@ func (s *Server) processConfig(ctx context.Context, view source.View, config int
 		case "FullDocumentation":
 			s.hoverKind = source.FullDocumentation
 		default:
-			xlog.Errorf(ctx, "unsupported hover kind %s", hoverKind)
+			log.Error(ctx, "unsupported hover kind", nil, tag.Of("HoverKind", hoverKind))
 			// The default value is already be set to synopsis.
 		}
 	}

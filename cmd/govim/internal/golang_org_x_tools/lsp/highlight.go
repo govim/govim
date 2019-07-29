@@ -9,7 +9,8 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/xlog"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/tag"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -30,7 +31,7 @@ func (s *Server) documentHighlight(ctx context.Context, params *protocol.TextDoc
 	}
 	spans, err := source.Highlight(ctx, f, rng.Start)
 	if err != nil {
-		xlog.Errorf(ctx, "no highlight for %s: %v", spn, err)
+		log.Error(ctx, "no highlight", err, tag.Of("Span", spn))
 	}
 	return toProtocolHighlight(m, spans), nil
 }

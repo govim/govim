@@ -24,6 +24,7 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/ocagent"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/tool"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
@@ -45,6 +46,9 @@ type Application struct {
 	// The base cache to use for sessions from this application.
 	cache source.Cache
 
+	// The name of the binary, used in help and telemetry.
+	name string
+
 	// The working directory to run commands in.
 	wd string
 
@@ -56,23 +60,28 @@ type Application struct {
 
 	// Enable verbose logging
 	Verbose bool `flag:"v" help:"Verbose output"`
+
+	// Control ocagent export of telemetry
+	OCAgent string `flag:"ocagent" help:"The address of the ocagent, or off"`
 }
 
 // Returns a new Application ready to run.
-func New(wd string, env []string) *Application {
+func New(name, wd string, env []string) *Application {
 	if wd == "" {
 		wd, _ = os.Getwd()
 	}
 	app := &Application{
-		cache: cache.New(),
-		wd:    wd,
-		env:   env,
+		cache:   cache.New(),
+		name:    name,
+		wd:      wd,
+		env:     env,
+		OCAgent: "off", //TODO: Remove this line to default the exporter to on
 	}
 	return app
 }
 
 // Name implements tool.Application returning the binary name.
-func (app *Application) Name() string { return "gopls" }
+func (app *Application) Name() string { return app.name }
 
 // Usage implements tool.Application returning empty extra argument usage.
 func (app *Application) Usage() string { return "<command> [command-flags] [command-args]" }
@@ -102,6 +111,7 @@ gopls flags are:
 // If no arguments are passed it will invoke the server sub command, as a
 // temporary measure for compatibility.
 func (app *Application) Run(ctx context.Context, args ...string) error {
+	ocagent.Export(app.name, app.OCAgent)
 	app.Serve.app = app
 	if len(args) == 0 {
 		tool.Main(ctx, &app.Serve, args)

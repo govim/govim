@@ -9,7 +9,8 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/xlog"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/tag"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -30,7 +31,7 @@ func (s *Server) signatureHelp(ctx context.Context, params *protocol.TextDocumen
 	}
 	info, err := source.SignatureHelp(ctx, f, rng.Start)
 	if err != nil {
-		xlog.Infof(ctx, "no signature help for %s:%v:%v : %s", uri, int(params.Position.Line), int(params.Position.Character), err)
+		log.Print(ctx, "no signature help", tag.Of("At", rng), tag.Of("Failure", err))
 		return nil, nil
 	}
 	return toProtocolSignatureHelp(info), nil

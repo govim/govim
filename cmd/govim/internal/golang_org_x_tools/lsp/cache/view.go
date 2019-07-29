@@ -6,6 +6,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -19,7 +20,8 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/xlog"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -53,7 +55,16 @@ type view struct {
 
 	// process is the process env for this view.
 	// Note: this contains cached module and filesystem state.
+	//
+	// TODO(suzmue): the state cached in the process env is specific to each view,
+	// however, there is state that can be shared between views that is not currently
+	// cached, like the module cache.
 	processEnv *imports.ProcessEnv
+
+	// modFileVersions stores the last seen versions of the module files that are used
+	// by processEnvs resolver.
+	// TODO(suzmue): These versions may not actually be on disk.
+	modFileVersions map[string]string
 
 	// buildFlags is the build flags to use when invoking underlying tools.
 	buildFlags []string
@@ -136,28 +147,51 @@ func (v *view) Config(ctx context.Context) *packages.Config {
 			panic("go/packages must not be used to parse files")
 		},
 		Logf: func(format string, args ...interface{}) {
-			xlog.Infof(ctx, format, args...)
+			log.Print(ctx, fmt.Sprintf(format, args...))
 		},
 		Tests: true,
 	}
 }
 
-func (v *view) ProcessEnv(ctx context.Context) *imports.ProcessEnv {
+func (v *view) RunProcessEnvFunc(ctx context.Context, fn func(*imports.Options) error, opts *imports.Options) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-
 	if v.processEnv == nil {
 		v.processEnv = v.buildProcessEnv(ctx)
 	}
-	return v.processEnv
+
+	// Before running the user provided function, clear caches in the resolver.
+	if v.modFilesChanged() {
+		if r, ok := v.processEnv.GetResolver().(*imports.ModuleResolver); ok {
+			// Clear the resolver cache and set Initialized to false.
+			r.Initialized = false
+			r.Main = nil
+			r.ModsByModPath = nil
+			r.ModsByDir = nil
+			// Reset the modFileVersions.
+			v.modFileVersions = nil
+		}
+	}
+
+	// Run the user function.
+	opts.Env = v.processEnv
+	if err := fn(opts); err != nil {
+		return err
+	}
+
+	// If applicable, store the file versions of the 'go.mod' files that are
+	// looked at by the resolver.
+	v.storeModFileVersions()
+
+	return nil
 }
 
 func (v *view) buildProcessEnv(ctx context.Context) *imports.ProcessEnv {
 	cfg := v.Config(ctx)
 	env := &imports.ProcessEnv{
 		WorkingDir: cfg.Dir,
-		Logf: func(format string, u ...interface{}) {
-			xlog.Infof(v.backgroundCtx, format, u...)
+		Logf: func(format string, args ...interface{}) {
+			log.Print(ctx, fmt.Sprintf(format, args...))
 		},
 	}
 	for _, kv := range cfg.Env {
@@ -181,6 +215,41 @@ func (v *view) buildProcessEnv(ctx context.Context) *imports.ProcessEnv {
 		}
 	}
 	return env
+}
+
+func (v *view) modFilesChanged() bool {
+	// Check the versions of the 'go.mod' files of the main module
+	// and modules included by a replace directive. Return true if
+	// any of these file versions do not match.
+	for filename, version := range v.modFileVersions {
+		if version != v.fileVersion(filename) {
+			return true
+		}
+	}
+	return false
+}
+
+func (v *view) storeModFileVersions() {
+	// Store the mod files versions, if we are using a ModuleResolver.
+	r, moduleMode := v.processEnv.GetResolver().(*imports.ModuleResolver)
+	if !moduleMode || !r.Initialized {
+		return
+	}
+	v.modFileVersions = make(map[string]string)
+
+	// Get the file versions of the 'go.mod' files of the main module
+	// and modules included by a replace directive in the resolver.
+	for _, mod := range r.ModsByModPath {
+		if (mod.Main || mod.Replace != nil) && mod.GoMod != "" {
+			v.modFileVersions[mod.GoMod] = v.fileVersion(mod.GoMod)
+		}
+	}
+}
+
+func (v *view) fileVersion(filename string) string {
+	uri := span.FileURI(filename)
+	f := v.session.GetFile(uri)
+	return f.Identity().Version
 }
 
 func (v *view) Env() []string {
@@ -242,7 +311,7 @@ func (v *view) buildBuiltinPkg(ctx context.Context) {
 	cfg := *v.Config(ctx)
 	pkgs, err := packages.Load(&cfg, "builtin")
 	if err != nil {
-		xlog.Errorf(ctx, "error getting package metadata for \"builtin\" package: %v", err)
+		log.Error(ctx, "error getting package metadata for \"builtin\" package", err)
 	}
 	if len(pkgs) != 1 {
 		v.builtinPkg, _ = ast.NewPackage(cfg.Fset, nil, nil, nil)
@@ -330,12 +399,12 @@ func (v *view) remove(ctx context.Context, id packageID, seen map[packageID]stru
 	for _, filename := range m.files {
 		f, err := v.findFile(span.FileURI(filename))
 		if err != nil {
-			xlog.Errorf(ctx, "cannot find file %s: %v", f.URI(), err)
+			log.Error(ctx, "cannot find file", err, telemetry.File.Of(f.URI()))
 			continue
 		}
 		gof, ok := f.(*goFile)
 		if !ok {
-			xlog.Errorf(ctx, "non-Go file %v", f.URI())
+			log.Error(ctx, "non-Go file", nil, telemetry.File.Of(f.URI()))
 			continue
 		}
 		gof.mu.Lock()
