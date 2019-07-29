@@ -13,13 +13,12 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/xlog"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 // NewClientServer
 func NewClientServer(ctx context.Context, cache source.Cache, client protocol.Client) (context.Context, *Server) {
-	ctx = xlog.With(ctx, protocol.NewLogger(client))
+	ctx = protocol.WithClient(ctx, client)
 	return ctx, &Server{
 		client:  client,
 		session: cache.NewSession(ctx),

@@ -11,7 +11,8 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/xlog"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -58,7 +59,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 		if s.wantSuggestedFixes {
 			qf, err := quickFixes(ctx, view, gof)
 			if err != nil {
-				xlog.Errorf(ctx, "quick fixes failed for %s: %v", uri, err)
+				log.Error(ctx, "quick fixes failed", err, telemetry.File.Of(uri))
 			}
 			codeActions = append(codeActions, qf...)
 		}

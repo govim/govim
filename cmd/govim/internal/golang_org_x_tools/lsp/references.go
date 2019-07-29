@@ -9,7 +9,8 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/xlog"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/tag"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -35,7 +36,7 @@ func (s *Server) references(ctx context.Context, params *protocol.ReferenceParam
 	}
 	references, err := ident.References(ctx)
 	if err != nil {
-		xlog.Errorf(ctx, "no references for %s: %v", ident.Name, err)
+		log.Error(ctx, "no references", err, tag.Of("Identifier", ident.Name))
 	}
 	if params.Context.IncludeDeclaration {
 		// The declaration of this identifier may not be in the

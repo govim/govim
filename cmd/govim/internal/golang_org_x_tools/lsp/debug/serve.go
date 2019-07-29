@@ -9,7 +9,6 @@ import (
 	"context"
 	"go/token"
 	"html/template"
-	"log"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -19,7 +18,10 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/metric"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/tag"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/worker"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
@@ -213,11 +215,13 @@ func Serve(ctx context.Context, addr string) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("Debug serving on port: %d", listener.Addr().(*net.TCPAddr).Port)
+	log.Print(ctx, "Debug serving", tag.Of("Port", listener.Addr().(*net.TCPAddr).Port))
 	prometheus := prometheus{}
 	metric.RegisterObservers(prometheus.observeMetric)
 	rpcs := rpcs{}
 	metric.RegisterObservers(rpcs.observeMetric)
+	traces := traces{}
+	trace.RegisterObservers(traces.export)
 	go func() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/", Render(mainTmpl, func(*http.Request) interface{} { return data }))
@@ -229,6 +233,7 @@ func Serve(ctx context.Context, addr string) error {
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 		mux.HandleFunc("/metrics/", prometheus.serve)
 		mux.HandleFunc("/rpc/", Render(rpcTmpl, rpcs.getData))
+		mux.HandleFunc("/trace/", Render(traceTmpl, traces.getData))
 		mux.HandleFunc("/cache/", Render(cacheTmpl, getCache))
 		mux.HandleFunc("/session/", Render(sessionTmpl, getSession))
 		mux.HandleFunc("/view/", Render(viewTmpl, getView))
@@ -236,10 +241,10 @@ func Serve(ctx context.Context, addr string) error {
 		mux.HandleFunc("/info", Render(infoTmpl, getInfo))
 		mux.HandleFunc("/memory", Render(memoryTmpl, getMemory))
 		if err := http.Serve(listener, mux); err != nil {
-			log.Printf("Debug server failed with %v", err)
+			log.Error(ctx, "Debug server failed", err)
 			return
 		}
-		log.Printf("Debug server finished")
+		log.Print(ctx, "Debug server finished")
 	}()
 	return nil
 }
@@ -254,7 +259,7 @@ func Render(tmpl *template.Template, fun func(*http.Request) interface{}) func(h
 				data = fun(r)
 			}
 			if err := tmpl.Execute(w, data); err != nil {
-				log.Print(err)
+				log.Error(context.Background(), "", err)
 			}
 		})
 		<-done
@@ -289,6 +294,10 @@ var BaseTemplate = template.Must(template.New("").Parse(`
 td.value {
   text-align: right;
 }
+ul.events {
+	list-style-type: none;
+}
+
 </style>
 {{block "head" .}}{{end}}
 </head>
@@ -298,6 +307,7 @@ td.value {
 <a href="/memory">Memory</a>
 <a href="/metrics">Metrics</a>
 <a href="/rpc">RPC</a>
+<a href="/trace">Trace</a>
 <hr>
 <h1>{{template "title" .}}</h1>
 {{block "body" .}}

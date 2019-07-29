@@ -12,7 +12,8 @@ import (
 	"sync"
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/xlog"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -58,6 +59,7 @@ func (f *goFile) GetToken(ctx context.Context) (*token.File, error) {
 func (f *goFile) GetAST(ctx context.Context, mode source.ParseMode) (*ast.File, error) {
 	f.view.mu.Lock()
 	defer f.view.mu.Unlock()
+	ctx = telemetry.File.With(ctx, f.URI())
 
 	if f.isDirty(ctx) || f.wrongParseMode(ctx, mode) {
 		if _, err := f.view.loadParseTypecheck(ctx, f); err != nil {
@@ -88,10 +90,11 @@ func (f *goFile) GetAST(ctx context.Context, mode source.ParseMode) (*ast.File, 
 func (f *goFile) GetPackages(ctx context.Context) []source.Package {
 	f.view.mu.Lock()
 	defer f.view.mu.Unlock()
+	ctx = telemetry.File.With(ctx, f.URI())
 
 	if f.isDirty(ctx) || f.wrongParseMode(ctx, source.ParseFull) {
 		if errs, err := f.view.loadParseTypecheck(ctx, f); err != nil {
-			xlog.Errorf(ctx, "unable to check package for %s: %v", f.URI(), err)
+			log.Error(ctx, "unable to check package", err, telemetry.File)
 
 			// Create diagnostics for errors if we are able to.
 			if len(errs) > 0 {

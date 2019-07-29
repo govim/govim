@@ -16,7 +16,9 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/xlog"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 )
@@ -67,12 +69,14 @@ func (s *session) NewView(ctx context.Context, name string, folder span.URI) sou
 	index := atomic.AddInt64(&viewIndex, 1)
 	s.viewMu.Lock()
 	defer s.viewMu.Unlock()
-	ctx = xcontext.Detach(ctx)
-	backgroundCtx, cancel := context.WithCancel(ctx)
+	// We want a true background context and not a detatched context here
+	// the spans need to be unrelated and no tag values should pollute it.
+	baseCtx := trace.Detach(xcontext.Detach(ctx))
+	backgroundCtx, cancel := context.WithCancel(baseCtx)
 	v := &view{
 		session:       s,
 		id:            strconv.FormatInt(index, 10),
-		baseCtx:       ctx,
+		baseCtx:       baseCtx,
 		backgroundCtx: backgroundCtx,
 		cancel:        cancel,
 		name:          name,
@@ -179,6 +183,7 @@ func (s *session) removeView(ctx context.Context, view *view) error {
 
 // TODO: Propagate the language ID through to the view.
 func (s *session) DidOpen(ctx context.Context, uri span.URI, _ source.FileKind, text []byte) {
+	ctx = telemetry.File.With(ctx, uri)
 	// Mark the file as open.
 	s.openFiles.Store(uri, true)
 
@@ -193,12 +198,12 @@ func (s *session) DidOpen(ctx context.Context, uri span.URI, _ source.FileKind, 
 		if strings.HasPrefix(string(uri), string(view.Folder())) {
 			f, err := view.GetFile(ctx, uri)
 			if err != nil {
-				xlog.Errorf(ctx, "error getting file for %s", uri)
+				log.Error(ctx, "error getting file", nil, telemetry.File)
 				return
 			}
 			gof, ok := f.(*goFile)
 			if !ok {
-				xlog.Errorf(ctx, "%s is not a Go file", uri)
+				log.Error(ctx, "not a Go file", nil, telemetry.File)
 				return
 			}
 			// Mark file as open.
@@ -270,7 +275,7 @@ func (s *session) openOverlay(ctx context.Context, uri span.URI, data []byte) {
 	}
 	_, hash, err := s.cache.GetFile(uri).Read(ctx)
 	if err != nil {
-		xlog.Errorf(ctx, "failed to read %s: %v", uri, err)
+		log.Error(ctx, "failed to read", err, telemetry.File)
 		return
 	}
 	if hash == s.overlays[uri].hash {

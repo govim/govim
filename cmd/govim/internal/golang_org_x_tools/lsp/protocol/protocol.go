@@ -8,8 +8,8 @@ import (
 	"context"
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/xlog"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 )
 
@@ -39,7 +39,7 @@ func (canceller) Cancel(ctx context.Context, conn *jsonrpc2.Conn, id jsonrpc2.ID
 }
 
 func NewClient(ctx context.Context, stream jsonrpc2.Stream, client Client) (context.Context, *jsonrpc2.Conn, Server) {
-	ctx = xlog.With(ctx, NewLogger(client))
+	ctx = WithClient(ctx, client)
 	conn := jsonrpc2.NewConn(stream)
 	conn.AddHandler(&clientHandler{client: client})
 	return ctx, conn, &serverDispatcher{Conn: conn}
@@ -48,7 +48,7 @@ func NewClient(ctx context.Context, stream jsonrpc2.Stream, client Client) (cont
 func NewServer(ctx context.Context, stream jsonrpc2.Stream, server Server) (context.Context, *jsonrpc2.Conn, Client) {
 	conn := jsonrpc2.NewConn(stream)
 	client := &clientDispatcher{Conn: conn}
-	ctx = xlog.With(ctx, NewLogger(client))
+	ctx = WithClient(ctx, client)
 	conn.AddHandler(&serverHandler{server: server})
 	return ctx, conn, client
 }
@@ -58,6 +58,6 @@ func sendParseError(ctx context.Context, req *jsonrpc2.Request, err error) {
 		err = jsonrpc2.NewErrorf(jsonrpc2.CodeParseError, "%v", err)
 	}
 	if err := req.Reply(ctx, nil, err); err != nil {
-		xlog.Errorf(ctx, "%v", err)
+		log.Error(ctx, "", err)
 	}
 }
