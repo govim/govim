@@ -46,7 +46,7 @@ stdout '^\Q[3,15]\E$'
 [!vim:v8.1.1262] skip 'Need at least v8.1.1262 for test_setmouse'
 
 # <C-LeftMouse> and <C-RightMouse>
-vim ex 'call test_setmouse(3,15)'
+vim ex 'call test_setmouse(screenpos(bufwinid(\"p.go\"),3,15)[\"row\"],screenpos(bufwinid(\"p.go\"),3,15)[\"col\"])'
 vim ex 'call feedkeys(\"\\<C-LeftMouse>\", \"x\")'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[4,7]\E$'
@@ -55,7 +55,7 @@ vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[3,15]\E$'
 
 # g<LeftMouse> and g<RightMouse>
-vim ex 'call test_setmouse(3,15)'
+vim ex 'call test_setmouse(screenpos(bufwinid(\"p.go\"),3,15)[\"row\"],screenpos(bufwinid(\"p.go\"),3,15)[\"col\"])'
 vim ex 'call feedkeys(\"g\\<LeftMouse>\", \"x\")'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[4,7]\E$'

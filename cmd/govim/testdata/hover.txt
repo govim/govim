@@ -7,7 +7,7 @@
 [!vim:v8.1.1649] skip
 
 vim ex 'e main.go'
-vim ex 'call test_setmouse(6,13)'
+vim ex 'call test_setmouse(screenpos(bufwinid(\"main.go\"),6,13)[\"row\"],screenpos(bufwinid(\"main.go\"),6,13)[\"col\"])'
 vim ex 'call feedkeys(\"\\<MouseMove>\\<Ignore>\", \"xt\")'
 sleep 500ms
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
