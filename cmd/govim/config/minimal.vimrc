@@ -37,3 +37,23 @@ set balloondelay=250
 " might prefer to instead have the signs shown in the number column; in which
 " case set signcolumn=number (requires Vim >= v8.1.1564)
 set signcolumn=yes
+
+" Suggestion: Turn on syntax highlighting for .go files. You might prefer to
+" turn on syntax highlighting for all files, in which case
+"
+" syntax on
+"
+" will suffice, no autocmd required.
+autocmd! BufEnter,BufNewFile *.go syntax on
+autocmd! BufLeave *.go syntax off
+
+" Suggestion: turn on auto-indenting. If you want closing parentheses, braces
+" etc to be added, https://github.com/jiangmiao/auto-pairs. In future we might
+" include this by default in govim.
+set autoindent
+set smartindent
+filetype indent on
+
+" Suggestion: define sensible backspace behaviour. See :help backspace for
+" more details
+set backspace=2

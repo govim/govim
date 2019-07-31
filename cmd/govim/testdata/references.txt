@@ -17,7 +17,7 @@ cmp locations locations.golden
 vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
 vim expr 'bufname(\"\")'
 vim ex 'call cursor(15,1)'
-vim ex 'call feedkeys(\"o\\tfmt.Printf(\\\"%v\\\")\\<ESC>\", \"xt\")'
+vim ex 'call feedkeys(\"ofmt.Printf(\\\"%v\\\")\\<ESC>\", \"xt\")'
 [vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChanged'
 [gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChanged'
 errlogmatch -wait 60s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
