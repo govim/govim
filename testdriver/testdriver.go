@@ -690,9 +690,9 @@ func Condition(cond string) (bool, error) {
 }
 
 type LockingBuffer struct {
-	lock     sync.Mutex
-	und      bytes.Buffer
-	LastRead []byte
+	lock          sync.Mutex
+	und           bytes.Buffer
+	NextSearchInx int
 }
 
 func (l *LockingBuffer) Write(p []byte) (n int, err error) {
@@ -719,7 +719,7 @@ func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
 
 	fs := flag.NewFlagSet("errlogmatch", flag.ContinueOnError)
 	fStart := fs.Bool("start", false, "search from beginning, not last snapshot")
-	fLeaveLastRead := fs.Bool("leavelast", false, "do not adjust the LastRead field on the errlog")
+	fPeek := fs.Bool("peek", false, "do not adjust the NextSearchInx field on the errlog")
 	fWait := fs.String("wait", "", "retry (with exp backoff) until this time period has elapsed")
 	fCount := fs.Int("count", -1, "number of instances to wait for/match")
 	if err := fs.Parse(args); err != nil {
@@ -770,28 +770,32 @@ func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
 		strategy = retry.LimitCount(1, strategy)
 	}
 
-	var byts []byte
-	if !*fLeaveLastRead {
+	var nextInx int
+	if !*fPeek {
 		defer func() {
-			errLog.LastRead = byts
+			errLog.NextSearchInx = nextInx
 		}()
 	}
-	var matches [][]byte
+	var matches [][]int
+	var searchStart int
 	for a := retry.Start(strategy, nil); a.Next(); {
-		byts = errLog.Bytes()
-		toSearch := byts
+		toSearch := errLog.Bytes()
+		nextInx = len(toSearch)
 		if !*fStart {
-			toSearch = toSearch[len(errLog.LastRead):]
+			searchStart = errLog.NextSearchInx
 		}
-		matches = reg.FindAll(toSearch, -1)
+		matches = reg.FindAllIndex(toSearch[searchStart:], -1)
 		if *fCount >= 0 {
-			if len(matches) == *fCount {
-				return
-			} else {
+			if len(matches) != *fCount {
 				continue
 			}
+			if len(matches) > 0 {
+				nextInx = matches[len(matches)-1][1] + searchStart // End of last match
+			}
+			return
 		}
 		if matches != nil {
+			nextInx = matches[len(matches)-1][1] + searchStart // End of last match
 			if neg {
 				ts.Fatalf("errlogmatch found unexpected match (%q)", toSearch)
 			}
