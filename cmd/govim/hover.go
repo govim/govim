@@ -139,8 +139,8 @@ func (v *vimstate) showHover(posExpr string, opts, userOpts map[string]interface
 		opts["line"] = line + int64(vpos.ScreenPos.Row)
 		opts["col"] = col + int64(vpos.ScreenPos.Col)
 	} else {
-		opts["pos"] = "topleft"
-		opts["line"] = vpos.ScreenPos.Row + 1
+		opts["pos"] = "botleft"
+		opts["line"] = vpos.ScreenPos.Row - 1
 		opts["col"] = vpos.ScreenPos.Col
 		opts["mousemoved"] = "any"
 		opts["moved"] = "any"
