@@ -39,7 +39,7 @@ errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v,
 vim ex 'call cursor(9,1)'
 vim ex 'call feedkeys(\"2dd\", \"x\")' # Remove line 9 & 10
 [vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_unplacelist\"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed_onesign.golden
@@ -49,7 +49,7 @@ errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v,
 # Fixing the last quickfix entry should remove the last sign
 vim call append '[5, "\tvar v string"]'
 [vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_unplacelist\"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed_nosign.golden

@@ -7,8 +7,10 @@ vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
 cmp errors errors.golden
+[vim] [vim:v8.1.1682] errlogmatch -wait 30s 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
 [vim] [vim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 [vim] [vim:v8.1.1682] cmp stdout signs.golden
+[gvim] [gvim:v8.1.1682] errlogmatch -wait 30s 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
 [gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 [gvim] [gvim:v8.1.1682] cmp stdout signs.golden
 errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
@@ -30,7 +32,6 @@ cmp errors empty
 [vim] [vim:v8.1.1682] cmp stdout nosigns.golden
 [gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 [gvim] [gvim:v8.1.1682] cmp stdout nosigns.golden
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 # Enabling quickfix autodiagnostics should give quickfix entries but no signs
 vim call 'govim#config#Set' '["QuickfixAutoDiagnosticsDisable", 0]'
@@ -46,7 +47,6 @@ cmp errors errors.golden
 [vim] [vim:v8.1.1682] cmp stdout nosigns.golden
 [gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 [gvim] [gvim:v8.1.1682] cmp stdout nosigns.golden
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 ## Enabling signs should place signs
 vim call 'govim#config#Set' '["QuickfixSignsDisable", 0]'
@@ -58,11 +58,12 @@ vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
 cmp errors errors.golden
+[vim] [vim:v8.1.1682] errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
+[gvim] [gvim:v8.1.1682] errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
 [vim] [vim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 [vim] [vim:v8.1.1682] cmp stdout signs.golden
 [gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 [gvim] [gvim:v8.1.1682] cmp stdout signs.golden
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 # Signs should not be placed with quickfix autodiagnostics disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnosticsDisable", 1]'
@@ -80,7 +81,12 @@ cmp errors empty
 [vim] [vim:v8.1.1682] cmp stdout nosigns.golden
 [gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 [gvim] [gvim:v8.1.1682] cmp stdout nosigns.golden
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+
+# Make sure that there were only two cases above that placed signs, to avoid flaky false positives
+[vim] [vim:v8.1.1682] errlogmatch -start -count=2 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
+[gvim] [gvim:v8.1.1682] errlogmatch -start -count=2 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
+
+errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
 
 -- go.mod --
 module mod.com
