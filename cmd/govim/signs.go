@@ -89,7 +89,6 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 		bufs = append(bufs, tmp...)
 	}
 
-	v.BatchStart()
 	// Assume all existing signs should be removed, unless found in quickfix entry list
 	for _, placed := range bufs {
 		for _, sign := range placed.Signs {
@@ -130,6 +129,7 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 		}
 	}
 
+	v.BatchStart()
 	if len(place) > 0 {
 		placeList := make([]placeDict, len(place))
 		// Use insert order as index to avoid sorting
