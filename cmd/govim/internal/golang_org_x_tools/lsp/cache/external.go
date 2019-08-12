@@ -10,9 +10,13 @@ import (
 	"os"
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
 )
+
+// ioLimit limits the number of parallel file reads per process.
+var ioLimit = make(chan struct{}, 128)
 
 // nativeFileSystem implements FileSystem reading from the normal os file system.
 type nativeFileSystem struct{}
@@ -51,8 +55,10 @@ func (h *nativeFileHandle) Kind() source.FileKind {
 }
 
 func (h *nativeFileHandle) Read(ctx context.Context) ([]byte, string, error) {
-	ctx, done := trace.StartSpan(ctx, "cache.nativeFileHandle.Read")
+	ctx, done := trace.StartSpan(ctx, "cache.nativeFileHandle.Read", telemetry.File.Of(h.identity.URI.Filename()))
 	defer done()
+	ioLimit <- struct{}{}
+	defer func() { <-ioLimit }()
 	//TODO: this should fail if the version is not the same as the handle
 	data, err := ioutil.ReadFile(h.identity.URI.Filename())
 	if err != nil {

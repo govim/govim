@@ -8,8 +8,8 @@ import (
 	"context"
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 )
 

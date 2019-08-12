@@ -6,7 +6,6 @@ package lsp
 
 import (
 	"context"
-	"fmt"
 	"go/ast"
 	"go/token"
 	"regexp"
@@ -15,15 +14,20 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/tag"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
+	errors "golang.org/x/xerrors"
 )
 
 func (s *Server) documentLink(ctx context.Context, params *protocol.DocumentLinkParams) ([]protocol.DocumentLink, error) {
 	uri := span.NewURI(params.TextDocument.URI)
 	view := s.session.ViewOf(uri)
-	f, m, err := getGoFile(ctx, view, uri)
+	f, err := getGoFile(ctx, view, uri)
+	if err != nil {
+		return nil, err
+	}
+	m, err := getMapper(ctx, f)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +86,7 @@ func findLinksInString(src string, pos token.Pos, view source.View, mapper *prot
 	var links []protocol.DocumentLink
 	re, err := getURLRegexp()
 	if err != nil {
-		return nil, fmt.Errorf("cannot create regexp for links: %s", err.Error())
+		return nil, errors.Errorf("cannot create regexp for links: %s", err.Error())
 	}
 	for _, urlIndex := range re.FindAllIndex([]byte(src), -1) {
 		start := urlIndex[0]

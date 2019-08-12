@@ -6,11 +6,11 @@ package cache
 
 import (
 	"context"
-	"fmt"
 	"go/token"
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/memoize"
+	errors "golang.org/x/xerrors"
 )
 
 type tokenKey struct {
@@ -87,7 +87,7 @@ func tokenFile(ctx context.Context, c *cache, fh source.FileHandle) (*token.File
 	}
 	tok := c.FileSet().AddFile(fh.Identity().URI.Filename(), -1, len(buf))
 	if tok == nil {
-		return nil, fmt.Errorf("no token.File for %s", fh.Identity().URI)
+		return nil, errors.Errorf("no token.File for %s", fh.Identity().URI)
 	}
 	tok.SetLinesForContent(buf)
 	return tok, nil

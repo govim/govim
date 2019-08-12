@@ -21,9 +21,9 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/tag"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/tool"
+	errors "golang.org/x/xerrors"
 )
 
 // Serve is a struct that exposes the configurable parts of the LSP server as
@@ -68,7 +68,7 @@ func (s *Serve) Run(ctx context.Context, args ...string) error {
 		}
 		f, err := os.Create(filename)
 		if err != nil {
-			return fmt.Errorf("Unable to create log file: %v", err)
+			return errors.Errorf("Unable to create log file: %v", err)
 		}
 		defer f.Close()
 		log.SetOutput(io.MultiWriter(os.Stderr, f))
@@ -124,12 +124,13 @@ type handler struct {
 }
 
 type rpcStats struct {
-	method    string
-	direction jsonrpc2.Direction
-	id        *jsonrpc2.ID
-	payload   *json.RawMessage
-	start     time.Time
-	close     func()
+	method     string
+	direction  jsonrpc2.Direction
+	id         *jsonrpc2.ID
+	payload    *json.RawMessage
+	start      time.Time
+	delivering func()
+	close      func()
 }
 
 type statsKeyType int
@@ -137,6 +138,10 @@ type statsKeyType int
 const statsKey = statsKeyType(0)
 
 func (h *handler) Deliver(ctx context.Context, r *jsonrpc2.Request, delivered bool) bool {
+	stats := h.getStats(ctx)
+	if stats != nil {
+		stats.delivering()
+	}
 	return false
 }
 
@@ -160,11 +165,12 @@ func (h *handler) Request(ctx context.Context, direction jsonrpc2.Direction, r *
 		mode = telemetry.Inbound
 	}
 	ctx, stats.close = trace.StartSpan(ctx, r.Method,
-		tag.Tag{Key: telemetry.Method, Value: r.Method},
-		tag.Tag{Key: telemetry.RPCDirection, Value: mode},
-		tag.Tag{Key: telemetry.RPCID, Value: r.ID},
+		telemetry.Method.Of(r.Method),
+		telemetry.RPCDirection.Of(mode),
+		telemetry.RPCID.Of(r.ID),
 	)
 	telemetry.Started.Record(ctx, 1)
+	_, stats.delivering = trace.StartSpan(ctx, "queued")
 	return ctx
 }
 

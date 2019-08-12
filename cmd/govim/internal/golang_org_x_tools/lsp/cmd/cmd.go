@@ -24,10 +24,12 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/ocagent"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/ocagent"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/tool"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
+	errors "golang.org/x/xerrors"
 )
 
 // Application is the main application as passed to tool.Main
@@ -111,7 +113,10 @@ gopls flags are:
 // If no arguments are passed it will invoke the server sub command, as a
 // temporary measure for compatibility.
 func (app *Application) Run(ctx context.Context, args ...string) error {
-	ocagent.Export(app.name, app.OCAgent)
+	ocConfig := ocagent.Discover()
+	//TODO: we should not need to adjust the discovered configuration
+	ocConfig.Address = app.OCAgent
+	export.AddExporters(ocagent.Connect(ocConfig))
 	app.Serve.app = app
 	if len(args) == 0 {
 		tool.Main(ctx, &app.Serve, args)
@@ -324,7 +329,7 @@ func (c *cmdClient) PublishDiagnostics(ctx context.Context, p *protocol.PublishD
 
 func (c *cmdClient) getFile(ctx context.Context, uri span.URI) *cmdFile {
 	file, found := c.files[uri]
-	if !found {
+	if !found || file.err != nil {
 		file = &cmdFile{
 			uri:            uri,
 			hasDiagnostics: make(chan struct{}),
@@ -335,7 +340,7 @@ func (c *cmdClient) getFile(ctx context.Context, uri span.URI) *cmdFile {
 		fname := uri.Filename()
 		content, err := ioutil.ReadFile(fname)
 		if err != nil {
-			file.err = fmt.Errorf("%v: %v", uri, err)
+			file.err = errors.Errorf("getFile: %v: %v", uri, err)
 			return file
 		}
 		f := c.fset.AddFile(fname, -1, len(content))
@@ -350,15 +355,23 @@ func (c *connection) AddFile(ctx context.Context, uri span.URI) *cmdFile {
 	defer c.Client.filesMu.Unlock()
 
 	file := c.Client.getFile(ctx, uri)
-	if !file.added {
-		file.added = true
-		p := &protocol.DidOpenTextDocumentParams{}
-		p.TextDocument.URI = string(uri)
-		p.TextDocument.Text = string(file.mapper.Content)
-		p.TextDocument.LanguageID = source.DetectLanguage("", file.uri.Filename()).String()
-		if err := c.Server.DidOpen(ctx, p); err != nil {
-			file.err = fmt.Errorf("%v: %v", uri, err)
+	// This should never happen.
+	if file == nil {
+		return &cmdFile{
+			uri: uri,
+			err: fmt.Errorf("no file found for %s", uri),
 		}
+	}
+	if file.err != nil || file.added {
+		return file
+	}
+	file.added = true
+	p := &protocol.DidOpenTextDocumentParams{}
+	p.TextDocument.URI = string(uri)
+	p.TextDocument.Text = string(file.mapper.Content)
+	p.TextDocument.LanguageID = source.DetectLanguage("", file.uri.Filename()).String()
+	if err := c.Server.DidOpen(ctx, p); err != nil {
+		file.err = errors.Errorf("%v: %v", uri, err)
 	}
 	return file
 }

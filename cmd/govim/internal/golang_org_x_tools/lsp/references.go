@@ -9,15 +9,19 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/tag"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
 )
 
 func (s *Server) references(ctx context.Context, params *protocol.ReferenceParams) ([]protocol.Location, error) {
 	uri := span.NewURI(params.TextDocument.URI)
 	view := s.session.ViewOf(uri)
-	f, m, err := getGoFile(ctx, view, uri)
+	f, err := getGoFile(ctx, view, uri)
+	if err != nil {
+		return nil, err
+	}
+	m, err := getMapper(ctx, f)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +34,7 @@ func (s *Server) references(ctx context.Context, params *protocol.ReferenceParam
 		return nil, err
 	}
 	// Find all references to the identifier at the position.
-	ident, err := source.Identifier(ctx, view, f, rng.Start)
+	ident, err := source.Identifier(ctx, f, rng.Start)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +67,11 @@ func (s *Server) references(ctx context.Context, params *protocol.ReferenceParam
 		}
 		seen[refSpan] = true
 
-		_, refM, err := getSourceFile(ctx, view, refSpan.URI())
+		refFile, err := getGoFile(ctx, view, refSpan.URI())
+		if err != nil {
+			return nil, err
+		}
+		refM, err := getMapper(ctx, refFile)
 		if err != nil {
 			return nil, err
 		}

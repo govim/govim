@@ -1,4 +1,4 @@
-package good //@diag("package", "", "")
+package good //@diag("package", "no_diagnostics", "")
 
 import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/types" //@item(types_import, "types", "\"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/types\"", "package")

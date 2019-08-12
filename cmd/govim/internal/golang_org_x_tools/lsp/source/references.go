@@ -6,12 +6,12 @@ package source
 
 import (
 	"context"
-	"fmt"
 	"go/ast"
 	"go/types"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	errors "golang.org/x/xerrors"
 )
 
 // ReferenceInfo holds information about reference to an identifier in Go source.
@@ -33,17 +33,17 @@ func (i *IdentifierInfo) References(ctx context.Context) ([]*ReferenceInfo, erro
 
 	// If the object declaration is nil, assume it is an import spec and do not look for references.
 	if i.decl.obj == nil {
-		return nil, fmt.Errorf("no references for an import spec")
+		return nil, errors.Errorf("no references for an import spec")
 	}
 
-	pkgs := i.File.GetPackages(ctx)
+	pkgs, err := i.File.GetPackages(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, pkg := range pkgs {
-		if pkg == nil || pkg.IsIllTyped() {
-			return nil, fmt.Errorf("package for %s is ill typed", i.File.URI())
-		}
 		info := pkg.GetTypesInfo()
 		if info == nil {
-			return nil, fmt.Errorf("package %s has no types info", pkg.PkgPath())
+			return nil, errors.Errorf("package %s has no types info", pkg.PkgPath())
 		}
 
 		if i.decl.wasImplicit {
