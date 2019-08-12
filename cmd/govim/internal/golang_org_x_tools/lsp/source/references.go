@@ -6,18 +6,17 @@ package source
 
 import (
 	"context"
-	"fmt"
 	"go/ast"
 	"go/types"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	errors "golang.org/x/xerrors"
 )
 
 // ReferenceInfo holds information about reference to an identifier in Go source.
 type ReferenceInfo struct {
-	Name          string
-	Range         span.Range
+	Name string
+	mappedRange
 	ident         *ast.Ident
 	obj           types.Object
 	pkg           Package
@@ -26,67 +25,73 @@ type ReferenceInfo struct {
 
 // References returns a list of references for a given identifier within the packages
 // containing i.File. Declarations appear first in the result.
-func (i *IdentifierInfo) References(ctx context.Context) ([]*ReferenceInfo, error) {
+func (i *IdentifierInfo) References(ctx context.Context, view View) ([]*ReferenceInfo, error) {
 	ctx, done := trace.StartSpan(ctx, "source.References")
 	defer done()
 	var references []*ReferenceInfo
 
 	// If the object declaration is nil, assume it is an import spec and do not look for references.
-	if i.decl.obj == nil {
-		return nil, fmt.Errorf("no references for an import spec")
+	if i.Declaration.obj == nil {
+		return nil, errors.Errorf("no references for an import spec")
 	}
 
-	pkgs := i.File.GetPackages(ctx)
+	pkgs, err := i.File.GetPackages(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, pkg := range pkgs {
-		if pkg == nil || pkg.IsIllTyped() {
-			return nil, fmt.Errorf("package for %s is ill typed", i.File.URI())
-		}
 		info := pkg.GetTypesInfo()
 		if info == nil {
-			return nil, fmt.Errorf("package %s has no types info", pkg.PkgPath())
+			return nil, errors.Errorf("package %s has no types info", pkg.PkgPath())
 		}
 
-		if i.decl.wasImplicit {
+		if i.Declaration.wasImplicit {
 			// The definition is implicit, so we must add it separately.
 			// This occurs when the variable is declared in a type switch statement
 			// or is an implicit package name. Both implicits are local to a file.
 			references = append(references, &ReferenceInfo{
-				Name:          i.decl.obj.Name(),
-				Range:         i.decl.rng,
-				obj:           i.decl.obj,
+				Name:          i.Declaration.obj.Name(),
+				mappedRange:   i.Declaration.mappedRange,
+				obj:           i.Declaration.obj,
 				pkg:           pkg,
 				isDeclaration: true,
 			})
 		}
 		for ident, obj := range info.Defs {
-			if obj == nil || !sameObj(obj, i.decl.obj) {
+			if obj == nil || !sameObj(obj, i.Declaration.obj) {
 				continue
 			}
+			rng, err := posToRange(ctx, view, ident.Pos(), ident.End())
+			if err != nil {
+				return nil, err
+			}
 			// Add the declarations at the beginning of the references list.
-			references = append([]*ReferenceInfo{&ReferenceInfo{
+			references = append([]*ReferenceInfo{{
 				Name:          ident.Name,
-				Range:         span.NewRange(i.File.FileSet(), ident.Pos(), ident.End()),
 				ident:         ident,
 				obj:           obj,
 				pkg:           pkg,
 				isDeclaration: true,
+				mappedRange:   rng,
 			}}, references...)
 		}
 		for ident, obj := range info.Uses {
-			if obj == nil || !sameObj(obj, i.decl.obj) {
+			if obj == nil || !sameObj(obj, i.Declaration.obj) {
 				continue
 			}
+			rng, err := posToRange(ctx, view, ident.Pos(), ident.End())
+			if err != nil {
+				return nil, err
+			}
 			references = append(references, &ReferenceInfo{
-				Name:  ident.Name,
-				Range: span.NewRange(i.File.FileSet(), ident.Pos(), ident.End()),
-				ident: ident,
-				pkg:   pkg,
-				obj:   obj,
+				Name:        ident.Name,
+				ident:       ident,
+				pkg:         pkg,
+				obj:         obj,
+				mappedRange: rng,
 			})
 		}
-
 	}
-
 	return references, nil
 }
 

@@ -1,7 +1,7 @@
 package b
 
 import (
-	myFoo "github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/foo" //@godef("foo", PackageFoo),godef("myFoo", PackageFoo)
+	myFoo "github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/foo" //@mark(myFoo, "myFoo"),godef("foo", PackageFoo),godef("myFoo", myFoo)
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/godef/a"   //@mark(AImport, "\"")
 )
 
@@ -31,5 +31,5 @@ func Bar() {
 	_ = x.F2    //@godef("F2", S2F2)
 	_ = x.S2.F1 //@godef("F1", S2F1)
 
-	var _ *myFoo.StructFoo
+	var _ *myFoo.StructFoo //@godef("myFoo", myFoo)
 }

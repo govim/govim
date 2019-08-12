@@ -15,33 +15,29 @@ import (
 func (s *Server) rename(ctx context.Context, params *protocol.RenameParams) (*protocol.WorkspaceEdit, error) {
 	uri := span.NewURI(params.TextDocument.URI)
 	view := s.session.ViewOf(uri)
-	f, m, err := getGoFile(ctx, view, uri)
+	f, err := getGoFile(ctx, view, uri)
 	if err != nil {
 		return nil, err
 	}
-	spn, err := m.PointSpan(params.Position)
+	ident, err := source.Identifier(ctx, view, f, params.Position)
 	if err != nil {
 		return nil, err
 	}
-	rng, err := spn.Range(m.Converter)
-	if err != nil {
-		return nil, err
-	}
-	ident, err := source.Identifier(ctx, view, f, rng.Start)
-	if err != nil {
-		return nil, err
-	}
-	edits, err := ident.Rename(ctx, params.NewName)
+	edits, err := ident.Rename(ctx, view, params.NewName)
 	if err != nil {
 		return nil, err
 	}
 	changes := make(map[string][]protocol.TextEdit)
 	for uri, textEdits := range edits {
-		_, m, err := getGoFile(ctx, view, uri)
+		f, err := getGoFile(ctx, view, uri)
 		if err != nil {
 			return nil, err
 		}
-		protocolEdits, err := ToProtocolEdits(m, textEdits)
+		m, err := getMapper(ctx, f)
+		if err != nil {
+			return nil, err
+		}
+		protocolEdits, err := source.ToProtocolEdits(m, textEdits)
 		if err != nil {
 			return nil, err
 		}
@@ -49,4 +45,36 @@ func (s *Server) rename(ctx context.Context, params *protocol.RenameParams) (*pr
 	}
 
 	return &protocol.WorkspaceEdit{Changes: &changes}, nil
+}
+
+func (s *Server) prepareRename(ctx context.Context, params *protocol.TextDocumentPositionParams) (*protocol.Range, error) {
+	uri := span.NewURI(params.TextDocument.URI)
+	view := s.session.ViewOf(uri)
+	f, err := getGoFile(ctx, view, uri)
+	if err != nil {
+		return nil, err
+	}
+	m, err := getMapper(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the identifier at the position.
+	ident, err := source.PrepareRename(ctx, view, f, params.Position)
+	if err != nil {
+		// Do not return the errors here, as it adds clutter.
+		// Returning a nil result means there is not a valid rename.
+		return nil, nil
+	}
+	identSpn, err := ident.Range.Span()
+	if err != nil {
+		return nil, err
+	}
+
+	identRng, err := m.Range(identSpn)
+	if err != nil {
+		return nil, err
+	}
+	// TODO(suzmue): return ident.Name as the placeholder text.
+	return &identRng, nil
 }

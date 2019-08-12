@@ -5,13 +5,162 @@
 package source
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"path/filepath"
+	"regexp"
 	"strings"
+
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
+
+type mappedRange struct {
+	spanRange span.Range
+	m         *protocol.ColumnMapper
+
+	// protocolRange is the result of converting the spanRange using the mapper.
+	// It is computed on-demand.
+	protocolRange *protocol.Range
+}
+
+func (s mappedRange) Range() (protocol.Range, error) {
+	if s.protocolRange == nil {
+		spn, err := s.spanRange.Span()
+		if err != nil {
+			return protocol.Range{}, err
+		}
+		prng, err := s.m.Range(spn)
+		if err != nil {
+			return protocol.Range{}, err
+		}
+		s.protocolRange = &prng
+	}
+	return *s.protocolRange, nil
+}
+
+func (s mappedRange) Span() (span.Span, error) {
+	return s.spanRange.Span()
+}
+
+func (s mappedRange) URI() span.URI {
+	return s.m.URI
+}
+
+func fileToMapper(ctx context.Context, view View, uri span.URI) (*ast.File, Package, *protocol.ColumnMapper, error) {
+	f, err := view.GetFile(ctx, uri)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	gof, ok := f.(GoFile)
+	if !ok {
+		return nil, nil, nil, errors.Errorf("%s is not a Go file", f.URI())
+	}
+	pkg, err := gof.GetPackage(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	file, m, err := pkgToMapper(ctx, view, pkg, uri)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return file, pkg, m, nil
+}
+
+func cachedFileToMapper(ctx context.Context, view View, uri span.URI) (*ast.File, *protocol.ColumnMapper, error) {
+	f, err := view.GetFile(ctx, uri)
+	if err != nil {
+		return nil, nil, err
+	}
+	gof, ok := f.(GoFile)
+	if !ok {
+		return nil, nil, errors.Errorf("%s is not a Go file", f.URI())
+	}
+	if file, ok := gof.Builtin(); ok {
+		return builtinFileToMapper(ctx, view, gof, file)
+	}
+	pkg, err := gof.GetCachedPackage(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	file, m, err := pkgToMapper(ctx, view, pkg, uri)
+	if err != nil {
+		return nil, nil, err
+	}
+	return file, m, nil
+}
+
+func pkgToMapper(ctx context.Context, view View, pkg Package, uri span.URI) (*ast.File, *protocol.ColumnMapper, error) {
+	var ph ParseGoHandle
+	for _, h := range pkg.GetHandles() {
+		if h.File().Identity().URI == uri {
+			ph = h
+		}
+	}
+	file, err := ph.Cached(ctx)
+	if file == nil {
+		return nil, nil, err
+	}
+	data, _, err := ph.File().Read(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	fset := view.Session().Cache().FileSet()
+	tok := fset.File(file.Pos())
+	if tok == nil {
+		return nil, nil, errors.Errorf("no token.File for %s", uri)
+	}
+	return file, protocol.NewColumnMapper(uri, uri.Filename(), fset, tok, data), nil
+}
+
+func builtinFileToMapper(ctx context.Context, view View, f GoFile, file *ast.File) (*ast.File, *protocol.ColumnMapper, error) {
+	fh := f.Handle(ctx)
+	data, _, err := fh.Read(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	fset := view.Session().Cache().FileSet()
+	tok := fset.File(file.Pos())
+	if tok == nil {
+		return nil, nil, errors.Errorf("no token.File for %s", f.URI())
+	}
+	return nil, protocol.NewColumnMapper(f.URI(), f.URI().Filename(), fset, tok, data), nil
+}
+
+func IsGenerated(ctx context.Context, view View, uri span.URI) bool {
+	f, err := view.GetFile(ctx, uri)
+	if err != nil {
+		return false
+	}
+	ph := view.Session().Cache().ParseGoHandle(f.Handle(ctx), ParseHeader)
+	parsed, err := ph.Parse(ctx)
+	if parsed == nil {
+		return false
+	}
+	tok := view.Session().Cache().FileSet().File(parsed.Pos())
+	if tok == nil {
+		return false
+	}
+	for _, commentGroup := range parsed.Comments {
+		for _, comment := range commentGroup.List {
+			if matched := generatedRx.MatchString(comment.Text); matched {
+				// Check if comment is at the beginning of the line in source.
+				if pos := tok.Position(comment.Slash); pos.Column == 1 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// Matches cgo generated comment as well as the proposed standard:
+//	https://golang.org/s/generatedcode
+var generatedRx = regexp.MustCompile(`// .*DO NOT EDIT\.?`)
 
 func DetectLanguage(langID, filename string) FileKind {
 	switch langID {

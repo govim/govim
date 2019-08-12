@@ -18,12 +18,11 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/metric"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/tag"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/worker"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/prometheus"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
 )
 
 type Cache interface {
@@ -216,12 +215,10 @@ func Serve(ctx context.Context, addr string) error {
 		return err
 	}
 	log.Print(ctx, "Debug serving", tag.Of("Port", listener.Addr().(*net.TCPAddr).Port))
-	prometheus := prometheus{}
-	metric.RegisterObservers(prometheus.observeMetric)
-	rpcs := rpcs{}
-	metric.RegisterObservers(rpcs.observeMetric)
-	traces := traces{}
-	trace.RegisterObservers(traces.export)
+	prometheus := prometheus.New()
+	rpcs := &rpcs{}
+	traces := &traces{}
+	export.AddExporters(prometheus, rpcs, traces)
 	go func() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/", Render(mainTmpl, func(*http.Request) interface{} { return data }))
@@ -231,7 +228,7 @@ func Serve(ctx context.Context, addr string) error {
 		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-		mux.HandleFunc("/metrics/", prometheus.serve)
+		mux.HandleFunc("/metrics/", prometheus.Serve)
 		mux.HandleFunc("/rpc/", Render(rpcTmpl, rpcs.getData))
 		mux.HandleFunc("/trace/", Render(traceTmpl, traces.getData))
 		mux.HandleFunc("/cache/", Render(cacheTmpl, getCache))
@@ -251,18 +248,15 @@ func Serve(ctx context.Context, addr string) error {
 
 func Render(tmpl *template.Template, fun func(*http.Request) interface{}) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		done := make(chan struct{})
-		worker.Do(func() {
-			defer close(done)
-			var data interface{}
-			if fun != nil {
-				data = fun(r)
-			}
-			if err := tmpl.Execute(w, data); err != nil {
-				log.Error(context.Background(), "", err)
-			}
-		})
-		<-done
+		mu.Lock()
+		defer mu.Unlock()
+		var data interface{}
+		if fun != nil {
+			data = fun(r)
+		}
+		if err := tmpl.Execute(w, data); err != nil {
+			log.Error(context.Background(), "", err)
+		}
 	}
 }
 
