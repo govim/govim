@@ -17,8 +17,9 @@ const (
 
 var _ protocol.Client = (*govimplugin)(nil)
 
-func (g *govimplugin) ShowMessage(context.Context, *protocol.ShowMessageParams) error {
-	panic("not implemented yet")
+func (g *govimplugin) ShowMessage(ctxt context.Context, params *protocol.ShowMessageParams) error {
+	g.logGoplsClientf("Asked to show a message: %v", params.Message)
+	return nil
 }
 func (g *govimplugin) ShowMessageRequest(context.Context, *protocol.ShowMessageRequestParams) (*protocol.MessageActionItem, error) {
 	panic("not implemented yet")
@@ -45,11 +46,15 @@ func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFol
 func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ConfigurationParams) ([]interface{}, error) {
 	defer absorbShutdownErr()
 	g.logGoplsClientf("Configuration: %v", pretty.Sprint(params))
-	// Assert based on the current behaviour of gopls
-	want := 1
-	if got := len(params.Items); want != got {
-		return nil, fmt.Errorf("govim gopls client: expected %v item(s) in params; got %v", want, got)
+
+	// gopls now sends params.Items for each of the configured
+	// workspaces. For now, we assume that the first item will be
+	// for the section "gopls" and only configure that. We will
+	// configure further workspaces when we add support for them.
+	if len(params.Items) == 0 || params.Items[0].Section != "gopls" {
+		return nil, fmt.Errorf("govim gopls client: expected at least one item, with the first section \"gopls\"")
 	}
+	res := make([]interface{}, len(params.Items))
 	conf := make(map[string]interface{})
 	if !g.usePopupWindows() {
 		conf[goplsConfigNoDocsOnHover] = true
@@ -57,7 +62,8 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Confi
 	} else {
 		conf[goplsConfigHoverKind] = "FullDocumentation"
 	}
-	return []interface{}{conf}, nil
+	res[0] = conf
+	return res, nil
 }
 func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {
 	panic("not implemented yet")

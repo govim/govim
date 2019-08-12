@@ -6,7 +6,6 @@ package source
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 type SymbolKind int
@@ -50,9 +50,9 @@ func DocumentSymbols(ctx context.Context, f GoFile) ([]Symbol, error) {
 	if file == nil {
 		return nil, err
 	}
-	pkg := f.GetPackage(ctx)
-	if pkg == nil || pkg.IsIllTyped() {
-		return nil, fmt.Errorf("no package for %s", f.URI())
+	pkg, err := f.GetPackage(ctx)
+	if err != nil {
+		return nil, err
 	}
 	info := pkg.GetTypesInfo()
 	q := qualifier(file, pkg.GetTypes(), info)

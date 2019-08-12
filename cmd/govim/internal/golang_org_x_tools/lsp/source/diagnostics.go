@@ -36,6 +36,7 @@ import (
 	"golang.org/x/tools/go/packages"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/log"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -61,15 +62,22 @@ const (
 )
 
 func Diagnostics(ctx context.Context, view View, f GoFile, disabledAnalyses map[string]struct{}) (map[span.URI][]Diagnostic, error) {
-	ctx = telemetry.File.With(ctx, f.URI())
-	pkg := f.GetPackage(ctx)
-	if pkg == nil {
+	ctx, done := trace.StartSpan(ctx, "source.Diagnostics", telemetry.File.Of(f.URI()))
+	defer done()
+
+	cph, err := f.GetCheckPackageHandle(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pkg, err := cph.Check(ctx)
+	if err != nil {
+		log.Error(ctx, "no package for file", err)
 		return singleDiagnostic(f.URI(), "%s is not part of a package", f.URI()), nil
 	}
 	// Prepare the reports we will send for the files in this package.
 	reports := make(map[span.URI][]Diagnostic)
-	for _, filename := range pkg.GetFilenames() {
-		clearReports(view, reports, span.FileURI(filename))
+	for _, fh := range pkg.GetHandles() {
+		clearReports(view, reports, fh.File().Identity().URI)
 	}
 
 	// Prepare any additional reports for the errors in this package.
@@ -83,19 +91,19 @@ func Diagnostics(ctx context.Context, view View, f GoFile, disabledAnalyses map[
 	// Run diagnostics for the package that this URI belongs to.
 	if !diagnostics(ctx, view, pkg, reports) {
 		// If we don't have any list, parse, or type errors, run analyses.
-		if err := analyses(ctx, view, pkg, disabledAnalyses, reports); err != nil {
-			log.Error(ctx, "failed to run analyses", err, telemetry.File)
+		if err := analyses(ctx, view, cph, disabledAnalyses, reports); err != nil {
+			log.Error(ctx, "failed to run analyses", err, telemetry.File.Of(f.URI()))
 		}
 	}
 	// Updates to the diagnostics for this package may need to be propagated.
 	revDeps := f.GetActiveReverseDeps(ctx)
 	for _, f := range revDeps {
-		pkg := f.GetPackage(ctx)
-		if pkg == nil {
-			continue
+		pkg, err := f.GetPackage(ctx)
+		if err != nil {
+			return nil, err
 		}
-		for _, filename := range pkg.GetFilenames() {
-			clearReports(view, reports, span.FileURI(filename))
+		for _, fh := range pkg.GetHandles() {
+			clearReports(view, reports, fh.File().Identity().URI)
 		}
 		diagnostics(ctx, view, pkg, reports)
 	}
@@ -106,7 +114,10 @@ type diagnosticSet struct {
 	listErrors, parseErrors, typeErrors []Diagnostic
 }
 
-func diagnostics(ctx context.Context, v View, pkg Package, reports map[span.URI][]Diagnostic) bool {
+func diagnostics(ctx context.Context, view View, pkg Package, reports map[span.URI][]Diagnostic) bool {
+	ctx, done := trace.StartSpan(ctx, "source.diagnostics", telemetry.Package.Of(pkg.ID()))
+	defer done()
+
 	diagSets := make(map[span.URI]*diagnosticSet)
 	for _, err := range pkg.GetErrors() {
 		diag := Diagnostic{
@@ -125,7 +136,7 @@ func diagnostics(ctx context.Context, v View, pkg Package, reports map[span.URI]
 			set.parseErrors = append(set.parseErrors, diag)
 		case packages.TypeError:
 			if diag.Span.IsPoint() {
-				diag.Span = pointToSpan(ctx, v, diag.Span)
+				diag.Span = pointToSpan(ctx, view, diag.Span)
 			}
 			set.typeErrors = append(set.typeErrors, diag)
 		default:
@@ -153,9 +164,9 @@ func diagnostics(ctx context.Context, v View, pkg Package, reports map[span.URI]
 	return nonEmptyDiagnostics
 }
 
-func analyses(ctx context.Context, v View, pkg Package, disabledAnalyses map[string]struct{}, reports map[span.URI][]Diagnostic) error {
+func analyses(ctx context.Context, v View, cph CheckPackageHandle, disabledAnalyses map[string]struct{}, reports map[span.URI][]Diagnostic) error {
 	// Type checking and parsing succeeded. Run analyses.
-	if err := runAnalyses(ctx, v, pkg, disabledAnalyses, func(a *analysis.Analyzer, diag analysis.Diagnostic) error {
+	if err := runAnalyses(ctx, v, cph, disabledAnalyses, func(a *analysis.Analyzer, diag analysis.Diagnostic) error {
 		diagnostic, err := toDiagnostic(a, v, diag)
 		if err != nil {
 			return err
@@ -305,7 +316,7 @@ var Analyzers = []*analysis.Analyzer{
 	unusedresult.Analyzer,
 }
 
-func runAnalyses(ctx context.Context, v View, pkg Package, disabledAnalyses map[string]struct{}, report func(a *analysis.Analyzer, diag analysis.Diagnostic) error) error {
+func runAnalyses(ctx context.Context, v View, cph CheckPackageHandle, disabledAnalyses map[string]struct{}, report func(a *analysis.Analyzer, diag analysis.Diagnostic) error) error {
 	var analyzers []*analysis.Analyzer
 	for _, a := range Analyzers {
 		if _, ok := disabledAnalyses[a.Name]; ok {
@@ -314,7 +325,7 @@ func runAnalyses(ctx context.Context, v View, pkg Package, disabledAnalyses map[
 		analyzers = append(analyzers, a)
 	}
 
-	roots, err := analyze(ctx, v, []Package{pkg}, analyzers)
+	roots, err := analyze(ctx, v, []CheckPackageHandle{cph}, analyzers)
 	if err != nil {
 		return err
 	}
@@ -336,6 +347,10 @@ func runAnalyses(ctx context.Context, v View, pkg Package, disabledAnalyses map[
 				return err
 			}
 			sdiags = append(sdiags, sdiag)
+		}
+		pkg, err := cph.Check(ctx)
+		if err != nil {
+			return err
 		}
 		pkg.SetDiagnostics(sdiags)
 	}

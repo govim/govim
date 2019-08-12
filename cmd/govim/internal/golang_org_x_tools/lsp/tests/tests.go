@@ -26,9 +26,9 @@ import (
 // We hardcode the expected number of test cases to ensure that all tests
 // are being executed. If a test is added, this number must be changed.
 const (
-	ExpectedCompletionsCount       = 144
+	ExpectedCompletionsCount       = 145
 	ExpectedCompletionSnippetCount = 15
-	ExpectedDiagnosticsCount       = 17
+	ExpectedDiagnosticsCount       = 21
 	ExpectedFormatCount            = 6
 	ExpectedImportCount            = 2
 	ExpectedDefinitionsCount       = 38
@@ -195,12 +195,12 @@ func Load(t testing.TB, exporter packagestest.Exporter, dir string) *Data {
 		filename := data.Exported.File(testModule, fragment)
 		data.fragments[filename] = fragment
 	}
-	data.Exported.Config.Logf = t.Logf
+	data.Exported.Config.Logf = nil
 
 	// Merge the exported.Config with the view.Config.
 	data.Config = *data.Exported.Config
 	data.Config.Fset = token.NewFileSet()
-	data.Config.Logf = t.Logf
+	data.Config.Logf = nil
 	data.Config.Context = Context(nil)
 	data.Config.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 		panic("ParseFile should not be called")
@@ -208,7 +208,7 @@ func Load(t testing.TB, exporter packagestest.Exporter, dir string) *Data {
 
 	// Do a first pass to collect special markers for completion.
 	if err := data.Exported.Expect(map[string]interface{}{
-		"item": func(name string, r packagestest.Range, _, _ string) {
+		"item": func(name string, r packagestest.Range, _ []string) {
 			data.Exported.Mark(name, r)
 		},
 	}); err != nil {
@@ -420,11 +420,6 @@ func (data *Data) collectDiagnostics(spn span.Span, msgSource, msg string) {
 	if _, ok := data.Diagnostics[spn.URI()]; !ok {
 		data.Diagnostics[spn.URI()] = []source.Diagnostic{}
 	}
-	// If a file has an empty diagnostic message, return. This allows us to
-	// avoid testing diagnostics in files that may have a lot of them.
-	if msg == "" {
-		return
-	}
 	severity := source.SeverityError
 	if strings.Contains(string(spn.URI()), "analyzer") {
 		severity = source.SeverityWarning
@@ -442,11 +437,20 @@ func (data *Data) collectCompletions(src span.Span, expected []token.Pos) {
 	data.Completions[src] = expected
 }
 
-func (data *Data) collectCompletionItems(pos token.Pos, label, detail, kind string) {
+func (data *Data) collectCompletionItems(pos token.Pos, args []string) {
+	if len(args) < 3 {
+		return
+	}
+	label, detail, kind := args[0], args[1], args[2]
+	var documentation string
+	if len(args) == 4 {
+		documentation = args[3]
+	}
 	data.CompletionItems[pos] = &source.CompletionItem{
-		Label:  label,
-		Detail: detail,
-		Kind:   source.ParseCompletionItemKind(kind),
+		Label:         label,
+		Detail:        detail,
+		Kind:          source.ParseCompletionItemKind(kind),
+		Documentation: documentation,
 	}
 }
 

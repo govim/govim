@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
@@ -51,7 +52,7 @@ func (h *nativeFileHandle) Kind() source.FileKind {
 }
 
 func (h *nativeFileHandle) Read(ctx context.Context) ([]byte, string, error) {
-	ctx, done := trace.StartSpan(ctx, "cache.nativeFileHandle.Read")
+	ctx, done := trace.StartSpan(ctx, "cache.nativeFileHandle.Read", telemetry.File.Of(h.identity.URI.Filename()))
 	defer done()
 	//TODO: this should fail if the version is not the same as the handle
 	data, err := ioutil.ReadFile(h.identity.URI.Filename())

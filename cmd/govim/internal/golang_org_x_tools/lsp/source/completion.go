@@ -6,7 +6,6 @@ package source
 
 import (
 	"context"
-	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -16,6 +15,7 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 type CompletionItem struct {
@@ -212,7 +212,7 @@ func (c *completer) setSurrounding(ident *ast.Ident) {
 // members for more candidates.
 func (c *completer) found(obj types.Object, score float64) error {
 	if obj.Pkg() != nil && obj.Pkg() != c.types && !obj.Exported() {
-		return fmt.Errorf("%s is inaccessible from %s", obj.Name(), c.types.Path())
+		return errors.Errorf("%s is inaccessible from %s", obj.Name(), c.types.Path())
 	}
 
 	if c.inDeepCompletion() {
@@ -285,16 +285,15 @@ func Completion(ctx context.Context, view View, f GoFile, pos token.Pos, opts Co
 	if file == nil {
 		return nil, nil, err
 	}
-	pkg := f.GetPackage(ctx)
-	if pkg == nil || pkg.IsIllTyped() {
-		return nil, nil, fmt.Errorf("package for %s is ill typed", f.URI())
+	pkg, err := f.GetPackage(ctx)
+	if err != nil {
+		return nil, nil, err
 	}
-
 	// Completion is based on what precedes the cursor.
 	// Find the path to the position before pos.
 	path, _ := astutil.PathEnclosingInterval(file, pos-1, pos-1)
 	if path == nil {
-		return nil, nil, fmt.Errorf("cannot find node enclosing position")
+		return nil, nil, errors.Errorf("cannot find node enclosing position")
 	}
 	// Skip completion inside comments.
 	for _, g := range file.Comments {
@@ -358,7 +357,7 @@ func Completion(ctx context.Context, view View, f GoFile, pos token.Pos, opts Co
 					qual := types.RelativeTo(pkg.GetTypes())
 					of += ", of " + types.ObjectString(obj, qual)
 				}
-				return nil, nil, fmt.Errorf("this is a definition%s", of)
+				return nil, nil, errors.Errorf("this is a definition%s", of)
 			}
 		}
 		if err := c.lexical(); err != nil {
@@ -423,7 +422,7 @@ func (c *completer) selector(sel *ast.SelectorExpr) error {
 	// Invariant: sel is a true selector.
 	tv, ok := c.info.Types[sel.X]
 	if !ok {
-		return fmt.Errorf("cannot resolve %s", sel.X)
+		return errors.Errorf("cannot resolve %s", sel.X)
 	}
 
 	return c.methodsAndFields(tv.Type, tv.Addressable())

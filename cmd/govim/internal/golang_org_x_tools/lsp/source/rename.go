@@ -7,7 +7,6 @@ package source
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"go/ast"
 	"go/format"
 	"go/token"
@@ -18,6 +17,7 @@ import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/trace"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"golang.org/x/tools/refactor/satisfy"
+	errors "golang.org/x/xerrors"
 )
 
 type renamer struct {
@@ -41,22 +41,21 @@ func (i *IdentifierInfo) Rename(ctx context.Context, newName string) (map[span.U
 	defer done()
 
 	if i.Name == newName {
-		return nil, fmt.Errorf("old and new names are the same: %s", newName)
+		return nil, errors.Errorf("old and new names are the same: %s", newName)
 	}
 	if !isValidIdentifier(i.Name) {
-		return nil, fmt.Errorf("invalid identifier to rename: %q", i.Name)
-	}
-
-	if i.pkg == nil || i.pkg.IsIllTyped() {
-		return nil, fmt.Errorf("package for %s is ill typed", i.File.URI())
+		return nil, errors.Errorf("invalid identifier to rename: %q", i.Name)
 	}
 	// Do not rename builtin identifiers.
 	if i.decl.obj.Parent() == types.Universe {
-		return nil, fmt.Errorf("cannot rename builtin %q", i.Name)
+		return nil, errors.Errorf("cannot rename builtin %q", i.Name)
+	}
+	if i.pkg == nil || i.pkg.IsIllTyped() {
+		return nil, errors.Errorf("package for %s is ill typed", i.File.URI())
 	}
 	// Do not rename identifiers declared in another package.
 	if i.pkg.GetTypes() != i.decl.obj.Pkg() {
-		return nil, fmt.Errorf("failed to rename because %q is declared in package %q", i.Name, i.decl.obj.Pkg().Name())
+		return nil, errors.Errorf("failed to rename because %q is declared in package %q", i.Name, i.decl.obj.Pkg().Name())
 	}
 
 	refs, err := i.References(ctx)
@@ -75,7 +74,7 @@ func (i *IdentifierInfo) Rename(ctx context.Context, newName string) (map[span.U
 		packages:     make(map[*types.Package]Package),
 	}
 	for _, from := range refs {
-		r.packages[from.pkg.GetTypes()] = from.pkg
+		r.packages[i.pkg.GetTypes()] = from.pkg
 	}
 
 	// Check that the renaming of the identifier is ok.
@@ -83,7 +82,7 @@ func (i *IdentifierInfo) Rename(ctx context.Context, newName string) (map[span.U
 		r.check(from.obj)
 	}
 	if r.hadConflicts {
-		return nil, fmt.Errorf(r.errors)
+		return nil, errors.Errorf(r.errors)
 	}
 
 	changes, err := r.update()
@@ -198,13 +197,12 @@ func (r *renamer) updatePkgName(pkgName *types.PkgName) (*TextEdit, error) {
 	// Modify ImportSpec syntax to add or remove the Name as needed.
 	pkg := r.packages[pkgName.Pkg()]
 	_, path, _ := pathEnclosingInterval(r.ctx, r.fset, pkg, pkgName.Pos(), pkgName.Pos())
-
 	if len(path) < 2 {
-		return nil, fmt.Errorf("failed to update PkgName for %s", pkgName.Name())
+		return nil, errors.Errorf("no path enclosing interval for %s", pkgName.Name())
 	}
 	spec, ok := path[1].(*ast.ImportSpec)
 	if !ok {
-		return nil, fmt.Errorf("failed to update PkgName for %s", pkgName.Name())
+		return nil, errors.Errorf("failed to update PkgName for %s", pkgName.Name())
 	}
 
 	var astIdent *ast.Ident // will be nil if ident is removed
