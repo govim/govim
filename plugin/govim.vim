@@ -316,17 +316,11 @@ function s:install(force)
   if a:force || $GOVIM_ALWAYS_INSTALL == "true" || !filereadable(targetdir."govim") || !filereadable(targetdir."gopls")
     echom "Installing govim and gopls"
     call feedkeys(" ") " to prevent press ENTER to continue
-    let oldgobin = $GOBIN
-    let oldgomod = $GO111MODULE
-    let $GO111MODULE = "on"
-    let $GOBIN = targetdir
     " TODO make work on Windows
-    let install = system("go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/gopls 2>&1")
+    let install = system("GO111MODULE=on GOBIN=".shellescape(targetdir)." go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/gopls 2>&1")
     if v:shell_error
       throw install
     endif
-    let $GOBIN = oldgobin
-    let $GO111MODULE=oldgomod
   endif
   execute "cd ".oldpath
   return targetdir
