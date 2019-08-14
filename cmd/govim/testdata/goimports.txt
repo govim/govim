@@ -31,7 +31,7 @@ errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v,
 # Format on save (bad syntax)
 cp file.go.bad file.go
 vim ex 'e! file.go'
-errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","setqflist".*'
+errlogmatch -wait 30s -start -count=5 'sendJSONMsg: \[0,\[\d+,"call","setqflist".*'
 vim ex 'w'
 cmp file.go file.go.bad
 vim expr 'getqflist()'
