@@ -3,6 +3,8 @@ package types
 import (
 	"bytes"
 	"fmt"
+	"go/ast"
+	"go/token"
 	"math"
 
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -21,6 +23,26 @@ type Buffer struct {
 	Version  int
 	Listener int
 
+	// AST is the parsed result of the Buffer. Buffer events (i.e. changes to
+	// the buffer contents) trigger an asynchronous re-parse of the buffer.
+	// These events are triggered from the *vimstate thread. Any subsequent
+	// (subsequent to the buffer event) attempt to use the current AST (which by
+	// definition must be on the *vimstate thread) must wait for the
+	// asnychronous parse to complete. This is achieved by the ASTWait channel
+	// which is closed when parsing completes. Access to AST and Fset must
+	// therefore be guarded by a receive on ASTWait.
+
+	// Fset is the fileset used in parsing the buffer contents. Access to Fset
+	// must be guarded by a receive on ASTWait.
+	Fset *token.FileSet
+
+	// AST is the parsed result of the Buffer. Access to Fset must be guarded by
+	// a receive on ASTWait.
+	AST *ast.File
+
+	// ASTWait is used to sychronise access to AST and Fset.
+	ASTWait chan bool
+
 	// cc is lazily set whenever position information is required
 	cc *span.TokenConverter
 }
@@ -33,12 +55,15 @@ func NewBuffer(num int, name string, contents []byte) *Buffer {
 	}
 }
 
+// Contents returns a Buffer's contents. These contents must not be
+// mutated. To update a Buffer's contents, call SetContents
 func (b *Buffer) Contents() []byte {
 	return b.contents
 }
 
-func (b *Buffer) SetContents(cs []byte) {
-	b.contents = cs
+// SetContents updates a Buffer's contents to byts
+func (b *Buffer) SetContents(byts []byte) {
+	b.contents = byts
 	b.cc = nil
 }
 

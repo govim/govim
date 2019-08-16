@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"strings"
+	"sync"
 
 	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -114,10 +117,12 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 	}
 	// add back trailing newline
 	b.SetContents(append(bytes.Join(contents, []byte("\n")), '\n'))
+	v.triggerBufferASTUpdate(b)
 	return nil, v.server.DidChange(context.Background(), params)
 }
 
 func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
+	v.triggerBufferASTUpdate(b)
 	if b.Version == 0 {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
@@ -163,4 +168,62 @@ func (v *vimstate) deleteCurrentBuffer(args ...json.RawMessage) error {
 		return fmt.Errorf("failed to call gopls.DidClose on %v: %v", cb.Name, err)
 	}
 	return nil
+}
+
+type bufferUpdate struct {
+	buffer   *types.Buffer
+	wait     chan bool
+	name     string
+	version  int
+	contents []byte
+}
+
+func (g *govimplugin) startProcessBufferUpdates() {
+	g.bufferUpdates = make(chan *bufferUpdate)
+	g.tomb.Go(func() error {
+		latest := make(map[*types.Buffer]int)
+		var lock sync.Mutex
+		for upd := range g.bufferUpdates {
+			upd := upd
+			lock.Lock()
+			latest[upd.buffer] = upd.version
+			lock.Unlock()
+
+			// Note we are not restricting the number of concurrent parses here.
+			// This is simply because we are unlikely to ever get a sufficiently
+			// high number of concurrent updates from Vim to make this necessary.
+			// Like the Vim <-> govim <-> gopls "channel" would get
+			// flooded/overloaded first
+			g.tomb.Go(func() error {
+				fset := token.NewFileSet()
+				f, err := parser.ParseFile(fset, upd.name, upd.contents, parser.AllErrors)
+				if err != nil {
+					// This is best efforts so we just log the error as an info
+					// message
+					g.Logf("info only: failed to parse buffer %v: %v", upd.name, err)
+				}
+				lock.Lock()
+				if latest[upd.buffer] == upd.version {
+					upd.buffer.Fset = fset
+					upd.buffer.AST = f
+					delete(latest, upd.buffer)
+				}
+				lock.Unlock()
+				close(upd.wait)
+				return nil
+			})
+		}
+		return nil
+	})
+}
+
+func (v *vimstate) triggerBufferASTUpdate(b *types.Buffer) {
+	b.ASTWait = make(chan bool)
+	v.bufferUpdates <- &bufferUpdate{
+		buffer:   b,
+		wait:     b.ASTWait,
+		name:     b.Name,
+		version:  b.Version,
+		contents: b.Contents(),
+	}
 }

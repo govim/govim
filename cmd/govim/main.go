@@ -162,6 +162,8 @@ type govimplugin struct {
 	// diagnostics gives us the current diagnostics by URI
 	diagnostics     map[span.URI][]protocol.Diagnostic
 	diagnosticsLock sync.Mutex
+
+	bufferUpdates chan *bufferUpdate
 }
 
 func newplugin(goplspath string) *govimplugin {
@@ -213,6 +215,8 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 			return fmt.Errorf("failed to define signs: %v", err)
 		}
 	}
+
+	g.startProcessBufferUpdates()
 
 	g.InitTestAPI()
 
@@ -329,6 +333,7 @@ func goModPath(wd string) (string, error) {
 }
 
 func (g *govimplugin) Shutdown() error {
+	close(g.bufferUpdates)
 	if err := g.server.Shutdown(context.Background()); err != nil {
 		return err
 	}
