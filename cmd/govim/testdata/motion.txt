@@ -1,0 +1,42 @@
+# Test that basic motions work
+
+vim ex 'e main.go'
+
+# Next start of File.Decl
+vim ex 'normal ]['
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '\[3,1\]'
+
+# Next end of File.Decl
+vim ex 'normal ]]'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '\[5,1\]'
+
+# Note that this moves us onto the end of the
+# last File.Decl
+vim ex 'normal G'
+
+# Prev end of File.Decl
+vim ex 'normal []'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '\[5,1\]'
+
+# Prev start of File.Decl
+vim ex 'normal [['
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '\[3,1\]'
+
+
+-- go.mod --
+module mod
+
+-- main.go --
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	fmt.Println("hello, world!")
+}

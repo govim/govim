@@ -215,6 +215,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 			return fmt.Errorf("failed to define signs: %v", err)
 		}
 	}
+	g.DefineFunction(string(config.FunctionMotion), []string{"direction", "target"}, g.vimstate.motion)
 
 	g.startProcessBufferUpdates()
 
