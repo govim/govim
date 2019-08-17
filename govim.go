@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -167,8 +168,9 @@ type govimImpl struct {
 	eventQueue *queue.Queue
 	tomb       tomb.Tomb
 
-	flavor  Flavor
-	version string
+	flavor     Flavor
+	version    string
+	instanceID string
 }
 
 type callback interface {
@@ -181,10 +183,25 @@ type scheduledCallback chan callbackResp
 func (s scheduledCallback) isCallback() {}
 
 // unscheduledCallback is used for responses to calls made from off the event queue,
-// i.e. as a result of a reponse from a process external to the plugin like gopls
+// i.e. as a result of a response from a process external to the plugin like gopls
 type unscheduledCallback chan callbackResp
 
 func (u unscheduledCallback) isCallback() {}
+
+// Instance ID is included in the logs and used to distinguish different instances
+// of govim. For example when running the entire test suite where scripts run in
+// parallel.
+func newInstanceID() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+	rand.Seed(time.Now().UnixNano())
+	b := make([]byte, 3)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+
+	return string(b)
+}
 
 func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, error) {
 	g := &govimImpl{
@@ -204,6 +221,8 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, e
 
 		callVimNextID: 1,
 		callbackResps: make(map[int]callback),
+
+		instanceID: newInstanceID(),
 	}
 
 	return g, nil
@@ -884,8 +903,8 @@ func (g *govimImpl) Logf(format string, args ...interface{}) {
 		s = s[:len(s)-1]
 	}
 	t := time.Now().Format("2006-01-02T15:04:05.000000")
-	s = strings.Replace(s, "\n", "\n"+t+": ", -1)
-	fmt.Fprint(g.log, t+": "+s+"\n")
+	s = strings.Replace(s, "\n", "\n"+t+"_"+g.instanceID+": ", -1)
+	fmt.Fprint(g.log, t+"_"+g.instanceID+": "+s+"\n")
 }
 
 func (g *govimImpl) Version() string {
