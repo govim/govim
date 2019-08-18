@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -167,9 +168,13 @@ type govimImpl struct {
 	eventQueue *queue.Queue
 	tomb       tomb.Tomb
 
-	flavor  Flavor
-	version string
+	flavor     Flavor
+	version    string
+	instanceID string
 }
+
+// uniqueID is an atomic counter used to assign an instance id
+var uniqueID uint64
 
 type callback interface {
 	isCallback()
@@ -181,7 +186,7 @@ type scheduledCallback chan callbackResp
 func (s scheduledCallback) isCallback() {}
 
 // unscheduledCallback is used for responses to calls made from off the event queue,
-// i.e. as a result of a reponse from a process external to the plugin like gopls
+// i.e. as a result of a response from a process external to the plugin like gopls
 type unscheduledCallback chan callbackResp
 
 func (u unscheduledCallback) isCallback() {}
@@ -204,6 +209,8 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, e
 
 		callVimNextID: 1,
 		callbackResps: make(map[int]callback),
+
+		instanceID: fmt.Sprintf("#%d", atomic.AddUint64(&uniqueID, 1)),
 	}
 
 	return g, nil
@@ -884,8 +891,8 @@ func (g *govimImpl) Logf(format string, args ...interface{}) {
 		s = s[:len(s)-1]
 	}
 	t := time.Now().Format("2006-01-02T15:04:05.000000")
-	s = strings.Replace(s, "\n", "\n"+t+": ", -1)
-	fmt.Fprint(g.log, t+": "+s+"\n")
+	s = strings.Replace(s, "\n", "\n"+t+"_"+g.instanceID+": ", -1)
+	fmt.Fprint(g.log, t+"_"+g.instanceID+": "+s+"\n")
 }
 
 func (g *govimImpl) Version() string {
