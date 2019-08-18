@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"runtime"
 	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -173,6 +173,9 @@ type govimImpl struct {
 	instanceID string
 }
 
+// uniqueID is an atomic counter used to assign an instance id
+var uniqueID uint64
+
 type callback interface {
 	isCallback()
 }
@@ -187,21 +190,6 @@ func (s scheduledCallback) isCallback() {}
 type unscheduledCallback chan callbackResp
 
 func (u unscheduledCallback) isCallback() {}
-
-// Instance ID is included in the logs and used to distinguish different instances
-// of govim. For example when running the entire test suite where scripts run in
-// parallel.
-func newInstanceID() string {
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-	rand.Seed(time.Now().UnixNano())
-	b := make([]byte, 3)
-	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
-	}
-
-	return string(b)
-}
 
 func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, error) {
 	g := &govimImpl{
@@ -222,7 +210,7 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, e
 		callVimNextID: 1,
 		callbackResps: make(map[int]callback),
 
-		instanceID: newInstanceID(),
+		instanceID: fmt.Sprintf("#%d", atomic.AddUint64(&uniqueID, 1)),
 	}
 
 	return g, nil
