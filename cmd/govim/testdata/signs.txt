@@ -9,7 +9,7 @@
 [gvim] [!gvim:v8.1.1682] skip
 
 vim ex 'e main.go'
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_placelist\"'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 
 # Assert that the error sign is defined
 vim -indent expr 'sign_getdefined()'
@@ -28,7 +28,6 @@ errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v,
 vim ex 'call cursor(6,36)'
 vim ex 'call feedkeys(\"3x\", \"x\")' # Remove "i, " from Printf-line
 [vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
-[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
@@ -40,7 +39,6 @@ errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v,
 vim ex 'call cursor(9,1)'
 vim ex 'call feedkeys(\"2dd\", \"x\")' # Remove line 9 & 10
 [vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
-[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
 errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_unplacelist\"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
@@ -51,7 +49,6 @@ errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v,
 # Fixing the last quickfix entry should remove the last sign
 vim call append '[5, "\tvar v string"]'
 [vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
-[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
 errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_unplacelist\"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
