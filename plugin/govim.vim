@@ -317,7 +317,7 @@ function s:install(force)
     echom "Installing govim and gopls"
     call feedkeys(" ") " to prevent press ENTER to continue
     " TODO make work on Windows
-    let install = system("GO111MODULE=on GOBIN=".shellescape(targetdir)." go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/gopls 2>&1")
+    let install = system("env GO111MODULE=on GOBIN=".shellescape(targetdir)." go install github.com/myitcv/govim/cmd/govim golang.org/x/tools/gopls 2>&1")
     if v:shell_error
       throw install
     endif
