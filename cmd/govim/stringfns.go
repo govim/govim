@@ -1,38 +1,26 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/myitcv/govim"
 	"github.com/myitcv/govim/cmd/govim/config"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/myitcv/govim/cmd/govim/internal/stringfns"
 	"github.com/myitcv/govim/cmd/govim/internal/types"
 )
 
-var stringFns = map[string]interface{}{
-	"strconv.Quote":               strconv.Quote,
-	"strconv.Unquote":             strconv.Unquote,
-	"regexp.QuoteMeta":            regexp.QuoteMeta,
-	"crypto/sha256.Sum256":        sha256Sum,
-	"encoding/hex.EncodeToString": hexEncode,
-}
-
 func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {
-	var transFns []interface{}
+	var transFns []string
 	for _, fp := range args {
-		fn, ok := stringFns[fp]
-		if !ok {
+		if _, ok := stringfns.Functions[fp]; !ok {
 			return fmt.Errorf("failed to resolve transformation function %q", fp)
 		}
-		transFns = append(transFns, fn)
+		transFns = append(transFns, fp)
 	}
 	var err error
 	var start, end types.Point
@@ -105,12 +93,11 @@ func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {
 		endOffset--
 	}
 	newText := string(b.Contents()[start.Offset():endOffset])
-	for fp, fn := range transFns {
-		switch fn := fn.(type) {
-		case func(string) string:
-			newText = fn(string(newText))
-		default:
-			return fmt.Errorf("do not know how to handle transformation function %q of type %T", fp, fn)
+	for _, fp := range transFns {
+		fn := stringfns.Functions[fp]
+		newText, err = fn(string(newText))
+		if err != nil {
+			return fmt.Errorf("failed to apply ")
 		}
 	}
 	if *flags.Range == 0 {
@@ -130,20 +117,11 @@ func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {
 func (v *vimstate) stringfncomplete(args ...json.RawMessage) (interface{}, error) {
 	lead := v.ParseString(args[0])
 	var results []string
-	for k := range stringFns {
+	for k := range stringfns.Functions {
 		if strings.HasPrefix(k, lead) {
 			results = append(results, k)
 		}
 	}
 	sort.Strings(results)
 	return results, nil
-}
-
-func sha256Sum(s string) string {
-	v := sha256.Sum256([]byte(s))
-	return string(v[:])
-}
-
-func hexEncode(s string) string {
-	return hex.EncodeToString([]byte(s))
 }
