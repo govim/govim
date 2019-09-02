@@ -105,14 +105,14 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 		}
 	}
 
+	if v.config.QuickfixSignsDisable {
+		return nil
+	}
+
 	// Add signs for quickfix entry lines that doesn't already have a sign, and
 	// delete existing entries from the list of signs to removed
 	inx := 0
 	for _, f := range fixes {
-		if v.config.QuickfixSignsDisable {
-			break // Don't place new signs if disabled in config
-		}
-
 		bl := bufLine{f.Buf, f.Lnum}
 		if _, exist := remove[bl]; exist {
 			delete(remove, bl)

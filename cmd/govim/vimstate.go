@@ -54,9 +54,16 @@ type vimstate struct {
 
 	// currBatch represents the batch we are collecting
 	currBatch *batch
+
+	// lastCompleteResults is the last set of error diagnostics we set as quickfix
+	// entries. We use this in order to retain the index in the quickfix list when the
+	// quickfix entries change. If the previously selected entry remains in the new
+	// quickfix list we re-select it. Otherwise we select the first entry.
+	lastQuickFixDiagnostics []quickfixEntry
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
+	preConfig := v.config
 	var c struct {
 		FormatOnSave                                 config.FormatOnSave
 		QuickfixAutoDiagnosticsDisable               int
@@ -80,6 +87,20 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 		v.config.ExperimentalCursorTriggeredHoverPopupOptions = make(map[string]interface{})
 		for ck, cv := range c.ExperimentalCursorTriggeredHoverPopupOptions {
 			v.config.ExperimentalCursorTriggeredHoverPopupOptions[ck] = cv
+		}
+	}
+	if v.config.QuickfixAutoDiagnosticsDisable != preConfig.QuickfixAutoDiagnosticsDisable ||
+		v.config.QuickfixSignsDisable != preConfig.QuickfixSignsDisable {
+		if v.config.QuickfixAutoDiagnosticsDisable {
+			v.lastQuickFixDiagnostics = []quickfixEntry{}
+			if v.quickfixIsDiagnostics {
+				v.ChannelCall("setqflist", v.lastQuickFixDiagnostics, "r")
+			}
+		} else {
+			v.diagnosticsLock.Lock()
+			v.diagnosticsChanged = true
+			v.diagnosticsLock.Unlock()
+			return nil, v.updateQuickfix()
 		}
 	}
 	return nil, nil
