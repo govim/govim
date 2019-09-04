@@ -22,7 +22,7 @@ vim ex 'w'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 cmp file.go file.go.gofmt
 
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # Format on save (bad syntax)
 cp file.go.bad file.go
@@ -34,7 +34,7 @@ vim expr 'getqflist()'
 stdout '^\Q[{"bufnr":1,"col":1,"lnum":3,"module":"","nr":0,"pattern":"","text":"expected declaration, found blah","type":"","valid":1,"vcol":0}]\E$'
 ! stderr .+
 
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
 
@@ -46,7 +46,7 @@ vim ex '3,5GOVIMGoFmt'
 vim ex 'noautocmd w'
 cmp file.go file.go.gofmt
 
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com

@@ -7,7 +7,7 @@ vim ex 'GOVIMHello'
 vim expr 'v:statusmsg'
 stdout '^\Q"Hello from command"\E$'
 ! stderr .+
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # Test that we can pass args
 vim ex 'GOVIMHello goodbye'
@@ -16,4 +16,4 @@ vim ex 'GOVIMHello goodbye'
 vim expr 'v:statusmsg'
 stdout '^\Q"Hello from command; special note: goodbye"\E$'
 ! stderr .+
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
