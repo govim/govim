@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"github.com/kr/pretty"
 	"github.com/myitcv/govim"
@@ -74,37 +75,27 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 
 	uri := span.URI(params.URI)
 	curr, ok := g.diagnostics[uri]
-	updt := params.Diagnostics
+	g.diagnostics[uri] = params
 	if !ok {
-		g.diagnostics[uri] = updt
-		if len(params.Diagnostics) > 0 {
-			goto Schedule
-		} else {
+		if len(params.Diagnostics) == 0 {
 			return nil
 		}
-	}
-	if len(curr) != len(updt) {
-		g.diagnostics[uri] = updt
-		goto Schedule
-	}
-	if len(curr) == 0 {
+	} else if reflect.DeepEqual(curr, params) {
+		// Whilst we await a solution https://github.com/golang/go/issues/32443
+		// use reflect.DeepEqual to avoid hard-coding the comparison
 		return nil
 	}
-	// Let's not try and be too clever for now diff diagnostics.
-	// Instead be pessimistic.
-	g.diagnostics[uri] = updt
 
-Schedule:
 	g.Schedule(func(govim.Govim) error {
 		v := g.vimstate
 		v.diagnosticsChanged = true
 		if v.config.QuickfixAutoDiagnosticsDisable {
 			return nil
 		}
-		if v.userBusy {
+		if !v.quickfixIsDiagnostics {
 			return nil
 		}
-		if !v.quickfixIsDiagnostics {
+		if v.userBusy {
 			return nil
 		}
 		return v.updateQuickfix()

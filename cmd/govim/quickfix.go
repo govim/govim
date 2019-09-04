@@ -31,7 +31,7 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 	v.diagnosticsLock.Lock()
 	filediags := make(map[span.URI][]protocol.Diagnostic)
 	for k, v := range v.diagnostics {
-		filediags[k] = v
+		filediags[k] = v.Diagnostics
 	}
 	doWork := v.diagnosticsChanged
 	v.diagnosticsChanged = false
@@ -97,7 +97,26 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 		}
 		return cmp < 0
 	})
-	v.ChannelCall("setqflist", fixes, "r")
+	// Note: indexes are 1-based, hence 0 means "no index"
+	newIdx := 0
+	if len(v.lastQuickFixDiagnostics) > 0 {
+		var want qflistWant
+		v.Parse(v.ChannelExpr(`getqflist({"idx":0})`), &want)
+		currFix := v.lastQuickFixDiagnostics[want.Idx-1]
+		for i, f := range fixes {
+			if currFix == f {
+				newIdx = i + 1
+				break
+			}
+		}
+	}
+	v.lastQuickFixDiagnostics = fixes
+	v.BatchStart()
+	v.BatchChannelCall("setqflist", fixes, "r")
+	if newIdx > 0 {
+		v.BatchChannelCall("setqflist", []quickfixEntry{}, "r", qflistWant{Idx: newIdx})
+	}
+	v.BatchEnd()
 
 	if v.placeSigns() {
 		if err := v.redefineSigns(fixes); err != nil {
@@ -105,4 +124,8 @@ func (v *vimstate) updateQuickfix(args ...json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+type qflistWant struct {
+	Idx int `json:"idx"`
 }

@@ -160,7 +160,7 @@ type govimplugin struct {
 	modWatcher *modWatcher
 
 	// diagnostics gives us the current diagnostics by URI
-	diagnostics     map[span.URI][]protocol.Diagnostic
+	diagnostics     map[span.URI]*protocol.PublishDiagnosticsParams
 	diagnosticsLock sync.Mutex
 
 	bufferUpdates chan *bufferUpdate
@@ -169,7 +169,7 @@ type govimplugin struct {
 func newplugin(goplspath string) *govimplugin {
 	d := plugin.NewDriver(PluginPrefix)
 	res := &govimplugin{
-		diagnostics: make(map[span.URI][]protocol.Diagnostic),
+		diagnostics: make(map[span.URI]*protocol.PublishDiagnosticsParams),
 		goplspath:   goplspath,
 		Driver:      d,
 		vimstate: &vimstate{

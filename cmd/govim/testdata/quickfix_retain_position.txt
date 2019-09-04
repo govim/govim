@@ -1,0 +1,55 @@
+# Test that the quickfix window logic around retaining its selected item
+
+# First ensure we get the expected errors
+vim ex 'e main.go'
+errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go","lnum":6,"col":2,"text":"undeclared name: asdf","buf":1\},\{"filename":"main\.go","lnum":8,"col":2,"text":"undeclared name: fdas","buf":1\}\],"r"\]\]\]\]'
+vim ex 'copen'
+vim ex 'w errors'
+cmp errors errors.golden.orig
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+# Verify we have the first entry selected
+vim expr 'getqflist({\"idx\": 0})'
+stdout '{"idx":1}'
+! stderr .+
+
+# Now move to the next error and check the position
+vim expr 'setqflist([], \"r\", {\"idx\": 2})'
+vim expr 'getqflist({\"idx\": 0})'
+stdout '{"idx":2}'
+! stderr .+
+
+# Now add another error and check the index
+cp other.go.orig other.go
+errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist"'
+vim ex 'copen'
+vim ex 'w errors'
+cmp errors errors.golden.updated
+vim expr 'getqflist({\"idx\": 0})'
+stdout '{"idx":2}'
+! stderr .+
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	asdf
+	fmt.Printf("This is a test %v")
+	fdas
+}
+-- other.go.orig --
+package main
+
+asdf
+-- errors.golden.orig --
+main.go|6 col 2| undeclared name: asdf
+main.go|8 col 2| undeclared name: fdas
+-- errors.golden.updated --
+main.go|6 col 2| undeclared name: asdf
+main.go|8 col 2| undeclared name: fdas
+other.go|3 col 1| expected declaration, found asdf
