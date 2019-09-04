@@ -17,7 +17,7 @@ vim expr 'string([getcurpos()[1], getcurpos()[2]])'
 stdout '^\Q"[3, 7]"\E$'
 vim expr 'winlayout()'
 stdout '^\Q["col",[["leaf",1000],["leaf",1001]]]\E$'
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com/p

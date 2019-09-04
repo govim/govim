@@ -18,7 +18,7 @@ vim expr '[winnr(), tabpagenr()]'
 stdout '^\Q[1,1]\E$'
 vim expr 'string([getcurpos()[1], getcurpos()[2]])'
 stdout '^\Q"[3, 7]"\E$'
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com/p

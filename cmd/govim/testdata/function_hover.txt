@@ -14,7 +14,7 @@ vim expr 'GOVIMHover()'
 [vim:v8.1.1649] vim -stringout expr 'GOVIM_internal_DumpPopups()'
 [vim:v8.1.1649] cmp stdout popup.golden
 [vim:v8.1.1649] ! stderr .+
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com

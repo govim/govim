@@ -13,7 +13,7 @@ cmp errors errors.golden
 [gvim] [gvim:v8.1.1682] errlogmatch -wait 30s 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
 [gvim] [gvim:v8.1.1682] vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 [gvim] [gvim:v8.1.1682] cmp stdout signs.golden
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # There must be no quickfix entries or signs when both are explicitly disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnosticsDisable", 1]'
@@ -86,7 +86,7 @@ cmp errors empty
 [vim] [vim:v8.1.1682] errlogmatch -start -count=2 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
 [gvim] [gvim:v8.1.1682] errlogmatch -start -count=2 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
 
-errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:%v, Message:".*'
+errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com
