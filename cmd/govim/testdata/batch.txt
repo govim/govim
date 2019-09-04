@@ -34,3 +34,8 @@ stderr 'failed to call GOVIMAssertFailedBatch\(\[\]\) in Vim: Caught ''got error
 vim call GOVIMSimpleBatch
 stdout [5,4]
 ! stderr .+
+
+# Test that calling a non-batch method within a batch fails
+! vim call GOVIMNonBatchCallInBatch
+! stdout .+
+stderr 'called ChannelExprf when in batch'
