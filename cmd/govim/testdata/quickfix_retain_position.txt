@@ -6,7 +6,8 @@ errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s
 vim ex 'copen'
 vim ex 'w errors'
 cmp errors errors.golden.orig
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # Verify we have the first entry selected
 vim expr 'getqflist({\"idx\": 0})'
