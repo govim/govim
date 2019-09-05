@@ -6,7 +6,7 @@ package debug
 
 import (
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry/metric"
+	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/metric"
 )
 
 var (

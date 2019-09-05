@@ -53,7 +53,7 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 				Abbr: i.Label,
 				Menu: i.Detail,
 				Word: i.TextEdit.NewText,
-				Info: i.Detail,
+				Info: i.Documentation,
 			})
 		}
 

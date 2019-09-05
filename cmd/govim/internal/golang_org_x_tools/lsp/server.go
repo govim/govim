@@ -60,27 +60,41 @@ func (s *Server) Run(ctx context.Context) error {
 	return s.Conn.Run(ctx)
 }
 
+type serverState int
+
+const (
+	serverCreated      = serverState(iota)
+	serverInitializing // set once the server has received "initialize" request
+	serverInitialized  // set once the server has received "initialized" request
+	serverShutDown
+)
+
 type Server struct {
 	Conn   *jsonrpc2.Conn
 	client protocol.Client
 
-	initializedMu sync.Mutex
-	isInitialized bool // set once the server has received "initialize" request
+	stateMu sync.Mutex
+	state   serverState
 
 	// Configurations.
 	// TODO(rstambler): Separate these into their own struct?
 	usePlaceholders               bool
-	hoverKind                     source.HoverKind
-	useDeepCompletions            bool
+	hoverKind                     hoverKind
+	disableDeepCompletion         bool
+	disableFuzzyMatching          bool
+	watchFileChanges              bool
 	wantCompletionDocumentation   bool
+	wantUnimportedCompletions     bool
 	insertTextFormat              protocol.InsertTextFormat
 	configurationSupported        bool
 	dynamicConfigurationSupported bool
+	dynamicWatchedFilesSupported  bool
 	preferredContentFormat        protocol.MarkupKind
 	disabledAnalyses              map[string]struct{}
 	wantSuggestedFixes            bool
+	lineFoldingOnly               bool
 
-	supportedCodeActions map[protocol.CodeActionKind]bool
+	supportedCodeActions map[source.FileKind]map[protocol.CodeActionKind]bool
 
 	textDocumentSyncKind protocol.TextDocumentSyncKind
 
@@ -120,8 +134,8 @@ func (s *Server) DidChangeConfiguration(context.Context, *protocol.DidChangeConf
 	return notImplemented("DidChangeConfiguration")
 }
 
-func (s *Server) DidChangeWatchedFiles(context.Context, *protocol.DidChangeWatchedFilesParams) error {
-	return notImplemented("DidChangeWatchedFiles")
+func (s *Server) DidChangeWatchedFiles(ctx context.Context, params *protocol.DidChangeWatchedFilesParams) error {
+	return s.didChangeWatchedFiles(ctx, params)
 }
 
 func (s *Server) Symbol(context.Context, *protocol.WorkspaceSymbolParams) ([]protocol.SymbolInformation, error) {
@@ -248,16 +262,17 @@ func (s *Server) Declaration(context.Context, *protocol.TextDocumentPositionPara
 	return nil, notImplemented("Declaration")
 }
 
-func (s *Server) FoldingRange(context.Context, *protocol.FoldingRangeParams) ([]protocol.FoldingRange, error) {
-	return nil, notImplemented("FoldingRange")
+func (s *Server) FoldingRange(ctx context.Context, params *protocol.FoldingRangeParams) ([]protocol.FoldingRange, error) {
+	return s.foldingRange(ctx, params)
 }
 
 func (s *Server) LogTraceNotification(context.Context, *protocol.LogTraceParams) error {
 	return notImplemented("LogtraceNotification")
 }
 
-func (s *Server) PrepareRename(context.Context, *protocol.TextDocumentPositionParams) (*protocol.Range, error) {
-	return nil, notImplemented("PrepareRename")
+func (s *Server) PrepareRename(ctx context.Context, params *protocol.TextDocumentPositionParams) (*protocol.Range, error) {
+	// TODO(suzmue): support sending placeholder text.
+	return s.prepareRename(ctx, params)
 }
 
 func (s *Server) SetTraceNotification(context.Context, *protocol.SetTraceParams) error {
