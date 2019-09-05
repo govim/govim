@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/fsnotify/fsnotify"
 	"github.com/myitcv/govim"
+	"github.com/myitcv/govim/cmd/govim/internal/fswatcher"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/myitcv/govim/cmd/govim/internal/types"
@@ -22,7 +22,7 @@ type modWatcher struct {
 	// disappear
 	*govimplugin
 
-	watcher *fsnotify.Watcher
+	watcher *fswatcher.FSWatcher
 
 	// root is the directory root of the watch
 	root string
@@ -35,12 +35,14 @@ type modWatcher struct {
 	files map[string]int
 }
 
+func (mw *modWatcher) close() error { return mw.watcher.Close() }
+
 // newWatcher returns a new watcher that will "watch" on the Go files in the
 // module identified by gomodpath
 func newModWatcher(plug *govimplugin, gomodpath string) (*modWatcher, error) {
-	mw, err := fsnotify.NewWatcher()
+	w, err := fswatcher.New(gomodpath, &plug.tomb)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new watcher: %v", err)
+		return nil, err
 	}
 
 	dirpath := filepath.Dir(gomodpath)
@@ -51,7 +53,7 @@ func newModWatcher(plug *govimplugin, gomodpath string) (*modWatcher, error) {
 
 	res := &modWatcher{
 		govimplugin: plug,
-		watcher:     mw,
+		watcher:     w,
 		root:        dirpath,
 		watches:     make(map[string]bool),
 		files:       make(map[string]int),
@@ -59,16 +61,12 @@ func newModWatcher(plug *govimplugin, gomodpath string) (*modWatcher, error) {
 
 	go res.watch()
 	// fake event to kick start the watching
-	mw.Events <- fsnotify.Event{
-		Name: dirpath,
-		Op:   fsnotify.Create,
+	res.watcher.Events() <- fswatcher.Event{
+		Path: dirpath,
+		Op:   fswatcher.OpChanged,
 	}
 
 	return res, nil
-}
-
-func (m *modWatcher) close() error {
-	return m.watcher.Close()
 }
 
 func (m *modWatcher) watch() {
@@ -78,19 +76,22 @@ func (m *modWatcher) watch() {
 	infof := func(format string, args ...interface{}) {
 		m.Logf("file watcher event: "+format, args...)
 	}
+	eventCh := m.watcher.Events()
+	errCh := m.watcher.Errors()
+
 	for {
 		select {
-		case event, ok := <-m.watcher.Events:
+		case event, ok := <-eventCh:
 			if !ok {
 				// watcher has been stopped?
 				return
 			}
 			switch event.Op {
-			case fsnotify.Remove, fsnotify.Rename:
-				path := event.Name
+			case fswatcher.OpRemoved:
+				path := event.Path
 				var didFind bool
 				for ew := range m.watches {
-					if event.Name == ew || strings.HasPrefix(ew, event.Name+string(os.PathSeparator)) {
+					if event.Path == ew || strings.HasPrefix(ew, event.Path+string(os.PathSeparator)) {
 						didFind = true
 						if err := m.watcher.Remove(ew); err != nil {
 							errf("failed to remove watch on %v: %v", ew, err)
@@ -108,8 +109,8 @@ func (m *modWatcher) watch() {
 				m.Schedule(func(govim.Govim) error {
 					return m.vimstate.handleEvent(event)
 				})
-			case fsnotify.Create, fsnotify.Write, fsnotify.Chmod:
-				path := event.Name
+			case fswatcher.OpChanged:
+				path := event.Path
 				dirInfo, err := os.Stat(path)
 				if err != nil {
 					errf("failed to stat %v: %v", path, err)
@@ -128,7 +129,7 @@ func (m *modWatcher) watch() {
 				}
 
 				// Walk the dir that is event.Name
-				err = filepath.Walk(event.Name, func(path string, info os.FileInfo, err error) error {
+				err = filepath.Walk(event.Path, func(path string, info os.FileInfo, err error) error {
 					if err != nil {
 						return err
 					}
@@ -154,10 +155,10 @@ func (m *modWatcher) watch() {
 					return err
 				})
 				if err != nil {
-					errf("failed to walk %v: %v", event.Name, err)
+					errf("failed to walk %v: %v", event.Path, err)
 				}
 			}
-		case err, ok := <-m.watcher.Errors:
+		case err, ok := <-errCh:
 			if !ok {
 				// watcher has been stopped?
 				return
@@ -173,24 +174,24 @@ func ofInterest(path string) bool {
 	return filepath.Ext(path) == ".go"
 }
 
-func (v *vimstate) handleEvent(event fsnotify.Event) error {
+func (v *vimstate) handleEvent(event fswatcher.Event) error {
 	// We are handling a filesystem event... so the best we can do is log errors
 	errf := func(format string, args ...interface{}) {
 		v.Logf("**** handleEvent error: "+format, args...)
 	}
 
-	path := event.Name
+	path := event.Path
 
 	for _, b := range v.buffers {
 		if b.Name == path {
 			// Vim is handling this file, do nothing
-			v.Logf("handleEvent: Vim is in charge of %v; not handling ", event.Name)
+			v.Logf("handleEvent: Vim is in charge of %v; not handling ", event.Path)
 			return nil
 		}
 	}
 
 	switch event.Op {
-	case fsnotify.Rename, fsnotify.Remove:
+	case fswatcher.OpRemoved:
 		if _, ok := v.watchedFiles[path]; !ok {
 			// We saw the Rename/Remove event but nothing before
 			return nil
@@ -205,7 +206,7 @@ func (v *vimstate) handleEvent(event fsnotify.Event) error {
 			errf("failed to call server.DidClose: %v", err)
 		}
 		return nil
-	case fsnotify.Create, fsnotify.Chmod, fsnotify.Write:
+	case fswatcher.OpChanged:
 		byts, err := ioutil.ReadFile(path)
 		if err != nil {
 			errf("failed to read %v: %v", path, err)
