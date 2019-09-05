@@ -7,7 +7,8 @@
 vim ex 'e main.go'
 vim ex 'call cursor(5,1)'
 vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\", \"x\")'
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com

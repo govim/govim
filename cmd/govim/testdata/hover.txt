@@ -13,7 +13,8 @@ sleep 500ms
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout popup.golden
 ! stderr .+
-errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com
