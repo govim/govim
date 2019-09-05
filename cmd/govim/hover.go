@@ -112,9 +112,9 @@ func (v *vimstate) showHover(posExpr string, opts, userOpts map[string]interface
 	}
 	hovRes, err := v.server.Hover(context.Background(), params)
 	if err != nil {
-		// TODO we should only get an error when there is an error, rather than
-		// nothing to display: https://github.com/golang/go/issues/32971
-		v.Logf("failed to get hover details: %v", err)
+		return "", fmt.Errorf("failed to get hover details: %v", err)
+	}
+	if *hovRes == (protocol.Hover{}) {
 		return "", nil
 	}
 	msg := strings.TrimSpace(hovRes.Contents.Value)
