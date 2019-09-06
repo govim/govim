@@ -21,31 +21,17 @@ const (
 	EnvGithubUser  = "GH_USER"
 	EnvGithubToken = "GH_TOKEN"
 
-	EnvLoadTestAPI               = "GOVIM_LOAD_TEST_API"
-	EnvDisableIncrementalSync    = "GOVIM_DISABLE_INCREMENTALSYNC"
-	EnvDisablePopupWindowBalloon = "GOVIM_DISABLE_POPUPWINDOWBALLOON"
-	EnvDisableSignPlace          = "GOVIM_DISABLE_SIGNPLACE"
+	EnvLoadTestAPI      = "GOVIM_LOAD_TEST_API"
+	EnvDisableSignPlace = "GOVIM_DISABLE_SIGNPLACE"
 
 	// MinVimGovim represents the bare minimum version of Vim required to
 	// use govim
-	MinVimGovim = "v8.1.1158"
-
-	// MinVimIncrementalSync is the minimum version of Vim required to use
-	// incremental sync
-	MinVimIncrementalSync = "v8.1.1711"
-
-	// MinPopupWindowBalloon is the minimum version of Vim required to use popup
-	// windows for balloons
-	MinPopupWindowBalloon = "v8.1.1657"
-
-	// MinSignPlace is the minimum version of Vim required to use
-	// sign placement (i.e. supports sign_placelist() / sign_unplacelist())
-	MinSignPlace = "v8.1.1682"
+	MinVimGovim = "v8.1.1711"
 
 	EnvLogfileTmpl      = "GOVIM_LOGFILE_TMPL"
 	EnvTestscriptStderr = "GOVIM_TESTSCRIPT_STDERR"
 
-	// LatestVim = "v8.1.1700"
+	LatestVim = "v8.1.1991"
 )
 
 var (
@@ -74,12 +60,8 @@ var (
 		NeovimVersion("v0.3.5"),
 		VimVersion(MinVimGovim),
 		GvimVersion(MinVimGovim),
-		VimVersion(MinVimIncrementalSync),
-		GvimVersion(MinVimIncrementalSync),
-		VimVersion(MinPopupWindowBalloon),
-		GvimVersion(MinPopupWindowBalloon),
-		// VimVersion(LatestVim),
-		// GvimVersion(LatestVim),
+		VimVersion(LatestVim),
+		GvimVersion(LatestVim),
 	}
 )
 

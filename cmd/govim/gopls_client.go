@@ -57,12 +57,7 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Confi
 	}
 	res := make([]interface{}, len(params.Items))
 	conf := make(map[string]interface{})
-	if !g.usePopupWindows() {
-		conf[goplsConfigNoDocsOnHover] = true
-		conf[goplsConfigHoverKind] = "NoDocumentation"
-	} else {
-		conf[goplsConfigHoverKind] = "FullDocumentation"
-	}
+	conf[goplsConfigHoverKind] = "FullDocumentation"
 	res[0] = conf
 	return res, nil
 }

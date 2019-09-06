@@ -33,25 +33,10 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 		nb.Version = wf.Version + 1
 	} else {
 		// first time we have seen the buffer
-		if v.doIncrementalSync() {
-			nb.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), nb.Num))
-		}
+		nb.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), nb.Num))
 		nb.Version = 0
 	}
 	return v.handleBufferEvent(nb)
-}
-
-// bufTextChanged is fired as a result of the TextChanged,TextChangedI autocmds; it is mutually
-// exclusive with bufChanged
-func (v *vimstate) bufTextChanged(args ...json.RawMessage) error {
-	nb := v.currentBufferInfo(args[0])
-	cb, ok := v.buffers[nb.Num]
-	if !ok {
-		return fmt.Errorf("have not seen buffer %v (%v) - this should be impossible", nb.Num, nb.Name)
-	}
-	cb.SetContents(nb.Contents())
-	cb.Version++
-	return v.handleBufferEvent(cb)
 }
 
 type bufChangedChange struct {
@@ -157,9 +142,7 @@ func (v *vimstate) deleteCurrentBuffer(args ...json.RawMessage) error {
 	if !ok {
 		return fmt.Errorf("tried to remove buffer %v; but we have no record of it", currBufNr)
 	}
-	if v.doIncrementalSync() {
-		v.ChannelCall("listener_remove", cb.Listener)
-	}
+	v.ChannelCall("listener_remove", cb.Listener)
 	delete(v.buffers, cb.Num)
 	params := &protocol.DidCloseTextDocumentParams{
 		TextDocument: cb.ToTextDocumentIdentifier(),

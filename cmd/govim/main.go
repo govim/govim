@@ -25,8 +25,6 @@ import (
 	"github.com/myitcv/govim/internal/plugin"
 	"github.com/myitcv/govim/testsetup"
 	"gopkg.in/tomb.v2"
-
-	"github.com/rogpeppe/go-internal/semver"
 )
 
 const (
@@ -190,9 +188,6 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.ChannelEx(`augroup END`)
 	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.vimstate.balloonExpr)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufRead, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.vimstate.bufReadPost, exprAutocmdCurrBufInfo)
-	if !g.doIncrementalSync() {
-		g.DefineAutoCommand("", govim.Events{govim.EventTextChanged, govim.EventTextChangedI}, govim.Patterns{"*.go"}, false, g.vimstate.bufTextChanged, exprAutocmdCurrBufInfo)
-	}
 	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, g.vimstate.formatCurrentBuffer, "eval(expand('<abuf>'))")
 	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.vimstate.complete)
 	g.DefineCommand(string(config.CommandGoToDef), g.vimstate.gotoDef, govim.NArgsZeroOrOne)
@@ -288,9 +283,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	initParams.Capabilities.Workspace.Configuration = true
 	initParams.Capabilities.Workspace.DidChangeConfiguration.DynamicRegistration = true
 	initOpts := make(map[string]interface{})
-	if g.doIncrementalSync() {
-		initOpts[goplsInitOptIncrementalSync] = true
-	}
+	initOpts[goplsInitOptIncrementalSync] = true
 	initOpts["noDocsOnHover"] = true
 	initParams.InitializationOptions = initOpts
 
@@ -346,37 +339,8 @@ func (g *govimplugin) Shutdown() error {
 	return nil
 }
 
-func (g *govimplugin) doIncrementalSync() bool {
-	if g.Flavor() != govim.FlavorVim && g.Flavor() != govim.FlavorGvim {
-		return false
-	}
-	if semver.Compare(g.Version(), testsetup.MinVimIncrementalSync) < 0 {
-		return false
-	}
-	if os.Getenv(testsetup.EnvDisableIncrementalSync) == "true" {
-		return false
-	}
-	return true
-}
-
-func (g *govimplugin) usePopupWindows() bool {
-	if g.Flavor() != govim.FlavorVim && g.Flavor() != govim.FlavorGvim {
-		return false
-	}
-	if semver.Compare(g.Version(), testsetup.MinPopupWindowBalloon) < 0 {
-		return false
-	}
-	if os.Getenv(testsetup.EnvDisablePopupWindowBalloon) == "true" {
-		return false
-	}
-	return true
-}
-
 func (g *govimplugin) placeSigns() bool {
 	if g.Flavor() != govim.FlavorVim && g.Flavor() != govim.FlavorGvim {
-		return false
-	}
-	if semver.Compare(g.Version(), testsetup.MinSignPlace) < 0 {
 		return false
 	}
 	if os.Getenv(testsetup.EnvDisableSignPlace) == "true" {

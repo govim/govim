@@ -105,12 +105,10 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 	preEventIgnore := v.ParseString(v.ChannelExpr("&eventignore"))
 	v.ChannelEx("set eventignore=all")
 	defer v.ChannelExf("set eventignore=%v", preEventIgnore)
-	if v.doIncrementalSync() {
-		v.ChannelCall("listener_remove", b.Listener)
-		defer func() {
-			b.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), b.Num))
-		}()
-	}
+	v.ChannelCall("listener_remove", b.Listener)
+	defer func() {
+		b.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), b.Num))
+	}()
 	v.BatchStart()
 	for _, e := range changes {
 		switch e.call {
@@ -124,9 +122,7 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 			panic(fmt.Errorf("unknown change type: %v", e.call))
 		}
 	}
-	if v.doIncrementalSync() {
-		v.BatchAssertChannelCall(AssertIsZero, "listener_flush", b.Num)
-	}
+	v.BatchAssertChannelCall(AssertIsZero, "listener_flush", b.Num)
 	newContentsRes := v.BatchChannelExprf(`join(getbufline(%v, 0, "$"), "\n")."\n"`, b.Num)
 	v.BatchEnd()
 
