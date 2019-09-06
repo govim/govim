@@ -17,8 +17,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/govim/govim/internal/queue"
 	"github.com/kr/pretty"
-	"github.com/myitcv/govim/internal/queue"
 	"github.com/rogpeppe/go-internal/semver"
 	"gopkg.in/tomb.v2"
 )
@@ -57,7 +57,7 @@ type callbackResp struct {
 	val       json.RawMessage
 }
 
-// Plugin defines the contract between github.com/myitcv/govim and a plugin.
+// Plugin defines the contract between github.com/govim/govim and a plugin.
 type Plugin interface {
 	Init(Govim, chan error) error
 	Shutdown() error

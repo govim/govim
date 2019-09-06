@@ -20,10 +20,10 @@ import (
 	"golang.org/x/tools/go/expect"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/packages/packagestest"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/txtar"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/txtar"
 )
 
 // We hardcode the expected number of test cases to ensure that all tests
@@ -50,7 +50,7 @@ const (
 	overlayFileSuffix = ".overlay"
 	goldenFileSuffix  = ".golden"
 	inFileSuffix      = ".in"
-	testModule        = "github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp"
+	testModule        = "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
 )
 
 var updateGolden = flag.Bool("golden", false, "Update golden files")

@@ -13,8 +13,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/browser"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/browser"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 )
 
 // version implements the version command.

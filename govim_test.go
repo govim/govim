@@ -17,10 +17,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/myitcv/govim"
-	"github.com/myitcv/govim/internal/plugin"
-	"github.com/myitcv/govim/testdriver"
-	"github.com/myitcv/govim/testsetup"
+	"github.com/govim/govim"
+	"github.com/govim/govim/internal/plugin"
+	"github.com/govim/govim/testdriver"
+	"github.com/govim/govim/testsetup"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 

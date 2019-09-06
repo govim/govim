@@ -16,13 +16,13 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/tool"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tool"
 	errors "golang.org/x/xerrors"
 )
 

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
 )
 
 // LogWriter returns an observer that logs events to the supplied writer.

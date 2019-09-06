@@ -1,4 +1,4 @@
-module github.com/myitcv/govim
+module github.com/govim/govim
 
 go 1.12
 

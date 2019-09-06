@@ -9,8 +9,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/myitcv/govim"
-	"github.com/myitcv/govim/testsetup"
+	"github.com/govim/govim"
+	"github.com/govim/govim/testsetup"
 	"github.com/rogpeppe/go-internal/semver"
 )
 

@@ -16,9 +16,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/govim/govim/testdriver"
+	"github.com/govim/govim/testsetup"
 	"github.com/kr/pty"
-	"github.com/myitcv/govim/testdriver"
-	"github.com/myitcv/govim/testsetup"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 

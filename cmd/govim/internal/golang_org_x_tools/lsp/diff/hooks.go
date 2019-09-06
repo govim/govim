@@ -8,7 +8,7 @@ package diff
 import (
 	"sort"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 // TextEdit represents a change to a section of a document.

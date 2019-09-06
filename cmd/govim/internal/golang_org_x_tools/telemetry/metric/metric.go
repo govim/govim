@@ -9,10 +9,10 @@ import (
 	"context"
 	"sort"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/stats"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/stats"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
 )
 
 // Scalar represents the construction information for a scalar metric.

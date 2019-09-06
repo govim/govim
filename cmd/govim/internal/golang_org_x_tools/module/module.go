@@ -24,7 +24,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/semver"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/semver"
 )
 
 // A Version is defined by a module path and version pair.

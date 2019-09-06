@@ -7,11 +7,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/myitcv/govim"
-	"github.com/myitcv/govim/cmd/govim/config"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/internal/stringfns"
-	"github.com/myitcv/govim/cmd/govim/internal/types"
+	"github.com/govim/govim"
+	"github.com/govim/govim/cmd/govim/config"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/stringfns"
+	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
 func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {

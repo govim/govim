@@ -4,8 +4,8 @@ import (
 	"go/token"
 
 	"golang.org/x/tools/go/analysis"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 func getCodeActions(fset *token.FileSet, diag analysis.Diagnostic) ([]SuggestedFixes, error) {

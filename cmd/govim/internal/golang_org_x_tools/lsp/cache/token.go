@@ -8,8 +8,8 @@ import (
 	"context"
 	"go/token"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/memoize"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	errors "golang.org/x/xerrors"
 )
 

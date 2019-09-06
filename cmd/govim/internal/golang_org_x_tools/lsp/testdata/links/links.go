@@ -3,7 +3,7 @@ package links
 import (
 	"fmt" //@link(re`".*"`,"https://godoc.org/fmt")
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/foo" //@link(re`".*"`,`https://godoc.org/github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/foo`)
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/foo" //@link(re`".*"`,`https://godoc.org/github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/foo`)
 )
 
 var (

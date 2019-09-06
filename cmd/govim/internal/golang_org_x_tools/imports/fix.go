@@ -27,7 +27,7 @@ import (
 
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/packages"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/gopathwalk"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gopathwalk"
 )
 
 // importToGroup is a list of functions which map from an import path to

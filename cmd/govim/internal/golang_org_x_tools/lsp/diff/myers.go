@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff/myers"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff/myers"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 func init() {

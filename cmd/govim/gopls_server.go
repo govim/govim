@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/kr/pretty"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 )
 
 type loggingGoplsServer struct {

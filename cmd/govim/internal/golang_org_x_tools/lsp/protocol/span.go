@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"go/token"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	errors "golang.org/x/xerrors"
 )
 

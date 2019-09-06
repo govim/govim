@@ -6,8 +6,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/myitcv/govim"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 )
 
 func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
