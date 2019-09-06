@@ -20,9 +20,9 @@ Install `govim` via:
 * [Pathogen](https://github.com/tpope/vim-pathogen)
   * `git clone https://github.com/govim/govim.git ~/.vim/bundle/govim`
 * [vim-plug](https://github.com/junegunn/vim-plug)
-  * `Plug 'myitcv/govim'`
+  * `Plug 'govim/govim'`
 * [Vundle](https://github.com/VundleVim/Vundle.vim)
-  * `Plugin 'myitcv/govim'`
+  * `Plugin 'govim/govim'`
 
 You might need some `.vimrc` settings to get all features working: see the [minimal `.vimrc`](cmd/govim/config/minimal.vimrc) for an
 commented explanation of the required settings. For more details on `.vimrc`/`.gvimrc` settings as well as some tips and

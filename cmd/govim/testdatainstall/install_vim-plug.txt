@@ -16,7 +16,7 @@ cmp test test.golden
 
 -- home/.vimrc --
 call plug#begin('~/.vim/plugged')
-Plug 'myitcv/govim', { 'dir': $WORK.'/plugin' }
+Plug 'govim/govim', { 'dir': $WORK.'/plugin' }
 call plug#end()
 
 -- test.golden --
