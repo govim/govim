@@ -23,6 +23,12 @@ fi
 go version
 vim --version
 
+if [ "${TRAVIS_EVENT_TYPE:-}" == "cron" ]
+then
+	go get golang.org/x/tools/gopls@master golang.org/x/tools@master
+	go list -m golang.org/x/tools/gopls golang.org/x/tools
+fi
+
 ./_scripts/revendorToolsInternal.sh
 
 go install golang.org/x/tools/gopls
@@ -41,12 +47,9 @@ fi
 go vet $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 go run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 
-if [ "${CI:-}" == "true" ]
+if [ "${CI:-}" == "true" && "${TRAVIS_EVENT_TYPE:-}" != "cron" ]
 then
 	go mod tidy
-	# https://github.com/golang/go/issues/27868#issuecomment-431413621
-	go list all > /dev/null
-
 	diff <(echo -n) <(gofmt -d $(git ls-files '**/*.go' '*.go' | grep -v cmd/govim/internal/golang_org_x_tools))
 	test -z "$(git status --porcelain)" || (git status; git diff; false)
 fi
