@@ -2,7 +2,7 @@ package good //@diag("package", "no_diagnostics", "")
 
 import (
 	_ "go/ast"                              //@prepare("go/ast", "_", "_")
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/types" //@item(types_import, "types", "\"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/types\"", "package"),prepare("types","\"", "types")
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/types" //@item(types_import, "types", "\"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/types\"", "package"),prepare("types","\"", "types")
 )
 
 func random() int { //@item(good_random, "random", "func() int", "func")

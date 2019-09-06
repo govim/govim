@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/fastwalk"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/fastwalk"
 )
 
 // Options controls the behavior of a Walk call.

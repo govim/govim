@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/myitcv/govim"
+	"github.com/govim/govim"
 )
 
 const (

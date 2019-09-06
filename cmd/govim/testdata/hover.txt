@@ -3,7 +3,7 @@
 [!vim] [!gvim] skip
 
 # For some reason, the new-style popup test fails on gvim.
-# https://github.com/myitcv/govim/issues/351
+# https://github.com/govim/govim/issues/351
 [!vim:v8.1.1649] skip
 
 vim ex 'e main.go'

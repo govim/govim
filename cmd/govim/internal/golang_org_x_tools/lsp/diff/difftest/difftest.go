@@ -4,14 +4,14 @@
 
 // Package difftest supplies a set of tests that will operate on any
 // implementation of a diff algorithm as exposed by
-// "github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
+// "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 package difftest
 
 import (
 	"testing"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 func DiffTest(t *testing.T) {

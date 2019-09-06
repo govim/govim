@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/myitcv/govim/cmd/govim/config"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/internal/types"
+	"github.com/govim/govim/cmd/govim/config"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
 func (v *vimstate) bufReadPost(args ...json.RawMessage) error {

@@ -7,7 +7,7 @@ package export
 import (
 	"context"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
 )
 
 // Null returns an observer that does nothing.

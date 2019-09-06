@@ -13,8 +13,8 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/imports"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 // FileIdentity uniquely identifies a file at a version from a FileSystem.

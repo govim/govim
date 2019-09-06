@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/myitcv/govim/cmd/govim/internal/types"
+	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
 const (

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/internal/types"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
 func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {

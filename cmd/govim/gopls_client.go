@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/govim/govim"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/kr/pretty"
-	"github.com/myitcv/govim"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 const (

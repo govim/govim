@@ -18,11 +18,11 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/prometheus"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/prometheus"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
 )
 
 type Cache interface {

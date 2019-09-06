@@ -7,9 +7,9 @@
 package telemetry
 
 import (
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/stats"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/unit"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/stats"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/unit"
 )
 
 const (

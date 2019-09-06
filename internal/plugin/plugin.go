@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/myitcv/govim"
+	"github.com/govim/govim"
 )
 
 type Driver struct {

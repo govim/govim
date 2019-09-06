@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/gopathwalk"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/module"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gopathwalk"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/module"
 )
 
 // ModuleResolver implements resolver for modules using the go command as little

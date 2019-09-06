@@ -16,7 +16,7 @@ vim ex 'cclose'
 cmp errors errors.empty
 cmp main.go main.go.golden
 
-skip 'Temporary disabled due to https://github.com/myitcv/govim/issues/492'
+skip 'Temporary disabled due to https://github.com/govim/govim/issues/492'
 
 # New package, note that this is currently handled by a separate lib in darwin
 vim ex 'call cursor(7,1)'

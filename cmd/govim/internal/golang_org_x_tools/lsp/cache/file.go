@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 // viewFile extends source.File with helper methods for the view package.

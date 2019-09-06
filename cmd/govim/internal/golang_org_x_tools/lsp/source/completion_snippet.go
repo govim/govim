@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"go/ast"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
 )
 
 // structFieldSnippets calculates the plain and placeholder snippets for struct literal field names.

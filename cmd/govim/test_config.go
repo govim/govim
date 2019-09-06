@@ -5,12 +5,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/myitcv/govim"
-	"github.com/myitcv/govim/cmd/govim/config"
+	"github.com/govim/govim"
+	"github.com/govim/govim/cmd/govim/config"
 )
 
 // This file contains config that would otherwise be in the
-// github.com/myitcv/govim/cmd/govim/config, but for the fact that these are
+// github.com/govim/govim/cmd/govim/config, but for the fact that these are
 // only definitions we need for the purposes of testing
 
 const (

@@ -12,7 +12,7 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
 	errors "golang.org/x/xerrors"
 )
 

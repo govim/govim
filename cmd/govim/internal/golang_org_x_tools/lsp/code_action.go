@@ -10,12 +10,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/imports"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	errors "golang.org/x/xerrors"
 )
 

@@ -9,7 +9,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/tool"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tool"
 )
 
 const (

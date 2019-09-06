@@ -12,8 +12,8 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/telemetry/metric"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/metric"
 )
 
 func New() *Exporter {

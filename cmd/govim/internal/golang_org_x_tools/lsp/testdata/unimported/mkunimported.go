@@ -3,7 +3,7 @@
 // mkunimported generates the unimported.go file, containing the Go standard
 // library packages.
 // The completion items from the std library are computed in the same way as in the
-// github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/imports.
+// github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports.
 package main
 
 import (

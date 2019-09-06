@@ -1,4 +1,4 @@
-// Package testdriver is a support package for plugins written using github.com/myitcv/govim
+// Package testdriver is a support package for plugins written using github.com/govim/govim
 package testdriver
 
 import (
@@ -21,9 +21,9 @@ import (
 
 	"github.com/acarl005/stripansi"
 
+	"github.com/govim/govim"
+	"github.com/govim/govim/testsetup"
 	"github.com/kr/pty"
-	"github.com/myitcv/govim"
-	"github.com/myitcv/govim/testsetup"
 	"github.com/rogpeppe/go-internal/semver"
 	"github.com/rogpeppe/go-internal/testscript"
 	"gopkg.in/retry.v1"

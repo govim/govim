@@ -20,7 +20,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/myitcv/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 )
 
 // Store binds keys to functions, returning handles that can be used to access
