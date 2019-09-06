@@ -17,6 +17,6 @@ if GOVIMPluginStatus() == "initcomplete"
   " Motions
   nnoremap <buffer> <silent> [[ :call GOVIMMotion("prev", "File.Decls.Pos()")<cr>
   nnoremap <buffer> <silent> [] :call GOVIMMotion("prev", "File.Decls.End()")<cr>
-  nnoremap <buffer> <silent> ][ :call GOVIMMotion("next", "File.Decls.Pos()")<cr>
-  nnoremap <buffer> <silent> ]] :call GOVIMMotion("next", "File.Decls.End()")<cr>
+  nnoremap <buffer> <silent> ]] :call GOVIMMotion("next", "File.Decls.Pos()")<cr>
+  nnoremap <buffer> <silent> ][ :call GOVIMMotion("next", "File.Decls.End()")<cr>
 endif
