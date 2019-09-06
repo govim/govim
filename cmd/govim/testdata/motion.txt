@@ -3,12 +3,12 @@
 vim ex 'e main.go'
 
 # Next start of File.Decl
-vim ex 'normal ]['
+vim ex 'normal ]]'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '\[3,1\]'
 
 # Next end of File.Decl
-vim ex 'normal ]]'
+vim ex 'normal ]['
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '\[5,1\]'
 
