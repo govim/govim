@@ -90,7 +90,7 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 	// govim.... We reduce that risk using the time above
 	tf, err := ioutil.TempFile("", strconv.FormatInt(time.Now().UnixNano(), 10))
 	if err != nil {
-		return fmt.Errorf("failed to create temp undo file")
+		return fmt.Errorf("failed to create temp undo file: %v", err)
 	}
 
 	v.ChannelExf("wundo! %v", tf.Name())
