@@ -8,7 +8,7 @@ function doBranchCheck {
 		return
 	fi
 	# we are on CI
-	if [ "${TRAVIS_PULL_REQUEST:-}" == "" ] || [[ "$(curl -s -u $GH_USER:$GH_TOKEN https://api.github.com/repos/myitcv/govim/pulls/$TRAVIS_PULL_REQUEST | jq -r .title)" != \[WIP\]* ]]
+	if [ "${TRAVIS_PULL_REQUEST:-}" == "" ] || [[ "$(curl -s -u $GH_USER:$GH_TOKEN https://api.github.com/repos/govim/govim/pulls/$TRAVIS_PULL_REQUEST | jq -r .title)" != \[WIP\]* ]]
 	then
 		return
 	fi
