@@ -9,7 +9,7 @@ require (
 	github.com/kr/pretty v0.1.0
 	github.com/kr/pty v1.1.5
 	github.com/myitcv/vbash v0.0.4
-	github.com/rogpeppe/go-internal v1.3.0
+	github.com/rogpeppe/go-internal v1.3.2
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58
 	golang.org/x/sys v0.0.0-20190429190828-d89cdac9e872 // indirect
 	golang.org/x/tools v0.0.0-20190905230612-59228eac51a9
