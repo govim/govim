@@ -62,11 +62,19 @@ func main1() int {
 func mainerr() error {
 	flag.Parse()
 
-	args := flag.Args()
-	if len(flag.Args()) == 0 {
-		return fmt.Errorf("missing single argument path to gopls")
+	var goplsPath string
+	if os.Getenv(string(config.EnvVarUseGoplsFromPath)) == "true" {
+		gopls, err := exec.LookPath("gopls")
+		if err != nil {
+			return fmt.Errorf("failed to find gopls in PATH: %v", err)
+		}
+		goplsPath = gopls
+	} else {
+		if flag.NArg() == 0 {
+			return fmt.Errorf("missing single argument path to gopls")
+		}
+		goplsPath = flag.Arg(0)
 	}
-	goplspath := args[0]
 
 	if sock := os.Getenv(testsetup.EnvTestSocket); sock != "" {
 		ln, err := net.Listen("tcp", sock)
@@ -80,13 +88,13 @@ func mainerr() error {
 			}
 
 			go func() {
-				if err := launch(goplspath, conn, conn); err != nil {
+				if err := launch(goplsPath, conn, conn); err != nil {
 					fmt.Fprintln(os.Stderr, err)
 				}
 			}()
 		}
 	} else {
-		return launch(goplspath, os.Stdin, os.Stdout)
+		return launch(goplsPath, os.Stdin, os.Stdout)
 	}
 }
 
@@ -228,6 +236,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.ChannelExf("let s:gopls_logfile=%q", logfile.Name())
 
 	gopls := exec.Command(g.goplspath, "-rpc.trace", "-logfile", logfile.Name())
+	g.Logf("Running gopls: %v", strings.Join(gopls.Args, " "))
 	stderr, err := gopls.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stderr pipe for gopls: %v", err)
