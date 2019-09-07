@@ -68,14 +68,18 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 		FormatOnSave                                 config.FormatOnSave
 		QuickfixAutoDiagnosticsDisable               int
 		QuickfixSignsDisable                         int
+		CompletionDeepCompletionsDisable             int
+		CompletionFuzzyMatchingDisable               int
 		ExperimentalMouseTriggeredHoverPopupOptions  map[string]json.RawMessage
 		ExperimentalCursorTriggeredHoverPopupOptions map[string]json.RawMessage
 	}
 	v.Parse(args[0], &c)
 	v.config = config.Config{
-		FormatOnSave:                   c.FormatOnSave,
-		QuickfixSignsDisable:           c.QuickfixSignsDisable != 0,
-		QuickfixAutoDiagnosticsDisable: c.QuickfixAutoDiagnosticsDisable != 0,
+		FormatOnSave:                     c.FormatOnSave,
+		QuickfixSignsDisable:             c.QuickfixSignsDisable != 0,
+		QuickfixAutoDiagnosticsDisable:   c.QuickfixAutoDiagnosticsDisable != 0,
+		CompletionDeepCompletionsDisable: c.CompletionDeepCompletionsDisable != 0,
+		CompletionFuzzyMatchingDisable:   c.CompletionFuzzyMatchingDisable != 0,
 	}
 	if len(c.ExperimentalMouseTriggeredHoverPopupOptions) > 0 {
 		v.config.ExperimentalMouseTriggeredHoverPopupOptions = make(map[string]interface{})
@@ -103,6 +107,18 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 			return nil, v.updateQuickfix()
 		}
 	}
+
+	// TODO: when https://github.com/golang/go/issues/32258 is fixed, we will
+	// need to trigger a didChangeConfiguration call here for gopls-related
+	// config, e.g.:
+	//
+	// CompletionDeepCompletiionsDisable
+	// CompletionFuzzyMatchingDisable
+	//
+	// As a workaround for now, users will need to set config in their .vimrc
+	// and then restart Vim (even then there is a race condition for Vim8
+	// package users that might mean even this doesn't work.)
+
 	return nil, nil
 }
 

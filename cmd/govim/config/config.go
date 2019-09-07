@@ -42,6 +42,14 @@ type Config struct {
 	// Default: false (0)
 	QuickfixSignsDisable bool
 
+	// CompletionDeepCompletiionsDisable disables gopls' deep completion option
+	// in the derivation of completion candidates.
+	CompletionDeepCompletionsDisable bool
+
+	// CompletionFuzzyMatchingDisable disables gopls' fuzzy matching in the
+	// derivation of completion candidates.
+	CompletionFuzzyMatchingDisable bool
+
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
 	// over an identifier. It corresponds to the second argument to popup_create
