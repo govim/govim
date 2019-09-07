@@ -18,12 +18,13 @@ const (
 )
 
 const (
-	FunctionHello             config.Function = "Hello"
-	FunctionDumpPopups        config.Function = config.InternalFunctionPrefix + "DumpPopups"
-	FunctionSimpleBatch       config.Function = "SimpleBatch"
-	FunctionCancelBatch       config.Function = "CancelBatch"
-	FunctionBadBatch          config.Function = "BadBatch"
-	FunctionAssertFailedBatch config.Function = "AssertFailedBatch"
+	FunctionHello               config.Function = "Hello"
+	FunctionDumpPopups          config.Function = config.InternalFunctionPrefix + "DumpPopups"
+	FunctionSimpleBatch         config.Function = "SimpleBatch"
+	FunctionCancelBatch         config.Function = "CancelBatch"
+	FunctionBadBatch            config.Function = "BadBatch"
+	FunctionAssertFailedBatch   config.Function = "AssertFailedBatch"
+	FunctionNonBatchCallInBatch config.Function = "NonBatchCallInBatch"
 )
 
 func (g *govimplugin) InitTestAPI() {
@@ -38,6 +39,7 @@ func (g *govimplugin) InitTestAPI() {
 	g.DefineFunction(string(FunctionCancelBatch), []string{}, g.vimstate.cancelBatch)
 	g.DefineFunction(string(FunctionBadBatch), []string{}, g.vimstate.badBatch)
 	g.DefineFunction(string(FunctionAssertFailedBatch), []string{}, g.vimstate.assertFailedBatch)
+	g.DefineFunction(string(FunctionNonBatchCallInBatch), []string{}, g.vimstate.nonBatchCallInBatch)
 }
 
 func (v *vimstate) hello(args ...json.RawMessage) (interface{}, error) {
@@ -102,4 +104,15 @@ func (v *vimstate) assertFailedBatch(args ...json.RawMessage) (interface{}, erro
 	v.BatchAssertChannelExprf(AssertIsZero, "1")
 	res := v.BatchEnd()
 	return res, nil
+}
+
+func (v *vimstate) nonBatchCallInBatch(args ...json.RawMessage) (res interface{}, err error) {
+	v.BatchStart()
+	defer func() {
+		err = recover().(error)
+		v.BatchCancelIfNotEnded()
+	}()
+	v.ChannelExprf("1")
+	v.BatchEnd()
+	return res, err
 }

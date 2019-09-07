@@ -198,3 +198,52 @@ func (v *vimstate) BatchEnd() (res []json.RawMessage) {
 	b.results = res
 	return
 }
+
+func (v *vimstate) ChannelCall(name string, args ...interface{}) json.RawMessage {
+	if v.currBatch != nil {
+		panic(fmt.Errorf("called ChannelCall when in batch"))
+	}
+	return v.Driver.ChannelCall(name, args...)
+}
+
+func (v *vimstate) ChannelEx(expr string) {
+	if v.currBatch != nil {
+		panic(fmt.Errorf("called ChannelEx when in batch"))
+	}
+	v.Driver.ChannelEx(expr)
+}
+
+func (v *vimstate) ChannelExf(format string, args ...interface{}) {
+	if v.currBatch != nil {
+		panic(fmt.Errorf("called ChannelExf when in batch"))
+	}
+	v.Driver.ChannelExf(format, args...)
+}
+
+func (v *vimstate) ChannelExpr(expr string) json.RawMessage {
+	if v.currBatch != nil {
+		panic(fmt.Errorf("called ChannelExpr when in batch"))
+	}
+	return v.Driver.ChannelExpr(expr)
+}
+
+func (v *vimstate) ChannelExprf(format string, args ...interface{}) json.RawMessage {
+	if v.currBatch != nil {
+		panic(fmt.Errorf("called ChannelExprf when in batch"))
+	}
+	return v.Driver.ChannelExprf(format, args...)
+}
+
+func (v *vimstate) ChannelNormal(expr string) {
+	if v.currBatch != nil {
+		panic(fmt.Errorf("called ChannelNormal when in batch"))
+	}
+	v.Driver.ChannelNormal(expr)
+}
+
+func (v *vimstate) ChannelRedraw(force bool) {
+	if v.currBatch != nil {
+		panic(fmt.Errorf("called ChannelRedraw when in batch"))
+	}
+	v.Driver.ChannelRedraw(force)
+}
