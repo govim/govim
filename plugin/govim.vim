@@ -6,8 +6,8 @@ let g:govimpluginloaded=1
 
 " TODO we should source a code-generated, auto-loaded
 " vim file or similar to source this minimum version
-if !has("patch-8.1.1158")
-  echoerr "Need at least version v8.1.1158 of Vim; govim will not be loaded"
+if !has("patch-8.1.1711")
+  echoerr "Need at least version v8.1.1711 of Vim; govim will not be loaded"
   finish
 endif
 

@@ -11,74 +11,19 @@ import (
 )
 
 func (v *vimstate) balloonExpr(args ...json.RawMessage) (interface{}, error) {
-	if v.usePopupWindows() {
-		posExpr := `{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col, "screenpos": screenpos(v:beval_winid, v:beval_lnum, v:beval_col)}`
-		opts := map[string]interface{}{
-			"mousemoved": "any",
-		}
-		return v.showHover(posExpr, opts, v.config.ExperimentalMouseTriggeredHoverPopupOptions)
+	posExpr := `{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col, "screenpos": screenpos(v:beval_winid, v:beval_lnum, v:beval_col)}`
+	opts := map[string]interface{}{
+		"mousemoved": "any",
 	}
-	var vpos struct {
-		BufNum int `json:"bufnum"`
-		Line   int `json:"line"`
-		Col    int `json:"col"`
-	}
-	expr := v.ChannelExpr(`{"bufnum": v:beval_bufnr, "line": v:beval_lnum, "col": v:beval_col}`)
-	if err := json.Unmarshal(expr, &vpos); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal current mouse position info: %v", err)
-	}
-	b, ok := v.buffers[vpos.BufNum]
-	if !ok {
-		return nil, fmt.Errorf("unable to resolve buffer %v", vpos.BufNum)
-	}
-	pos, err := types.PointFromVim(b, vpos.Line, vpos.Col)
-	if err != nil {
-		return nil, fmt.Errorf("failed to determine mouse position: %v", err)
-	}
-	go func() {
-		params := &protocol.TextDocumentPositionParams{
-			TextDocument: b.ToTextDocumentIdentifier(),
-			Position:     pos.ToPosition(),
-		}
-		hovRes, err := v.server.Hover(context.Background(), params)
-		if err != nil {
-			v.ChannelCall("balloon_show", fmt.Sprintf("failed to get hover details: %v", err))
-		} else {
-			msg := strings.TrimSpace(hovRes.Contents.Value)
-			var args interface{} = msg
-			if !v.isGui {
-				args = strings.Split(msg, "\n")
-			}
-			v.ChannelCall("balloon_show", args)
-		}
-
-	}()
-	return "", nil
+	return v.showHover(posExpr, opts, v.config.ExperimentalMouseTriggeredHoverPopupOptions)
 }
 
 func (v *vimstate) hover(args ...json.RawMessage) (interface{}, error) {
-	if v.usePopupWindows() {
-		posExpr := `{"bufnum": bufnr(""), "line": line("."), "col": col("."), "screenpos": screenpos(win_getid(), line("."), col("."))}`
-		opts := map[string]interface{}{
-			"mousemoved": "any",
-		}
-		return v.showHover(posExpr, opts, v.config.ExperimentalCursorTriggeredHoverPopupOptions)
+	posExpr := `{"bufnum": bufnr(""), "line": line("."), "col": col("."), "screenpos": screenpos(win_getid(), line("."), col("."))}`
+	opts := map[string]interface{}{
+		"mousemoved": "any",
 	}
-	b, pos, err := v.cursorPos()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current position: %v", err)
-	}
-	params := &protocol.TextDocumentPositionParams{
-		TextDocument: protocol.TextDocumentIdentifier{
-			URI: string(b.URI()),
-		},
-		Position: pos.ToPosition(),
-	}
-	res, err := v.server.Hover(context.Background(), params)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get hover details: %v", err)
-	}
-	return strings.TrimSpace(res.Contents.Value), nil
+	return v.showHover(posExpr, opts, v.config.ExperimentalCursorTriggeredHoverPopupOptions)
 }
 
 func (v *vimstate) showHover(posExpr string, opts, userOpts map[string]interface{}) (interface{}, error) {
