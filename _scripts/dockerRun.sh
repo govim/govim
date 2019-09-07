@@ -23,6 +23,9 @@ fi
 go version
 vim --version
 
+# ensure GOPATH isn't set, to detect issues like https://golang.org/issues/33918. Also see govim/#472.
+export -n GOPATH
+
 ./_scripts/revendorToolsInternal.sh
 
 go install golang.org/x/tools/gopls
