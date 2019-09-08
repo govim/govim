@@ -1,26 +1,7 @@
-" This file represents the minimal .vimrc needed to work with govim.
+" This file represents the minimal .gvimrc needed to work with govim.
 "
 " We also include a number of suggested settings that we think the majority of
 " users will like/prefer.
-
-set nocompatible
-set nobackup
-set nowritebackup
-set noswapfile
-
-filetype plugin on
-
-set mouse=a
-
-" To get hover working in the terminal we need to set ttymouse. See
-"
-" :help ttymouse
-"
-" for the appropriate setting for your terminal. Note that despite the
-" automated tests using xterm as the terminal, a setting of ttymouse=xterm
-" does not work correctly beyond a certain column number (citation needed)
-" hence we use ttymouse=sgr
-set ttymouse=sgr
 
 " Suggestion: By default, govim populates the quickfix window with diagnostics
 " reported by gopls after a period of inactivity, the time period being
@@ -52,11 +33,6 @@ autocmd! BufLeave *.go syntax off
 " include this by default in govim.
 set autoindent
 set smartindent
-filetype indent on
-
-" Suggestion: define sensible backspace behaviour. See :help backspace for
-" more details
-set backspace=2
 
 " Suggestion: show info for completion candidates in a popup menu
 if has("patch-8.1.1904")

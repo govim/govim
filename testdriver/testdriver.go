@@ -107,11 +107,27 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		return nil, fmt.Errorf("failed to create listener for driver: %v", err)
 	}
 
+	flav, cmd, err := testsetup.EnvLookupFlavorCommand()
+	if err != nil {
+		return nil, err
+	}
+
 	if err := copyDir(c.TestPluginPath, c.GovimPath); err != nil {
 		return nil, fmt.Errorf("failed to copy %v to %v: %v", c.GovimPath, c.TestPluginPath, err)
 	}
-	srcVimrc := filepath.Join(c.GovimPath, "cmd", "govim", "config", "minimal.vimrc")
-	dstVimrc := filepath.Join(c.TestHomePath, ".vimrc")
+
+	var srcVimrc, dstVimrc string
+	switch flav {
+	case govim.FlavorVim:
+		srcVimrc = filepath.Join(c.GovimPath, "cmd", "govim", "config", "minimal.vimrc")
+		dstVimrc = filepath.Join(c.TestHomePath, ".vimrc")
+	case govim.FlavorGvim:
+		srcVimrc = filepath.Join(c.GovimPath, "cmd", "govim", "config", "minimal.gvimrc")
+		dstVimrc = filepath.Join(c.TestHomePath, ".gvimrc")
+	default:
+		return nil, fmt.Errorf("need to add vimrc behaviour for flavour %v", flav)
+	}
+
 	if err := copyFile(dstVimrc, srcVimrc); err != nil {
 		return nil, fmt.Errorf("failed to copy %v to %v: %v", srcVimrc, dstVimrc, err)
 	}
@@ -123,11 +139,6 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		"GOVIMTEST_SOCKET="+res.govimListener.Addr().String(),
 		"GOVIMTESTDRIVER_SOCKET="+res.driverListener.Addr().String(),
 	)
-
-	_, cmd, err := testsetup.EnvLookupFlavorCommand()
-	if err != nil {
-		return nil, err
-	}
 
 	vimCmd := cmd
 	if e := os.Getenv("VIM_COMMAND"); e != "" {

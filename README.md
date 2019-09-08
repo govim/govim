@@ -24,9 +24,10 @@ Install `govim` via:
 * [Vundle](https://github.com/VundleVim/Vundle.vim)
   * `Plugin 'govim/govim'`
 
-You might need some `.vimrc` settings to get all features working: see the [minimal `.vimrc`](cmd/govim/config/minimal.vimrc) for an
-commented explanation of the required settings. For more details on `.vimrc`/`.gvimrc` settings as well as some tips and
-tricks, see [here](https://github.com/govim/govim/wiki/vimrc-tips).
+You might need some `.vimrc`/`.gvimrc` settings to get all features working: see the minimal
+[`.vimrc`](cmd/govim/config/minimal.vimrc) or [`.gvimrc`](cmd/govim/config/minimal.gvimrc) for an commented explanation
+of the required settings. For more details on `.vimrc`/`.gvimrc` settings as well as some tips and tricks, see
+[here](https://github.com/govim/govim/wiki/vimrc-tips).
 
 ### What can `govim` do?
 
