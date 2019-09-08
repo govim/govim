@@ -207,7 +207,7 @@ notifications:
   email:
     recipients:
       - govim-dev+ci@googlegroups.com
-    on_success: always
+    on_success: never
     on_failure: always
 
 branches:
