@@ -16,9 +16,11 @@ func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
 	if err != nil {
 		return fmt.Errorf("failed to determine cursor position: %v", err)
 	}
-	params := &protocol.TextDocumentPositionParams{
-		TextDocument: cb.ToTextDocumentIdentifier(),
-		Position:     pos.ToPosition(),
+	params := &protocol.DefinitionParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: cb.ToTextDocumentIdentifier(),
+			Position:     pos.ToPosition(),
+		},
 	}
 	locs, err := v.server.Definition(context.Background(), params)
 	if err != nil {

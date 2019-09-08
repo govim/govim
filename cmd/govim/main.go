@@ -277,7 +277,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	}
 
 	wd := g.ParseString(g.ChannelCall("getcwd", -1))
-	initParams := &protocol.InitializeParams{}
+	initParams := &protocol.ParamInitia{}
 	initParams.RootURI = string(span.FileURI(wd))
 	initParams.Capabilities.TextDocument.Hover.ContentFormat = []protocol.MarkupKind{protocol.PlainText}
 	initParams.Capabilities.Workspace.Configuration = true

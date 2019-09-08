@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	errors "golang.org/x/xerrors"
 )
@@ -76,7 +76,7 @@ func (f *format) Run(ctx context.Context, args ...string) error {
 		if err != nil {
 			return errors.Errorf("%v: %v", spn, err)
 		}
-		sedits, err := lsp.FromProtocolEdits(file.mapper, edits)
+		sedits, err := source.FromProtocolEdits(file.mapper, edits)
 		if err != nil {
 			return errors.Errorf("%v: %v", spn, err)
 		}

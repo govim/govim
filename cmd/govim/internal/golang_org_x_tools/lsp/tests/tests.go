@@ -36,7 +36,7 @@ const (
 	ExpectedImportCount            = 2
 	ExpectedDefinitionsCount       = 39
 	ExpectedTypeDefinitionsCount   = 2
-	ExpectedFoldingRangesCount     = 1
+	ExpectedFoldingRangesCount     = 2
 	ExpectedHighlightsCount        = 2
 	ExpectedReferencesCount        = 6
 	ExpectedRenamesCount           = 20
@@ -67,8 +67,8 @@ type Highlights map[string][]span.Span
 type References map[span.Span][]span.Span
 type Renames map[span.Span]string
 type PrepareRenames map[span.Span]*source.PrepareItem
-type Symbols map[span.URI][]source.Symbol
-type SymbolsChildren map[string][]source.Symbol
+type Symbols map[span.URI][]protocol.DocumentSymbol
+type SymbolsChildren map[string][]protocol.DocumentSymbol
 type Signatures map[span.Span]*source.SignatureInformation
 type Links map[span.URI][]Link
 
@@ -634,18 +634,41 @@ func (data *Data) collectPrepareRenames(src span.Span, rng span.Range, placehold
 		// make the range just be the start.
 		rng = span.NewRange(rng.FileSet, rng.Start, rng.Start)
 	}
+	contents, err := data.Exported.FileContents(src.URI().Filename())
+	if err != nil {
+		return
+	}
+	m := protocol.NewColumnMapper(src.URI(), src.URI().Filename(), data.Exported.ExpectFileSet, nil, contents)
 
+	// Convert range to span and then to protocol.Range.
+	spn, err := rng.Span()
+	if err != nil {
+		return
+	}
+	prng, err := m.Range(spn)
+	if err != nil {
+		return
+	}
 	data.PrepareRenames[src] = &source.PrepareItem{
-		Range: rng,
+		Range: prng,
 		Text:  placeholder,
 	}
 }
 
 func (data *Data) collectSymbols(name string, spn span.Span, kind string, parentName string) {
-	sym := source.Symbol{
-		Name:          name,
-		Kind:          source.ParseSymbolKind(kind),
-		SelectionSpan: spn,
+	contents, err := data.Exported.FileContents(spn.URI().Filename())
+	if err != nil {
+		return
+	}
+	m := protocol.NewColumnMapper(spn.URI(), spn.URI().Filename(), data.Exported.ExpectFileSet, nil, contents)
+	rng, err := m.Range(spn)
+	if err != nil {
+		return
+	}
+	sym := protocol.DocumentSymbol{
+		Name:           name,
+		Kind:           protocol.ParseSymbolKind(kind),
+		SelectionRange: rng,
 	}
 	if parentName == "" {
 		data.Symbols[spn.URI()] = append(data.Symbols[spn.URI()], sym)

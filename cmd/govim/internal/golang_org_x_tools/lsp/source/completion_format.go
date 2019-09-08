@@ -114,10 +114,10 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 		placeholderSnippet:  placeholderSnippet,
 	}
 	// If the user doesn't want documentation for completion items.
-	if c.opts.NoDocumentation {
+	if !c.opts.Documentation {
 		return item, nil
 	}
-	declRange, err := objToRange(c.ctx, c.view, obj)
+	declRange, err := objToMappedRange(c.ctx, c.view, obj)
 	if err != nil {
 		return item, nil
 	}
@@ -160,7 +160,7 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 		return item, nil
 	}
 	item.Documentation = hover.Synopsis
-	if c.opts.WantFullDocumentation {
+	if c.opts.FullDocumentation {
 		item.Documentation = hover.FullDocumentation
 	}
 	return item, nil
