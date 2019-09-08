@@ -21,7 +21,7 @@ func (l loggingGoplsServer) Logf(format string, args ...interface{}) {
 	l.g.Logf("gopls server start =======================\n"+format+"gopls server end =======================\n", args...)
 }
 
-func (l loggingGoplsServer) Initialize(ctxt context.Context, params *protocol.InitializeParams) (*protocol.InitializeResult, error) {
+func (l loggingGoplsServer) Initialize(ctxt context.Context, params *protocol.ParamInitia) (*protocol.InitializeResult, error) {
 	l.Logf("gopls.Initialize() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Initialize(ctxt, params)
 	l.Logf("gopls.Initialize() return; err: %v; res:\n%v", err, pretty.Sprint(res))
@@ -140,35 +140,35 @@ func (l loggingGoplsServer) Resolve(ctxt context.Context, params *protocol.Compl
 	return res, err
 }
 
-func (l loggingGoplsServer) Hover(ctxt context.Context, params *protocol.TextDocumentPositionParams) (*protocol.Hover, error) {
+func (l loggingGoplsServer) Hover(ctxt context.Context, params *protocol.HoverParams) (*protocol.Hover, error) {
 	l.Logf("gopls.Hover() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Hover(ctxt, params)
 	l.Logf("gopls.Hover() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
-func (l loggingGoplsServer) SignatureHelp(ctxt context.Context, params *protocol.TextDocumentPositionParams) (*protocol.SignatureHelp, error) {
+func (l loggingGoplsServer) SignatureHelp(ctxt context.Context, params *protocol.SignatureHelpParams) (*protocol.SignatureHelp, error) {
 	l.Logf("gopls.SignatureHelp() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.SignatureHelp(ctxt, params)
 	l.Logf("gopls.SignatureHelp() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
-func (l loggingGoplsServer) Definition(ctxt context.Context, params *protocol.TextDocumentPositionParams) ([]protocol.Location, error) {
+func (l loggingGoplsServer) Definition(ctxt context.Context, params *protocol.DefinitionParams) ([]protocol.Location, error) {
 	l.Logf("gopls.Definition() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Definition(ctxt, params)
 	l.Logf("gopls.Definition() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
-func (l loggingGoplsServer) TypeDefinition(ctxt context.Context, params *protocol.TextDocumentPositionParams) ([]protocol.Location, error) {
+func (l loggingGoplsServer) TypeDefinition(ctxt context.Context, params *protocol.TypeDefinitionParams) ([]protocol.Location, error) {
 	l.Logf("gopls.TypeDefinition() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.TypeDefinition(ctxt, params)
 	l.Logf("gopls.TypeDefinition() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
-func (l loggingGoplsServer) Implementation(ctxt context.Context, params *protocol.TextDocumentPositionParams) ([]protocol.Location, error) {
+func (l loggingGoplsServer) Implementation(ctxt context.Context, params *protocol.ImplementationParams) ([]protocol.Location, error) {
 	l.Logf("gopls.Implementation() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Implementation(ctxt, params)
 	l.Logf("gopls.Implementation() return; err: %v; res:\n%v", err, pretty.Sprint(res))
@@ -182,7 +182,7 @@ func (l loggingGoplsServer) References(ctxt context.Context, params *protocol.Re
 	return res, err
 }
 
-func (l loggingGoplsServer) DocumentHighlight(ctxt context.Context, params *protocol.TextDocumentPositionParams) ([]protocol.DocumentHighlight, error) {
+func (l loggingGoplsServer) DocumentHighlight(ctxt context.Context, params *protocol.DocumentHighlightParams) ([]protocol.DocumentHighlight, error) {
 	l.Logf("gopls.DocumentHighlight() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.DocumentHighlight(ctxt, params)
 	l.Logf("gopls.DocumentHighlight() return; err: %v; res:\n%v", err, pretty.Sprint(res))
@@ -280,7 +280,7 @@ func (l loggingGoplsServer) FoldingRange(ctxt context.Context, params *protocol.
 	return res, err
 }
 
-func (l loggingGoplsServer) Declaration(ctxt context.Context, params *protocol.TextDocumentPositionParams) ([]protocol.DeclarationLink, error) {
+func (l loggingGoplsServer) Declaration(ctxt context.Context, params *protocol.DeclarationParams) ([]protocol.DeclarationLink, error) {
 	l.Logf("gopls.Declaration() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Declaration(ctxt, params)
 	l.Logf("gopls.Declaration() return; err: %v; res\n", err, pretty.Sprint(res))
@@ -294,7 +294,7 @@ func (l loggingGoplsServer) LogTraceNotification(ctxt context.Context, params *p
 	return err
 }
 
-func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.TextDocumentPositionParams) (*protocol.Range, error) {
+func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.PrepareRenameParams) (*protocol.Range, error) {
 	l.Logf("gopls.PrepareRename() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.PrepareRename(ctxt, params)
 	l.Logf("gopls.PrepareRename() return; err: %v; res\n", err, pretty.Sprint(res))
@@ -313,4 +313,12 @@ func (l loggingGoplsServer) SelectionRange(ctxt context.Context, params *protoco
 	res, err := l.u.SelectionRange(ctxt, params)
 	l.Logf("gopls.SelectionRange() return; err: %v; res\n", err, pretty.Sprint(res))
 	return res, err
+}
+
+func (l loggingGoplsServer) Progress(ctxt context.Context, params *protocol.ProgressParams) error {
+	l.Logf("gopls.Progress() call; params:\n%v", pretty.Sprint(params))
+	err := l.u.Progress(ctxt, params)
+	l.Logf("gopls.Progress() return; err: %v\n", err)
+	return err
+
 }

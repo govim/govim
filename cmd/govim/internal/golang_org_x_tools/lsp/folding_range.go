@@ -15,14 +15,27 @@ func (s *Server) foldingRange(ctx context.Context, params *protocol.FoldingRange
 	if err != nil {
 		return nil, err
 	}
-	m, err := getMapper(ctx, f)
+	ranges, err := source.FoldingRange(ctx, view, f, s.session.Options().LineFoldingOnly)
 	if err != nil {
 		return nil, err
 	}
+	return toProtocolFoldingRanges(ranges)
+}
 
-	ranges, err := source.FoldingRange(ctx, view, f, s.lineFoldingOnly)
-	if err != nil {
-		return nil, err
+func toProtocolFoldingRanges(ranges []*source.FoldingRangeInfo) ([]protocol.FoldingRange, error) {
+	result := make([]protocol.FoldingRange, 0, len(ranges))
+	for _, info := range ranges {
+		rng, err := info.Range()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, protocol.FoldingRange{
+			StartLine:      rng.Start.Line,
+			StartCharacter: rng.Start.Character,
+			EndLine:        rng.End.Line,
+			EndCharacter:   rng.End.Character,
+			Kind:           string(info.Kind),
+		})
 	}
-	return source.ToProtocolFoldingRanges(m, ranges)
+	return result, nil
 }

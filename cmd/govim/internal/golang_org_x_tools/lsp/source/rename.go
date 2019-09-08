@@ -37,7 +37,7 @@ type renamer struct {
 }
 
 type PrepareItem struct {
-	Range span.Range
+	Range protocol.Range
 	Text  string
 }
 
@@ -49,31 +49,39 @@ func PrepareRename(ctx context.Context, view View, f GoFile, pos protocol.Positi
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO(rstambler): We should handle this in a better way.
 	// If the object declaration is nil, assume it is an import spec.
 	if i.Declaration.obj == nil {
 		// Find the corresponding package name for this import spec
 		// and rename that instead.
-		i, err = i.getPkgName(ctx)
+		ident, err := i.getPkgName(ctx)
 		if err != nil {
 			return nil, err
 		}
+		i = ident
 	}
 
 	// Do not rename builtin identifiers.
 	if i.Declaration.obj.Parent() == types.Universe {
 		return nil, errors.Errorf("cannot rename builtin %q", i.Name)
 	}
+	rng, err := i.mappedRange.Range()
+	if err != nil {
+		return nil, err
+	}
 	return &PrepareItem{
-		Range: i.spanRange,
+		Range: rng,
 		Text:  i.Name,
 	}, nil
 }
 
 // Rename returns a map of TextEdits for each file modified when renaming a given identifier within a package.
-func (i *IdentifierInfo) Rename(ctx context.Context, view View, newName string) (map[span.URI][]diff.TextEdit, error) {
+func (i *IdentifierInfo) Rename(ctx context.Context, view View, newName string) (map[span.URI][]protocol.TextEdit, error) {
 	ctx, done := trace.StartSpan(ctx, "source.Rename")
 	defer done()
 
+	// TODO(rstambler): We should handle this in a better way.
 	// If the object declaration is nil, assume it is an import spec.
 	if i.Declaration.obj == nil {
 		// Find the corresponding package name for this import spec
@@ -135,12 +143,22 @@ func (i *IdentifierInfo) Rename(ctx context.Context, view View, newName string) 
 	if err != nil {
 		return nil, err
 	}
-
-	// Sort edits for each file.
-	for _, edits := range changes {
+	result := make(map[span.URI][]protocol.TextEdit)
+	for uri, edits := range changes {
+		// Sort the edits first.
 		diff.SortTextEdits(edits)
+
+		_, m, err := cachedFileToMapper(ctx, view, uri)
+		if err != nil {
+			return nil, err
+		}
+		protocolEdits, err := ToProtocolEdits(m, edits)
+		if err != nil {
+			return nil, err
+		}
+		result[uri] = protocolEdits
 	}
-	return changes, nil
+	return result, nil
 }
 
 // getPkgName gets the pkg name associated with an identifer representing
@@ -185,7 +203,7 @@ func getPkgNameIdentifier(ctx context.Context, ident *IdentifierInfo, pkgName *t
 		wasImplicit: true,
 	}
 	var err error
-	if decl.mappedRange, err = objToRange(ctx, ident.File.View(), decl.obj); err != nil {
+	if decl.mappedRange, err = objToMappedRange(ctx, ident.File.View(), decl.obj); err != nil {
 		return nil, err
 	}
 	if decl.node, err = objToNode(ctx, ident.File.View(), ident.pkg.GetTypes(), decl.obj, decl.mappedRange.spanRange); err != nil {

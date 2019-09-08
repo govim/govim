@@ -21,7 +21,7 @@ import (
 
 func (s *Server) getSupportedCodeActions() []protocol.CodeActionKind {
 	allCodeActionKinds := make(map[protocol.CodeActionKind]struct{})
-	for _, kinds := range s.supportedCodeActions {
+	for _, kinds := range s.session.Options().SupportedCodeActions {
 		for kind := range kinds {
 			allCodeActionKinds[kind] = struct{}{}
 		}
@@ -44,14 +44,10 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 	if err != nil {
 		return nil, err
 	}
-	m, err := getMapper(ctx, f)
-	if err != nil {
-		return nil, err
-	}
 
 	// Determine the supported actions for this file kind.
 	fileKind := f.Handle(ctx).Kind()
-	supportedCodeActions, ok := s.supportedCodeActions[fileKind]
+	supportedCodeActions, ok := s.session.Options().SupportedCodeActions[fileKind]
 	if !ok {
 		return nil, fmt.Errorf("no supported code actions for %v file kind", fileKind)
 	}
@@ -71,14 +67,9 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 		return nil, errors.Errorf("no supported code action to execute for %s, wanted %v", uri, params.Context.Only)
 	}
 
-	spn, err := m.RangeSpan(params.Range)
-	if err != nil {
-		return nil, err
-	}
-
 	var codeActions []protocol.CodeAction
 
-	edits, editsPerFix, err := organizeImports(ctx, view, spn)
+	edits, editsPerFix, err := source.AllImportsFixes(ctx, view, f)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +78,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 	if wanted[protocol.QuickFix] {
 		// First, add the quick fixes reported by go/analysis.
 		// TODO: Enable this when this actually works. For now, it's needless work.
-		if s.wantSuggestedFixes {
+		if s.session.Options().SuggestedFixes {
 			gof, ok := f.(source.GoFile)
 			if !ok {
 				return nil, fmt.Errorf("%s is not a Go file", f.URI())
@@ -105,13 +96,13 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 			// each action is the addition, removal, or renaming of one import.
 			for _, importFix := range editsPerFix {
 				// Get the diagnostics this fix would affect.
-				if fixDiagnostics := importDiagnostics(importFix.fix, params.Context.Diagnostics); len(fixDiagnostics) > 0 {
+				if fixDiagnostics := importDiagnostics(importFix.Fix, params.Context.Diagnostics); len(fixDiagnostics) > 0 {
 					codeActions = append(codeActions, protocol.CodeAction{
-						Title: importFixTitle(importFix.fix),
+						Title: importFixTitle(importFix.Fix),
 						Kind:  protocol.QuickFix,
 						Edit: &protocol.WorkspaceEdit{
 							Changes: &map[string][]protocol.TextEdit{
-								string(uri): importFix.edits,
+								string(uri): importFix.Edits,
 							},
 						},
 						Diagnostics: fixDiagnostics,
@@ -128,7 +119,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 			Kind:  protocol.SourceOrganizeImports,
 			Edit: &protocol.WorkspaceEdit{
 				Changes: &map[string][]protocol.TextEdit{
-					string(spn.URI()): edits,
+					string(uri): edits,
 				},
 			},
 		})
@@ -140,35 +131,6 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 type protocolImportFix struct {
 	fix   *imports.ImportFix
 	edits []protocol.TextEdit
-}
-
-func organizeImports(ctx context.Context, view source.View, s span.Span) ([]protocol.TextEdit, []*protocolImportFix, error) {
-	f, m, rng, err := spanToRange(ctx, view, s)
-	if err != nil {
-		return nil, nil, err
-	}
-	edits, editsPerFix, err := source.AllImportsFixes(ctx, view, f, rng)
-	if err != nil {
-		return nil, nil, err
-	}
-	// Convert all source edits to protocol edits.
-	pEdits, err := source.ToProtocolEdits(m, edits)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	pEditsPerFix := make([]*protocolImportFix, len(editsPerFix))
-	for i, fix := range editsPerFix {
-		pEdits, err := source.ToProtocolEdits(m, fix.Edits)
-		if err != nil {
-			return nil, nil, err
-		}
-		pEditsPerFix[i] = &protocolImportFix{
-			fix:   fix.Fix,
-			edits: pEdits,
-		}
-	}
-	return pEdits, pEditsPerFix, nil
 }
 
 // findImports determines if a given diagnostic represents an error that could
@@ -251,25 +213,13 @@ func quickFixes(ctx context.Context, view source.View, gof source.GoFile) ([]pro
 		if err != nil {
 			return nil, err
 		}
-		for _, ca := range diag.SuggestedFixes {
-			f, err := view.GetFile(ctx, diag.URI)
-			if err != nil {
-				return nil, err
-			}
-			m, err := getMapper(ctx, f)
-			if err != nil {
-				return nil, err
-			}
-			edits, err := source.ToProtocolEdits(m, ca.Edits)
-			if err != nil {
-				return nil, err
-			}
+		for _, fix := range diag.SuggestedFixes {
 			codeActions = append(codeActions, protocol.CodeAction{
-				Title: ca.Title,
+				Title: fix.Title,
 				Kind:  protocol.QuickFix, // TODO(matloob): Be more accurate about these?
 				Edit: &protocol.WorkspaceEdit{
 					Changes: &map[string][]protocol.TextEdit{
-						protocol.NewURI(diag.URI): edits,
+						protocol.NewURI(diag.URI): fix.Edits,
 					},
 				},
 				Diagnostics: []protocol.Diagnostic{pdiag},

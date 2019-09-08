@@ -28,53 +28,26 @@ func (s *Server) rename(ctx context.Context, params *protocol.RenameParams) (*pr
 		return nil, err
 	}
 	changes := make(map[string][]protocol.TextEdit)
-	for uri, textEdits := range edits {
-		f, err := getGoFile(ctx, view, uri)
-		if err != nil {
-			return nil, err
-		}
-		m, err := getMapper(ctx, f)
-		if err != nil {
-			return nil, err
-		}
-		protocolEdits, err := source.ToProtocolEdits(m, textEdits)
-		if err != nil {
-			return nil, err
-		}
-		changes[string(uri)] = protocolEdits
+	for uri, e := range edits {
+		changes[protocol.NewURI(uri)] = e
 	}
 
 	return &protocol.WorkspaceEdit{Changes: &changes}, nil
 }
 
-func (s *Server) prepareRename(ctx context.Context, params *protocol.TextDocumentPositionParams) (*protocol.Range, error) {
+func (s *Server) prepareRename(ctx context.Context, params *protocol.PrepareRenameParams) (*protocol.Range, error) {
 	uri := span.NewURI(params.TextDocument.URI)
 	view := s.session.ViewOf(uri)
 	f, err := getGoFile(ctx, view, uri)
 	if err != nil {
 		return nil, err
 	}
-	m, err := getMapper(ctx, f)
+	// Do not return errors here, as it adds clutter.
+	// Returning a nil result means there is not a valid rename.
+	item, err := source.PrepareRename(ctx, view, f, params.Position)
 	if err != nil {
-		return nil, err
-	}
-
-	// Find the identifier at the position.
-	ident, err := source.PrepareRename(ctx, view, f, params.Position)
-	if err != nil {
-		// Do not return the errors here, as it adds clutter.
-		// Returning a nil result means there is not a valid rename.
 		return nil, nil
 	}
-	identSpn, err := ident.Range.Span()
-	if err != nil {
-		return nil, err
-	}
-
-	identRng, err := m.Range(identSpn)
-	if err != nil {
-		return nil, err
-	}
 	// TODO(suzmue): return ident.Name as the placeholder text.
-	return &identRng, nil
+	return &item.Range, nil
 }

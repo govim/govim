@@ -51,9 +51,11 @@ func (v *vimstate) showHover(posExpr string, opts, userOpts map[string]interface
 	if err != nil {
 		return "", fmt.Errorf("failed to determine mouse position: %v", err)
 	}
-	params := &protocol.TextDocumentPositionParams{
-		TextDocument: b.ToTextDocumentIdentifier(),
-		Position:     pos.ToPosition(),
+	params := &protocol.HoverParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: b.ToTextDocumentIdentifier(),
+			Position:     pos.ToPosition(),
+		},
 	}
 	hovRes, err := v.server.Hover(context.Background(), params)
 	if err != nil {
