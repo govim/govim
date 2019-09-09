@@ -19,28 +19,52 @@ const (
 var _ protocol.Client = (*govimplugin)(nil)
 
 func (g *govimplugin) ShowMessage(ctxt context.Context, params *protocol.ShowMessageParams) error {
-	g.logGoplsClientf("Asked to show a message: %v", params.Message)
+	g.logGoplsClientf("ShowMessage callback: %v", params.Message)
+	if params.Type != protocol.Error {
+		return nil
+	}
+
+	g.Schedule(func(govim.Govim) error {
+		opts := make(map[string]interface{})
+		opts["mousemoved"] = "any"
+		opts["moved"] = "any"
+		opts["padding"] = []int{0, 1, 0, 1}
+		opts["wrap"] = false
+		opts["border"] = []int{}
+		opts["highlight"] = "ErrorMsg"
+		opts["line"] = 1
+		opts["close"] = "click"
+
+		g.ChannelCall("popup_create", params.Message, opts)
+		return nil
+	})
 	return nil
 }
+
 func (g *govimplugin) ShowMessageRequest(context.Context, *protocol.ShowMessageRequestParams) (*protocol.MessageActionItem, error) {
 	panic("not implemented yet")
 }
+
 func (g *govimplugin) LogMessage(ctxt context.Context, params *protocol.LogMessageParams) error {
 	defer absorbShutdownErr()
 	g.logGoplsClientf("LogMessage callback: %v", pretty.Sprint(params))
 	return nil
 }
+
 func (g *govimplugin) Telemetry(context.Context, interface{}) error {
 	panic("not implemented yet")
 }
+
 func (g *govimplugin) RegisterCapability(ctxt context.Context, params *protocol.RegistrationParams) error {
 	defer absorbShutdownErr()
 	g.logGoplsClientf("RegisterCapability: %v", pretty.Sprint(params))
 	return nil
 }
+
 func (g *govimplugin) UnregisterCapability(context.Context, *protocol.UnregistrationParams) error {
 	panic("not implemented yet")
 }
+
 func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFolder, error) {
 	panic("not implemented yet")
 }
@@ -61,9 +85,11 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	res[0] = conf
 	return res, nil
 }
+
 func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {
 	panic("not implemented yet")
 }
+
 func (g *govimplugin) Event(context.Context, *interface{}) error {
 	panic("not implemented yet")
 }

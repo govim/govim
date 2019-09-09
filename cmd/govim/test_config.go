@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"sort"
 	"strings"
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 )
 
 // This file contains config that would otherwise be in the
@@ -25,6 +27,7 @@ const (
 	FunctionBadBatch            config.Function = "BadBatch"
 	FunctionAssertFailedBatch   config.Function = "AssertFailedBatch"
 	FunctionNonBatchCallInBatch config.Function = "NonBatchCallInBatch"
+	FunctionShowMessagePopup    config.Function = config.InternalFunctionPrefix + "ShowMessagePopup"
 )
 
 func (g *govimplugin) InitTestAPI() {
@@ -35,6 +38,7 @@ func (g *govimplugin) InitTestAPI() {
 	g.DefineFunction(string(FunctionHello), []string{}, g.vimstate.hello)
 	g.DefineCommand(string(CommandHello), g.vimstate.helloComm, govim.NArgsZeroOrOne)
 	g.DefineFunction(string(FunctionDumpPopups), []string{}, g.vimstate.dumpPopups)
+	g.DefineFunction(string(FunctionShowMessagePopup), []string{}, g.vimstate.showMessagePopup)
 	g.DefineFunction(string(FunctionSimpleBatch), []string{}, g.vimstate.simpleBatch)
 	g.DefineFunction(string(FunctionCancelBatch), []string{}, g.vimstate.cancelBatch)
 	g.DefineFunction(string(FunctionBadBatch), []string{}, g.vimstate.badBatch)
@@ -73,6 +77,15 @@ func (v *vimstate) dumpPopups(args ...json.RawMessage) (interface{}, error) {
 		sb.WriteString(v.ParseString(v.ChannelExprf(`join(getbufline(%v, 0, '$'), "\n")."\n"`, b.BufNr)))
 	}
 	return sb.String(), nil
+}
+
+func (v *vimstate) showMessagePopup(args ...json.RawMessage) (interface{}, error) {
+	v.tomb.Go(func() error {
+		ctx := context.Background()
+		params := &protocol.ShowMessageParams{Type: protocol.Error, Message: "Something went wrong"}
+		return v.ShowMessage(ctx, params)
+	})
+	return "", nil
 }
 
 func (v *vimstate) simpleBatch(args ...json.RawMessage) (interface{}, error) {
