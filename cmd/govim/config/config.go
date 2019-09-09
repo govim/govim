@@ -6,6 +6,19 @@ const (
 	InternalFunctionPrefix = "_internal_"
 )
 
+type EnvVar string
+
+const (
+	// EnvVarUseGoplsFromPath is an environment variable which, when set to the
+	// value "true", configures govim to use the gopls binary found in PATH
+	// instead of the version required by the govim module.
+	//
+	// WARNING: use of this environment variable comes with no warranty, because
+	// we have no guarantees that the gopls version found in PATH works with
+	// govim.
+	EnvVarUseGoplsFromPath EnvVar = "GOVIM_USE_GOPLS_FROM_PATH"
+)
+
 type Config struct {
 	// FormatOnSave is a string value that configures which tool to use for
 	// formatting on save. Options are given by constants of type FormatOnSave.

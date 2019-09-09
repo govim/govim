@@ -16,6 +16,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/testdriver"
 	"github.com/govim/govim/testsetup"
 	"github.com/kr/pty"
@@ -41,18 +42,11 @@ func TestScripts(t *testing.T) {
 	var waitLock sync.Mutex
 	var waitList []func() error
 
-	td, err := ioutil.TempDir("", "gobin-gopls-installdir")
+	td, err := installGoplsToTempDir()
 	if err != nil {
-		t.Fatalf("failed to create temp install directory for gopls: %v", err)
+		t.Fatalf("failed to install gopls to temp directory: %v", err)
 	}
 	defer os.RemoveAll(td)
-
-	cmd := exec.Command("go", "install", raceOrNot(), "golang.org/x/tools/gopls")
-	cmd.Env = append(os.Environ(), "GOBIN="+td)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("failed to install temp version of golang.org/x/tools/gopls: %v\n%s", err, out)
-	}
-
 	goplspath := filepath.Join(td, "gopls")
 	govimPath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
 
@@ -75,7 +69,7 @@ func TestScripts(t *testing.T) {
 					"TMPDIR="+tmp,
 					"HOME="+home,
 					"PLUGIN_PATH="+govimPath,
-					"CURRENT_GOPATH="+os.Getenv("GOPATH"),
+					"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
 				)
 				testPluginPath := filepath.Join(e.WorkDir, "home", ".vim", "pack", "plugins", "start", "govim")
 
@@ -162,13 +156,50 @@ func TestInstallScripts(t *testing.T) {
 
 	govimPath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
 
+	// For the tests where we set GOVIM_USE_GOPLS_FROM_PATH=true, install
+	// gopls to a temp dir and add that dir to our PATH
+	td, err := installGoplsToTempDir()
+	if err != nil {
+		t.Fatalf("failed to install gopls to temp directory: %v", err)
+	}
+	defer os.RemoveAll(td)
+
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
 			Dir: "testdatainstall",
 			Setup: func(e *testscript.Env) error {
 				e.Vars = append(e.Vars,
 					"PLUGIN_PATH="+govimPath,
-					"CURRENT_GOPATH="+os.Getenv("GOPATH"),
+					"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
+					testsetup.EnvLoadTestAPI+"=true",
+				)
+				return nil
+			},
+		})
+	})
+
+	t.Run("scripts-with-gopls-from-path", func(t *testing.T) {
+		testscript.Run(t, testscript.Params{
+			Dir: "testdatainstall",
+			Setup: func(e *testscript.Env) error {
+				var path string
+				for i := len(e.Vars) - 1; i >= 0; i-- {
+					v := e.Vars[i]
+					if strings.HasPrefix(v, "PATH=") {
+						path = strings.TrimPrefix(v, "PATH=")
+						break
+					}
+				}
+				if path == "" {
+					path = td
+				} else {
+					path = td + string(os.PathListSeparator) + path
+				}
+				e.Vars = append(e.Vars,
+					"PATH="+path,
+					"PLUGIN_PATH="+govimPath,
+					"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
+					string(config.EnvVarUseGoplsFromPath)+"=true",
 					testsetup.EnvLoadTestAPI+"=true",
 				)
 				return nil
@@ -200,4 +231,17 @@ func execvim() int {
 		return 1
 	}
 	return 0
+}
+
+func installGoplsToTempDir() (string, error) {
+	td, err := ioutil.TempDir("", "gobin-gopls-installdir")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp install directory for gopls: %v", err)
+	}
+	cmd := exec.Command("go", "install", raceOrNot(), "golang.org/x/tools/gopls")
+	cmd.Env = append(os.Environ(), "GOBIN="+td)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("failed to install temp version of golang.org/x/tools/gopls: %v\n%s", err, out)
+	}
+	return td, nil
 }
