@@ -21,6 +21,8 @@ var (
 		},
 		Completion: CompletionOptions{
 			Documentation: true,
+			Deep:          true,
+			FuzzyMatching: true,
 		},
 	}
 	DefaultViewOptions = ViewOptions{}
@@ -29,9 +31,7 @@ var (
 type SessionOptions struct {
 	Env              []string
 	BuildFlags       []string
-	UsePlaceholders  bool
 	HoverKind        HoverKind
-	SuggestedFixes   bool
 	DisabledAnalyses map[string]struct{}
 
 	WatchFileChanges              bool
@@ -58,6 +58,7 @@ type CompletionOptions struct {
 	Unimported        bool
 	Documentation     bool
 	FullDocumentation bool
+	Placeholders      bool
 }
 
 type HoverKind int

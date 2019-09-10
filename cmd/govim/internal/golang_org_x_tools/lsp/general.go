@@ -283,12 +283,6 @@ func (s *Server) processConfig(ctx context.Context, view source.View, options *s
 		view.SetBuildFlags(flags)
 	}
 
-	// Check if the user wants documentation in completion items.
-	// This defaults to true.
-	options.Completion.Documentation = true
-	setBool(&options.Completion.Documentation, c, "wantCompletionDocumentation")
-	setBool(&options.UsePlaceholders, c, "usePlaceholders")
-
 	// Set the hover kind.
 	if hoverKind, ok := c["hoverKind"].(string); ok {
 		switch hoverKind {
@@ -308,9 +302,6 @@ func (s *Server) processConfig(ctx context.Context, view source.View, options *s
 		}
 	}
 
-	// Check if the user wants to see suggested fixes from go/analysis.
-	setBool(&options.SuggestedFixes, c, "wantSuggestedFixes")
-
 	// Check if the user has explicitly disabled any analyses.
 	if disabledAnalyses, ok := c["experimentalDisabledAnalyses"].([]interface{}); ok {
 		options.DisabledAnalyses = make(map[string]struct{})
@@ -321,11 +312,18 @@ func (s *Server) processConfig(ctx context.Context, view source.View, options *s
 		}
 	}
 
+	// Set completion options. For now, we allow disabling of completion documentation,
+	// deep completion, and fuzzy matching.
+	setBool(&options.Completion.Documentation, c, "wantCompletionDocumentation")
 	setNotBool(&options.Completion.Deep, c, "disableDeepCompletion")
 	setNotBool(&options.Completion.FuzzyMatching, c, "disableFuzzyMatching")
 
-	// Check if want unimported package completions.
+	// Unimported package completion is still experimental, so not enabled by default.
 	setBool(&options.Completion.Unimported, c, "wantUnimportedCompletions")
+
+	// If the user wants placeholders for autocompletion results.
+	setBool(&options.Completion.Placeholders, c, "usePlaceholders")
+
 	return nil
 }
 
