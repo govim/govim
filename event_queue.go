@@ -45,7 +45,11 @@ func (e eventQueueInst) Scheduled() Govim {
 	return e
 }
 
-func (e eventQueueInst) Schedule(f func(Govim) error) chan struct{} {
+func (e eventQueueInst) Enqueue(f func(Govim) error) chan struct{} {
+	panic(fmt.Errorf("attempt to enqueue work on the event queue from the event queue itself"))
+}
+
+func (e eventQueueInst) Schedule(f func(Govim) error) (chan struct{}, error) {
 	panic(fmt.Errorf("attempt to schedule work on the event queue from the event queue itself"))
 }
 

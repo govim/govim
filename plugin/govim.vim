@@ -47,32 +47,49 @@ let s:userBusy = 0
 set ballooneval
 set balloonevalterm
 
-function s:callbackFunction(name, args)
-  let l:args = ["function", "function:".a:name, a:args]
-  let l:resp = ch_evalexpr(s:channel, l:args)
+let s:scheduleBacklog = []
+let s:activeGovimCalls = 0
+
+function s:ch_evalexpr(args)
+  let s:activeGovimCalls += 1
+  let l:resp = ch_evalexpr(s:channel, a:args)
+  let s:activeGovimCalls -= 1
   if l:resp[0] != ""
     throw l:resp[0]
   endif
+  call s:drainScheduleBacklog()
   return l:resp[1]
+endfunction
+
+function s:schedule(id)
+  call add(s:scheduleBacklog, a:id)
+  call s:drainScheduleBacklog()
+endfunction
+
+function s:drainScheduleBacklog()
+  if s:activeGovimCalls == 0
+    while len(s:scheduleBacklog) > 0
+      let l:args = ["schedule", s:scheduleBacklog[0]]
+      let s:scheduleBacklog = s:scheduleBacklog[1:]
+      let l:resp = s:ch_evalexpr(l:args)
+    endwhile
+  endif
+endfunction
+
+function s:callbackFunction(name, args)
+  let l:args = ["function", "function:".a:name, a:args]
+  return s:ch_evalexpr(l:args)
 endfunction
 
 function s:callbackRangeFunction(name, first, last, args)
   let l:args = ["function", "function:".a:name, a:first, a:last, a:args]
-  let l:resp = ch_evalexpr(s:channel, l:args)
-  if l:resp[0] != ""
-    throw l:resp[0]
-  endif
-  return l:resp[1]
+  return s:ch_evalexpr(l:args)
 endfunction
 
 function s:callbackCommand(name, flags, ...)
   let l:args = ["function", "command:".a:name, a:flags]
   call extend(l:args, a:000)
-  let l:resp = ch_evalexpr(s:channel, l:args)
-  if l:resp[0] != ""
-    throw l:resp[0]
-  endif
-  return l:resp[1]
+  return s:ch_evalexpr(l:args)
 endfunction
 
 function s:callbackAutoCommand(name, exprs)
@@ -93,11 +110,7 @@ function s:callbackAutoCommand(name, exprs)
     call add(l:exprVals, eval(e))
   endfor
   let l:args = ["function", a:name, l:exprVals]
-  let l:resp = ch_evalexpr(s:channel, l:args)
-  if l:resp[0] != ""
-    throw l:resp[0]
-  endif
-  return l:resp[1]
+  return s:ch_evalexpr(l:args)
 endfunction
 
 function s:doShutdown()

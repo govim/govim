@@ -115,8 +115,14 @@ type Govim interface {
 	// Scheduled returns the event queue Govim interface
 	Scheduled() Govim
 
-	// Schedule schdules f to run in the event queue
-	Schedule(func(Govim) error) chan struct{}
+	// Enqueue enqueues f to run in govim's event queue. There is no
+	// synchronisation with Vim's event queue. done is closed when f returns.
+	Enqueue(f func(Govim) error) (done chan struct{})
+
+	// Schedule schedules f to run when it is next safe to do so from Vim's
+	// perspective.  f is then run within govim's event queue. done is closed
+	// when f returns
+	Schedule(f func(Govim) error) (done chan struct{}, err error)
 
 	// Flavor returns the flavor of the editor to which the Govim instance is
 	// connected
@@ -157,6 +163,10 @@ type govimImpl struct {
 	callVimNextID     int
 	callbackResps     map[int]callback
 	callbackRespsLock sync.Mutex
+
+	scheduleVimNextID  int
+	scheduledCalls     map[int]func(Govim) error
+	scheduledCallsLock sync.Mutex
 
 	autocmdNextID int
 
@@ -209,6 +219,9 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, e
 		callVimNextID: 1,
 		callbackResps: make(map[int]callback),
 
+		scheduleVimNextID: 1,
+		scheduledCalls:    make(map[int]func(Govim) error),
+
 		instanceID: fmt.Sprintf("#%d", atomic.AddUint64(&uniqueID, 1)),
 	}
 
@@ -221,7 +234,7 @@ func (g *govimImpl) Scheduled() Govim {
 	}
 }
 
-func (g *govimImpl) Schedule(f func(Govim) error) chan struct{} {
+func (g *govimImpl) Enqueue(f func(Govim) error) chan struct{} {
 	done := make(chan struct{})
 	g.eventQueue.Add(func() error {
 		defer func() {
@@ -238,6 +251,22 @@ func (g *govimImpl) Schedule(f func(Govim) error) chan struct{} {
 		return f(g.Scheduled())
 	})
 	return done
+}
+
+func (g *govimImpl) Schedule(f func(Govim) error) (chan struct{}, error) {
+	g.scheduledCallsLock.Lock()
+	id := g.scheduleVimNextID
+	g.scheduleVimNextID++
+	done := make(chan struct{})
+	g.scheduledCalls[id] = func(g Govim) error {
+		defer close(done)
+		return f(g)
+	}
+	g.scheduledCallsLock.Unlock()
+	if _, err := g.ChannelCall("s:schedule", id); err != nil {
+		return nil, err
+	}
+	return done, nil
 }
 
 func (g *govimImpl) goHandleShutdown(f func() error) {
@@ -515,6 +544,39 @@ func (g *govimImpl) run() error {
 					resp[0] = errStr
 				} else {
 					resp[1] = res
+				}
+				g.sendJSONMsg(id, resp)
+				return nil
+			})
+		case "schedule":
+			schedId := g.parseInt(args[0])
+			g.scheduledCallsLock.Lock()
+			f, ok := g.scheduledCalls[schedId]
+			if !ok {
+				panic(fmt.Errorf("failed to find scheduled callback func with id %v", schedId))
+			}
+			g.scheduledCallsLock.Unlock()
+			g.eventQueue.Add(func() error {
+				resp := [2]interface{}{"", ""}
+				var err error
+				func() {
+					defer func() {
+						if r := recover(); r != nil {
+							stack := make([]byte, 20*(1<<10))
+							l := runtime.Stack(stack, true)
+							err = fmt.Errorf("caught panic: %v\n%s", r, stack[:l])
+						}
+						select {
+						case <-g.tomb.Dying():
+						case g.flushEvents <- struct{}{}:
+						}
+					}()
+					f(eventQueueInst{g})
+				}()
+				if err != nil {
+					errStr := fmt.Sprintf("got error whilst handling scheduled callback %v: %v", schedId, err)
+					g.Logf(errStr)
+					resp[0] = errStr
 				}
 				g.sendJSONMsg(id, resp)
 				return nil

@@ -104,11 +104,10 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 	defer absorbShutdownErr()
 	g.logGoplsClientf("PublishDiagnostics callback: %v", pretty.Sprint(params))
 	g.diagnosticsLock.Lock()
-	defer g.diagnosticsLock.Unlock()
-
 	uri := span.URI(params.URI)
 	curr, ok := g.diagnostics[uri]
 	g.diagnostics[uri] = params
+	g.diagnosticsLock.Unlock()
 	if !ok {
 		if len(params.Diagnostics) == 0 {
 			return nil

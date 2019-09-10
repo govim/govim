@@ -422,38 +422,45 @@ func (d *TestDriver) listenDriver() error {
 				}
 				res = append(res, toAdd)
 			}
+			schedule := func(f func(govim.Govim) error) chan struct{} {
+				ch, err := d.govim.Schedule(f)
+				if err != nil {
+					panic(err)
+				}
+				return ch
+			}
 			switch cmd {
 			case "redraw":
 				var force string
 				if len(args) == 2 {
 					force = args[1].(string)
 				}
-				<-d.govim.Schedule(func(g govim.Govim) error {
+				<-schedule(func(g govim.Govim) error {
 					add(g.ChannelRedraw(force == "force"))
 					return nil
 				})
 			case "ex":
 				expr := args[1].(string)
-				<-d.govim.Schedule(func(g govim.Govim) error {
+				<-schedule(func(g govim.Govim) error {
 					add(g.ChannelEx(expr))
 					return nil
 				})
 			case "normal":
 				expr := args[1].(string)
-				<-d.govim.Schedule(func(g govim.Govim) error {
+				<-schedule(func(g govim.Govim) error {
 					add(g.ChannelNormal(expr))
 					return nil
 				})
 			case "expr":
 				expr := args[1].(string)
-				<-d.govim.Schedule(func(g govim.Govim) error {
+				<-schedule(func(g govim.Govim) error {
 					resp, err := g.ChannelExpr(expr)
 					add(err, resp)
 					return nil
 				})
 			case "call":
 				fn := args[1].(string)
-				<-d.govim.Schedule(func(g govim.Govim) error {
+				<-schedule(func(g govim.Govim) error {
 					resp, err := g.ChannelCall(fn, args[2:]...)
 					add(err, resp)
 					return nil
