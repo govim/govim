@@ -4,10 +4,6 @@
 #   main.go|9 col 19| missing return
 #   main.go|10 col 19| missing return
 
-# Since signs are placed/removed using sign_placelist()/sign_unplacelist() they require v8.1.1682.
-[vim] [!vim:v8.1.1682] skip
-[gvim] [!gvim:v8.1.1682] skip
-
 vim ex 'e main.go'
 errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_placelist\"'
 

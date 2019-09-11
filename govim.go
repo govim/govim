@@ -19,7 +19,6 @@ import (
 
 	"github.com/govim/govim/internal/queue"
 	"github.com/kr/pretty"
-	"github.com/rogpeppe/go-internal/semver"
 	"gopkg.in/tomb.v2"
 )
 
@@ -283,27 +282,17 @@ func (g *govimImpl) load() error {
 				GuiRunning  int
 			}
 
-			// TODO when the minimum Vim version we require is >= v8.1.1526, then we can drop
-			// the legacy version parsing
-			v, err := g.ChannelExpr(`{"Version": execute("version"), "VersionLong": exists("v:versionlong")?v:versionlong:-1, "GuiRunning": has("gui_running")}`)
+			v, err := g.ChannelExpr(`{"VersionLong": exists("v:versionlong")?v:versionlong:-1, "GuiRunning": has("gui_running")}`)
 			if err != nil {
 				return err
 			}
 			g.decodeJSON(v, &details)
 
-			if details.VersionLong != -1 {
-				l := details.VersionLong
-				maj := l / 1000000
-				min := (l / 10000) % 10
-				pat := l % 10000
-				g.version = fmt.Sprintf("v%v.%v.%v", maj, min, pat)
-			} else {
-				version, err := ParseVimVersion([]byte(details.Version))
-				if err != nil {
-					return err
-				}
-				g.version = version
-			}
+			l := details.VersionLong
+			maj := l / 1000000
+			min := (l / 10000) % 10
+			pat := l % 10000
+			g.version = fmt.Sprintf("v%v.%v.%v", maj, min, pat)
 
 			if details.GuiRunning == 1 {
 				g.flavor = FlavorGvim
@@ -921,35 +910,4 @@ type errProto struct {
 
 func (e errProto) Error() string {
 	return fmt.Sprintf("protocol error: %v", e.underlying)
-}
-
-// ParseVimVersion takes b which is assumed to be the output from :version or --version
-// and returns the equivalent semver version.
-//
-// TODO when the minimum Vim version we require is >= v8.1.1526, then we can drop
-// the legacy version parsing
-func ParseVimVersion(b []byte) (string, error) {
-	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-	av := "v"
-	av += strings.Fields(lines[0])[4] // 5th element is the major.minor
-
-	// Depending on OS/build, the patch versions are printed on different lines
-	var patch string
-	for _, line := range lines {
-		if strings.Contains(line, ": ") {
-			patch = strings.Fields(line)[2]
-			patchI := strings.Index(patch, "-")
-			if patchI == -1 {
-				return "", fmt.Errorf("failed to parse patch version from %v", patch)
-			}
-			patch = patch[patchI+1:]
-			break
-		}
-	}
-	av += "." + patch
-	if !semver.IsValid(av) {
-		return "", fmt.Errorf("failed to calculate valid Vim version from %q; got %v", b, av)
-	}
-
-	return av, nil
 }
