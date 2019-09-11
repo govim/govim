@@ -35,7 +35,7 @@ set balloondelay=250
 " Suggestion: Turn on the sign column so you can see error marks on lines
 " where there are quickfix errors. Some users who already show line number
 " might prefer to instead have the signs shown in the number column; in which
-" case set signcolumn=number (requires Vim >= v8.1.1564)
+" case set signcolumn=number
 set signcolumn=yes
 
 " Suggestion: Turn on syntax highlighting for .go files. You might prefer to

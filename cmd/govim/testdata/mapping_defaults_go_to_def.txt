@@ -41,9 +41,8 @@ vim ex 'call feedkeys(\"\\<C-t>\", \"x\")'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[3,15]\E$'
 
-# Vim only, and at least v8.1.1262
+# Vim only
 [!vim] skip 'Need Vim for test_setmouse'
-[!vim:v8.1.1262] skip 'Need at least v8.1.1262 for test_setmouse'
 
 # <C-LeftMouse> and <C-RightMouse>
 vim ex 'call test_setmouse(screenpos(bufwinid(\"p.go\"),3,15)[\"row\"],screenpos(bufwinid(\"p.go\"),3,15)[\"col\"])'

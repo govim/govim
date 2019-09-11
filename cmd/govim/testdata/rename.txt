@@ -1,13 +1,5 @@
 # Test that renaming of identifiers works
 
-# For some reason this test triggers an unusual bug in Vim
-# that causes it to segfault. For now we aren't going to bump
-# the minimum required version for govim (or just the rename
-# functionality) rather we just disable this test and we'll see
-# if we get any reports of problems
-[vim] [!vim:v8.1.1700] skip
-[gvim] [!gvim:v8.1.1700] skip
-
 vim ex 'e main.go'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'call cursor(6,7)'

@@ -1,6 +1,0 @@
-# Test that the vim condition works.
-
-[vim] [!vim:v8.1.1262] skip 'Vim is not current enough'
-[gvim] [!gvim:v8.1.1262] skip 'Gvim is not current enough'
-[vim:v8.1.1262] vim ex 'call test_setmouse(1,1)'
-[gvim:v8.1.1262] vim ex 'call test_setmouse(1,1)'

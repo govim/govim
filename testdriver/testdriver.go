@@ -679,7 +679,7 @@ func Condition(cond string) (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("failed to run %v: %v\n%s", strings.Join(cmd.Args, " "), err, out)
 		}
-		version, err := govim.ParseVimVersion(out)
+		version, err := parseVimVersion(out)
 		if err != nil {
 			return false, err
 		}
@@ -687,6 +687,32 @@ func Condition(cond string) (bool, error) {
 	}
 
 	panic("should not reach here")
+}
+
+func parseVimVersion(b []byte) (string, error) {
+	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
+	av := "v"
+	av += strings.Fields(lines[0])[4] // 5th element is the major.minor
+
+	// Depending on OS/build, the patch versions are printed on different lines
+	var patch string
+	for _, line := range lines {
+		if strings.Contains(line, ": ") {
+			patch = strings.Fields(line)[2]
+			patchI := strings.Index(patch, "-")
+			if patchI == -1 {
+				return "", fmt.Errorf("failed to parse patch version from %v", patch)
+			}
+			patch = patch[patchI+1:]
+			break
+		}
+	}
+	av += "." + patch
+	if !semver.IsValid(av) {
+		return "", fmt.Errorf("failed to calculate valid Vim version from %q; got %v", b, av)
+	}
+
+	return av, nil
 }
 
 type LockingBuffer struct {

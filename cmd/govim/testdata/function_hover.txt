@@ -2,18 +2,12 @@
 
 [!vim] [!gvim] skip
 
-# For some reason, the new-style popup test fails on gvim.
-# https://github.com/govim/govim/issues/351
-[gvim:v8.1.1649] skip
-
 vim ex 'e main.go'
 vim ex 'call cursor(6,6)'
 vim expr 'GOVIMHover()'
-[!vim:v8.1.1649] stdout '^\Q"func fmt.Println(a ...interface{}) (n int, err error)"\E$'
-[!vim:v8.1.1649] ! stderr .+
-[vim:v8.1.1649] vim -stringout expr 'GOVIM_internal_DumpPopups()'
-[vim:v8.1.1649] cmp stdout popup.golden
-[vim:v8.1.1649] ! stderr .+
+vim -stringout expr 'GOVIM_internal_DumpPopups()'
+cmp stdout popup.golden
+! stderr .+
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
