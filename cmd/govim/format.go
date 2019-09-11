@@ -102,13 +102,23 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			v.Logf("gopls.CodeAction returned an error; nothing to do")
 			return nil
 		}
-		switch len(actions) {
+
+		// We might get other kinds in the response, like QuickFix for example.
+		// They will be handled via issue #510 (add/enable support for suggested fixes)
+		var organizeImports []protocol.CodeAction
+		for _, action := range actions {
+			if action.Kind == protocol.SourceOrganizeImports {
+				organizeImports = append(organizeImports, action)
+			}
+		}
+
+		switch len(organizeImports) {
 		case 0:
 			return nil
 		case 1:
-			edits = (*actions[0].Edit.Changes)[string(b.URI())]
+			edits = (*organizeImports[0].Edit.Changes)[string(b.URI())]
 		default:
-			return fmt.Errorf("don't know how to handle %v actions", len(actions))
+			return fmt.Errorf("don't know how to handle %v actions", len(organizeImports))
 		}
 	default:
 		return fmt.Errorf("unknown format mode specified: %v", mode)
