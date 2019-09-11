@@ -24,8 +24,6 @@ cmp stdout placed_openfile.golden
 # Removing one of the two quickfix entires on one line shouldn't remove the sign
 vim ex 'call cursor(6,36)'
 vim ex 'call feedkeys(\"3x\", \"x\")' # Remove "i, " from Printf-line
-[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
-[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
@@ -37,8 +35,6 @@ cmp stdout placed_openfile.golden
 # Removing lines should also remove the signs
 vim ex 'call cursor(9,1)'
 vim ex 'call feedkeys(\"2dd\", \"x\")' # Remove line 9 & 10
-[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
-[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
 errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_unplacelist\"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
@@ -49,8 +45,6 @@ cmp stdout placed_onesign.golden
 
 # Fixing the last quickfix entry should remove the last sign
 vim call append '[5, "\tvar v string"]'
-[vim] [!vim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
-[gvim] [!gvim:v8.1.1711] vim ex 'doautocmd TextChangedI' # make sure gopls is notified if incremental buffer updates isn't supported
 errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_unplacelist\"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
