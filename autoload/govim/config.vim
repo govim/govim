@@ -74,9 +74,25 @@ function! s:validExperimentalCursorTriggeredHoverPopupOptions(v)
   return s:validExperimentalMouseTriggeredHoverPopupOptions(a:v)
 endfunction
 
+function! s:validCompletionDeepCompletionsDisable(v)
+  if type(a:v) != 0  && type(a:v) != 6
+    return [v:false, "must be of type number or bool"
+  endif
+  return [v:true, ""]
+endfunction
+
+function! s:validCompletionFuzzyMatchingDisable(v)
+  if type(a:v) != 0  && type(a:v) != 6
+    return [v:false, "must be of type number or bool"
+  endif
+  return [v:true, ""]
+endfunction
+
 let s:validators = {
       \ "FormatOnSave": function("s:validFormatOnSave"),
       \ "QuickfixAutoDiagnosticsDisable": function("s:validQuickfixAutoDiagnosticsDisable"),
+      \ "CompletionDeepCompletionsDisable": function("s:validCompletionDeepCompletionsDisable"),
+      \ "CompletionFuzzyMatchingDisable": function("s:validCompletionFuzzyMatchingDisable"),
       \ "QuickfixSignsDisable": function("s:validQuickfixSignsDisable"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
