@@ -60,6 +60,11 @@ type Config struct {
 	// Staticcheck enables staticcheck analyses in gopls
 	Staticcheck *bool `json:",omitempty"`
 
+	// CompletionCaseSensitive configures gopls' matching to be case sensitive.
+	// This option only takes effect when both CompletionDeepCompletions and
+	// CompletionFuzzyMatching are set to false.
+	CompletionCaseSensitive *bool `json:",omitempty"`
+
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
 	// over an identifier. It corresponds to the second argument to popup_create

@@ -1,0 +1,6 @@
+{
+	"FormatOnSave": "goimports",
+	"CompletionDeepCompletions": false,
+	"CompletionFuzzyMatching": false,
+	"CompletionCaseSensitive": true
+}

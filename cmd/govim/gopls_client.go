@@ -12,11 +12,12 @@ import (
 )
 
 const (
-	goplsConfigNoDocsOnHover = "noDocsOnHover"
-	goplsConfigHoverKind     = "hoverKind"
-	goplsDeepCompletion      = "deepCompletion"
-	goplsFuzzyMatching       = "fuzzyMatching"
-	goplsStaticcheck         = "staticcheck"
+	goplsConfigNoDocsOnHover     = "noDocsOnHover"
+	goplsConfigHoverKind         = "hoverKind"
+	goplsDeepCompletion          = "deepCompletion"
+	goplsFuzzyMatching           = "fuzzyMatching"
+	goplsStaticcheck             = "staticcheck"
+	goplsCaseSensitiveCompletion = "caseSensitiveCompletion"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -100,6 +101,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if g.vimstate.config.Staticcheck != nil {
 		conf[goplsStaticcheck] = *g.vimstate.config.Staticcheck
+	}
+	if g.vimstate.config.CompletionCaseSensitive != nil {
+		conf[goplsCaseSensitiveCompletion] = *g.vimstate.config.CompletionCaseSensitive
 	}
 	res[0] = conf
 

@@ -90,6 +90,7 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	//
 	// CompletionDeepCompletiionsDisable
 	// CompletionFuzzyMatchingDisable
+	// CompletionCaseSensitive
 	//
 	// As a workaround for now, users will need to set config in their .vimrc
 	// and then restart Vim (even then there is a race condition for Vim8
