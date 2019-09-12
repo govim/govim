@@ -22,6 +22,11 @@ func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
 		curr := v.ParseString(v.ChannelExprf(`expand("<cword>")`))
 		renameTo = v.ParseString(v.ChannelExprf(`input("govim: rename '%v' to: ", %q)`, curr, curr))
 	}
+
+	if len(renameTo) == 0 {
+		return nil
+	}
+
 	params := &protocol.RenameParams{
 		TextDocument: protocol.TextDocumentIdentifier{
 			URI: string(b.URI()),
