@@ -23,9 +23,10 @@ func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
 		renameTo = v.ParseString(v.ChannelExprf(`input("govim: rename '%v' to: ", %q)`, curr, curr))
 	}
 
-	if len(renameTo) == 0 {
-		return nil
-	}
+	v.logGoplsClientf("rename: user cancelled or supplied an empty new name")
+	//if len(renameTo) == 0 {
+	//    return nil
+	//}
 
 	params := &protocol.RenameParams{
 		TextDocument: protocol.TextDocumentIdentifier{

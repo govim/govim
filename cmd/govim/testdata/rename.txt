@@ -3,8 +3,7 @@
 vim ex 'e main.go'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'call cursor(6,7)'
-vim ex 'call execute(\"GOVIMRename\")'
-vim ex 'call execute(\"normal <Esc>\")'
+vim ex 'call feedkeys(\":GOVIMRename\\<Enter>\\<ESC>\", \"xt\")'
 vim ex 'silent noautocmd wall'
 vim -indent call execute '["ls"]'
 #stdout '"\n  1 %a   \\"main.go\\"                      line 7\n  2 #a   \"'$WORK/other.go'\" line 0"'
