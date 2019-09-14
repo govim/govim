@@ -16,17 +16,18 @@ func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
 		return fmt.Errorf("failed to get current position: %v", err)
 	}
 	var renameTo string
+	var curr string
 	if len(args) == 1 {
 		renameTo = args[0]
 	} else {
-		curr := v.ParseString(v.ChannelExprf(`expand("<cword>")`))
-		renameTo = v.ParseString(v.ChannelExprf(`input("govim: rename '%v' to: ", %q)`, curr, curr))
+		curr = v.ParseString(v.ChannelExprf(`expand("<cword>")`))
+		renameTo = v.ParseString(v.ChannelExprf(`input("govim: rename '%v' to:", %q)`, curr, curr))
 	}
 
-	v.logGoplsClientf("rename: user cancelled or supplied an empty new name")
-	//if len(renameTo) == 0 {
-	//    return nil
-	//}
+	if len(renameTo) == 0 || curr == renameTo {
+		v.logGoplsClientf("rename: user cancelled or supplied an empty new name: %v", renameTo)
+		return nil
+	}
 
 	params := &protocol.RenameParams{
 		TextDocument: protocol.TextDocumentIdentifier{

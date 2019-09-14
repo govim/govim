@@ -3,11 +3,19 @@
 vim ex 'e main.go'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'call cursor(6,7)'
-vim ex 'call feedkeys(\":GOVIMRename\\<Enter>\\<ESC>\", \"xt\")'
+
+# Test pressing <Esc> key while input prompt is still showing with no input value
+vim ex 'call feedkeys(\":GOVIMRename\\<CR>\\<ESC>\")'
+errlogmatch -wait 1s 'rename: user cancelled or supplied an empty new name: i'
+
+# Test pressing <Esc> key while input prompt is still showing with input value
+vim ex 'call feedkeys(\":GOVIMRename\\<CR>\\<BS>banana\\<ESC>\")'
+# errlogmatch -wait 1s 'rename: user cancelled or supplied an empty new name: ibanana'
+
+# vim ex 'call execute(\"GOVIMRename banana\")'
 vim ex 'silent noautocmd wall'
 vim -indent call execute '["ls"]'
-#stdout '"\n  1 %a   \\"main.go\\"                      line 7\n  2 #a   \"'$WORK/other.go'\" line 0"'
-#! stderr .+
+
 cmp main.go main.go.banana
 cmp other.go other.go.banana
 
