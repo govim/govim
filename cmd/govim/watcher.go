@@ -106,7 +106,7 @@ func (m *modWatcher) watch() {
 				if !ofInterest(path) {
 					continue
 				}
-				m.Schedule(func(govim.Govim) error {
+				m.Enqueue(func(govim.Govim) error {
 					return m.vimstate.handleEvent(event)
 				})
 			case fswatcher.OpChanged:
@@ -122,7 +122,7 @@ func (m *modWatcher) watch() {
 					if !ofInterest(path) {
 						continue
 					}
-					m.Schedule(func(govim.Govim) error {
+					m.Enqueue(func(govim.Govim) error {
 						return m.vimstate.handleEvent(event)
 					})
 					continue
