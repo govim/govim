@@ -29,13 +29,19 @@ func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
 		Position: pos.ToPosition(),
 		NewName:  renameTo,
 	}
+
 	res, err := v.server.Rename(context.Background(), params)
 	if err != nil {
 		return fmt.Errorf("called to gopls.Rename failed: %v", err)
 	}
+
+	return v.applyMultiBufTextedits(flags.Mods, res.Changes)
+}
+
+func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes *map[string][]protocol.TextEdit) error {
 	var allChanges map[string][]protocol.TextEdit
-	if res.Changes != nil {
-		allChanges = *res.Changes
+	if changes != nil {
+		allChanges = *changes
 	}
 	if len(allChanges) == 0 {
 		v.Logf("No changes to apply for rename")
@@ -73,7 +79,7 @@ func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
 			return fmt.Errorf("got back multiple buffers searching for %v", tf)
 		}
 		// Hard code split for now
-		v.ChannelExf("%v split %v", flags.Mods, tf)
+		v.ChannelExf("%v split %v", splitMods, tf)
 		bufNrs[filepath] = v.ParseInt(v.ChannelCall("bufnr", tf))
 	}
 	v.ChannelCall("win_gotoid", vp.Current.WinID)
