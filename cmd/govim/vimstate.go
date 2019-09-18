@@ -100,7 +100,7 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 			v.diagnosticsLock.Lock()
 			v.diagnosticsChanged = true
 			v.diagnosticsLock.Unlock()
-			return nil, v.updateQuickfix()
+			return nil, v.redefineDiagnostics()
 		}
 	}
 	return nil, nil
@@ -113,7 +113,7 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	if v.userBusy || v.config.QuickfixAutoDiagnosticsDisable || !v.quickfixIsDiagnostics {
 		return nil, nil
 	}
-	return nil, v.updateQuickfix()
+	return nil, v.redefineDiagnostics()
 }
 
 type batch struct {

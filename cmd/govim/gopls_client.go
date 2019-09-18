@@ -125,7 +125,7 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 		if v.userBusy {
 			return nil
 		}
-		return v.updateQuickfix()
+		return v.redefineDiagnostics()
 	})
 	return nil
 }

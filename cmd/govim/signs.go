@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
 // Using a sign group creates a separate namespace for all signs placed by govim
@@ -67,11 +69,12 @@ type unplaceDict struct {
 
 // redefineSigns ensures that there is only one govim sign per buffer line
 // by calculating a difference between current state and the list of quickfix entries
-func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
+func (v *vimstate) redefineSigns(fixes []types.Diagnostic) error {
 	type bufLine struct {
 		buf  int
 		line int
 	}
+
 	remove := make(map[bufLine]int) // Value is sign ID, used to unplace duplicates
 	place := make(map[bufLine]int)  // Value is insert order, used to avoid sorting
 
@@ -113,7 +116,7 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 	// delete existing entries from the list of signs to removed
 	inx := 0
 	for _, f := range fixes {
-		bl := bufLine{f.Buf, f.Lnum}
+		bl := bufLine{f.Buf, f.Range.Start.Line()}
 		if _, exist := remove[bl]; exist {
 			delete(remove, bl)
 			continue
