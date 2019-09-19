@@ -22,7 +22,14 @@ var _ protocol.Client = (*govimplugin)(nil)
 
 func (g *govimplugin) ShowMessage(ctxt context.Context, params *protocol.ShowMessageParams) error {
 	g.logGoplsClientf("ShowMessage callback: %v", params.Message)
-	if params.Type != protocol.Error {
+
+	var hl string
+	switch params.Type {
+	case protocol.Error:
+		hl = "ErrorMsg"
+	case protocol.Warning:
+		hl = "WarningMsg"
+	default:
 		return nil
 	}
 
@@ -33,7 +40,7 @@ func (g *govimplugin) ShowMessage(ctxt context.Context, params *protocol.ShowMes
 		opts["padding"] = []int{0, 1, 0, 1}
 		opts["wrap"] = false
 		opts["border"] = []int{}
-		opts["highlight"] = "ErrorMsg"
+		opts["highlight"] = hl
 		opts["line"] = 1
 		opts["close"] = "click"
 
