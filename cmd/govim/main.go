@@ -22,6 +22,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/types"
+	"github.com/govim/govim/cmd/govim/internal/vimconfig"
 	"github.com/govim/govim/internal/plugin"
 	"github.com/govim/govim/testsetup"
 	"gopkg.in/tomb.v2"
@@ -173,6 +174,11 @@ type govimplugin struct {
 }
 
 func newplugin(goplspath string) *govimplugin {
+	defaults := config.Config{
+		FormatOnSave:            vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImports),
+		QuickfixAutoDiagnostics: vimconfig.BoolVal(true),
+		QuickfixSigns:           vimconfig.BoolVal(true),
+	}
 	d := plugin.NewDriver(PluginPrefix)
 	res := &govimplugin{
 		diagnostics: make(map[span.URI]*protocol.PublishDiagnosticsParams),
@@ -181,6 +187,8 @@ func newplugin(goplspath string) *govimplugin {
 		vimstate: &vimstate{
 			Driver:                d,
 			buffers:               make(map[int]*types.Buffer),
+			defaultConfig:         defaults,
+			config:                defaults,
 			watchedFiles:          make(map[string]*types.WatchedFile),
 			quickfixIsDiagnostics: true,
 		},

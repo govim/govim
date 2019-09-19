@@ -42,14 +42,14 @@ function! s:validFormatOnSave(v)
   return [v:true, ""]
 endfunction
 
-function! s:validQuickfixAutoDiagnosticsDisable(v)
+function! s:validQuickfixAutoDiagnostics(v)
   if type(a:v) != 0  && type(a:v) != 6
     return [v:false, "must be of type number or bool"
   endif
   return [v:true, ""]
 endfunction
 
-function! s:validQuickfixSignsDisable(v)
+function! s:validQuickfixSigns(v)
   if type(a:v) != 0  && type(a:v) != 6
     return [v:false, "must be of type number or bool"
   endif
@@ -74,14 +74,14 @@ function! s:validExperimentalCursorTriggeredHoverPopupOptions(v)
   return s:validExperimentalMouseTriggeredHoverPopupOptions(a:v)
 endfunction
 
-function! s:validCompletionDeepCompletionsDisable(v)
+function! s:validCompletionDeepCompletions(v)
   if type(a:v) != 0  && type(a:v) != 6
     return [v:false, "must be of type number or bool"
   endif
   return [v:true, ""]
 endfunction
 
-function! s:validCompletionFuzzyMatchingDisable(v)
+function! s:validCompletionFuzzyMatching(v)
   if type(a:v) != 0  && type(a:v) != 6
     return [v:false, "must be of type number or bool"
   endif
@@ -90,12 +90,10 @@ endfunction
 
 let s:validators = {
       \ "FormatOnSave": function("s:validFormatOnSave"),
-      \ "QuickfixAutoDiagnosticsDisable": function("s:validQuickfixAutoDiagnosticsDisable"),
-      \ "CompletionDeepCompletionsDisable": function("s:validCompletionDeepCompletionsDisable"),
-      \ "CompletionFuzzyMatchingDisable": function("s:validCompletionFuzzyMatchingDisable"),
-      \ "QuickfixSignsDisable": function("s:validQuickfixSignsDisable"),
+      \ "QuickfixAutoDiagnostics": function("s:validQuickfixAutoDiagnostics"),
+      \ "CompletionDeepCompletions": function("s:validCompletionDeepCompletions"),
+      \ "CompletionFuzzyMatching": function("s:validCompletionFuzzyMatching"),
+      \ "QuickfixSigns": function("s:validQuickfixSigns"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
       \ }
-
-call govim#config#Set("FormatOnSave", "goimports")

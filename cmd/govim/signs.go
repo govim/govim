@@ -105,7 +105,7 @@ func (v *vimstate) redefineSigns(fixes []quickfixEntry) error {
 		}
 	}
 
-	if v.config.QuickfixSignsDisable {
+	if !*v.config.QuickfixSigns {
 		return nil
 	}
 

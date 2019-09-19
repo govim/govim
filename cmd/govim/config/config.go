@@ -22,33 +22,40 @@ const (
 type Config struct {
 	// FormatOnSave is a string value that configures which tool to use for
 	// formatting on save. Options are given by constants of type FormatOnSave.
+	//
 	// Default: FormatOnSaveGoImports.
-	FormatOnSave FormatOnSave
+	FormatOnSave *FormatOnSave
 
-	// QuickfixAutoDiagnosticsDisable is a boolean (0 or 1 in VimScript) that
-	// controls whether auto-population of the quickfix window with gopls
-	// diagnostics is disabled or not. When not disabled, govim waits for
-	// updatetime (help updatetime) before populating the quickfix window with
-	// the current gopls diagnostics. When disabled, the
-	// CommandQuickfixDiagnostics command can be used to manually trigger the
-	// population. Default: false (0)
-	QuickfixAutoDiagnosticsDisable bool
+	// QuickfixAutoDiagnostics is a boolean (0 or 1 in VimScript) that controls
+	// whether auto-population of the quickfix window with gopls diagnostics is
+	// enabled or not. When enabled, govim waits for updatetime (help
+	// updatetime) before populating the quickfix window with the current gopls
+	// diagnostics. When disabled, the CommandQuickfixDiagnostics command can be
+	// used to manually trigger the population.
+	//
+	// Default: true
+	QuickfixAutoDiagnostics *bool
 
-	// QuickfixSignsDisable is a boolean (0 or 1 in VimScript) that controls
-	// whether quickfix entries should be annotated with signs in the gutter.
-	// Signs are placed when gopls diagnostics updates the quickfix list, either
-	// automatically when QuickfixAutoDiagnosticsDisable is false, or when the
-	// user run :GOVIMQuickfixDiagnostics.
-	// Default: false (0)
-	QuickfixSignsDisable bool
+	// QuickfixSigns is a boolean (0 or 1 in VimScript) that controls whether
+	// quickfix entries should be annotated with signs in the gutter.  Signs are
+	// placed when gopls diagnostics updates the quickfix list, either
+	// automatically when QuickfixAutoDiagnostics is true, or when the user run
+	// :GOVIMQuickfixDiagnostics.
+	//
+	// Default: true
+	QuickfixSigns *bool
 
-	// CompletionDeepCompletiionsDisable disables gopls' deep completion option
+	// CompletionDeepCompletiions enables gopls' deep completion option
 	// in the derivation of completion candidates.
-	CompletionDeepCompletionsDisable bool
+	//
+	// Default: true
+	CompletionDeepCompletions *bool
 
-	// CompletionFuzzyMatchingDisable disables gopls' fuzzy matching in the
-	// derivation of completion candidates.
-	CompletionFuzzyMatchingDisable bool
+	// CompletionFuzzyMatching enables gopls' fuzzy matching in the derivation
+	// of completion candidates.
+	//
+	// Default: true
+	CompletionFuzzyMatching *bool
 
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
@@ -69,7 +76,9 @@ type Config struct {
 	// This is an experimental feature designed to help iterate on
 	// the most sensible out-of-the-box defaults for hover popups. It might go
 	// away in the future, be renamed etc.
-	ExperimentalMouseTriggeredHoverPopupOptions map[string]interface{}
+	//
+	// Default: nil
+	ExperimentalMouseTriggeredHoverPopupOptions *map[string]interface{}
 
 	// ExperimentalCursorTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by a call to
@@ -91,7 +100,9 @@ type Config struct {
 	// This is an experimental feature designed to help iterate on the most
 	// sensible out-of-the-box defaults for hover popups. It might go away in
 	// the future, be renamed etc.
-	ExperimentalCursorTriggeredHoverPopupOptions map[string]interface{}
+	//
+	// Default: nil
+	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
 }
 
 type Command string

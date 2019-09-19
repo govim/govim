@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	goplsConfigNoDocsOnHover   = "noDocsOnHover"
-	goplsConfigHoverKind       = "hoverKind"
-	goplsDisableDeepCompletion = "disableDeepCompletion"
-	goplsDisableFuzzyMatching  = "disableFuzzyMatching"
+	goplsConfigNoDocsOnHover = "noDocsOnHover"
+	goplsConfigHoverKind     = "hoverKind"
+	goplsDeepCompletion      = "deepCompletion"
+	goplsFuzzyMatching       = "fuzzyMatching"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -84,8 +84,12 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	res := make([]interface{}, len(params.Items))
 	conf := make(map[string]interface{})
 	conf[goplsConfigHoverKind] = "FullDocumentation"
-	conf[goplsDisableDeepCompletion] = g.vimstate.config.CompletionDeepCompletionsDisable
-	conf[goplsDisableFuzzyMatching] = g.vimstate.config.CompletionFuzzyMatchingDisable
+	if g.vimstate.config.CompletionDeepCompletions != nil {
+		conf[goplsDeepCompletion] = *g.vimstate.config.CompletionDeepCompletions
+	}
+	if g.vimstate.config.CompletionFuzzyMatching != nil {
+		conf[goplsFuzzyMatching] = *g.vimstate.config.CompletionFuzzyMatching
+	}
 	res[0] = conf
 
 	g.logGoplsClientf("Configuration response: %v", pretty.Sprint(res))
@@ -121,7 +125,7 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 	g.Schedule(func(govim.Govim) error {
 		v := g.vimstate
 		v.diagnosticsChanged = true
-		if v.config.QuickfixAutoDiagnosticsDisable {
+		if !*v.config.QuickfixAutoDiagnostics {
 			return nil
 		}
 		if !v.quickfixIsDiagnostics {

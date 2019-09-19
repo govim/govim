@@ -5,10 +5,6 @@
 # doing so triggers govim to consider the file change from a file watcher
 # perspective which throws the observed diagnostics etc.
 
-# Ensure the default is goimports
-vim expr 'govim#config#Get().FormatOnSave'
-stdout '^"goimports"$'
-
 # :GOVIMGoImports whole file
 vim ex 'e! file.go'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go

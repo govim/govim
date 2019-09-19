@@ -2,7 +2,7 @@
 # GOVIMReferences command
 
 # Ensure quickfix diagnostics are turned on
-vim call 'govim#config#Set' '["QuickfixAutoDiagnosticsDisable", 0]'
+vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 1]'
 
 # Initial location population
 vim ex 'e main.go'
