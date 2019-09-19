@@ -214,3 +214,13 @@ func (p Point) ToPosition() protocol.Position {
 func f2int(f float64) int {
 	return int(math.Round(f))
 }
+
+// Diagnostic is the govim internal representation of a LSP diagnostic, used to
+// populate quickfix list, place signs, highlight text ranges etc.
+type Diagnostic struct {
+	Filename string
+	Range    Range
+	Text     string
+	Buf      int
+	Severity int
+}
