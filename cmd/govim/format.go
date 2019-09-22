@@ -21,14 +21,14 @@ func (v *vimstate) formatCurrentBuffer(args ...json.RawMessage) (err error) {
 	}
 	tool := v.config.FormatOnSave
 	// TODO we should move this validation elsewhere...
-	switch tool {
+	switch *tool {
 	case config.FormatOnSaveNone:
 		return nil
 	case config.FormatOnSaveGoFmt, config.FormatOnSaveGoImports:
 	default:
 		return fmt.Errorf("unknown format tool specified: %v", tool)
 	}
-	return v.formatBufferRange(b, tool, govim.CommandFlags{})
+	return v.formatBufferRange(b, *tool, govim.CommandFlags{})
 }
 
 func (v *vimstate) gofmtCurrentBufferRange(flags govim.CommandFlags, args ...string) error {

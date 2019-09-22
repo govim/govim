@@ -7,6 +7,7 @@ import (
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
+	"github.com/govim/govim/cmd/govim/internal/vimconfig"
 	"github.com/govim/govim/internal/plugin"
 )
 
@@ -33,7 +34,8 @@ type vimstate struct {
 	// state here
 	lastCompleteResults *protocol.CompletionList
 
-	config config.Config
+	defaultConfig config.Config
+	config        config.Config
 
 	// userBusy indicates the user is moving the cusor doing something
 	userBusy bool
@@ -64,38 +66,12 @@ type vimstate struct {
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	preConfig := v.config
-	var c struct {
-		FormatOnSave                                 config.FormatOnSave
-		QuickfixAutoDiagnosticsDisable               int
-		QuickfixSignsDisable                         int
-		CompletionDeepCompletionsDisable             int
-		CompletionFuzzyMatchingDisable               int
-		ExperimentalMouseTriggeredHoverPopupOptions  map[string]json.RawMessage
-		ExperimentalCursorTriggeredHoverPopupOptions map[string]json.RawMessage
-	}
-	v.Parse(args[0], &c)
-	v.config = config.Config{
-		FormatOnSave:                     c.FormatOnSave,
-		QuickfixSignsDisable:             c.QuickfixSignsDisable != 0,
-		QuickfixAutoDiagnosticsDisable:   c.QuickfixAutoDiagnosticsDisable != 0,
-		CompletionDeepCompletionsDisable: c.CompletionDeepCompletionsDisable != 0,
-		CompletionFuzzyMatchingDisable:   c.CompletionFuzzyMatchingDisable != 0,
-	}
-	if len(c.ExperimentalMouseTriggeredHoverPopupOptions) > 0 {
-		v.config.ExperimentalMouseTriggeredHoverPopupOptions = make(map[string]interface{})
-		for ck, cv := range c.ExperimentalMouseTriggeredHoverPopupOptions {
-			v.config.ExperimentalMouseTriggeredHoverPopupOptions[ck] = cv
-		}
-	}
-	if len(c.ExperimentalCursorTriggeredHoverPopupOptions) > 0 {
-		v.config.ExperimentalCursorTriggeredHoverPopupOptions = make(map[string]interface{})
-		for ck, cv := range c.ExperimentalCursorTriggeredHoverPopupOptions {
-			v.config.ExperimentalCursorTriggeredHoverPopupOptions[ck] = cv
-		}
-	}
-	if v.config.QuickfixAutoDiagnosticsDisable != preConfig.QuickfixAutoDiagnosticsDisable ||
-		v.config.QuickfixSignsDisable != preConfig.QuickfixSignsDisable {
-		if v.config.QuickfixAutoDiagnosticsDisable {
+	var vc vimconfig.VimConfig
+	v.Parse(args[0], &vc)
+	v.config = vc.ToConfig(v.defaultConfig)
+	if *v.config.QuickfixAutoDiagnostics != *preConfig.QuickfixAutoDiagnostics ||
+		*v.config.QuickfixSigns != *preConfig.QuickfixSigns {
+		if !*v.config.QuickfixAutoDiagnostics {
 			v.lastQuickFixDiagnostics = []quickfixEntry{}
 			if v.quickfixIsDiagnostics {
 				v.ChannelCall("setqflist", v.lastQuickFixDiagnostics, "r")
@@ -126,7 +102,7 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	var isBusy int
 	v.Parse(args[0], &isBusy)
 	v.userBusy = isBusy != 0
-	if v.userBusy || v.config.QuickfixAutoDiagnosticsDisable || !v.quickfixIsDiagnostics {
+	if v.userBusy || !*v.config.QuickfixAutoDiagnostics || !v.quickfixIsDiagnostics {
 		return nil, nil
 	}
 	return nil, v.redefineDiagnostics()

@@ -26,7 +26,7 @@ func (v *vimstate) hover(args ...json.RawMessage) (interface{}, error) {
 	return v.showHover(posExpr, opts, v.config.ExperimentalCursorTriggeredHoverPopupOptions)
 }
 
-func (v *vimstate) showHover(posExpr string, opts, userOpts map[string]interface{}) (interface{}, error) {
+func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOpts *map[string]interface{}) (interface{}, error) {
 	if v.popupWinId > 0 {
 		v.ChannelCall("popup_close", v.popupWinId)
 		v.popupWinId = 0
@@ -68,7 +68,7 @@ func (v *vimstate) showHover(posExpr string, opts, userOpts map[string]interface
 	lines := strings.Split(msg, "\n")
 	if userOpts != nil {
 		opts = make(map[string]interface{})
-		for k, v := range userOpts {
+		for k, v := range *userOpts {
 			opts[k] = v
 		}
 		var line, col int64
