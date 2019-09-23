@@ -102,15 +102,11 @@ func (i *IdentifierInfo) Rename(ctx context.Context, view View, newName string) 
 	if i.Declaration.obj.Parent() == types.Universe {
 		return nil, errors.Errorf("cannot rename builtin %q", i.Name)
 	}
-	pkg, err := bestPackage(i.File.File().Identity().URI, i.pkgs)
-	if err != nil {
-		return nil, err
-	}
-	if pkg == nil || pkg.IsIllTyped() {
+	if i.pkg == nil || i.pkg.IsIllTyped() {
 		return nil, errors.Errorf("package for %s is ill typed", i.File.File().Identity().URI)
 	}
 	// Do not rename identifiers declared in another package.
-	if pkg.GetTypes() != i.Declaration.obj.Pkg() {
+	if i.pkg.GetTypes() != i.Declaration.obj.Pkg() {
 		return nil, errors.Errorf("failed to rename because %q is declared in package %q", i.Name, i.Declaration.obj.Pkg().Name())
 	}
 
@@ -149,13 +145,25 @@ func (i *IdentifierInfo) Rename(ctx context.Context, view View, newName string) 
 	}
 	result := make(map[span.URI][]protocol.TextEdit)
 	for uri, edits := range changes {
-		// Sort the edits first.
-		diff.SortTextEdits(edits)
-
-		_, m, err := cachedFileToMapper(ctx, view, uri)
+		// These edits should really be associated with FileHandles for maximal correctness.
+		// For now, this is good enough.
+		f, err := view.GetFile(ctx, uri)
 		if err != nil {
 			return nil, err
 		}
+		fh := f.Handle(ctx)
+		data, _, err := fh.Read(ctx)
+		if err != nil {
+			return nil, err
+		}
+		converter := span.NewContentConverter(uri.Filename(), data)
+		m := &protocol.ColumnMapper{
+			URI:       uri,
+			Converter: converter,
+			Content:   data,
+		}
+		// Sort the edits first.
+		diff.SortTextEdits(edits)
 		protocolEdits, err := ToProtocolEdits(m, edits)
 		if err != nil {
 			return nil, err
@@ -168,20 +176,12 @@ func (i *IdentifierInfo) Rename(ctx context.Context, view View, newName string) 
 // getPkgName gets the pkg name associated with an identifer representing
 // the import path in an import spec.
 func (i *IdentifierInfo) getPkgName(ctx context.Context) (*IdentifierInfo, error) {
-	var (
-		file *ast.File
-		err  error
-	)
-	pkg, err := bestPackage(i.File.File().Identity().URI, i.pkgs)
+	ph, err := i.pkg.File(i.URI())
 	if err != nil {
 		return nil, err
 	}
-	for _, ph := range pkg.GetHandles() {
-		if ph.File().Identity().URI == i.File.File().Identity().URI {
-			file, err = ph.Cached(ctx)
-		}
-	}
-	if file == nil {
+	file, _, _, err := ph.Cached(ctx)
+	if err != nil {
 		return nil, err
 	}
 	var namePos token.Pos
@@ -194,15 +194,14 @@ func (i *IdentifierInfo) getPkgName(ctx context.Context) (*IdentifierInfo, error
 	if !namePos.IsValid() {
 		return nil, errors.Errorf("import spec not found for %q", i.Name)
 	}
-
 	// Look for the object defined at NamePos.
-	for _, obj := range pkg.GetTypesInfo().Defs {
+	for _, obj := range i.pkg.GetTypesInfo().Defs {
 		pkgName, ok := obj.(*types.PkgName)
 		if ok && pkgName.Pos() == namePos {
 			return getPkgNameIdentifier(ctx, i, pkgName)
 		}
 	}
-	for _, obj := range pkg.GetTypesInfo().Implicits {
+	for _, obj := range i.pkg.GetTypesInfo().Implicits {
 		pkgName, ok := obj.(*types.PkgName)
 		if ok && pkgName.Pos() == namePos {
 			return getPkgNameIdentifier(ctx, i, pkgName)
@@ -219,14 +218,10 @@ func getPkgNameIdentifier(ctx context.Context, ident *IdentifierInfo, pkgName *t
 		wasImplicit: true,
 	}
 	var err error
-	if decl.mappedRange, err = objToMappedRange(ctx, ident.View, decl.obj); err != nil {
+	if decl.mappedRange, err = objToMappedRange(ctx, ident.View, ident.pkg, decl.obj); err != nil {
 		return nil, err
 	}
-	pkg, err := bestPackage(ident.File.File().Identity().URI, ident.pkgs)
-	if err != nil {
-		return nil, err
-	}
-	if decl.node, err = objToNode(ctx, ident.View, pkg, decl.obj); err != nil {
+	if decl.node, err = objToNode(ctx, ident.View, ident.pkg, decl.obj); err != nil {
 		return nil, err
 	}
 	return &IdentifierInfo{
@@ -235,7 +230,7 @@ func getPkgNameIdentifier(ctx context.Context, ident *IdentifierInfo, pkgName *t
 		mappedRange:      decl.mappedRange,
 		File:             ident.File,
 		Declaration:      decl,
-		pkgs:             ident.pkgs,
+		pkg:              ident.pkg,
 		wasEmbeddedField: false,
 		qf:               ident.qf,
 	}, nil

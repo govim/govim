@@ -19,24 +19,6 @@ import (
 	errors "golang.org/x/xerrors"
 )
 
-func (s *Server) getSupportedCodeActions() []protocol.CodeActionKind {
-	allCodeActionKinds := make(map[protocol.CodeActionKind]struct{})
-	for _, kinds := range s.session.Options().SupportedCodeActions {
-		for kind := range kinds {
-			allCodeActionKinds[kind] = struct{}{}
-		}
-	}
-
-	var result []protocol.CodeActionKind
-	for kind := range allCodeActionKinds {
-		result = append(result, kind)
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i] < result[j]
-	})
-	return result
-}
-
 func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionParams) ([]protocol.CodeAction, error) {
 	uri := span.NewURI(params.TextDocument.URI)
 	view := s.session.ViewOf(uri)
@@ -46,7 +28,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 	}
 
 	// Determine the supported actions for this file kind.
-	fileKind := f.Handle(ctx).Kind()
+	fileKind := f.Handle(ctx).Identity().Kind
 	supportedCodeActions, ok := view.Options().SupportedCodeActions[fileKind]
 	if !ok {
 		return nil, fmt.Errorf("no supported code actions for %v file kind", fileKind)
@@ -68,61 +50,93 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 	}
 
 	var codeActions []protocol.CodeAction
-
-	edits, editsPerFix, err := source.AllImportsFixes(ctx, view, f)
-	if err != nil {
-		return nil, err
-	}
-
-	// If the user wants to see quickfixes.
-	if wanted[protocol.QuickFix] {
-		// First, add the quick fixes reported by go/analysis.
-		gof, ok := f.(source.GoFile)
-		if !ok {
-			return nil, fmt.Errorf("%s is not a Go file", f.URI())
+	switch fileKind {
+	case source.Mod:
+		if !wanted[protocol.SourceOrganizeImports] {
+			return nil, nil
 		}
-		qf, err := quickFixes(ctx, view, gof)
-		if err != nil {
-			log.Error(ctx, "quick fixes failed", err, telemetry.File.Of(uri))
-		}
-		codeActions = append(codeActions, qf...)
-
-		// If we also have diagnostics for missing imports, we can associate them with quick fixes.
-		if findImportErrors(params.Context.Diagnostics) {
-			// Separate this into a set of codeActions per diagnostic, where
-			// each action is the addition, removal, or renaming of one import.
-			for _, importFix := range editsPerFix {
-				// Get the diagnostics this fix would affect.
-				if fixDiagnostics := importDiagnostics(importFix.Fix, params.Context.Diagnostics); len(fixDiagnostics) > 0 {
-					codeActions = append(codeActions, protocol.CodeAction{
-						Title: importFixTitle(importFix.Fix),
-						Kind:  protocol.QuickFix,
-						Edit: &protocol.WorkspaceEdit{
-							Changes: &map[string][]protocol.TextEdit{
-								string(uri): importFix.Edits,
-							},
-						},
-						Diagnostics: fixDiagnostics,
-					})
-				}
-			}
-		}
-	}
-
-	// Add the results of import organization as source.OrganizeImports.
-	if wanted[protocol.SourceOrganizeImports] {
 		codeActions = append(codeActions, protocol.CodeAction{
-			Title: "Organize Imports",
+			Title: "Tidy",
 			Kind:  protocol.SourceOrganizeImports,
-			Edit: &protocol.WorkspaceEdit{
-				Changes: &map[string][]protocol.TextEdit{
-					string(uri): edits,
+			Command: &protocol.Command{
+				Title:   "Tidy",
+				Command: "tidy",
+				Arguments: []interface{}{
+					f.URI(),
 				},
 			},
 		})
-	}
+	case source.Go:
+		gof, ok := f.(source.GoFile)
+		if !ok {
+			return nil, errors.Errorf("%s is not a Go file", f.URI())
+		}
+		edits, editsPerFix, err := source.AllImportsFixes(ctx, view, gof)
+		if err != nil {
+			return nil, err
+		}
+		if wanted[protocol.QuickFix] {
+			// First, add the quick fixes reported by go/analysis.
+			qf, err := quickFixes(ctx, view, gof)
+			if err != nil {
+				log.Error(ctx, "quick fixes failed", err, telemetry.File.Of(uri))
+			}
+			codeActions = append(codeActions, qf...)
 
+			// If we also have diagnostics for missing imports, we can associate them with quick fixes.
+			if findImportErrors(params.Context.Diagnostics) {
+				// Separate this into a set of codeActions per diagnostic, where
+				// each action is the addition, removal, or renaming of one import.
+				for _, importFix := range editsPerFix {
+					// Get the diagnostics this fix would affect.
+					if fixDiagnostics := importDiagnostics(importFix.Fix, params.Context.Diagnostics); len(fixDiagnostics) > 0 {
+						codeActions = append(codeActions, protocol.CodeAction{
+							Title: importFixTitle(importFix.Fix),
+							Kind:  protocol.QuickFix,
+							Edit: &protocol.WorkspaceEdit{
+								Changes: &map[string][]protocol.TextEdit{
+									string(uri): importFix.Edits,
+								},
+							},
+							Diagnostics: fixDiagnostics,
+						})
+					}
+				}
+			}
+		}
+		if wanted[protocol.SourceOrganizeImports] {
+			codeActions = append(codeActions, protocol.CodeAction{
+				Title: "Organize Imports",
+				Kind:  protocol.SourceOrganizeImports,
+				Edit: &protocol.WorkspaceEdit{
+					Changes: &map[string][]protocol.TextEdit{
+						string(uri): edits,
+					},
+				},
+			})
+		}
+	default:
+		// Unsupported file kind for a code action.
+		return nil, nil
+	}
 	return codeActions, nil
+}
+
+func (s *Server) getSupportedCodeActions() []protocol.CodeActionKind {
+	allCodeActionKinds := make(map[protocol.CodeActionKind]struct{})
+	for _, kinds := range s.session.Options().SupportedCodeActions {
+		for kind := range kinds {
+			allCodeActionKinds[kind] = struct{}{}
+		}
+	}
+	var result []protocol.CodeActionKind
+	for kind := range allCodeActionKinds {
+		result = append(result, kind)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i] < result[j]
+	})
+	return result
 }
 
 type protocolImportFix struct {
@@ -189,9 +203,7 @@ func importDiagnostics(fix *imports.ImportFix, diagnostics []protocol.Diagnostic
 				results = append(results, diagnostic)
 			}
 		}
-
 	}
-
 	return results
 }
 
@@ -201,7 +213,12 @@ func quickFixes(ctx context.Context, view source.View, gof source.GoFile) ([]pro
 	// TODO: This is technically racy because the diagnostics provided by the code action
 	// may not be the same as the ones that gopls is aware of.
 	// We need to figure out some way to solve this problem.
-	pkg, err := gof.GetCachedPackage(ctx)
+	cphs, err := gof.CheckPackageHandles(ctx)
+	if err != nil {
+		return nil, err
+	}
+	cph := source.NarrowestCheckPackageHandle(cphs)
+	pkg, err := cph.Cached(ctx)
 	if err != nil {
 		return nil, err
 	}

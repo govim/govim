@@ -46,10 +46,9 @@ func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitia) (
 				Name: path.Base(params.RootURI),
 			}}
 		} else {
-			// no folders and no root, single file mode
-			//TODO(iancottrell): not sure how to do single file mode yet
-			//issue: golang.org/issue/31168
-			return nil, errors.Errorf("single file mode not supported yet")
+			// No folders and no root--we are in single file mode.
+			// TODO: https://golang.org/issue/34160.
+			return nil, errors.Errorf("gopls does not yet support editing a single file. Please open a directory.")
 		}
 	}
 
@@ -83,12 +82,15 @@ func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitia) (
 			DefinitionProvider:         true,
 			DocumentFormattingProvider: true,
 			DocumentSymbolProvider:     true,
-			FoldingRangeProvider:       true,
-			HoverProvider:              true,
-			DocumentHighlightProvider:  true,
-			DocumentLinkProvider:       &protocol.DocumentLinkOptions{},
-			ReferencesProvider:         true,
-			RenameProvider:             renameOpts,
+			ExecuteCommandProvider: &protocol.ExecuteCommandOptions{
+				Commands: options.SupportedCommands,
+			},
+			FoldingRangeProvider:      true,
+			HoverProvider:             true,
+			DocumentHighlightProvider: true,
+			DocumentLinkProvider:      &protocol.DocumentLinkOptions{},
+			ReferencesProvider:        true,
+			RenameProvider:            renameOpts,
 			SignatureHelpProvider: &protocol.SignatureHelpOptions{
 				TriggerCharacters: []string{"(", ","},
 			},
@@ -178,16 +180,15 @@ func (s *Server) fetchConfig(ctx context.Context, name string, folder span.URI, 
 		return nil
 	}
 	v := protocol.ParamConfig{
-		protocol.ConfigurationParams{
+		ConfigurationParams: protocol.ConfigurationParams{
 			Items: []protocol.ConfigurationItem{{
 				ScopeURI: protocol.NewURI(folder),
 				Section:  "gopls",
 			}, {
 				ScopeURI: protocol.NewURI(folder),
-				Section:  name,
-			},
-			},
-		}, protocol.PartialResultParams{},
+				Section:  fmt.Sprintf("gopls-%s", name),
+			}},
+		},
 	}
 	configs, err := s.client.Configuration(ctx, &v)
 	if err != nil {

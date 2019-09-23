@@ -7,6 +7,7 @@ package source
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
@@ -25,19 +26,24 @@ var (
 				protocol.SourceOrganizeImports: true,
 				protocol.QuickFix:              true,
 			},
-			Mod: {},
+			Mod: {
+				protocol.SourceOrganizeImports: true,
+			},
 			Sum: {},
+		},
+		SupportedCommands: []string{
+			"tidy", // for go.mod files
 		},
 		Completion: CompletionOptions{
 			Documentation: true,
 			Deep:          true,
 			FuzzyMatching: true,
+			Budget:        100 * time.Millisecond,
 		},
 	}
 )
 
 type Options struct {
-
 	// Env is the current set of environment overrides on this view.
 	Env []string
 
@@ -46,6 +52,8 @@ type Options struct {
 
 	HoverKind        HoverKind
 	DisabledAnalyses map[string]struct{}
+
+	StaticCheck bool
 
 	WatchFileChanges              bool
 	InsertTextFormat              protocol.InsertTextFormat
@@ -56,6 +64,8 @@ type Options struct {
 	LineFoldingOnly               bool
 
 	SupportedCodeActions map[FileKind]map[protocol.CodeActionKind]bool
+
+	SupportedCommands []string
 
 	// TODO: Remove the option once we are certain there are no issues here.
 	TextDocumentSyncKind protocol.TextDocumentSyncKind
@@ -70,6 +80,13 @@ type CompletionOptions struct {
 	Documentation     bool
 	FullDocumentation bool
 	Placeholders      bool
+
+	// Budget is the soft latency goal for completion requests. Most
+	// requests finish in a couple milliseconds, but in some cases deep
+	// completions can take much longer. As we use up our budget we
+	// dynamically reduce the search scope to ensure we return timely
+	// results.
+	Budget time.Duration
 }
 
 type HoverKind int
@@ -216,6 +233,9 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 		for _, a := range disabledAnalyses {
 			o.DisabledAnalyses[fmt.Sprint(a)] = struct{}{}
 		}
+
+	case "staticcheck":
+		result.setBool(&o.StaticCheck)
 
 	// Deprecated settings.
 	case "wantSuggestedFixes":

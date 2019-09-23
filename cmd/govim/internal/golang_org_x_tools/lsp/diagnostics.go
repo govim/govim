@@ -13,24 +13,35 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	errors "golang.org/x/xerrors"
 )
 
-func (s *Server) Diagnostics(ctx context.Context, view source.View, uri span.URI) {
+func (s *Server) diagnostics(view source.View, uri span.URI) error {
+	ctx := view.BackgroundContext()
+	ctx, done := trace.StartSpan(ctx, "lsp:background-worker")
+	defer done()
+
 	ctx = telemetry.File.With(ctx, uri)
+
 	f, err := view.GetFile(ctx, uri)
 	if err != nil {
-		log.Error(ctx, "no file", err, telemetry.File)
-		return
+		return err
 	}
 	// For non-Go files, don't return any diagnostics.
 	gof, ok := f.(source.GoFile)
 	if !ok {
-		return
+		return errors.Errorf("%s is not a Go file", f.URI())
 	}
-	reports, err := source.Diagnostics(ctx, view, gof, view.Options().DisabledAnalyses)
+	reports, warningMsg, err := source.Diagnostics(ctx, view, gof, view.Options().DisabledAnalyses)
 	if err != nil {
-		log.Error(ctx, "failed to compute diagnostics", err, telemetry.File)
-		return
+		return err
+	}
+	if warningMsg != "" {
+		s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
+			Type:    protocol.Info,
+			Message: warningMsg,
+		})
 	}
 
 	s.undeliveredMu.Lock()
@@ -41,8 +52,9 @@ func (s *Server) Diagnostics(ctx context.Context, view source.View, uri span.URI
 			if s.undelivered == nil {
 				s.undelivered = make(map[span.URI][]source.Diagnostic)
 			}
-			log.Error(ctx, "failed to deliver diagnostic (will retry)", err, telemetry.File)
 			s.undelivered[uri] = diagnostics
+
+			log.Error(ctx, "failed to deliver diagnostic (will retry)", err, telemetry.File)
 			continue
 		}
 		// In case we had old, undelivered diagnostics.
@@ -54,9 +66,11 @@ func (s *Server) Diagnostics(ctx context.Context, view source.View, uri span.URI
 		if err := s.publishDiagnostics(ctx, uri, diagnostics); err != nil {
 			log.Error(ctx, "failed to deliver diagnostic for (will not retry)", err, telemetry.File)
 		}
+
 		// If we fail to deliver the same diagnostics twice, just give up.
 		delete(s.undelivered, uri)
 	}
+	return nil
 }
 
 func (s *Server) publishDiagnostics(ctx context.Context, uri span.URI, diagnostics []source.Diagnostic) error {

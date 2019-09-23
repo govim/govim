@@ -38,10 +38,6 @@ func (view *view) loadParseTypecheck(ctx context.Context, f *goFile, fh source.F
 			log.Error(ctx, "loadParseTypeCheck: failed to get CheckPackageHandle", err, telemetry.Package.Of(m.id))
 			continue
 		}
-		if _, err := cph.check(ctx); err != nil {
-			log.Error(ctx, "loadParseTypeCheck: failed to check package", err, telemetry.Package.Of(m.id))
-			continue
-		}
 		// Cache this package on the file object, since all dependencies are cached in the Import function.
 		if err := imp.cachePackage(ctx, cph); err != nil {
 			log.Error(ctx, "loadParseTypeCheck: failed to cache package", err, telemetry.Package.Of(m.id))
@@ -63,7 +59,7 @@ func (view *view) load(ctx context.Context, f *goFile, fh source.FileHandle) ([]
 
 	var toDelete []packageID
 	f.mu.Lock()
-	for id, cph := range f.pkgs {
+	for id, cph := range f.cphs {
 		if cph != nil {
 			toDelete = append(toDelete, id)
 		}
@@ -92,25 +88,33 @@ func (view *view) load(ctx context.Context, f *goFile, fh source.FileHandle) ([]
 
 // checkMetadata determines if we should run go/packages.Load for this file.
 // If yes, update the metadata for the file and its package.
-func (v *view) checkMetadata(ctx context.Context, f *goFile, fh source.FileHandle) ([]*metadata, error) {
+func (v *view) checkMetadata(ctx context.Context, f *goFile, fh source.FileHandle) (metadata []*metadata, err error) {
 	// Check if we need to re-run go/packages before loading the package.
-	f.mu.Lock()
-	runGopackages := v.shouldRunGopackages(ctx, f, fh)
-	metadata := f.metadata()
-	f.mu.Unlock()
+	var runGopackages bool
+	func() {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+
+		runGopackages, err = v.shouldRunGopackages(ctx, f, fh)
+		metadata = f.metadata()
+	}()
+	if err != nil {
+		return nil, err
+	}
 
 	// The package metadata is correct as-is, so just return it.
 	if !runGopackages {
 		return metadata, nil
 	}
 
-	// Check if the context has been canceled before calling packages.Load.
+	// Don't bother running go/packages if the context has been canceled.
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
 
 	ctx, done := trace.StartSpan(ctx, "packages.Load", telemetry.File.Of(f.filename()))
 	defer done()
+
 	pkgs, err := packages.Load(v.Config(ctx), fmt.Sprintf("file=%s", f.filename()))
 	if len(pkgs) == 0 {
 		if err == nil {
@@ -128,8 +132,8 @@ func (v *view) checkMetadata(ctx context.Context, f *goFile, fh source.FileHandl
 	for k := range f.meta {
 		delete(f.meta, k)
 	}
-	for k := range f.pkgs {
-		delete(f.pkgs, k)
+	for k := range f.cphs {
+		delete(f.cphs, k)
 	}
 	f.mu.Unlock()
 
@@ -164,7 +168,7 @@ func validateMetadata(ctx context.Context, missingImports map[packagePath]struct
 
 	// If we have already seen these missing imports before, and we have type information,
 	// there is no need to continue.
-	if sameSet(missingImports, f.missingImports) && len(f.pkgs) != 0 {
+	if sameSet(missingImports, f.missingImports) && len(f.cphs) != 0 {
 		return nil, nil
 	}
 
@@ -189,18 +193,14 @@ func sameSet(x, y map[packagePath]struct{}) bool {
 // shouldRunGopackages reparses a file's package and import declarations to
 // determine if they have changed.
 // It assumes that the caller holds the lock on the f.mu lock.
-func (v *view) shouldRunGopackages(ctx context.Context, f *goFile, fh source.FileHandle) (result bool) {
+func (v *view) shouldRunGopackages(ctx context.Context, f *goFile, fh source.FileHandle) (result bool, err error) {
 	if len(f.meta) == 0 || len(f.missingImports) > 0 {
-		return true
+		return true, nil
 	}
 	// Get file content in case we don't already have it.
-	parsed, err := v.session.cache.ParseGoHandle(fh, source.ParseHeader).Parse(ctx)
-	if err == context.Canceled {
-		log.Error(ctx, "parsing file header", err, tag.Of("file", f.URI()))
-		return false
-	}
-	if parsed == nil {
-		return true
+	parsed, _, _, err := v.session.cache.ParseGoHandle(fh, source.ParseHeader).Parse(ctx)
+	if err != nil {
+		return false, err
 	}
 	// Check if the package's name has changed, by checking if this is a filename
 	// we already know about, and if so, check if its package name has changed.
@@ -208,21 +208,21 @@ func (v *view) shouldRunGopackages(ctx context.Context, f *goFile, fh source.Fil
 		for _, uri := range m.files {
 			if span.CompareURI(uri, f.URI()) == 0 {
 				if m.name != parsed.Name.Name {
-					return true
+					return true, nil
 				}
 			}
 		}
 	}
 	// If the package's imports have changed, re-run `go list`.
 	if len(f.imports) != len(parsed.Imports) {
-		return true
+		return true, nil
 	}
 	for i, importSpec := range f.imports {
 		if importSpec.Path.Value != parsed.Imports[i].Path.Value {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 type importGraph struct {
@@ -245,7 +245,7 @@ func (v *view) link(ctx context.Context, g *importGraph) error {
 		m.files = append(m.files, span.FileURI(filename))
 
 		// Call the unlocked version of getFile since we are holding the view's mutex.
-		f, err := v.getFile(ctx, span.FileURI(filename))
+		f, err := v.getFile(ctx, span.FileURI(filename), source.Go)
 		if err != nil {
 			log.Error(ctx, "no file", err, telemetry.File.Of(filename))
 			continue

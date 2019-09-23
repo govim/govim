@@ -19,17 +19,11 @@ type FoldingRangeInfo struct {
 func FoldingRange(ctx context.Context, view View, f GoFile, lineFoldingOnly bool) (ranges []*FoldingRangeInfo, err error) {
 	// TODO(suzmue): consider limiting the number of folding ranges returned, and
 	// implement a way to prioritize folding ranges in that case.
-	fh := f.Handle(ctx)
-	file, err := view.Session().Cache().ParseGoHandle(fh, ParseFull).Parse(ctx)
+	ph := view.Session().Cache().ParseGoHandle(f.Handle(ctx), ParseFull)
+	file, m, _, err := ph.Parse(ctx)
 	if err != nil {
 		return nil, err
 	}
-	data, _, err := fh.Read(ctx)
-	if err != nil {
-		return nil, err
-	}
-	fset := view.Session().Cache().FileSet()
-	m := protocol.NewColumnMapper(f.URI(), f.URI().Filename(), fset, fset.File(file.Pos()), data)
 
 	// Get folding ranges for comments separately as they are not walked by ast.Inspect.
 	ranges = append(ranges, commentsFoldingRange(view, m, file)...)

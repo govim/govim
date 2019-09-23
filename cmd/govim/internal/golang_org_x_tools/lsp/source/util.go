@@ -51,106 +51,39 @@ func (s mappedRange) URI() span.URI {
 	return s.m.URI
 }
 
-// bestCheckPackageHandle picks the "narrowest" package for a given file.
+// NarrowestCheckPackageHandle picks the "narrowest" package for a given file.
 //
 // By "narrowest" package, we mean the package with the fewest number of files
 // that includes the given file. This solves the problem of test variants,
 // as the test will have more files than the non-test package.
-func bestPackage(uri span.URI, pkgs []Package) (Package, error) {
-	var result Package
-	for _, pkg := range pkgs {
-		if result == nil || len(pkg.GetHandles()) < len(result.GetHandles()) {
-			result = pkg
+func NarrowestCheckPackageHandle(handles []CheckPackageHandle) CheckPackageHandle {
+	if len(handles) < 1 {
+		return nil
+	}
+	result := handles[0]
+	for _, handle := range handles[1:] {
+		if result == nil || len(handle.Files()) < len(result.Files()) {
+			result = handle
 		}
 	}
-	if result == nil {
-		return nil, errors.Errorf("no CheckPackageHandle for %s", uri)
-	}
-	return result, nil
+	return result
 }
 
-func fileToMapper(ctx context.Context, view View, uri span.URI) (*ast.File, []Package, *protocol.ColumnMapper, error) {
-	f, err := view.GetFile(ctx, uri)
-	if err != nil {
-		return nil, nil, nil, err
+// WidestCheckPackageHandle returns the CheckPackageHandle containing the most files.
+//
+// This is useful for something like diagnostics, where we'd prefer to offer diagnostics
+// for as many files as possible.
+func WidestCheckPackageHandle(handles []CheckPackageHandle) CheckPackageHandle {
+	if len(handles) < 1 {
+		return nil
 	}
-	gof, ok := f.(GoFile)
-	if !ok {
-		return nil, nil, nil, errors.Errorf("%s is not a Go file", f.URI())
-	}
-	pkgs, err := gof.GetPackages(ctx)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	pkg, err := bestPackage(f.URI(), pkgs)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	file, m, err := pkgToMapper(ctx, view, pkg, uri)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	return file, pkgs, m, nil
-}
-
-func cachedFileToMapper(ctx context.Context, view View, uri span.URI) (*ast.File, *protocol.ColumnMapper, error) {
-	f, err := view.GetFile(ctx, uri)
-	if err != nil {
-		return nil, nil, err
-	}
-	gof, ok := f.(GoFile)
-	if !ok {
-		return nil, nil, errors.Errorf("%s is not a Go file", f.URI())
-	}
-	if file, ok := gof.Builtin(); ok {
-		return builtinFileToMapper(ctx, view, gof, file)
-	}
-	pkg, err := gof.GetCachedPackage(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	file, m, err := pkgToMapper(ctx, view, pkg, uri)
-	if err != nil {
-		return nil, nil, err
-	}
-	return file, m, nil
-}
-
-func pkgToMapper(ctx context.Context, view View, pkg Package, uri span.URI) (*ast.File, *protocol.ColumnMapper, error) {
-	var ph ParseGoHandle
-	for _, h := range pkg.GetHandles() {
-		if h.File().Identity().URI == uri {
-			ph = h
+	result := handles[0]
+	for _, handle := range handles[1:] {
+		if result == nil || len(handle.Files()) > len(result.Files()) {
+			result = handle
 		}
 	}
-	file, err := ph.Cached(ctx)
-	if file == nil {
-		return nil, nil, err
-	}
-	data, _, err := ph.File().Read(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	fset := view.Session().Cache().FileSet()
-	tok := fset.File(file.Pos())
-	if tok == nil {
-		return nil, nil, errors.Errorf("no token.File for %s", uri)
-	}
-	return file, protocol.NewColumnMapper(uri, uri.Filename(), fset, tok, data), nil
-}
-
-func builtinFileToMapper(ctx context.Context, view View, f GoFile, file *ast.File) (*ast.File, *protocol.ColumnMapper, error) {
-	fh := f.Handle(ctx)
-	data, _, err := fh.Read(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	fset := view.Session().Cache().FileSet()
-	tok := fset.File(file.Pos())
-	if tok == nil {
-		return nil, nil, errors.Errorf("no token.File for %s", f.URI())
-	}
-	return nil, protocol.NewColumnMapper(f.URI(), f.URI().Filename(), fset, tok, data), nil
+	return result
 }
 
 func IsGenerated(ctx context.Context, view View, uri span.URI) bool {
@@ -159,8 +92,8 @@ func IsGenerated(ctx context.Context, view View, uri span.URI) bool {
 		return false
 	}
 	ph := view.Session().Cache().ParseGoHandle(f.Handle(ctx), ParseHeader)
-	parsed, err := ph.Parse(ctx)
-	if parsed == nil {
+	parsed, _, _, err := ph.Parse(ctx)
+	if err != nil {
 		return false
 	}
 	tok := view.Session().Cache().FileSet().File(parsed.Pos())
@@ -180,15 +113,15 @@ func IsGenerated(ctx context.Context, view View, uri span.URI) bool {
 	return false
 }
 
-func nodeToProtocolRange(ctx context.Context, view View, n ast.Node) (protocol.Range, error) {
-	mrng, err := nodeToMappedRange(ctx, view, n)
+func nodeToProtocolRange(ctx context.Context, view View, m *protocol.ColumnMapper, n ast.Node) (protocol.Range, error) {
+	mrng, err := nodeToMappedRange(ctx, view, m, n)
 	if err != nil {
 		return protocol.Range{}, err
 	}
 	return mrng.Range()
 }
 
-func objToMappedRange(ctx context.Context, view View, obj types.Object) (mappedRange, error) {
+func objToMappedRange(ctx context.Context, view View, pkg Package, obj types.Object) (mappedRange, error) {
 	if pkgName, ok := obj.(*types.PkgName); ok {
 		// An imported Go package has a package-local, unqualified name.
 		// When the name matches the imported package name, there is no
@@ -201,36 +134,49 @@ func objToMappedRange(ctx context.Context, view View, obj types.Object) (mappedR
 		// When the identifier does not appear in the source, have the range
 		// of the object be the point at the beginning of the declaration.
 		if pkgName.Imported().Name() == pkgName.Name() {
-			return nameToMappedRange(ctx, view, obj.Pos(), "")
+			return nameToMappedRange(ctx, view, pkg, obj.Pos(), "")
 		}
 	}
-	return nameToMappedRange(ctx, view, obj.Pos(), obj.Name())
+	return nameToMappedRange(ctx, view, pkg, obj.Pos(), obj.Name())
 }
 
-func nameToMappedRange(ctx context.Context, view View, pos token.Pos, name string) (mappedRange, error) {
-	return posToRange(ctx, view, pos, pos+token.Pos(len(name)))
+func nameToMappedRange(ctx context.Context, view View, pkg Package, pos token.Pos, name string) (mappedRange, error) {
+	return posToMappedRange(ctx, view, pkg, pos, pos+token.Pos(len(name)))
 }
 
-func nodeToMappedRange(ctx context.Context, view View, n ast.Node) (mappedRange, error) {
-	return posToRange(ctx, view, n.Pos(), n.End())
+func nodeToMappedRange(ctx context.Context, view View, m *protocol.ColumnMapper, n ast.Node) (mappedRange, error) {
+	return posToRange(ctx, view, m, n.Pos(), n.End())
 }
 
-func posToRange(ctx context.Context, view View, pos, end token.Pos) (mappedRange, error) {
+func posToMappedRange(ctx context.Context, view View, pkg Package, pos, end token.Pos) (mappedRange, error) {
+	m, err := posToMapper(ctx, view, pkg, pos)
+	if err != nil {
+		return mappedRange{}, err
+	}
+	return posToRange(ctx, view, m, pos, end)
+}
+
+func posToRange(ctx context.Context, view View, m *protocol.ColumnMapper, pos, end token.Pos) (mappedRange, error) {
 	if !pos.IsValid() {
 		return mappedRange{}, errors.Errorf("invalid position for %v", pos)
 	}
 	if !end.IsValid() {
 		return mappedRange{}, errors.Errorf("invalid position for %v", end)
 	}
-	posn := view.Session().Cache().FileSet().Position(pos)
-	_, m, err := cachedFileToMapper(ctx, view, span.FileURI(posn.Filename))
-	if err != nil {
-		return mappedRange{}, err
-	}
 	return mappedRange{
 		m:         m,
 		spanRange: span.NewRange(view.Session().Cache().FileSet(), pos, end),
 	}, nil
+}
+
+func posToMapper(ctx context.Context, view View, pkg Package, pos token.Pos) (*protocol.ColumnMapper, error) {
+	posn := view.Session().Cache().FileSet().Position(pos)
+	ph, _, err := pkg.FindFile(ctx, span.FileURI(posn.Filename))
+	if err != nil {
+		return nil, err
+	}
+	_, m, _, err := ph.Cached(ctx)
+	return m, err
 }
 
 // Matches cgo generated comment as well as the proposed standard:
@@ -360,18 +306,6 @@ func resolveInvalid(obj types.Object, node ast.Node, info *types.Info) types.Obj
 	return formatResult(resultExpr)
 }
 
-func lookupBuiltinDecl(v View, name string) interface{} {
-	builtinPkg := v.BuiltinPackage()
-	if builtinPkg == nil || builtinPkg.Scope == nil {
-		return nil
-	}
-	obj := builtinPkg.Scope.Lookup(name)
-	if obj == nil {
-		return nil
-	}
-	return obj.Decl
-}
-
 func isPointer(T types.Type) bool {
 	_, ok := T.(*types.Pointer)
 	return ok
@@ -393,6 +327,11 @@ func isTypeName(obj types.Object) bool {
 func isFunc(obj types.Object) bool {
 	_, ok := obj.(*types.Func)
 	return ok
+}
+
+func isEmptyInterface(T types.Type) bool {
+	intf, _ := T.(*types.Interface)
+	return intf != nil && intf.NumMethods() == 0
 }
 
 // typeConversion returns the type being converted to if call is a type

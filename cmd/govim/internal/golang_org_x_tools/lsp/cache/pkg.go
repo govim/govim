@@ -7,7 +7,6 @@ package cache
 import (
 	"context"
 	"go/ast"
-	"go/token"
 	"go/types"
 	"sort"
 	"sync"
@@ -45,10 +44,10 @@ type pkg struct {
 	diagnostics map[*analysis.Analyzer][]source.Diagnostic
 }
 
-// packageID is a type that abstracts a package ID.
+// Declare explicit types for package paths and IDs to ensure that we never use
+// an ID where a path belongs, and vice versa. If we confused the two, it would
+// result in confusing errors because package IDs often look like package paths.
 type packageID string
-
-// packagePath is a type that abstracts a package path.
 type packagePath string
 
 type analysisEntry struct {
@@ -148,15 +147,24 @@ func (pkg *pkg) PkgPath() string {
 	return string(pkg.pkgPath)
 }
 
-func (pkg *pkg) GetHandles() []source.ParseGoHandle {
+func (pkg *pkg) Files() []source.ParseGoHandle {
 	return pkg.files
+}
+
+func (pkg *pkg) File(uri span.URI) (source.ParseGoHandle, error) {
+	for _, ph := range pkg.Files() {
+		if ph.File().Identity().URI == uri {
+			return ph, nil
+		}
+	}
+	return nil, errors.Errorf("no ParseGoHandle for %s", uri)
 }
 
 func (pkg *pkg) GetSyntax(ctx context.Context) []*ast.File {
 	var syntax []*ast.File
 	for _, ph := range pkg.files {
-		file, _ := ph.Cached(ctx)
-		if file != nil {
+		file, _, _, err := ph.Cached(ctx)
+		if err == nil {
 			syntax = append(syntax, file)
 		}
 	}
@@ -203,7 +211,12 @@ func (pkg *pkg) GetDiagnostics() []source.Diagnostic {
 	return diags
 }
 
-func (p *pkg) FindFile(ctx context.Context, uri span.URI, pos token.Pos) (source.ParseGoHandle, *ast.File, source.Package, error) {
+func (p *pkg) FindFile(ctx context.Context, uri span.URI) (source.ParseGoHandle, source.Package, error) {
+	// Special case for ignored files.
+	if p.view.Ignore(uri) {
+		return p.view.findIgnoredFile(ctx, uri)
+	}
+
 	queue := []*pkg{p}
 	seen := make(map[string]bool)
 
@@ -214,13 +227,7 @@ func (p *pkg) FindFile(ctx context.Context, uri span.URI, pos token.Pos) (source
 
 		for _, ph := range pkg.files {
 			if ph.File().Identity().URI == uri {
-				file, err := ph.Cached(ctx)
-				if file == nil {
-					return nil, nil, nil, err
-				}
-				if file.Pos() <= pos && pos <= file.End() {
-					return ph, file, pkg, nil
-				}
+				return ph, pkg, nil
 			}
 		}
 		for _, dep := range pkg.imports {
@@ -229,5 +236,5 @@ func (p *pkg) FindFile(ctx context.Context, uri span.URI, pos token.Pos) (source
 			}
 		}
 	}
-	return nil, nil, nil, errors.Errorf("no file for %s", uri)
+	return nil, nil, errors.Errorf("no file for %s", uri)
 }

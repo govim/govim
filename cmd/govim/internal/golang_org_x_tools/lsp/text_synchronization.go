@@ -15,7 +15,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
 	errors "golang.org/x/xerrors"
 )
 
@@ -32,12 +31,8 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 	view := s.session.ViewOf(uri)
 
 	// Run diagnostics on the newly-changed file.
-	go func() {
-		ctx := view.BackgroundContext()
-		ctx, done := trace.StartSpan(ctx, "lsp:background-worker")
-		defer done()
-		s.Diagnostics(ctx, view, uri)
-	}()
+	go s.diagnostics(view, uri)
+
 	return nil
 }
 
@@ -84,12 +79,8 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 	}
 
 	// Run diagnostics on the newly-changed file.
-	go func() {
-		ctx := view.BackgroundContext()
-		ctx, done := trace.StartSpan(ctx, "lsp:background-worker")
-		defer done()
-		s.Diagnostics(ctx, view, uri)
-	}()
+	go s.diagnostics(view, uri)
+
 	return nil
 }
 
@@ -105,14 +96,18 @@ func fullChange(changes []protocol.TextDocumentContentChangeEvent) (string, bool
 }
 
 func (s *Server) applyChanges(ctx context.Context, uri span.URI, changes []protocol.TextDocumentContentChangeEvent) (string, error) {
-	content, _, err := s.session.GetFile(uri).Read(ctx)
+	content, _, err := s.session.GetFile(uri, source.UnknownKind).Read(ctx)
 	if err != nil {
 		return "", jsonrpc2.NewErrorf(jsonrpc2.CodeInternalError, "file not found (%v)", err)
 	}
-	fset := s.session.Cache().FileSet()
 	for _, change := range changes {
 		// Update column mapper along with the content.
-		m := protocol.NewColumnMapper(uri, uri.Filename(), fset, nil, content)
+		converter := span.NewContentConverter(uri.Filename(), content)
+		m := &protocol.ColumnMapper{
+			URI:       uri,
+			Converter: converter,
+			Content:   content,
+		}
 
 		spn, err := m.RangeSpan(*change.Range)
 		if err != nil {
@@ -168,17 +163,21 @@ func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocu
 		log.Error(ctx, "closing a non-Go file, no diagnostics to clear", nil, telemetry.File)
 		return nil
 	}
-	pkg, err := gof.GetPackage(ctx)
+	cphs, err := gof.CheckPackageHandles(ctx)
 	if err != nil {
-		return err
+		log.Error(ctx, "no CheckPackageHandles", err, telemetry.URI.Of(gof.URI()))
+		return nil
 	}
-	for _, ph := range pkg.GetHandles() {
-		// If other files from this package are open, don't clear.
-		if s.session.IsOpen(ph.File().Identity().URI) {
-			clear = nil
-			return nil
+	for _, cph := range cphs {
+		for _, ph := range cph.Files() {
+			// If other files from this package are open, don't clear.
+			if s.session.IsOpen(ph.File().Identity().URI) {
+				clear = nil
+				return nil
+			}
+			clear = append(clear, ph.File().Identity().URI)
 		}
-		clear = append(clear, ph.File().Identity().URI)
 	}
+
 	return nil
 }
