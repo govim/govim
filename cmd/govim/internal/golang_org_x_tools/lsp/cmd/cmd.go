@@ -119,14 +119,12 @@ func (app *Application) Run(ctx context.Context, args ...string) error {
 	export.AddExporters(ocagent.Connect(ocConfig))
 	app.Serve.app = app
 	if len(args) == 0 {
-		tool.Main(ctx, &app.Serve, args)
-		return nil
+		return tool.Run(ctx, &app.Serve, args)
 	}
 	command, args := args[0], args[1:]
 	for _, c := range app.commands() {
 		if c.Name() == command {
-			tool.Main(ctx, c, args)
-			return nil
+			return tool.Run(ctx, c, args)
 		}
 	}
 	return tool.CommandLineErrorf("Unknown command %v", command)
@@ -142,6 +140,7 @@ func (app *Application) commands() []tool.Application {
 		&check{app: app},
 		&format{app: app},
 		&query{app: app},
+		&rename{app: app},
 		&version{app: app},
 	}
 }
@@ -344,7 +343,12 @@ func (c *cmdClient) getFile(ctx context.Context, uri span.URI) *cmdFile {
 		}
 		f := c.fset.AddFile(fname, -1, len(content))
 		f.SetLinesForContent(content)
-		file.mapper = protocol.NewColumnMapper(uri, fname, c.fset, f, content)
+		converter := span.NewContentConverter(fname, content)
+		file.mapper = &protocol.ColumnMapper{
+			URI:       uri,
+			Converter: converter,
+			Content:   content,
+		}
 	}
 	return file
 }

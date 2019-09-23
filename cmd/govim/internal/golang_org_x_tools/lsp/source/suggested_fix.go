@@ -5,14 +5,24 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
-func getCodeActions(ctx context.Context, view View, diag analysis.Diagnostic) ([]SuggestedFix, error) {
+func getCodeActions(ctx context.Context, view View, pkg Package, diag analysis.Diagnostic) ([]SuggestedFix, error) {
 	var fixes []SuggestedFix
 	for _, fix := range diag.SuggestedFixes {
 		var edits []protocol.TextEdit
 		for _, e := range fix.TextEdits {
-			mrng, err := posToRange(ctx, view, e.Pos, e.End)
+			posn := view.Session().Cache().FileSet().Position(e.Pos)
+			ph, _, err := pkg.FindFile(ctx, span.FileURI(posn.Filename))
+			if err != nil {
+				return nil, err
+			}
+			_, m, _, err := ph.Cached(ctx)
+			if err != nil {
+				return nil, err
+			}
+			mrng, err := posToRange(ctx, view, m, e.Pos, e.End)
 			if err != nil {
 				return nil, err
 			}

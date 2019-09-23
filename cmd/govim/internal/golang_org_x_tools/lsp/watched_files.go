@@ -6,13 +6,13 @@ package lsp
 
 import (
 	"context"
+	"sort"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
 )
 
 func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.DidChangeWatchedFilesParams) error {
@@ -47,28 +47,28 @@ func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.Did
 				s.session.DidChangeOutOfBand(ctx, gof, change.Type)
 
 				// Refresh diagnostics to reflect updated file contents.
-				go func(view source.View) {
-					ctx := view.BackgroundContext()
-					ctx, done := trace.StartSpan(ctx, "lsp:background-worker")
-					defer done()
-					s.Diagnostics(ctx, view, uri)
-				}(view)
+				go s.diagnostics(view, uri)
 			case protocol.Created:
 				log.Print(ctx, "watched file created", telemetry.File)
 			case protocol.Deleted:
 				log.Print(ctx, "watched file deleted", telemetry.File)
 
-				pkg, err := gof.GetPackage(ctx)
+				cphs, err := gof.CheckPackageHandles(ctx)
 				if err != nil {
 					log.Error(ctx, "didChangeWatchedFiles: GetPackage", err, telemetry.File)
 					continue
 				}
-
-				// Find a different file in the same package we can use to
-				// trigger diagnostics.
+				// Find a different file in the same package we can use to trigger diagnostics.
+				// TODO(rstambler): Allow diagnostics to be called per-package to avoid this.
 				var otherFile source.GoFile
-				for _, pgh := range pkg.GetHandles() {
-					ident := pgh.File().Identity()
+				sort.Slice(cphs, func(i, j int) bool {
+					return len(cphs[i].Files()) > len(cphs[j].Files())
+				})
+				for _, ph := range cphs[0].Files() {
+					if len(cphs) > 1 && contains(cphs[1], ph.File()) {
+						continue
+					}
+					ident := ph.File().Identity()
 					if ident.URI == gof.URI() {
 						continue
 					}
@@ -77,24 +77,27 @@ func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.Did
 						break
 					}
 				}
-
 				s.session.DidChangeOutOfBand(ctx, gof, change.Type)
 
-				if otherFile != nil {
-					// Refresh diagnostics to reflect updated file contents.
-					go func(view source.View) {
-						ctx := view.BackgroundContext()
-						ctx, done := trace.StartSpan(ctx, "lsp:background-worker")
-						defer done()
-						s.Diagnostics(ctx, view, otherFile.URI())
-					}(view)
-				} else {
-					// TODO: Handle case when there is no other file (i.e. deleted
-					//       file was the only file in the package).
+				// If this was the only file in the package, clear its diagnostics.
+				if otherFile == nil {
+					if err := s.publishDiagnostics(ctx, uri, []source.Diagnostic{}); err != nil {
+						log.Error(ctx, "failed to clear diagnostics", err, telemetry.URI.Of(uri))
+					}
+					return nil
 				}
+				go s.diagnostics(view, otherFile.URI())
 			}
 		}
 	}
-
 	return nil
+}
+
+func contains(cph source.CheckPackageHandle, fh source.FileHandle) bool {
+	for _, ph := range cph.Files() {
+		if ph.File().Identity().URI == fh.Identity().URI {
+			return true
+		}
+	}
+	return false
 }

@@ -19,7 +19,12 @@ func Highlight(ctx context.Context, view View, uri span.URI, pos protocol.Positi
 	ctx, done := trace.StartSpan(ctx, "source.Highlight")
 	defer done()
 
-	file, _, m, err := fileToMapper(ctx, view, uri)
+	f, err := view.GetFile(ctx, uri)
+	if err != nil {
+		return nil, err
+	}
+	ph := view.Session().Cache().ParseGoHandle(f.Handle(ctx), ParseFull)
+	file, m, _, err := ph.Parse(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -33,17 +38,17 @@ func Highlight(ctx context.Context, view View, uri span.URI, pos protocol.Positi
 	}
 	path, _ := astutil.PathEnclosingInterval(file, rng.Start, rng.Start)
 	if len(path) == 0 {
-		return nil, errors.Errorf("no enclosing position found for %s", pos)
+		return nil, errors.Errorf("no enclosing position found for %f:%f", pos.Line, pos.Character)
 	}
 	id, ok := path[0].(*ast.Ident)
 	if !ok {
-		return nil, errors.Errorf("%s is not an identifier", pos)
+		return nil, errors.Errorf("%f:%f is not an identifier", pos.Line, pos.Character)
 	}
 	var result []protocol.Range
 	if id.Obj != nil {
 		ast.Inspect(path[len(path)-1], func(n ast.Node) bool {
 			if n, ok := n.(*ast.Ident); ok && n.Obj == id.Obj {
-				rng, err := nodeToProtocolRange(ctx, view, n)
+				rng, err := nodeToProtocolRange(ctx, view, m, n)
 				if err == nil {
 					result = append(result, rng)
 				}

@@ -22,10 +22,11 @@ import (
 type FileIdentity struct {
 	URI     span.URI
 	Version string
+	Kind    FileKind
 }
 
 func (identity FileIdentity) String() string {
-	return fmt.Sprintf("%s%s", identity.URI, identity.Version)
+	return fmt.Sprintf("%s%s%s", identity.URI, identity.Version, identity.Kind)
 }
 
 // FileHandle represents a handle to a specific version of a single file from
@@ -37,9 +38,6 @@ type FileHandle interface {
 	// Identity returns the FileIdentity for the file.
 	Identity() FileIdentity
 
-	// Kind returns the FileKind for the file.
-	Kind() FileKind
-
 	// Read reads the contents of a file and returns it along with its hash value.
 	// If the file is not available, returns a nil slice and an error.
 	Read(ctx context.Context) ([]byte, string, error)
@@ -48,7 +46,7 @@ type FileHandle interface {
 // FileSystem is the interface to something that provides file contents.
 type FileSystem interface {
 	// GetFile returns a handle for the specified file.
-	GetFile(uri span.URI) FileHandle
+	GetFile(uri span.URI, kind FileKind) FileHandle
 }
 
 // FileKind describes the kind of the file in question.
@@ -59,6 +57,7 @@ const (
 	Go = FileKind(iota)
 	Mod
 	Sum
+	UnknownKind
 )
 
 // TokenHandle represents a handle to the *token.File for a file.
@@ -80,10 +79,10 @@ type ParseGoHandle interface {
 
 	// Parse returns the parsed AST for the file.
 	// If the file is not available, returns nil and an error.
-	Parse(ctx context.Context) (*ast.File, error)
+	Parse(ctx context.Context) (*ast.File, *protocol.ColumnMapper, error, error)
 
 	// Cached returns the AST for this handle, if it has already been stored.
-	Cached(ctx context.Context) (*ast.File, error)
+	Cached(ctx context.Context) (*ast.File, *protocol.ColumnMapper, error, error)
 }
 
 // ParseMode controls the content of the AST produced when parsing a source file.
@@ -189,7 +188,7 @@ type Session interface {
 	IsOpen(uri span.URI) bool
 
 	// Called to set the effective contents of a file from this session.
-	SetOverlay(uri span.URI, data []byte) (wasFirstChange bool)
+	SetOverlay(uri span.URI, kind FileKind, data []byte) (wasFirstChange bool)
 
 	// DidChangeOutOfBand is called when a file under the root folder
 	// changes. The file is not necessarily open in the editor.
@@ -215,8 +214,8 @@ type View interface {
 	// Folder returns the root folder for this view.
 	Folder() span.URI
 
-	// BuiltinPackage returns the ast for the special "builtin" package.
-	BuiltinPackage() *ast.Package
+	// BuiltinPackage returns the type information for the special "builtin" package.
+	BuiltinPackage() BuiltinPackage
 
 	// GetFile returns the file object for a given URI, initializing it
 	// if it is not already part of the view.
@@ -252,6 +251,9 @@ type View interface {
 	// Warning: Do not use this, unless in a test.
 	// This function does not correctly invalidate the view when needed.
 	SetOptions(Options)
+
+	// Analyzers returns the set of Analyzers active for this view.
+	Analyzers() []*analysis.Analyzer
 }
 
 // File represents a source file of any type.
@@ -265,25 +267,9 @@ type File interface {
 type GoFile interface {
 	File
 
-	Builtin() (*ast.File, bool)
-
-	// GetCachedPackage returns the cached package for the file, if any.
-	GetCachedPackage(ctx context.Context) (Package, error)
-
-	// GetCachedPackage returns the cached package for the file, if any.
-	GetCachedPackages(ctx context.Context) ([]Package, error)
-
-	// GetPackage returns the CheckPackageHandle for the package that this file belongs to.
-	GetCheckPackageHandle(ctx context.Context) (CheckPackageHandle, error)
-
-	// GetPackages returns the CheckPackageHandles of the packages that this file belongs to.
-	GetCheckPackageHandles(ctx context.Context) ([]CheckPackageHandle, error)
-
-	// GetPackage returns the Package that this file belongs to.
-	GetPackage(ctx context.Context) (Package, error)
-
-	// GetPackages returns the Packages that this file belongs to.
-	GetPackages(ctx context.Context) ([]Package, error)
+	// GetCheckPackageHandles returns the CheckPackageHandles for the packages
+	// that this file belongs to.
+	CheckPackageHandles(ctx context.Context) ([]CheckPackageHandle, error)
 
 	// GetActiveReverseDeps returns the active files belonging to the reverse
 	// dependencies of this file's package.
@@ -303,7 +289,8 @@ type SumFile interface {
 type Package interface {
 	ID() string
 	PkgPath() string
-	GetHandles() []ParseGoHandle
+	Files() []ParseGoHandle
+	File(uri span.URI) (ParseGoHandle, error)
 	GetSyntax(context.Context) []*ast.File
 	GetErrors() []packages.Error
 	GetTypes() *types.Package
@@ -321,5 +308,10 @@ type Package interface {
 
 	// FindFile returns the AST and type information for a file that may
 	// belong to or be part of a dependency of the given package.
-	FindFile(ctx context.Context, uri span.URI, pos token.Pos) (ParseGoHandle, *ast.File, Package, error)
+	FindFile(ctx context.Context, uri span.URI) (ParseGoHandle, Package, error)
+}
+
+type BuiltinPackage interface {
+	Lookup(name string) *ast.Object
+	Files() []ParseGoHandle
 }

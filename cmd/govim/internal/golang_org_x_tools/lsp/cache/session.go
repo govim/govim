@@ -102,10 +102,12 @@ func (s *session) NewView(ctx context.Context, name string, folder span.URI, opt
 			packages: make(map[packageID]*metadata),
 		},
 		ignoredURIs: make(map[span.URI]struct{}),
+		builtin:     &builtinPkg{},
 	}
+	v.analyzers = UpdateAnalyzers(v, defaultAnalyzers)
 	// Preemptively build the builtin package,
 	// so we immediately add builtin.go to the list of ignored files.
-	v.buildBuiltinPkg(ctx)
+	v.buildBuiltinPackage(ctx)
 
 	s.views = append(s.views, v)
 	// we always need to drop the view map
@@ -192,7 +194,7 @@ func (s *session) removeView(ctx context.Context, view *view) error {
 }
 
 // TODO: Propagate the language ID through to the view.
-func (s *session) DidOpen(ctx context.Context, uri span.URI, _ source.FileKind, text []byte) {
+func (s *session) DidOpen(ctx context.Context, uri span.URI, kind source.FileKind, text []byte) {
 	ctx = telemetry.File.With(ctx, uri)
 
 	// Files with _ prefixes are ignored.
@@ -210,7 +212,7 @@ func (s *session) DidOpen(ctx context.Context, uri span.URI, _ source.FileKind, 
 
 	// Read the file on disk and compare it to the text provided.
 	// If it is the same as on disk, we can avoid sending it as an overlay to go/packages.
-	s.openOverlay(ctx, uri, text)
+	s.openOverlay(ctx, uri, kind, text)
 
 	// Mark the file as just opened so that we know to re-run packages.Load on it.
 	// We do this because we may not be aware of all of the packages the file belongs to.
@@ -253,15 +255,15 @@ func (s *session) IsOpen(uri span.URI) bool {
 	return open
 }
 
-func (s *session) GetFile(uri span.URI) source.FileHandle {
+func (s *session) GetFile(uri span.URI, kind source.FileKind) source.FileHandle {
 	if overlay := s.readOverlay(uri); overlay != nil {
 		return overlay
 	}
 	// Fall back to the cache-level file system.
-	return s.Cache().GetFile(uri)
+	return s.cache.GetFile(uri, kind)
 }
 
-func (s *session) SetOverlay(uri span.URI, data []byte) bool {
+func (s *session) SetOverlay(uri span.URI, kind source.FileKind, data []byte) bool {
 	s.overlayMu.Lock()
 	defer func() {
 		s.overlayMu.Unlock()
@@ -279,6 +281,7 @@ func (s *session) SetOverlay(uri span.URI, data []byte) bool {
 	s.overlays[uri] = &overlay{
 		session:   s,
 		uri:       uri,
+		kind:      kind,
 		data:      data,
 		hash:      hashContents(data),
 		unchanged: o == nil,
@@ -288,7 +291,7 @@ func (s *session) SetOverlay(uri span.URI, data []byte) bool {
 
 // openOverlay adds the file content to the overlay.
 // It also checks if the provided content is equivalent to the file's content on disk.
-func (s *session) openOverlay(ctx context.Context, uri span.URI, data []byte) {
+func (s *session) openOverlay(ctx context.Context, uri span.URI, kind source.FileKind, data []byte) {
 	s.overlayMu.Lock()
 	defer func() {
 		s.overlayMu.Unlock()
@@ -297,11 +300,12 @@ func (s *session) openOverlay(ctx context.Context, uri span.URI, data []byte) {
 	s.overlays[uri] = &overlay{
 		session:   s,
 		uri:       uri,
+		kind:      kind,
 		data:      data,
 		hash:      hashContents(data),
 		unchanged: true,
 	}
-	_, hash, err := s.cache.GetFile(uri).Read(ctx)
+	_, hash, err := s.cache.GetFile(uri, kind).Read(ctx)
 	if err != nil {
 		log.Error(ctx, "failed to read", err, telemetry.File)
 		return
@@ -355,14 +359,9 @@ func (o *overlay) Identity() source.FileIdentity {
 	return source.FileIdentity{
 		URI:     o.uri,
 		Version: o.hash,
+		Kind:    o.kind,
 	}
 }
-
-func (o *overlay) Kind() source.FileKind {
-	// TODO: Determine the file kind using textDocument.languageId.
-	return source.Go
-}
-
 func (o *overlay) Read(ctx context.Context) ([]byte, string, error) {
 	return o.data, o.hash, nil
 }

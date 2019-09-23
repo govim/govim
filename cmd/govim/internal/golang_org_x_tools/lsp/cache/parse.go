@@ -13,9 +13,11 @@ import (
 	"go/token"
 	"reflect"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
 	errors "golang.org/x/xerrors"
@@ -39,8 +41,10 @@ type parseGoHandle struct {
 type parseGoData struct {
 	memoize.NoCopy
 
-	ast *ast.File
-	err error
+	ast        *ast.File
+	parseError error // errors associated with parsing the file
+	mapper     *protocol.ColumnMapper
+	err        error
 }
 
 func (c *cache) ParseGoHandle(fh source.FileHandle, mode source.ParseMode) source.ParseGoHandle {
@@ -50,7 +54,7 @@ func (c *cache) ParseGoHandle(fh source.FileHandle, mode source.ParseMode) sourc
 	}
 	h := c.store.Bind(key, func(ctx context.Context) interface{} {
 		data := &parseGoData{}
-		data.ast, data.err = parseGo(ctx, c, fh, mode)
+		data.ast, data.mapper, data.parseError, data.err = parseGo(ctx, c, fh, mode)
 		return data
 	})
 	return &parseGoHandle{
@@ -68,22 +72,22 @@ func (h *parseGoHandle) Mode() source.ParseMode {
 	return h.mode
 }
 
-func (h *parseGoHandle) Parse(ctx context.Context) (*ast.File, error) {
+func (h *parseGoHandle) Parse(ctx context.Context) (*ast.File, *protocol.ColumnMapper, error, error) {
 	v := h.handle.Get(ctx)
 	if v == nil {
-		return nil, ctx.Err()
+		return nil, nil, nil, ctx.Err()
 	}
 	data := v.(*parseGoData)
-	return data.ast, data.err
+	return data.ast, data.mapper, data.parseError, data.err
 }
 
-func (h *parseGoHandle) Cached(ctx context.Context) (*ast.File, error) {
+func (h *parseGoHandle) Cached(ctx context.Context) (*ast.File, *protocol.ColumnMapper, error, error) {
 	v := h.handle.Cached()
 	if v == nil {
-		return nil, errors.Errorf("no cached value for %s", h.file.Identity().URI)
+		return nil, nil, nil, errors.Errorf("no cached AST for %s", h.file.Identity().URI)
 	}
 	data := v.(*parseGoData)
-	return data.ast, data.err
+	return data.ast, data.mapper, data.parseError, data.err
 }
 
 func hashParseKey(ph source.ParseGoHandle) string {
@@ -101,13 +105,13 @@ func hashParseKeys(phs []source.ParseGoHandle) string {
 	return hashContents(b.Bytes())
 }
 
-func parseGo(ctx context.Context, c *cache, fh source.FileHandle, mode source.ParseMode) (*ast.File, error) {
+func parseGo(ctx context.Context, c *cache, fh source.FileHandle, mode source.ParseMode) (file *ast.File, mapper *protocol.ColumnMapper, parseError error, err error) {
 	ctx, done := trace.StartSpan(ctx, "cache.parseGo", telemetry.File.Of(fh.Identity().URI.Filename()))
 	defer done()
 
 	buf, _, err := fh.Read(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	parseLimit <- struct{}{}
 	defer func() { <-parseLimit }()
@@ -115,21 +119,42 @@ func parseGo(ctx context.Context, c *cache, fh source.FileHandle, mode source.Pa
 	if mode == source.ParseHeader {
 		parserMode = parser.ImportsOnly | parser.ParseComments
 	}
-	ast, err := parser.ParseFile(c.fset, fh.Identity().URI.Filename(), buf, parserMode)
-	if ast != nil {
+	file, parseError = parser.ParseFile(c.fset, fh.Identity().URI.Filename(), buf, parserMode)
+	if file != nil {
 		if mode == source.ParseExported {
-			trimAST(ast)
+			trimAST(file)
 		}
 		// Fix any badly parsed parts of the AST.
-		tok := c.fset.File(ast.Pos())
-		if err := fix(ctx, ast, tok, buf); err != nil {
+		tok := c.fset.File(file.Pos())
+		if err := fix(ctx, file, tok, buf); err != nil {
 			log.Error(ctx, "failed to fix AST", err)
 		}
 	}
-	if ast == nil {
-		return nil, err
+
+	if file == nil {
+		// If the file is nil only due to parse errors,
+		// the parse errors are the actual errors.
+		err := parseError
+		if err == nil {
+			err = errors.Errorf("no AST for %s", fh.Identity().URI)
+		}
+		return nil, nil, parseError, err
 	}
-	return ast, err
+	tok := c.FileSet().File(file.Pos())
+	if tok == nil {
+		return nil, nil, parseError, errors.Errorf("no token.File for %s", fh.Identity().URI)
+	}
+	uri := fh.Identity().URI
+	content, _, err := fh.Read(ctx)
+	if err != nil {
+		return nil, nil, parseError, err
+	}
+	m := &protocol.ColumnMapper{
+		URI:       uri,
+		Converter: span.NewTokenConverter(c.FileSet(), tok),
+		Content:   content,
+	}
+	return file, m, parseError, nil
 }
 
 // trimAST clears any part of the AST not relevant to type checking
@@ -377,15 +402,11 @@ FindTo:
 	case *ast.GoStmt:
 		stmt.Call = call
 	}
-	switch parent := parent.(type) {
-	case *ast.BlockStmt:
-		for i, s := range parent.List {
-			if s == bad {
-				parent.List[i] = stmt
-				break
-			}
-		}
+
+	if !replaceNode(parent, bad, stmt) {
+		return errors.Errorf("couldn't replace %T in %T", stmt, parent)
 	}
+
 	return nil
 }
 
@@ -418,4 +439,57 @@ func offsetPositions(expr ast.Expr, offset token.Pos) {
 
 		return true
 	})
+}
+
+// replaceNode updates parent's child oldChild to be newChild. It
+// retuns whether it replaced successfully.
+func replaceNode(parent, oldChild, newChild ast.Node) bool {
+	if parent == nil || oldChild == nil || newChild == nil {
+		return false
+	}
+
+	parentVal := reflect.ValueOf(parent).Elem()
+	if parentVal.Kind() != reflect.Struct {
+		return false
+	}
+
+	newChildVal := reflect.ValueOf(newChild)
+
+	tryReplace := func(v reflect.Value) bool {
+		if !v.CanSet() || !v.CanInterface() {
+			return false
+		}
+
+		// If the existing value is oldChild, we found our child. Make
+		// sure our newChild is assignable and then make the swap.
+		if v.Interface() == oldChild && newChildVal.Type().AssignableTo(v.Type()) {
+			v.Set(newChildVal)
+			return true
+		}
+
+		return false
+	}
+
+	// Loop over parent's struct fields.
+	for i := 0; i < parentVal.NumField(); i++ {
+		f := parentVal.Field(i)
+
+		switch f.Kind() {
+		// Check interface and pointer fields.
+		case reflect.Interface, reflect.Ptr:
+			if tryReplace(f) {
+				return true
+			}
+
+		// Search through any slice fields.
+		case reflect.Slice:
+			for i := 0; i < f.Len(); i++ {
+				if tryReplace(f.Index(i)) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
