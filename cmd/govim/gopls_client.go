@@ -16,6 +16,7 @@ const (
 	goplsConfigHoverKind     = "hoverKind"
 	goplsDeepCompletion      = "deepCompletion"
 	goplsFuzzyMatching       = "fuzzyMatching"
+	goplsStaticcheck         = "staticcheck"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -96,6 +97,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if g.vimstate.config.CompletionFuzzyMatching != nil {
 		conf[goplsFuzzyMatching] = *g.vimstate.config.CompletionFuzzyMatching
+	}
+	if g.vimstate.config.Staticcheck != nil {
+		conf[goplsStaticcheck] = *g.vimstate.config.Staticcheck
 	}
 	res[0] = conf
 
