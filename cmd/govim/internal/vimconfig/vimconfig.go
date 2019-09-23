@@ -66,3 +66,16 @@ func BoolVal(v bool) *bool {
 func MapVal(v map[string]interface{}) *map[string]interface{} {
 	return &v
 }
+
+// EqualBool returns true iff i and j are both nil, or if both are non-nil and
+// dereference to the same bool value. Otherwise it returns false.
+func EqualBool(i, j *bool) bool {
+	if i == nil && j == nil {
+		return true
+	}
+	if i == nil && j != nil ||
+		i != nil && j == nil {
+		return false
+	}
+	return *i == *j
+}

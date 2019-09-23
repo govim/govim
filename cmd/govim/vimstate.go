@@ -69,9 +69,9 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	var vc vimconfig.VimConfig
 	v.Parse(args[0], &vc)
 	v.config = vc.ToConfig(v.defaultConfig)
-	if *v.config.QuickfixAutoDiagnostics != *preConfig.QuickfixAutoDiagnostics ||
-		*v.config.QuickfixSigns != *preConfig.QuickfixSigns {
-		if !*v.config.QuickfixAutoDiagnostics {
+	if !vimconfig.EqualBool(v.config.QuickfixAutoDiagnostics, preConfig.QuickfixAutoDiagnostics) ||
+		!vimconfig.EqualBool(v.config.QuickfixSigns, preConfig.QuickfixSigns) {
+		if v.config.QuickfixAutoDiagnostics != nil && !*v.config.QuickfixAutoDiagnostics {
 			v.lastQuickFixDiagnostics = []quickfixEntry{}
 			if v.quickfixIsDiagnostics {
 				v.ChannelCall("setqflist", v.lastQuickFixDiagnostics, "r")
@@ -102,7 +102,7 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	var isBusy int
 	v.Parse(args[0], &isBusy)
 	v.userBusy = isBusy != 0
-	if v.userBusy || !*v.config.QuickfixAutoDiagnostics || !v.quickfixIsDiagnostics {
+	if v.userBusy || (v.config.QuickfixAutoDiagnostics != nil && !*v.config.QuickfixAutoDiagnostics) || !v.quickfixIsDiagnostics {
 		return nil, nil
 	}
 	return nil, v.redefineDiagnostics()
