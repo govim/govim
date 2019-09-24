@@ -42,18 +42,27 @@ function! s:validFormatOnSave(v)
   return [v:true, ""]
 endfunction
 
-function! s:validQuickfixAutoDiagnostics(v)
+function! s:validBool(v)
   if type(a:v) != 0  && type(a:v) != 6
     return [v:false, "must be of type number or bool"
   endif
   return [v:true, ""]
 endfunction
 
+function! s:validQuickfixAutoDiagnostics(v)
+  return s:validBool(a:v)
+endfunction
+
 function! s:validQuickfixSigns(v)
-  if type(a:v) != 0  && type(a:v) != 6
-    return [v:false, "must be of type number or bool"
-  endif
-  return [v:true, ""]
+  return s:validBool(a:v)
+endfunction
+
+function! s:validCompletionDeepCompletions(v)
+  return s:validBool(a:v)
+endfunction
+
+function! s:validCompletionFuzzyMatching(v)
+  return s:validBool(a:v)
 endfunction
 
 function! s:validExperimentalMouseTriggeredHoverPopupOptions(v)
@@ -72,20 +81,6 @@ endfunction
 
 function! s:validExperimentalCursorTriggeredHoverPopupOptions(v)
   return s:validExperimentalMouseTriggeredHoverPopupOptions(a:v)
-endfunction
-
-function! s:validCompletionDeepCompletions(v)
-  if type(a:v) != 0  && type(a:v) != 6
-    return [v:false, "must be of type number or bool"
-  endif
-  return [v:true, ""]
-endfunction
-
-function! s:validCompletionFuzzyMatching(v)
-  if type(a:v) != 0  && type(a:v) != 6
-    return [v:false, "must be of type number or bool"
-  endif
-  return [v:true, ""]
 endfunction
 
 let s:validators = {
