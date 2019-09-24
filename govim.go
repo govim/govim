@@ -254,6 +254,11 @@ func (g *govimImpl) Enqueue(f func(Govim) error) chan struct{} {
 }
 
 func (g *govimImpl) Schedule(f func(Govim) error) (chan struct{}, error) {
+	defer func() {
+		if r := recover(); r != nil && r != ErrShuttingDown {
+			panic(r)
+		}
+	}()
 	g.scheduledCallsLock.Lock()
 	id := g.scheduleVimNextID
 	g.scheduleVimNextID++
