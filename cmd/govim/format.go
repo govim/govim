@@ -20,6 +20,9 @@ func (v *vimstate) formatCurrentBuffer(args ...json.RawMessage) (err error) {
 		return fmt.Errorf("failed to resolve buffer %v", currBufNr)
 	}
 	tool := v.config.FormatOnSave
+	if tool == nil {
+		return nil
+	}
 	// TODO we should move this validation elsewhere...
 	switch *tool {
 	case config.FormatOnSaveNone:

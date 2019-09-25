@@ -5,6 +5,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -50,75 +52,126 @@ func TestScripts(t *testing.T) {
 	goplspath := filepath.Join(td, "gopls")
 	govimPath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
 
-	t.Run("scripts", func(t *testing.T) {
-		testscript.Run(t, testscript.Params{
-			Dir: "testdata",
-			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
-				"sleep":       testdriver.Sleep,
-				"errlogmatch": testdriver.ErrLogMatch,
-			},
-			Condition: testdriver.Condition,
-			Setup: func(e *testscript.Env) error {
-				// We set a special TMPDIR so the file watcher ignores it
-				tmp := filepath.Join(e.WorkDir, "_tmp")
-				if err := os.MkdirAll(tmp, 0777); err != nil {
-					return fmt.Errorf("failed to create temp dir %v: %v", tmp, err)
-				}
-				home := filepath.Join(e.WorkDir, "home")
-				e.Vars = append(e.Vars,
-					"TMPDIR="+tmp,
-					"HOME="+home,
-					"PLUGIN_PATH="+govimPath,
-					"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
-				)
-				testPluginPath := filepath.Join(e.WorkDir, "home", ".vim", "pack", "plugins", "start", "govim")
-
-				errLog := new(testdriver.LockingBuffer)
-				outputs := []io.Writer{
-					errLog,
-				}
-				e.Values[testdriver.KeyErrLog] = errLog
-				if os.Getenv(testsetup.EnvTestscriptStderr) == "true" {
-					outputs = append(outputs, os.Stderr)
-				}
-
-				if *fDebugLog {
-					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
-					if err != nil {
-						t.Fatalf("failed to create govim log file: %v", err)
+	entries, err := ioutil.ReadDir("testdata")
+	if err != nil {
+		t.Fatalf("failed to list testdata: %v", err)
+	}
+	for _, entry := range entries {
+		entry := entry
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "scenario_") {
+			continue
+		}
+		t.Run(entry.Name(), func(t *testing.T) {
+			testscript.Run(t, testscript.Params{
+				Dir: filepath.Join("testdata", entry.Name()),
+				Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
+					"sleep":       testdriver.Sleep,
+					"errlogmatch": testdriver.ErrLogMatch,
+				},
+				Condition: testdriver.Condition,
+				Setup: func(e *testscript.Env) error {
+					// We set a special TMPDIR so the file watcher ignores it
+					tmp := filepath.Join(e.WorkDir, "_tmp")
+					if err := os.MkdirAll(tmp, 0777); err != nil {
+						return fmt.Errorf("failed to create temp dir %v: %v", tmp, err)
 					}
-					outputs = append(outputs, tf)
-					t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
-				}
+					home := filepath.Join(e.WorkDir, "home")
+					e.Vars = append(e.Vars,
+						"TMPDIR="+tmp,
+						"HOME="+home,
+						"PLUGIN_PATH="+govimPath,
+						"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
+					)
+					testPluginPath := filepath.Join(e.WorkDir, "home", ".vim", "pack", "plugins", "start", "govim")
 
-				d := newplugin(string(goplspath))
+					errLog := new(testdriver.LockingBuffer)
+					outputs := []io.Writer{
+						errLog,
+					}
+					e.Values[testdriver.KeyErrLog] = errLog
+					if os.Getenv(testsetup.EnvTestscriptStderr) == "true" {
+						outputs = append(outputs, os.Stderr)
+					}
 
-				config := &testdriver.Config{
-					Name:           filepath.Base(e.WorkDir),
-					GovimPath:      govimPath,
-					Log:            io.MultiWriter(outputs...),
-					TestHomePath:   home,
-					TestPluginPath: testPluginPath,
-					Env:            e,
-					Plugin:         d,
-				}
-				td, err := testdriver.NewTestDriver(config)
-				if err != nil {
-					t.Fatalf("failed to create new driver: %v", err)
-				}
-				if err := td.Run(); err != nil {
-					t.Fatalf("failed to run TestDriver: %v", err)
-				}
-				waitLock.Lock()
-				waitList = append(waitList, td.Wait)
-				waitLock.Unlock()
-				e.Defer(func() {
-					td.Close()
-				})
-				return nil
-			},
+					if *fDebugLog {
+						tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
+						if err != nil {
+							t.Fatalf("failed to create govim log file: %v", err)
+						}
+						outputs = append(outputs, tf)
+						t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
+					}
+
+					var defaults *config.Config
+
+					// check whether we have a default config to apply
+					configPath := filepath.Join("testdata", entry.Name(), "default_config.json")
+					if fi, err := os.Stat(configPath); err == nil {
+						if fi.Mode().IsRegular() {
+							config, err := ioutil.ReadFile(configPath)
+							if err != nil {
+								t.Fatalf("failed to read %v: %v", configPath, err)
+							}
+							if err := json.Unmarshal(config, &defaults); err != nil {
+								t.Fatalf("failed to unmarshal JSON config in %v: %v\n%s", configPath, err, config)
+							}
+							// Now verify that we haven't supplied superfluous JSON
+							var i interface{}
+							if err := json.Unmarshal(config, &i); err != nil {
+								t.Fatalf("failed to re-parse JSON config in %v: %v\n%s", configPath, err, config)
+							}
+							var defaultsCheck []byte
+							first, err := json.MarshalIndent(defaults, "", "  ")
+							if err != nil {
+								t.Fatalf("failed to remarshal defaults: %v", err)
+							}
+							var j interface{}
+							if err := json.Unmarshal(first, &j); err != nil {
+								t.Fatalf("failed to re-re-parse JSON config in %v: %v\n%s", configPath, err, config)
+							}
+							defaultsCheck, err = json.MarshalIndent(j, "", "  ")
+							if err != nil {
+								t.Fatalf("failed to remarshal defaults: %v", err)
+							}
+							iCheck, err := json.MarshalIndent(i, "", "  ")
+							if err != nil {
+								t.Fatalf("failed to remarshal re-parsed JSON: %v", err)
+							}
+							if !bytes.Equal(defaultsCheck, iCheck) {
+								t.Fatalf("%v contains superfluous JSON:\n\n%s\n\n vs parsed defaults:\n\n%s\n", configPath, iCheck, defaultsCheck)
+							}
+						}
+					}
+
+					d := newplugin(string(goplspath), defaults)
+
+					config := &testdriver.Config{
+						Name:           filepath.Base(e.WorkDir),
+						GovimPath:      govimPath,
+						Log:            io.MultiWriter(outputs...),
+						TestHomePath:   home,
+						TestPluginPath: testPluginPath,
+						Env:            e,
+						Plugin:         d,
+					}
+					td, err := testdriver.NewTestDriver(config)
+					if err != nil {
+						t.Fatalf("failed to create new driver: %v", err)
+					}
+					if err := td.Run(); err != nil {
+						t.Fatalf("failed to run TestDriver: %v", err)
+					}
+					waitLock.Lock()
+					waitList = append(waitList, td.Wait)
+					waitLock.Unlock()
+					e.Defer(func() {
+						td.Close()
+					})
+					return nil
+				},
+			})
 		})
-	})
+	}
 
 	var errLock sync.Mutex
 	var errors []error
@@ -166,7 +219,7 @@ func TestInstallScripts(t *testing.T) {
 
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
-			Dir: "testdatainstall",
+			Dir: filepath.Join("testdata", "install"),
 			Setup: func(e *testscript.Env) error {
 				e.Vars = append(e.Vars,
 					"PLUGIN_PATH="+govimPath,

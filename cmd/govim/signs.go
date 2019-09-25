@@ -108,7 +108,7 @@ func (v *vimstate) redefineSigns(fixes []types.Diagnostic) error {
 		}
 	}
 
-	if !*v.config.QuickfixSigns {
+	if v.config.QuickfixSigns != nil && !*v.config.QuickfixSigns {
 		return nil
 	}
 

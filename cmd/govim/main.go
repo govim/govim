@@ -102,7 +102,7 @@ func mainerr() error {
 func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 	defer out.Close()
 
-	d := newplugin(goplspath)
+	d := newplugin(goplspath, nil)
 
 	tf, err := createLogFile("govim_log")
 	if err != nil {
@@ -173,11 +173,13 @@ type govimplugin struct {
 	bufferUpdates chan *bufferUpdate
 }
 
-func newplugin(goplspath string) *govimplugin {
-	defaults := config.Config{
-		FormatOnSave:            vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImports),
-		QuickfixAutoDiagnostics: vimconfig.BoolVal(true),
-		QuickfixSigns:           vimconfig.BoolVal(true),
+func newplugin(goplspath string, defaults *config.Config) *govimplugin {
+	if defaults == nil {
+		defaults = &config.Config{
+			FormatOnSave:            vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImports),
+			QuickfixAutoDiagnostics: vimconfig.BoolVal(true),
+			QuickfixSigns:           vimconfig.BoolVal(true),
+		}
 	}
 	d := plugin.NewDriver(PluginPrefix)
 	res := &govimplugin{
@@ -187,8 +189,8 @@ func newplugin(goplspath string) *govimplugin {
 		vimstate: &vimstate{
 			Driver:                d,
 			buffers:               make(map[int]*types.Buffer),
-			defaultConfig:         defaults,
-			config:                defaults,
+			defaultConfig:         *defaults,
+			config:                *defaults,
 			watchedFiles:          make(map[string]*types.WatchedFile),
 			quickfixIsDiagnostics: true,
 		},

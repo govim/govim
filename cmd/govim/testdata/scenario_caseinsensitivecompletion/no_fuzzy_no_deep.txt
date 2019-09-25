@@ -1,0 +1,28 @@
+# Test that deep fuzzy complete does not work.
+
+cp main.go.orig main.go
+vim ex 'e main.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'call cursor(11,1)'
+vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\\<ESC>\", \"xt\")'
+vim ex 'w'
+cmp main.go main.go.orig
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+-- main.go.orig --
+package main
+
+func main() {
+	var a struct {
+		b struct {
+			crikey int
+		}
+		d int
+	}
+	var x int
+	x = a.ck
+}

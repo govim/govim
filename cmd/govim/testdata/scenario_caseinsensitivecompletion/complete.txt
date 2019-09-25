@@ -1,0 +1,72 @@
+# Test that ominfunc complete works. This simple test uses an existing file on disk that
+# already has the relevant import required for the completion.
+
+vim ex 'e main.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+
+# lower completed from lo
+vim ex 'call cursor(7,1)'
+vim normal Slo
+vim ex 'execute \"normal A\\<C-X>\\<C-O>\"'
+vim ex 'w'
+cmp main.go main.go.lower
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+# UPPER completed from UP
+vim ex 'call cursor(7,1)'
+vim normal SUP
+vim ex 'execute \"normal A\\<C-X>\\<C-O>\"'
+vim ex 'w'
+cmp main.go main.go.upper
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+# lower completed from LO
+vim ex 'call cursor(7,1)'
+vim normal SLO
+vim ex 'execute \"normal A\\<C-X>\\<C-O>\"'
+vim ex 'w'
+cmp main.go main.go.lower
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+# UPPER completed from up
+vim ex 'call cursor(7,1)'
+vim normal Sup
+vim ex 'execute \"normal A\\<C-X>\\<C-O>\"'
+vim ex 'w'
+cmp main.go main.go.upper
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+func main() {
+	var lower int
+	var UPPER int
+
+	//
+}
+-- main.go.lower --
+package main
+
+func main() {
+	var lower int
+	var UPPER int
+
+	lower
+}
+-- main.go.upper --
+package main
+
+func main() {
+	var lower int
+	var UPPER int
+
+	UPPER
+}

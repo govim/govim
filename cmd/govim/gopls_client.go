@@ -132,7 +132,7 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 	g.Schedule(func(govim.Govim) error {
 		v := g.vimstate
 		v.diagnosticsChanged = true
-		if !*v.config.QuickfixAutoDiagnostics {
+		if v.config.QuickfixAutoDiagnostics != nil && !*v.config.QuickfixAutoDiagnostics {
 			return nil
 		}
 		if !v.quickfixIsDiagnostics {

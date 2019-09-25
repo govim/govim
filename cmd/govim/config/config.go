@@ -24,7 +24,7 @@ type Config struct {
 	// formatting on save. Options are given by constants of type FormatOnSave.
 	//
 	// Default: FormatOnSaveGoImports.
-	FormatOnSave *FormatOnSave
+	FormatOnSave *FormatOnSave `json:",omitempty"`
 
 	// QuickfixAutoDiagnostics is a boolean (0 or 1 in VimScript) that controls
 	// whether auto-population of the quickfix window with gopls diagnostics is
@@ -34,7 +34,7 @@ type Config struct {
 	// used to manually trigger the population.
 	//
 	// Default: true
-	QuickfixAutoDiagnostics *bool
+	QuickfixAutoDiagnostics *bool `json:",omitempty"`
 
 	// QuickfixSigns is a boolean (0 or 1 in VimScript) that controls whether
 	// quickfix entries should be annotated with signs in the gutter.  Signs are
@@ -43,19 +43,19 @@ type Config struct {
 	// :GOVIMQuickfixDiagnostics.
 	//
 	// Default: true
-	QuickfixSigns *bool
+	QuickfixSigns *bool `json:",omitempty"`
 
 	// CompletionDeepCompletiions enables gopls' deep completion option
 	// in the derivation of completion candidates.
 	//
 	// Default: true
-	CompletionDeepCompletions *bool
+	CompletionDeepCompletions *bool `json:",omitempty"`
 
 	// CompletionFuzzyMatching enables gopls' fuzzy matching in the derivation
 	// of completion candidates.
 	//
 	// Default: true
-	CompletionFuzzyMatching *bool
+	CompletionFuzzyMatching *bool `json:",omitempty"`
 
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
@@ -78,7 +78,7 @@ type Config struct {
 	// away in the future, be renamed etc.
 	//
 	// Default: nil
-	ExperimentalMouseTriggeredHoverPopupOptions *map[string]interface{}
+	ExperimentalMouseTriggeredHoverPopupOptions *map[string]interface{} `json:",omitempty"`
 
 	// ExperimentalCursorTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by a call to
@@ -102,7 +102,7 @@ type Config struct {
 	// the future, be renamed etc.
 	//
 	// Default: nil
-	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
+	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{} `json:",omitempty"`
 }
 
 type Command string
