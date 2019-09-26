@@ -12,26 +12,34 @@ import (
 	"github.com/govim/govim"
 )
 
+// dev environment variables
 const (
-	EnvTestSocket = "GOVIMTEST_SOCKET"
-
-	EnvVimFlavor  = "VIM_FLAVOR"
-	EnvVimCommand = "VIM_COMMAND"
-
-	EnvGithubUser  = "GH_USER"
-	EnvGithubToken = "GH_TOKEN"
-
+	EnvTestSocket       = "GOVIMTEST_SOCKET"
+	EnvVimFlavor        = "VIM_FLAVOR"
+	EnvVimCommand       = "VIM_COMMAND"
+	EnvGithubUser       = "GH_USER"
+	EnvGithubToken      = "GH_TOKEN"
 	EnvLoadTestAPI      = "GOVIM_LOAD_TEST_API"
-	EnvDisableSignPlace = "GOVIM_DISABLE_SIGNPLACE"
+	EnvTestscriptStderr = "GOVIM_TESTSCRIPT_STDERR"
+)
 
+// user environment variables
+const (
+	EnvDisableSignPlace = "GOVIM_DISABLE_SIGNPLACE"
+	EnvLogfileTmpl      = "GOVIM_LOGFILE_TMPL"
+)
+
+// vim versions
+const (
 	// MinVimGovim represents the bare minimum version of Vim required to
 	// use govim
 	MinVimGovim = "v8.1.1711"
 
-	EnvLogfileTmpl      = "GOVIM_LOGFILE_TMPL"
-	EnvTestscriptStderr = "GOVIM_TESTSCRIPT_STDERR"
+	// MinVimSafeState is the minimum version required to use Vim's state()
+	// and SafeState* functionality.
+	MinVimSafeState = "v8.1.2056"
 
-	LatestVim = "v8.1.1991"
+	// LatestVim = "v8.1.1991"
 )
 
 var (
@@ -60,8 +68,8 @@ var (
 		NeovimVersion("v0.3.5"),
 		VimVersion(MinVimGovim),
 		GvimVersion(MinVimGovim),
-		VimVersion(LatestVim),
-		GvimVersion(LatestVim),
+		VimVersion(MinVimSafeState),
+		GvimVersion(MinVimSafeState),
 	}
 )
 
