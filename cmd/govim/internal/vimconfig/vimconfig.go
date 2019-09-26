@@ -13,18 +13,20 @@ type VimConfig struct {
 	CompletionDeepCompletions                    *int
 	CompletionFuzzyMatching                      *int
 	Staticcheck                                  *int
+	CompletionCaseSensitive                      *int
 	ExperimentalMouseTriggeredHoverPopupOptions  *map[string]interface{}
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
 }
 
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
 	v := config.Config{
-		FormatOnSave:              c.FormatOnSave,
-		QuickfixSigns:             boolVal(c.QuickfixSigns, d.QuickfixSigns),
-		QuickfixAutoDiagnostics:   boolVal(c.QuickfixAutoDiagnostics, d.QuickfixAutoDiagnostics),
-		CompletionDeepCompletions: boolVal(c.CompletionDeepCompletions, d.CompletionDeepCompletions),
-		CompletionFuzzyMatching:   boolVal(c.CompletionFuzzyMatching, d.CompletionFuzzyMatching),
-		Staticcheck:               boolVal(c.Staticcheck, d.Staticcheck),
+		FormatOnSave:                                 c.FormatOnSave,
+		QuickfixSigns:                                boolVal(c.QuickfixSigns, d.QuickfixSigns),
+		QuickfixAutoDiagnostics:                      boolVal(c.QuickfixAutoDiagnostics, d.QuickfixAutoDiagnostics),
+		CompletionDeepCompletions:                    boolVal(c.CompletionDeepCompletions, d.CompletionDeepCompletions),
+		CompletionFuzzyMatching:                      boolVal(c.CompletionFuzzyMatching, d.CompletionFuzzyMatching),
+		Staticcheck:                                  boolVal(c.Staticcheck, d.Staticcheck),
+		CompletionCaseSensitive:                      boolVal(c.CompletionCaseSensitive, d.CompletionCaseSensitive),
 		ExperimentalMouseTriggeredHoverPopupOptions:  copyMap(c.ExperimentalMouseTriggeredHoverPopupOptions, d.ExperimentalMouseTriggeredHoverPopupOptions),
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),
 	}
