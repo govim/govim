@@ -179,6 +179,7 @@ func newplugin(goplspath string, defaults *config.Config) *govimplugin {
 			FormatOnSave:            vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImports),
 			QuickfixAutoDiagnostics: vimconfig.BoolVal(true),
 			QuickfixSigns:           vimconfig.BoolVal(true),
+			Staticcheck:             vimconfig.BoolVal(false),
 		}
 	}
 	d := plugin.NewDriver(PluginPrefix)

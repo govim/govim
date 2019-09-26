@@ -65,6 +65,10 @@ function! s:validCompletionFuzzyMatching(v)
   return s:validBool(a:v)
 endfunction
 
+function! s:validStaticcheck(v)
+  return s:validBool(a:v)
+endfunction
+
 function! s:validExperimentalMouseTriggeredHoverPopupOptions(v)
   if has_key(a:v, "line")
     if type(a:v["line"]) != 0
@@ -89,6 +93,7 @@ let s:validators = {
       \ "CompletionDeepCompletions": function("s:validCompletionDeepCompletions"),
       \ "CompletionFuzzyMatching": function("s:validCompletionFuzzyMatching"),
       \ "QuickfixSigns": function("s:validQuickfixSigns"),
+      \ "Staticcheck": function("s:validStaticcheck"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
       \ }

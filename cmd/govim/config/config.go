@@ -57,6 +57,9 @@ type Config struct {
 	// Default: true
 	CompletionFuzzyMatching *bool `json:",omitempty"`
 
+	// Staticcheck enables staticcheck analyses in gopls
+	Staticcheck *bool `json:",omitempty"`
+
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
 	// over an identifier. It corresponds to the second argument to popup_create

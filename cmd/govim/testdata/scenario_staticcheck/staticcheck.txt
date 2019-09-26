@@ -1,0 +1,32 @@
+# Verify that staticcheck is enabled by default and works
+
+# Note: errors.golden effectively contains a duplicate diagnostic below. This is
+# being tracked in https://github.com/golang/go/issues/34494 but we "allow" it
+# for now in this test to give exposure to the staticcheck work
+
+vim ex 'e main.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'copen'
+vim ex 'w errors'
+cmp errors errors.golden
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	var s string
+	s = fmt.Sprintf("%s", s)
+	fmt.Println(s)
+	fmt.Printf("%v")
+}
+-- errors.golden --
+main.go|7 col 6| the argument is already a string, there's no need to use fmt.Sprintf
+main.go|9 col 2| Printf format %v reads arg #1, but call has 0 args
+main.go|9 col 12| Printf format %v reads arg #1, but call has only 0 args
