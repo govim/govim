@@ -25,14 +25,10 @@ type Diagnostic struct {
 	Range    protocol.Range
 	Message  string
 	Source   string
-	Severity DiagnosticSeverity
+	Severity protocol.DiagnosticSeverity
+	Tags     []protocol.DiagnosticTag
 
 	SuggestedFixes []SuggestedFix
-}
-
-type SuggestedFix struct {
-	Title string
-	Edits []protocol.TextEdit
 }
 
 type DiagnosticSeverity int
@@ -51,6 +47,16 @@ func Diagnostics(ctx context.Context, view View, f GoFile, disabledAnalyses map[
 		return nil, "", err
 	}
 	cph := WidestCheckPackageHandle(cphs)
+
+	// If we are missing dependencies, it may because the user's workspace is
+	// not correctly configured. Report errors, if possible.
+	var warningMsg string
+	if len(cph.MissingDependencies()) > 0 {
+		warningMsg, err = checkCommonErrors(ctx, view, f.URI())
+		if err != nil {
+			log.Error(ctx, "error checking common errors", err, telemetry.File.Of(f.URI))
+		}
+	}
 	pkg, err := cph.Check(ctx)
 	if err != nil {
 		log.Error(ctx, "no package for file", err)
@@ -61,15 +67,6 @@ func Diagnostics(ctx context.Context, view View, f GoFile, disabledAnalyses map[
 	reports := make(map[span.URI][]Diagnostic)
 	for _, fh := range pkg.Files() {
 		clearReports(view, reports, fh.File().Identity().URI)
-	}
-
-	// If we have `go list` errors, we may want to offer a warning message to the user.
-	var warningMsg string
-	if hasListErrors(pkg.GetErrors()) {
-		warningMsg, err = checkCommonErrors(ctx, view, f.URI())
-		if err != nil {
-			log.Error(ctx, "error checking common errors", err, telemetry.File.Of(f.URI))
-		}
 	}
 
 	// Prepare any additional reports for the errors in this package.
@@ -88,13 +85,8 @@ func Diagnostics(ctx context.Context, view View, f GoFile, disabledAnalyses map[
 		}
 	}
 	// Updates to the diagnostics for this package may need to be propagated.
-	revDeps := f.GetActiveReverseDeps(ctx)
-	for _, f := range revDeps {
-		cphs, err := f.CheckPackageHandles(ctx)
-		if err != nil {
-			return nil, "", err
-		}
-		cph := WidestCheckPackageHandle(cphs)
+	revDeps := view.GetActiveReverseDeps(ctx, f.URI())
+	for _, cph := range revDeps {
 		pkg, err := cph.Check(ctx)
 		if err != nil {
 			return nil, warningMsg, err
@@ -122,7 +114,7 @@ func diagnostics(ctx context.Context, view View, pkg Package, reports map[span.U
 			URI:      spn.URI(),
 			Message:  err.Msg,
 			Source:   "LSP",
-			Severity: SeverityError,
+			Severity: protocol.SeverityError,
 		}
 		set, ok := diagSets[diag.URI]
 		if !ok {
@@ -238,22 +230,29 @@ func toDiagnostic(ctx context.Context, view View, diag analysis.Diagnostic, cate
 	if err != nil {
 		return Diagnostic{}, err
 	}
-	ca, err := getCodeActions(ctx, view, pkg, diag)
-	if err != nil {
-		return Diagnostic{}, err
-	}
-
 	rng, err := spanToRange(ctx, view, pkg, spn, false)
 	if err != nil {
 		return Diagnostic{}, err
+	}
+	fixes, err := suggestedFixes(ctx, view, pkg, diag)
+	if err != nil {
+		return Diagnostic{}, err
+	}
+	// This is a bit of a hack, but clients > 3.15 will be able to grey out unnecessary code.
+	// If we are deleting code as part of all of our suggested fixes, assume that this is dead code.
+	// TODO(golang/go/#34508): Return these codes from the diagnostics themselves.
+	var tags []protocol.DiagnosticTag
+	if onlyDeletions(fixes) {
+		tags = append(tags, protocol.Unnecessary)
 	}
 	return Diagnostic{
 		URI:            spn.URI(),
 		Range:          rng,
 		Source:         category,
 		Message:        diag.Message,
-		Severity:       SeverityWarning,
-		SuggestedFixes: ca,
+		Severity:       protocol.SeverityWarning,
+		SuggestedFixes: fixes,
+		Tags:           tags,
 	}, nil
 }
 
@@ -304,7 +303,7 @@ func singleDiagnostic(uri span.URI, format string, a ...interface{}) map[span.UR
 			URI:      uri,
 			Range:    protocol.Range{},
 			Message:  fmt.Sprintf(format, a...),
-			Severity: SeverityError,
+			Severity: protocol.SeverityError,
 		}},
 	}
 }

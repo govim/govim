@@ -36,7 +36,7 @@ type CompletionItem struct {
 	// The insert text does not contain snippets.
 	InsertText string
 
-	Kind CompletionItemKind
+	Kind protocol.CompletionItemKind
 
 	// An optional array of additional TextEdits that are applied when
 	// selecting this completion.
@@ -84,22 +84,6 @@ func (i *CompletionItem) Snippet() string {
 	}
 	return i.InsertText
 }
-
-type CompletionItemKind int
-
-const (
-	Unknown CompletionItemKind = iota
-	InterfaceCompletionItem
-	StructCompletionItem
-	TypeCompletionItem
-	ConstantCompletionItem
-	FieldCompletionItem
-	ParameterCompletionItem
-	VariableCompletionItem
-	FunctionCompletionItem
-	MethodCompletionItem
-	PackageCompletionItem
-)
 
 // Scoring constants are used for weighting the relevance of different candidates.
 const (
@@ -359,6 +343,21 @@ type candidate struct {
 	imp *imports.ImportInfo
 }
 
+// ErrIsDefinition is an error that informs the user they got no
+// completions because they tried to complete the name of a new object
+// being defined.
+type ErrIsDefinition struct {
+	objStr string
+}
+
+func (e ErrIsDefinition) Error() string {
+	msg := "this is a definition"
+	if e.objStr != "" {
+		msg += " of " + e.objStr
+	}
+	return msg
+}
+
 // Completion returns a list of possible candidates for completion, given a
 // a file and a position.
 //
@@ -465,15 +464,15 @@ func Completion(ctx context.Context, view View, f GoFile, pos protocol.Position,
 		}
 		// reject defining identifiers
 		if obj, ok := pkg.GetTypesInfo().Defs[n]; ok {
-			if v, ok := obj.(*types.Var); ok && v.IsField() {
+			if v, ok := obj.(*types.Var); ok && v.IsField() && v.Embedded() {
 				// An anonymous field is also a reference to a type.
 			} else {
-				of := ""
+				objStr := ""
 				if obj != nil {
 					qual := types.RelativeTo(pkg.GetTypes())
-					of += ", of " + types.ObjectString(obj, qual)
+					objStr = types.ObjectString(obj, qual)
 				}
-				return nil, nil, errors.Errorf("this is a definition%s", of)
+				return nil, nil, ErrIsDefinition{objStr: objStr}
 			}
 		}
 		if err := c.lexical(); err != nil {
@@ -579,11 +578,16 @@ func (c *completer) methodsAndFields(typ types.Type, addressable bool) error {
 func (c *completer) lexical() error {
 	var scopes []*types.Scope // scopes[i], where i<len(path), is the possibly nil Scope of path[i].
 	for _, n := range c.path {
+		// Include *FuncType scope if pos is inside the function body.
 		switch node := n.(type) {
 		case *ast.FuncDecl:
-			n = node.Type
+			if node.Body != nil && nodeContains(node.Body, c.pos) {
+				n = node.Type
+			}
 		case *ast.FuncLit:
-			n = node.Type
+			if node.Body != nil && nodeContains(node.Body, c.pos) {
+				n = node.Type
+			}
 		}
 		scopes = append(scopes, c.pkg.GetTypesInfo().Scopes[n])
 	}
@@ -668,6 +672,10 @@ func (c *completer) lexical() error {
 	}
 
 	return nil
+}
+
+func nodeContains(n ast.Node, pos token.Pos) bool {
+	return n != nil && n.Pos() <= pos && pos < n.End()
 }
 
 func (c *completer) inConstDecl() bool {
@@ -1141,24 +1149,14 @@ func expectTypeName(c *completer) typeInference {
 Nodes:
 	for i, p := range c.path {
 		switch n := p.(type) {
-		case *ast.FuncDecl:
-			// Expect type names in a function declaration receiver, params and results.
-
-			if r := n.Recv; r != nil && r.Pos() <= c.pos && c.pos <= r.End() {
-				wantTypeName = true
-				break Nodes
-			}
-			if t := n.Type; t != nil {
-				if p := t.Params; p != nil && p.Pos() <= c.pos && c.pos <= p.End() {
-					wantTypeName = true
-					break Nodes
-				}
-				if r := t.Results; r != nil && r.Pos() <= c.pos && c.pos <= r.End() {
-					wantTypeName = true
-					break Nodes
-				}
-			}
-			return typeInference{}
+		case *ast.FieldList:
+			// Expect a type name if pos is in a FieldList. This applies to
+			// FuncType params/results, FuncDecl receiver, StructType, and
+			// InterfaceType. We don't need to worry about the field name
+			// because completion bails out early if pos is in an *ast.Ident
+			// that defines an object.
+			wantTypeName = true
+			break Nodes
 		case *ast.CaseClause:
 			// Expect type names in type switch case clauses.
 			if swtch, ok := findSwitchStmt(c.path[i+1:], c.pos, n).(*ast.TypeSwitchStmt); ok {

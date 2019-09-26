@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	errors "golang.org/x/xerrors"
@@ -23,9 +24,8 @@ type pkg struct {
 	view *view
 
 	// ID and package path have their own types to avoid being used interchangeably.
-	id      packageID
-	pkgPath packagePath
-
+	id         packageID
+	pkgPath    packagePath
 	files      []source.ParseGoHandle
 	errors     []packages.Error
 	imports    map[packagePath]*pkg
@@ -200,15 +200,25 @@ func (pkg *pkg) SetDiagnostics(a *analysis.Analyzer, diags []source.Diagnostic) 
 	pkg.diagnostics[a] = diags
 }
 
-func (pkg *pkg) GetDiagnostics() []source.Diagnostic {
-	pkg.diagMu.Lock()
-	defer pkg.diagMu.Unlock()
+func (p *pkg) FindDiagnostic(pdiag protocol.Diagnostic) (*source.Diagnostic, error) {
+	p.diagMu.Lock()
+	defer p.diagMu.Unlock()
 
-	var diags []source.Diagnostic
-	for _, d := range pkg.diagnostics {
-		diags = append(diags, d...)
+	for a, diagnostics := range p.diagnostics {
+		if a.Name != pdiag.Source {
+			continue
+		}
+		for _, d := range diagnostics {
+			if d.Message != pdiag.Message {
+				continue
+			}
+			if protocol.CompareRange(d.Range, pdiag.Range) != 0 {
+				continue
+			}
+			return &d, nil
+		}
 	}
-	return diags
+	return nil, errors.Errorf("no matching diagnostic for %v", pdiag)
 }
 
 func (p *pkg) FindFile(ctx context.Context, uri span.URI) (source.ParseGoHandle, source.Package, error) {

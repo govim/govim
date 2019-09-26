@@ -123,11 +123,6 @@ func (g *govimImpl) DoProto(f func() error) (err error) {
 					return
 				}
 				err = r
-			case error:
-				if r == ErrShuttingDown {
-					panic(r)
-				}
-				err = r
 			default:
 				panic(r)
 			}
