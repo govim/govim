@@ -122,6 +122,8 @@ type CheckPackageHandle interface {
 
 	// Cached returns the Package for the CheckPackageHandle if it has already been stored.
 	Cached(ctx context.Context) (Package, error)
+
+	MissingDependencies() []string
 }
 
 // Cache abstracts the core logic of dealing with the environment from the
@@ -192,7 +194,7 @@ type Session interface {
 
 	// DidChangeOutOfBand is called when a file under the root folder
 	// changes. The file is not necessarily open in the editor.
-	DidChangeOutOfBand(ctx context.Context, f GoFile, change protocol.FileChangeType)
+	DidChangeOutOfBand(ctx context.Context, uri span.URI, change protocol.FileChangeType)
 
 	// Options returns a copy of the SessionOptions for this session.
 	Options() Options
@@ -254,6 +256,10 @@ type View interface {
 
 	// Analyzers returns the set of Analyzers active for this view.
 	Analyzers() []*analysis.Analyzer
+
+	// GetActiveReverseDeps returns the active files belonging to the reverse
+	// dependencies of this file's package.
+	GetActiveReverseDeps(ctx context.Context, uri span.URI) []CheckPackageHandle
 }
 
 // File represents a source file of any type.
@@ -270,10 +276,6 @@ type GoFile interface {
 	// GetCheckPackageHandles returns the CheckPackageHandles for the packages
 	// that this file belongs to.
 	CheckPackageHandles(ctx context.Context) ([]CheckPackageHandle, error)
-
-	// GetActiveReverseDeps returns the active files belonging to the reverse
-	// dependencies of this file's package.
-	GetActiveReverseDeps(ctx context.Context) []GoFile
 }
 
 type ModFile interface {
@@ -297,8 +299,9 @@ type Package interface {
 	GetTypesInfo() *types.Info
 	GetTypesSizes() types.Sizes
 	IsIllTyped() bool
-	GetDiagnostics() []Diagnostic
-	SetDiagnostics(a *analysis.Analyzer, diag []Diagnostic)
+
+	SetDiagnostics(*analysis.Analyzer, []Diagnostic)
+	FindDiagnostic(protocol.Diagnostic) (*Diagnostic, error)
 
 	// GetImport returns the CheckPackageHandle for a package imported by this package.
 	GetImport(ctx context.Context, pkgPath string) (Package, error)
