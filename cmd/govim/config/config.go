@@ -17,6 +17,10 @@ const (
 	// we have no guarantees that the gopls version found in PATH works with
 	// govim.
 	EnvVarUseGoplsFromPath EnvVar = "GOVIM_USE_GOPLS_FROM_PATH"
+
+	// EnvVarGoplsDebug is an environment variable which, when set, will be
+	// used to pass the value as flags to gopls.
+	EnvVarGoplsFlags EnvVar = "GOVIM_GOPLS_FLAGS"
 )
 
 type Config struct {
