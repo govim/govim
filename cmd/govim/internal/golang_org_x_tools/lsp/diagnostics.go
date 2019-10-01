@@ -14,7 +14,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
-	errors "golang.org/x/xerrors"
 )
 
 func (s *Server) diagnostics(view source.View, uri span.URI) error {
@@ -28,12 +27,7 @@ func (s *Server) diagnostics(view source.View, uri span.URI) error {
 	if err != nil {
 		return err
 	}
-	// For non-Go files, don't return any diagnostics.
-	gof, ok := f.(source.GoFile)
-	if !ok {
-		return errors.Errorf("%s is not a Go file", f.URI())
-	}
-	reports, warningMsg, err := source.Diagnostics(ctx, view, gof, view.Options().DisabledAnalyses)
+	reports, warningMsg, err := source.Diagnostics(ctx, view, f, view.Options().DisabledAnalyses)
 	if err != nil {
 		return err
 	}
