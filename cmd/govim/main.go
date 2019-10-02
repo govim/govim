@@ -22,6 +22,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/types"
+	"github.com/govim/govim/cmd/govim/internal/util"
 	"github.com/govim/govim/cmd/govim/internal/vimconfig"
 	"github.com/govim/govim/internal/plugin"
 	"github.com/govim/govim/testsetup"
@@ -246,7 +247,14 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 
 	g.ChannelExf("let s:gopls_logfile=%q", logfile.Name())
 
-	gopls := exec.Command(g.goplspath, "-rpc.trace", "-logfile", logfile.Name())
+	goplsArgs := []string{"-rpc.trace", "-logfile", logfile.Name()}
+	if flags, err := util.Split(os.Getenv(string(config.EnvVarGoplsFlags))); err != nil {
+		g.Logf("invalid env var %s: %v", config.EnvVarGoplsFlags, err)
+	} else {
+		goplsArgs = append(goplsArgs, flags...)
+	}
+
+	gopls := exec.Command(g.goplspath, goplsArgs...)
 	g.Logf("Running gopls: %v", strings.Join(gopls.Args, " "))
 	stderr, err := gopls.StderrPipe()
 	if err != nil {
