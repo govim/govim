@@ -110,7 +110,7 @@ type Tests interface {
 	SuggestedFix(*testing.T, span.Span)
 	Definition(*testing.T, span.Span, Definition)
 	Highlight(*testing.T, string, []span.Span)
-	Reference(*testing.T, span.Span, []span.Span)
+	References(*testing.T, span.Span, []span.Span)
 	Rename(*testing.T, span.Span, string)
 	PrepareRename(*testing.T, span.Span, *source.PrepareItem)
 	Symbol(*testing.T, span.URI, []protocol.DocumentSymbol)
@@ -251,18 +251,26 @@ func Load(t testing.TB, exporter packagestest.Exporter, dir string) *Data {
 			Files:   files,
 			Overlay: overlays,
 		},
+		{
+			Name: "example.com/extramodule",
+			Files: map[string]interface{}{
+				"pkg/x.go": "package pkg\n",
+			},
+		},
 	}
 	data.Exported = packagestest.Export(t, exporter, modules)
 	for fragment := range files {
 		filename := data.Exported.File(testModule, fragment)
 		data.fragments[filename] = fragment
 	}
+
+	// Turn off go/packages debug logging.
 	data.Exported.Config.Logf = nil
+	data.Config.Logf = nil
 
 	// Merge the exported.Config with the view.Config.
 	data.Config = *data.Exported.Config
 	data.Config.Fset = token.NewFileSet()
-	data.Config.Logf = nil
 	data.Config.Context = Context(nil)
 	data.Config.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
 		panic("ParseFile should not be called")
@@ -476,7 +484,7 @@ func Run(t *testing.T, tests Tests, data *Data) {
 		for src, itemList := range data.References {
 			t.Run(spanName(src), func(t *testing.T) {
 				t.Helper()
-				tests.Reference(t, src, itemList)
+				tests.References(t, src, itemList)
 			})
 		}
 	})

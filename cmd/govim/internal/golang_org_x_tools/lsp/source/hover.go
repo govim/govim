@@ -47,7 +47,7 @@ func (i *IdentifierInfo) Hover(ctx context.Context) (*HoverInformation, error) {
 	switch x := h.source.(type) {
 	case ast.Node:
 		var b strings.Builder
-		if err := format.Node(&b, i.View.Session().Cache().FileSet(), x); err != nil {
+		if err := format.Node(&b, i.Snapshot.View().Session().Cache().FileSet(), x); err != nil {
 			return nil, err
 		}
 		h.Signature = b.String()
@@ -78,8 +78,9 @@ func objectString(obj types.Object, qf types.Qualifier) string {
 }
 
 func (d Declaration) hover(ctx context.Context) (*HoverInformation, error) {
-	ctx, done := trace.StartSpan(ctx, "source.hover")
+	_, done := trace.StartSpan(ctx, "source.hover")
 	defer done()
+
 	obj := d.obj
 	switch node := d.node.(type) {
 	case *ast.ImportSpec:

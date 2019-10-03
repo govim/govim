@@ -7,12 +7,13 @@ package cache
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"go/ast"
-	"go/scanner"
+	"go/token"
 	"go/types"
+	"sort"
 	"sync"
 
-	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
@@ -22,57 +23,28 @@ import (
 	errors "golang.org/x/xerrors"
 )
 
-type importer struct {
-	snapshot *snapshot
-	ctx      context.Context
-	config   *packages.Config
-
-	// seen maintains the set of previously imported packages.
-	// If we have seen a package that is already in this map, we have a circular import.
-	seen map[packageID]struct{}
-
-	// topLevelPackageID is the ID of the package from which type-checking began.
-	topLevelPackageID packageID
-
-	// parentPkg is the package that imports the current package.
-	parentPkg *pkg
-
-	// parentCheckPackageHandle is the check package handle that imports the current package.
-	parentCheckPackageHandle *checkPackageHandle
-}
-
-// checkPackageKey uniquely identifies a package and its config.
-type checkPackageKey struct {
-	id     string
-	files  string
-	config string
-
-	// TODO: For now, we don't include dependencies in the key.
-	// This will be necessary when we change the cache invalidation logic.
-}
-
 // checkPackageHandle implements source.CheckPackageHandle.
 type checkPackageHandle struct {
 	handle *memoize.Handle
 
-	files   []source.ParseGoHandle
-	imports map[packagePath]*checkPackageHandle
+	// files are the ParseGoHandles that compose the package.
+	files []source.ParseGoHandle
 
-	m      *metadata
-	config *packages.Config
+	// mode is the mode the the files were parsed in.
+	mode source.ParseMode
+
+	// m is the metadata associated with the package.
+	m *metadata
+
+	// key is the hashed key for the package.
+	key []byte
 }
 
-func (cph *checkPackageHandle) Mode() source.ParseMode {
-	if len(cph.files) == 0 {
-		return -1
+func (cph *checkPackageHandle) packageKey() packageKey {
+	return packageKey{
+		id:   cph.m.id,
+		mode: cph.mode,
 	}
-	mode := cph.files[0].Mode()
-	for _, ph := range cph.files[1:] {
-		if ph.Mode() != mode {
-			return -1
-		}
-	}
-	return mode
 }
 
 // checkPackageData contains the data produced by type-checking a package.
@@ -84,36 +56,98 @@ type checkPackageData struct {
 }
 
 // checkPackageHandle returns a source.CheckPackageHandle for a given package and config.
-func (imp *importer) checkPackageHandle(ctx context.Context, id packageID, s *snapshot) (*checkPackageHandle, error) {
-	m := s.getMetadata(id)
-	if m == nil {
-		return nil, errors.Errorf("no metadata for %s", id)
+func (s *snapshot) checkPackageHandle(ctx context.Context, id packageID, mode source.ParseMode) (*checkPackageHandle, error) {
+	// Check if we already have this CheckPackageHandle cached.
+	if cph := s.getPackage(id, mode); cph != nil {
+		return cph, nil
 	}
-	phs, err := imp.parseGoHandles(ctx, m)
+
+	// Build the CheckPackageHandle for this ID and its dependencies.
+	cph, deps, err := s.buildKey(ctx, id, mode)
 	if err != nil {
-		log.Error(ctx, "no ParseGoHandles", err, telemetry.Package.Of(id))
 		return nil, err
 	}
-	cph := &checkPackageHandle{
-		m:       m,
-		files:   phs,
-		config:  imp.config,
-		imports: make(map[packagePath]*checkPackageHandle),
-	}
-	h := imp.snapshot.view.session.cache.store.Bind(cph.key(), func(ctx context.Context) interface{} {
+
+	// Do not close over the checkPackageHandle or the snapshot in the Bind function.
+	// This creates a cycle, which causes the finalizers to never run on the handles.
+	// The possible cycles are:
+	//
+	//     checkPackageHandle.h.function -> checkPackageHandle
+	//     checkPackageHandle.h.function -> snapshot -> checkPackageHandle
+	//
+
+	m := cph.m
+	files := cph.files
+	key := cph.key
+	fset := s.view.session.cache.fset
+
+	h := s.view.session.cache.store.Bind(string(key), func(ctx context.Context) interface{} {
+		// Begin loading the direct dependencies, in parallel.
+		for _, dep := range deps {
+			go func(dep *checkPackageHandle) {
+				dep.check(ctx)
+			}(dep)
+		}
 		data := &checkPackageData{}
-		data.pkg, data.err = imp.typeCheck(ctx, cph, m)
+		data.pkg, data.err = typeCheck(ctx, fset, m, mode, files, deps)
 		return data
 	})
-
 	cph.handle = h
 
 	// Cache the CheckPackageHandle in the snapshot.
-	for _, ph := range cph.files {
-		uri := ph.File().Identity().URI
-		s.addPackage(uri, cph)
-	}
+	s.addPackage(cph)
+
 	return cph, nil
+}
+
+// buildKey computes the checkPackageKey for a given checkPackageHandle.
+func (s *snapshot) buildKey(ctx context.Context, id packageID, mode source.ParseMode) (*checkPackageHandle, map[packagePath]*checkPackageHandle, error) {
+	m := s.getMetadata(id)
+	if m == nil {
+		return nil, nil, errors.Errorf("no metadata for %s", id)
+	}
+	phs, err := s.parseGoHandles(ctx, m, mode)
+	if err != nil {
+		return nil, nil, err
+	}
+	cph := &checkPackageHandle{
+		m:     m,
+		files: phs,
+		mode:  mode,
+	}
+
+	// Make sure all of the depList are sorted.
+	var depList []packageID
+	for _, id := range m.deps {
+		depList = append(depList, id)
+	}
+	sort.Slice(depList, func(i, j int) bool {
+		return depList[i] < depList[j]
+	})
+
+	deps := make(map[packagePath]*checkPackageHandle)
+
+	// Begin computing the key by getting the depKeys for all dependencies.
+	var depKeys [][]byte
+	for _, depID := range depList {
+		depHandle, err := s.checkPackageHandle(ctx, depID, source.ParseExported)
+		if err != nil {
+			log.Error(ctx, "no dep handle", err, telemetry.Package.Of(depID))
+
+			// One bad dependency should not prevent us from checking the entire package.
+			// Add a special key to mark a bad dependency.
+			depKeys = append(depKeys, []byte(fmt.Sprintf("%s import not found", id)))
+			continue
+		}
+		deps[depHandle.m.pkgPath] = depHandle
+		depKeys = append(depKeys, depHandle.key)
+	}
+	cph.key = checkPackageKey(cph.m.id, cph.files, m.config, depKeys)
+	return cph, deps, nil
+}
+
+func checkPackageKey(id packageID, phs []source.ParseGoHandle, cfg *packages.Config, deps [][]byte) []byte {
+	return []byte(hashContents([]byte(fmt.Sprintf("%s%s%s%s", id, hashParseKeys(phs), hashConfig(cfg), hashContents(bytes.Join(deps, nil))))))
 }
 
 // hashConfig returns the hash for the *packages.Config.
@@ -138,19 +172,12 @@ func (cph *checkPackageHandle) Check(ctx context.Context) (source.Package, error
 }
 
 func (cph *checkPackageHandle) check(ctx context.Context) (*pkg, error) {
-	ctx, done := trace.StartSpan(ctx, "cache.checkPackageHandle.check", telemetry.Package.Of(cph.m.id))
-	defer done()
-
 	v := cph.handle.Get(ctx)
 	if v == nil {
-		return nil, ctx.Err()
+		return nil, errors.Errorf("no package for %s", cph.m.id)
 	}
 	data := v.(*checkPackageData)
 	return data.pkg, data.err
-}
-
-func (cph *checkPackageHandle) Config() *packages.Config {
-	return cph.config
 }
 
 func (cph *checkPackageHandle) Files() []source.ParseGoHandle {
@@ -169,11 +196,11 @@ func (cph *checkPackageHandle) MissingDependencies() []string {
 	return md
 }
 
-func (cph *checkPackageHandle) Cached(ctx context.Context) (source.Package, error) {
-	return cph.cached(ctx)
+func (cph *checkPackageHandle) Cached() (source.Package, error) {
+	return cph.cached()
 }
 
-func (cph *checkPackageHandle) cached(ctx context.Context) (*pkg, error) {
+func (cph *checkPackageHandle) cached() (*pkg, error) {
 	v := cph.handle.Cached()
 	if v == nil {
 		return nil, errors.Errorf("no cached type information for %s", cph.m.pkgPath)
@@ -182,67 +209,33 @@ func (cph *checkPackageHandle) cached(ctx context.Context) (*pkg, error) {
 	return data.pkg, data.err
 }
 
-func (cph *checkPackageHandle) key() checkPackageKey {
-	return checkPackageKey{
-		id:     string(cph.m.id),
-		files:  hashParseKeys(cph.files),
-		config: hashConfig(cph.config),
-	}
-}
-
-func (imp *importer) parseGoHandles(ctx context.Context, m *metadata) ([]source.ParseGoHandle, error) {
+func (s *snapshot) parseGoHandles(ctx context.Context, m *metadata, mode source.ParseMode) ([]source.ParseGoHandle, error) {
 	phs := make([]source.ParseGoHandle, 0, len(m.files))
 	for _, uri := range m.files {
-		f, err := imp.snapshot.view.GetFile(ctx, uri)
+		f, err := s.view.GetFile(ctx, uri)
 		if err != nil {
 			return nil, err
 		}
-		fh := imp.snapshot.Handle(ctx, f)
-		mode := source.ParseExported
-		if imp.topLevelPackageID == m.id {
-			mode = source.ParseFull
-		}
-		phs = append(phs, imp.snapshot.view.session.cache.ParseGoHandle(fh, mode))
+		fh := s.Handle(ctx, f)
+		phs = append(phs, s.view.session.cache.ParseGoHandle(fh, mode))
 	}
 	return phs, nil
 }
 
-func (imp *importer) Import(pkgPath string) (*types.Package, error) {
-	ctx, done := trace.StartSpan(imp.ctx, "cache.importer.Import", telemetry.PackagePath.Of(pkgPath))
-	defer done()
-
-	// We need to set the parent package's imports, so there should always be one.
-	if imp.parentPkg == nil {
-		return nil, errors.Errorf("no parent package for import %s", pkgPath)
-	}
-
-	// Get the CheckPackageHandle from the importing package.
-	cph, ok := imp.parentCheckPackageHandle.imports[packagePath(pkgPath)]
-	if !ok {
-		return nil, errors.Errorf("no package data for import path %s", pkgPath)
-	}
-	for _, ph := range cph.Files() {
-		if ph.Mode() != source.ParseExported {
-			panic("dependency parsed in full mode")
-		}
-	}
-	pkg, err := cph.check(ctx)
-	if err != nil {
-		return nil, err
-	}
-	imp.parentPkg.imports[packagePath(pkgPath)] = pkg
-	return pkg.GetTypes(), nil
-}
-
-func (imp *importer) typeCheck(ctx context.Context, cph *checkPackageHandle, m *metadata) (*pkg, error) {
+func typeCheck(ctx context.Context, fset *token.FileSet, m *metadata, mode source.ParseMode, phs []source.ParseGoHandle, deps map[packagePath]*checkPackageHandle) (*pkg, error) {
 	ctx, done := trace.StartSpan(ctx, "cache.importer.typeCheck", telemetry.Package.Of(m.id))
 	defer done()
 
+	var rawErrors []error
+	for _, err := range m.errors {
+		rawErrors = append(rawErrors, err)
+	}
+
 	pkg := &pkg{
-		view:       imp.snapshot.view,
 		id:         m.id,
 		pkgPath:    m.pkgPath,
-		files:      cph.Files(),
+		mode:       mode,
+		files:      phs,
 		imports:    make(map[packagePath]*pkg),
 		typesSizes: m.typesSizes,
 		typesInfo: &types.Info{
@@ -253,26 +246,6 @@ func (imp *importer) typeCheck(ctx context.Context, cph *checkPackageHandle, m *
 			Selections: make(map[*ast.SelectorExpr]*types.Selection),
 			Scopes:     make(map[ast.Node]*types.Scope),
 		},
-		analyses: make(map[*analysis.Analyzer]*analysisEntry),
-	}
-	// If the package comes back with errors from `go list`,
-	// don't bother type-checking it.
-	for _, err := range m.errors {
-		pkg.errors = append(m.errors, err)
-	}
-	// Set imports of package to correspond to cached packages.
-	cimp := imp.child(ctx, pkg, cph)
-	for _, depID := range m.deps {
-		dep := imp.snapshot.getMetadata(depID)
-		if dep == nil {
-			continue
-		}
-		depHandle, err := cimp.checkPackageHandle(ctx, depID, imp.snapshot)
-		if err != nil {
-			log.Error(ctx, "no check package handle", err, telemetry.Package.Of(depID))
-			continue
-		}
-		cph.imports[dep.pkgPath] = depHandle
 	}
 	var (
 		files       = make([]*ast.File, len(pkg.files))
@@ -289,9 +262,9 @@ func (imp *importer) typeCheck(ctx context.Context, cph *checkPackageHandle, m *
 	}
 	wg.Wait()
 
-	for _, err := range parseErrors {
-		if err != nil {
-			imp.snapshot.view.session.cache.appendPkgError(pkg, err)
+	for _, e := range parseErrors {
+		if e != nil {
+			rawErrors = append(rawErrors, e)
 		}
 	}
 
@@ -305,7 +278,7 @@ func (imp *importer) typeCheck(ctx context.Context, cph *checkPackageHandle, m *
 	files = files[:i]
 
 	// Use the default type information for the unsafe package.
-	if m.pkgPath == "unsafe" {
+	if pkg.pkgPath == "unsafe" {
 		pkg.types = types.Unsafe
 	} else if len(files) == 0 { // not the unsafe package, no parsed files
 		return nil, errors.Errorf("no parsed files for package %s", pkg.pkgPath)
@@ -314,64 +287,43 @@ func (imp *importer) typeCheck(ctx context.Context, cph *checkPackageHandle, m *
 	}
 
 	cfg := &types.Config{
-		Error: func(err error) {
-			imp.snapshot.view.session.cache.appendPkgError(pkg, err)
+		Error: func(e error) {
+			rawErrors = append(rawErrors, e)
 		},
-		Importer: cimp,
+		Importer: importerFunc(func(pkgPath string) (*types.Package, error) {
+			dep := deps[packagePath(pkgPath)]
+			if dep == nil {
+				return nil, errors.Errorf("no package for import %s", pkgPath)
+			}
+			depPkg, err := dep.check(ctx)
+			if err != nil {
+				return nil, err
+			}
+			pkg.imports[depPkg.pkgPath] = depPkg
+			return depPkg.types, nil
+		}),
 	}
-	check := types.NewChecker(cfg, imp.snapshot.view.session.cache.FileSet(), pkg.types, pkg.typesInfo)
+	check := types.NewChecker(cfg, fset, pkg.types, pkg.typesInfo)
 
 	// Type checking errors are handled via the config, so ignore them here.
 	_ = check.Files(files)
 
+	// We don't care about a package's errors unless we have parsed it in full.
+	if mode == source.ParseFull {
+		for _, e := range rawErrors {
+			srcErr, err := sourceError(ctx, fset, pkg, e)
+			if err != nil {
+				return nil, err
+			}
+			pkg.errors = append(pkg.errors, srcErr)
+		}
+	}
+
 	return pkg, nil
 }
 
-func (imp *importer) child(ctx context.Context, pkg *pkg, cph *checkPackageHandle) *importer {
-	// Handle circular imports by copying previously seen imports.
-	seen := make(map[packageID]struct{})
-	for k, v := range imp.seen {
-		seen[k] = v
-	}
-	seen[pkg.id] = struct{}{}
-	return &importer{
-		snapshot:                 imp.snapshot,
-		ctx:                      ctx,
-		config:                   imp.config,
-		seen:                     seen,
-		topLevelPackageID:        imp.topLevelPackageID,
-		parentPkg:                pkg,
-		parentCheckPackageHandle: cph,
-	}
-}
+// An importFunc is an implementation of the single-method
+// types.Importer interface based on a function value.
+type importerFunc func(path string) (*types.Package, error)
 
-func (c *cache) appendPkgError(pkg *pkg, err error) {
-	if err == nil {
-		return
-	}
-	var errs []packages.Error
-	switch err := err.(type) {
-	case *scanner.Error:
-		errs = append(errs, packages.Error{
-			Pos:  err.Pos.String(),
-			Msg:  err.Msg,
-			Kind: packages.ParseError,
-		})
-	case scanner.ErrorList:
-		// The first parser error is likely the root cause of the problem.
-		if err.Len() > 0 {
-			errs = append(errs, packages.Error{
-				Pos:  err[0].Pos.String(),
-				Msg:  err[0].Msg,
-				Kind: packages.ParseError,
-			})
-		}
-	case types.Error:
-		errs = append(errs, packages.Error{
-			Pos:  c.FileSet().Position(err.Pos).String(),
-			Msg:  err.Msg,
-			Kind: packages.TypeError,
-		})
-	}
-	pkg.errors = append(pkg.errors, errs...)
-}
+func (f importerFunc) Import(path string) (*types.Package, error) { return f(path) }

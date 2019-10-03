@@ -83,6 +83,9 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 	case *types.PkgName:
 		kind = protocol.ModuleCompletion
 		detail = fmt.Sprintf("%q", obj.Imported().Path())
+	case *types.Label:
+		kind = protocol.ConstantCompletion
+		detail = "label"
 	}
 
 	// If this candidate needs an additional import statement,
@@ -122,18 +125,18 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 		return item, nil
 	}
 	uri := span.FileURI(pos.Filename)
-	ph, pkg, err := c.pkg.FindFile(c.ctx, uri)
+	ph, pkg, err := c.view.FindFileInPackage(c.ctx, uri, c.pkg)
 	if err != nil {
 		return CompletionItem{}, err
 	}
-	file, _, _, err := ph.Cached(c.ctx)
+	file, _, _, err := ph.Cached()
 	if err != nil {
 		return CompletionItem{}, err
 	}
 	if !(file.Pos() <= obj.Pos() && obj.Pos() <= file.End()) {
 		return CompletionItem{}, errors.Errorf("no file for %s", obj.Name())
 	}
-	ident, err := findIdentifier(c.ctx, c.view, c.snapshot, pkg, file, obj.Pos())
+	ident, err := findIdentifier(c.ctx, c.snapshot, pkg, file, obj.Pos())
 	if err != nil {
 		return CompletionItem{}, err
 	}
@@ -210,7 +213,7 @@ func formatFieldList(ctx context.Context, v View, list *ast.FieldList) ([]string
 		}
 		typ := replacer.Replace(b.String())
 		if len(p.Names) == 0 {
-			result = append(result, fmt.Sprintf("%s", typ))
+			result = append(result, typ)
 		}
 		for _, name := range p.Names {
 			if name.Name != "" {
@@ -219,7 +222,7 @@ func formatFieldList(ctx context.Context, v View, list *ast.FieldList) ([]string
 				}
 				result = append(result, fmt.Sprintf("%s %s", name.Name, typ))
 			} else {
-				result = append(result, fmt.Sprintf("%s", typ))
+				result = append(result, typ)
 			}
 		}
 	}

@@ -17,27 +17,29 @@ func (v *view) CheckPackageHandles(ctx context.Context, f source.File) (source.S
 	// Get the snapshot that will be used for type-checking.
 	s := v.getSnapshot()
 
-	cphs, err := s.checkPackageHandles(ctx, f)
+	cphs, err := s.CheckPackageHandles(ctx, f)
 	if err != nil {
 		return nil, nil, err
+	}
+	if len(cphs) == 0 {
+		return nil, nil, errors.Errorf("no CheckPackageHandles for %s", f.URI())
 	}
 	return s, cphs, nil
 }
 
-func (s *snapshot) checkPackageHandles(ctx context.Context, f source.File) ([]source.CheckPackageHandle, error) {
+func (s *snapshot) CheckPackageHandles(ctx context.Context, f source.File) ([]source.CheckPackageHandle, error) {
 	ctx = telemetry.File.With(ctx, f.URI())
 
 	fh := s.Handle(ctx, f)
 
 	// Determine if we need to type-check the package.
 	m, cphs, load, check := s.shouldCheck(fh)
-	cfg := s.view.Config(ctx)
 
 	// We may need to re-load package metadata.
 	// We only need to this if it has been invalidated, and is therefore unvailable.
 	if load {
 		var err error
-		m, err = s.load(ctx, f.URI(), cfg)
+		m, err = s.load(ctx, f.URI())
 		if err != nil {
 			return nil, err
 		}
@@ -50,13 +52,7 @@ func (s *snapshot) checkPackageHandles(ctx context.Context, f source.File) ([]so
 	if check {
 		var results []source.CheckPackageHandle
 		for _, m := range m {
-			imp := &importer{
-				config:            cfg,
-				seen:              make(map[packageID]struct{}),
-				topLevelPackageID: m.id,
-				snapshot:          s,
-			}
-			cph, err := imp.checkPackageHandle(ctx, m.id, s)
+			cph, err := s.checkPackageHandle(ctx, m.id, source.ParseFull)
 			if err != nil {
 				return nil, err
 			}
@@ -90,26 +86,8 @@ func (s *snapshot) shouldCheck(fh source.FileHandle) (m []*metadata, cphs []sour
 	}
 	// We expect to see a checked package for each package ID,
 	// and it should be parsed in full mode.
-	var (
-		expected   = len(m)
-		cachedCPHs = s.getPackages(fh.Identity().URI)
-	)
-	if len(cachedCPHs) < expected {
-		return m, nil, load, true
-	}
-	for _, cph := range cachedCPHs {
-		// The package may have been checked in the exported mode.
-		if cph.Mode() != source.ParseFull {
-			continue
-		}
-		// Confirm that the file belongs to this package.
-		for _, file := range cph.Files() {
-			if file.File().Identity() == fh.Identity() {
-				cphs = append(cphs, cph)
-			}
-		}
-	}
-	if len(cphs) < expected {
+	cphs = s.getPackages(fh.Identity().URI, source.ParseFull)
+	if len(cphs) < len(m) {
 		return m, nil, load, true
 	}
 	return m, cphs, load, check
@@ -126,11 +104,14 @@ func (v *view) GetActiveReverseDeps(ctx context.Context, f source.File) (results
 		if _, ok := seen[f.URI()]; ok {
 			continue
 		}
-		cphs, err := s.checkPackageHandles(ctx, f)
+		cphs, err := s.CheckPackageHandles(ctx, f)
 		if err != nil {
 			continue
 		}
-		cph := source.WidestCheckPackageHandle(cphs)
+		cph, err := source.WidestCheckPackageHandle(cphs)
+		if err != nil {
+			continue
+		}
 		for _, ph := range cph.Files() {
 			seen[ph.File().Identity().URI] = struct{}{}
 		}

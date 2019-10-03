@@ -1,4 +1,4 @@
-package foo //@mark(PackageFoo, "foo")
+package foo //@mark(PackageFoo, "foo"),item(PackageFoo, "foo", "\"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/foo\"", "package")
 
 type StructFoo struct { //@item(StructFoo, "StructFoo", "struct{...}", "struct")
 	Value int //@item(Value, "Value", "int", "field")

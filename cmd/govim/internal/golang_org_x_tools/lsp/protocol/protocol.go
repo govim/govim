@@ -6,11 +6,17 @@ package protocol
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
+)
+
+const (
+	// RequestCancelledError should be used when a request is cancelled early.
+	RequestCancelledError = -32800
 )
 
 type DocumentUri = string
@@ -25,6 +31,18 @@ type clientHandler struct {
 type serverHandler struct {
 	canceller
 	server Server
+}
+
+func (canceller) Request(ctx context.Context, conn *jsonrpc2.Conn, direction jsonrpc2.Direction, r *jsonrpc2.WireRequest) context.Context {
+	if direction == jsonrpc2.Receive && r.Method == "$/cancelRequest" {
+		var params CancelParams
+		if err := json.Unmarshal(*r.Params, &params); err != nil {
+			log.Error(ctx, "", err)
+		} else {
+			conn.Cancel(params.ID)
+		}
+	}
+	return ctx
 }
 
 func (canceller) Cancel(ctx context.Context, conn *jsonrpc2.Conn, id jsonrpc2.ID, cancelled bool) bool {

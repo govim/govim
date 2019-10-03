@@ -82,8 +82,8 @@ func f2() string {}
 -- errors.golden --
 main.go|6 col 36| undeclared name: i
 main.go|6 col 39| undeclared name: v
-main.go|9 col 19| missing return
-main.go|10 col 19| missing return
+main.go|9 col 18| missing return
+main.go|10 col 18| missing return
 -- signs.golden --
 [
   {
