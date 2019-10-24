@@ -455,3 +455,15 @@ function s:mustBeZero(v)
   endif
   return [v:true, ""]
 endfunction
+
+function GOVIM_internal_SuggestedFixesFilter(id, key)
+    if a:key == "\<c-n>"
+        GOVIMSuggestedFixes next
+        return 1
+    elseif a:key == "\<c-p>"
+        GOVIMSuggestedFixes prev
+        return 1
+    endif
+
+    return popup_filter_menu(a:id, a:key)
+endfunc

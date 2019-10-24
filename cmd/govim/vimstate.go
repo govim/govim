@@ -62,6 +62,11 @@ type vimstate struct {
 	// quickfix entries change. If the previously selected entry remains in the new
 	// quickfix list we re-select it. Otherwise we select the first entry.
 	lastQuickFixDiagnostics []quickfixEntry
+
+	// suggestedFixesPopups is a set of suggested fixes keyed by popup ID. It represents
+	// currently defined popups (both hidden and visible) and have a lifespan of single
+	// codeAction call.
+	suggestedFixesPopups map[int][]*protocol.WorkspaceEdit
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
@@ -97,6 +102,34 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	// package users that might mean even this doesn't work.)
 
 	return nil, nil
+}
+
+func (v *vimstate) popupSelection(args ...json.RawMessage) (interface{}, error) {
+	var popupID int
+	var selection int
+	v.Parse(args[0], &popupID)
+	v.Parse(args[1], &selection)
+
+	var edits []*protocol.WorkspaceEdit
+	var ok bool
+	if edits, ok = v.suggestedFixesPopups[popupID]; !ok {
+		return nil, fmt.Errorf("couldn't find popup id: %d", popupID)
+	}
+
+	delete(v.suggestedFixesPopups, popupID)
+
+	for k := range v.suggestedFixesPopups {
+		v.ChannelCall("popup_close", k)
+		delete(v.suggestedFixesPopups, popupID)
+	}
+
+	if selection < 1 { // 0 = popup_close() called, -1 = ESC closed popup
+		return nil, nil
+	}
+
+	edit := edits[selection-1]
+
+	return nil, v.applyMultiBufTextedits(nil, edit.Changes)
 }
 
 func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {

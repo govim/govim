@@ -159,6 +159,9 @@ const (
 	// case, the format is $importpath.$function. In some situations, poetic
 	// license may be required.
 	CommandStringFn Command = "StringFn"
+
+	// CommandSuggestedFixes
+	CommandSuggestedFixes Command = "SuggestedFixes"
 )
 
 type Function string
@@ -192,6 +195,8 @@ const (
 	// FunctionSetUserBusy is an internal function used by govim for indicated
 	// whether the user is busy or not (based on cursor movement)
 	FunctionSetUserBusy Function = InternalFunctionPrefix + "SetUserBusy"
+
+	FunctionPopupSelection Function = InternalFunctionPrefix + "PopupSelection"
 
 	// FunctionStringFnComplete is an internal function used by govim to provide
 	// completion of arguments to CommandStringFn
