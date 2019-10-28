@@ -1,10 +1,4 @@
 if GOVIMPluginStatus() == "initcomplete"
-  " Highlights
-  highlight link govimErr Error
-  highlight govimWarn ctermfg=15 ctermbg=3 guisp=Orange guifg=Orange
-  highlight govimInfo ctermfg=15 ctermbg=6  guisp=Cyan guifg=Cyan
-  highlight link govimHint govimInfo
-
   " Hover
   setlocal balloonexpr=GOVIM_internal_BalloonExpr()
 

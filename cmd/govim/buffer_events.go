@@ -29,6 +29,7 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	if cb, ok := v.buffers[nb.Num]; ok {
 		// reload of buffer, e.v. e!
 		cb.SetContents(nb.Contents())
+		cb.Loaded = nb.Loaded
 		cb.Version++
 		return v.handleBufferEvent(cb)
 	}
@@ -130,6 +131,10 @@ func (v *vimstate) bufUnload(args ...json.RawMessage) error {
 }
 
 func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
+	if err := v.redefineHighlights(v.diagnostics()); err != nil {
+		v.Logf("failed to update highlights for buffer %d: %v", b.Num, err)
+	}
+
 	v.triggerBufferASTUpdate(b)
 	if b.Version == 1 {
 		params := &protocol.DidOpenTextDocumentParams{

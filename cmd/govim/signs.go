@@ -3,32 +3,20 @@ package main
 import (
 	"fmt"
 
+	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
 // Using a sign group creates a separate namespace for all signs placed by govim
 const signGroup = "govim"
 
-// signSuffix is used when naming the different sign types. It is appended to each
-// highlight type and passed in as name to sign_define().
-const signSuffix = "Sign"
-
-// Each sign in vim has a priority. If there are multiple signs on the same line, it
-// is the one with highest priority that shows. For details see ":help sign-priority".
-// The default priority in vim, if not specified, is 10.
-var signPriority = map[types.Severity]int{
-	types.SeverityErr:  14,
-	types.SeverityWarn: 12,
-	types.SeverityInfo: 10,
-	types.SeverityHint: 8,
-}
-
 // signName is used to map a priority to the defined sign type (i.e. "sign name")
-var signName = map[int]string{
-	signPriority[types.SeverityErr]:  types.HighlightErr + signSuffix,
-	signPriority[types.SeverityWarn]: types.HighlightWarn + signSuffix,
-	signPriority[types.SeverityInfo]: types.HighlightInfo + signSuffix,
-	signPriority[types.SeverityHint]: types.HighlightHint + signSuffix,
+// Note that we reuse the highlight name as sign name even if they are not the same thing.
+var signName = map[int]config.Highlight{
+	types.SeverityPriority[types.SeverityErr]:  config.HighlightSignErr,
+	types.SeverityPriority[types.SeverityWarn]: config.HighlightSignWarn,
+	types.SeverityPriority[types.SeverityInfo]: config.HighlightSignInfo,
+	types.SeverityPriority[types.SeverityHint]: config.HighlightSignHint,
 }
 
 // defineDict is the representation of arguments used in vim's sign_define()
@@ -39,13 +27,13 @@ type defineDict struct {
 
 // signDefine defines the sign types (sign names) and must be called once before placing any signs
 func (v *vimstate) signDefine() error {
-	for _, hi := range []string{types.HighlightErr, types.HighlightWarn, types.HighlightInfo, types.HighlightHint} {
+	for _, hi := range []config.Highlight{config.HighlightSignErr, config.HighlightSignWarn, config.HighlightSignInfo, config.HighlightSignHint} {
 		arg := defineDict{
 			Text:          ">>",
-			TextHighlight: hi,
+			TextHighlight: string(hi),
 		}
 
-		if v.ParseInt(v.ChannelCall("sign_define", hi+signSuffix, arg)) != 0 {
+		if v.ParseInt(v.ChannelCall("sign_define", hi, arg)) != 0 {
 			return fmt.Errorf("sign_define failed")
 		}
 	}
@@ -110,7 +98,7 @@ func (v *vimstate) updateSigns(fixes []types.Diagnostic, force bool) error {
 			// i.e. there is no buffer. Do no try and place a sign
 			continue
 		}
-		priority, ok := signPriority[f.Severity]
+		priority, ok := types.SeverityPriority[f.Severity]
 		if !ok {
 			return fmt.Errorf("no sign priority defined for severity: %v", f.Severity)
 		}
@@ -123,7 +111,7 @@ func (v *vimstate) updateSigns(fixes []types.Diagnostic, force bool) error {
 			Group:    signGroup,
 			Lnum:     f.Range.Start.Line(),
 			Priority: priority,
-			Name:     name})
+			Name:     string(name)})
 	}
 	if len(placeList) > 0 {
 		v.BatchChannelCall("sign_placelist", placeList)
