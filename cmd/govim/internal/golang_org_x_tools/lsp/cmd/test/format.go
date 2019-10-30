@@ -15,6 +15,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cmd"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/testenv"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tool"
 )
 
@@ -32,7 +33,7 @@ func (r *runner) Format(t *testing.T, spn span.Span) {
 		//TODO: our error handling differs, for now just skip unformattable files
 		t.Skip("Unformattable file")
 	}
-	app := cmd.New("gopls-test", r.data.Config.Dir, r.data.Config.Env)
+	app := cmd.New("gopls-test", r.data.Config.Dir, r.data.Config.Env, r.options)
 	got := CaptureStdOut(t, func() {
 		_ = tool.Run(r.ctx, app, append([]string{"-remote=internal", "format"}, filename))
 	})
@@ -58,9 +59,7 @@ func fixFileHeader(s string) string {
 }
 
 func checkUnified(t *testing.T, filename string, expect string, patch string) {
-	if testing.Short() {
-		t.Skip("running patch is expensive")
-	}
+	testenv.NeedsTool(t, "patch")
 	if strings.Count(patch, "\n+++ ") > 1 {
 		// TODO(golang/go/#34580)
 		t.Skip("multi-file patch tests not supported yet")

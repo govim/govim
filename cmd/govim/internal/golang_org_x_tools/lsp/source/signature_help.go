@@ -35,7 +35,10 @@ func SignatureHelp(ctx context.Context, view View, f File, pos protocol.Position
 	if err != nil {
 		return nil, err
 	}
-	cph := NarrowestCheckPackageHandle(cphs)
+	cph, err := NarrowestCheckPackageHandle(cphs)
+	if err != nil {
+		return nil, err
+	}
 	pkg, err := cph.Check(ctx)
 	if err != nil {
 		return nil, err
@@ -44,7 +47,7 @@ func SignatureHelp(ctx context.Context, view View, f File, pos protocol.Position
 	if err != nil {
 		return nil, err
 	}
-	file, m, _, err := ph.Cached(ctx)
+	file, m, _, err := ph.Cached()
 	if err != nil {
 		return nil, err
 	}

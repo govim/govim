@@ -56,9 +56,9 @@ func (s mappedRange) URI() span.URI {
 // By "narrowest" package, we mean the package with the fewest number of files
 // that includes the given file. This solves the problem of test variants,
 // as the test will have more files than the non-test package.
-func NarrowestCheckPackageHandle(handles []CheckPackageHandle) CheckPackageHandle {
+func NarrowestCheckPackageHandle(handles []CheckPackageHandle) (CheckPackageHandle, error) {
 	if len(handles) < 1 {
-		return nil
+		return nil, errors.Errorf("no CheckPackageHandles")
 	}
 	result := handles[0]
 	for _, handle := range handles[1:] {
@@ -66,16 +66,19 @@ func NarrowestCheckPackageHandle(handles []CheckPackageHandle) CheckPackageHandl
 			result = handle
 		}
 	}
-	return result
+	if result == nil {
+		return nil, errors.Errorf("nil CheckPackageHandles have been returned")
+	}
+	return result, nil
 }
 
 // WidestCheckPackageHandle returns the CheckPackageHandle containing the most files.
 //
 // This is useful for something like diagnostics, where we'd prefer to offer diagnostics
 // for as many files as possible.
-func WidestCheckPackageHandle(handles []CheckPackageHandle) CheckPackageHandle {
+func WidestCheckPackageHandle(handles []CheckPackageHandle) (CheckPackageHandle, error) {
 	if len(handles) < 1 {
-		return nil
+		return nil, errors.Errorf("no CheckPackageHandles")
 	}
 	result := handles[0]
 	for _, handle := range handles[1:] {
@@ -83,7 +86,10 @@ func WidestCheckPackageHandle(handles []CheckPackageHandle) CheckPackageHandle {
 			result = handle
 		}
 	}
-	return result
+	if result == nil {
+		return nil, errors.Errorf("nil CheckPackageHandles have been returned")
+	}
+	return result, nil
 }
 
 func IsGenerated(ctx context.Context, view View, uri span.URI) bool {
@@ -121,7 +127,7 @@ func nodeToProtocolRange(ctx context.Context, view View, m *protocol.ColumnMappe
 	return mrng.Range()
 }
 
-func objToMappedRange(ctx context.Context, view View, pkg Package, obj types.Object) (mappedRange, error) {
+func objToMappedRange(ctx context.Context, v View, pkg Package, obj types.Object) (mappedRange, error) {
 	if pkgName, ok := obj.(*types.PkgName); ok {
 		// An imported Go package has a package-local, unqualified name.
 		// When the name matches the imported package name, there is no
@@ -134,26 +140,26 @@ func objToMappedRange(ctx context.Context, view View, pkg Package, obj types.Obj
 		// When the identifier does not appear in the source, have the range
 		// of the object be the point at the beginning of the declaration.
 		if pkgName.Imported().Name() == pkgName.Name() {
-			return nameToMappedRange(ctx, view, pkg, obj.Pos(), "")
+			return nameToMappedRange(ctx, v, pkg, obj.Pos(), "")
 		}
 	}
-	return nameToMappedRange(ctx, view, pkg, obj.Pos(), obj.Name())
+	return nameToMappedRange(ctx, v, pkg, obj.Pos(), obj.Name())
 }
 
-func nameToMappedRange(ctx context.Context, view View, pkg Package, pos token.Pos, name string) (mappedRange, error) {
-	return posToMappedRange(ctx, view, pkg, pos, pos+token.Pos(len(name)))
+func nameToMappedRange(ctx context.Context, v View, pkg Package, pos token.Pos, name string) (mappedRange, error) {
+	return posToMappedRange(ctx, v, pkg, pos, pos+token.Pos(len(name)))
 }
 
 func nodeToMappedRange(ctx context.Context, view View, m *protocol.ColumnMapper, n ast.Node) (mappedRange, error) {
 	return posToRange(ctx, view, m, n.Pos(), n.End())
 }
 
-func posToMappedRange(ctx context.Context, view View, pkg Package, pos, end token.Pos) (mappedRange, error) {
-	m, err := posToMapper(ctx, view, pkg, pos)
+func posToMappedRange(ctx context.Context, v View, pkg Package, pos, end token.Pos) (mappedRange, error) {
+	m, err := posToMapper(ctx, v, pkg, pos)
 	if err != nil {
 		return mappedRange{}, err
 	}
-	return posToRange(ctx, view, m, pos, end)
+	return posToRange(ctx, v, m, pos, end)
 }
 
 func posToRange(ctx context.Context, view View, m *protocol.ColumnMapper, pos, end token.Pos) (mappedRange, error) {
@@ -169,13 +175,13 @@ func posToRange(ctx context.Context, view View, m *protocol.ColumnMapper, pos, e
 	}, nil
 }
 
-func posToMapper(ctx context.Context, view View, pkg Package, pos token.Pos) (*protocol.ColumnMapper, error) {
-	posn := view.Session().Cache().FileSet().Position(pos)
-	ph, _, err := pkg.FindFile(ctx, span.FileURI(posn.Filename))
+func posToMapper(ctx context.Context, v View, pkg Package, pos token.Pos) (*protocol.ColumnMapper, error) {
+	posn := v.Session().Cache().FileSet().Position(pos)
+	ph, _, err := v.FindFileInPackage(ctx, span.FileURI(posn.Filename), pkg)
 	if err != nil {
 		return nil, err
 	}
-	_, m, _, err := ph.Cached(ctx)
+	_, m, _, err := ph.Cached()
 	return m, err
 }
 
@@ -332,6 +338,26 @@ func isFunc(obj types.Object) bool {
 func isEmptyInterface(T types.Type) bool {
 	intf, _ := T.(*types.Interface)
 	return intf != nil && intf.NumMethods() == 0
+}
+
+// isSelector returns the enclosing *ast.SelectorExpr when pos is in the
+// selector.
+func enclosingSelector(path []ast.Node, pos token.Pos) *ast.SelectorExpr {
+	if len(path) == 0 {
+		return nil
+	}
+
+	if sel, ok := path[0].(*ast.SelectorExpr); ok {
+		return sel
+	}
+
+	if _, ok := path[0].(*ast.Ident); ok && len(path) > 1 {
+		if sel, ok := path[1].(*ast.SelectorExpr); ok && pos >= sel.Sel.Pos() {
+			return sel
+		}
+	}
+
+	return nil
 }
 
 // typeConversion returns the type being converted to if call is a type

@@ -27,10 +27,10 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 		return nil, err
 	}
 
-	fh := view.Snapshot().Handle(ctx, f)
+	snapshot := view.Snapshot()
 
 	// Determine the supported actions for this file kind.
-	fileKind := fh.Identity().Kind
+	fileKind := snapshot.Handle(ctx, f).Identity().Kind
 	supportedCodeActions, ok := view.Options().SupportedCodeActions[fileKind]
 	if !ok {
 		return nil, fmt.Errorf("no supported code actions for %v file kind", fileKind)
@@ -75,7 +75,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 		}
 		if diagnostics := params.Context.Diagnostics; wanted[protocol.QuickFix] && len(diagnostics) > 0 {
 			// First, add the quick fixes reported by go/analysis.
-			qf, err := quickFixes(ctx, view, f, diagnostics)
+			qf, err := quickFixes(ctx, snapshot, f, diagnostics)
 			if err != nil {
 				log.Error(ctx, "quick fixes failed", err, telemetry.File.Of(uri))
 			}
@@ -102,7 +102,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 				}
 			}
 		}
-		if wanted[protocol.SourceOrganizeImports] {
+		if wanted[protocol.SourceOrganizeImports] && len(edits) > 0 {
 			codeActions = append(codeActions, protocol.CodeAction{
 				Title: "Organize Imports",
 				Kind:  protocol.SourceOrganizeImports,
@@ -205,25 +205,24 @@ func importDiagnostics(fix *imports.ImportFix, diagnostics []protocol.Diagnostic
 	return results
 }
 
-func quickFixes(ctx context.Context, view source.View, f source.File, diagnostics []protocol.Diagnostic) ([]protocol.CodeAction, error) {
+func quickFixes(ctx context.Context, s source.Snapshot, f source.File, diagnostics []protocol.Diagnostic) ([]protocol.CodeAction, error) {
 	var codeActions []protocol.CodeAction
-	_, cphs, err := view.CheckPackageHandles(ctx, f)
+	cphs, err := s.CheckPackageHandles(ctx, f)
 	if err != nil {
 		return nil, err
 	}
 	// We get the package that source.Diagnostics would've used. This is hack.
 	// TODO(golang/go#32443): The correct solution will be to cache diagnostics per-file per-snapshot.
-	cph := source.WidestCheckPackageHandle(cphs)
-	pkg, err := cph.Cached(ctx)
+	cph, err := source.WidestCheckPackageHandle(cphs)
 	if err != nil {
 		return nil, err
 	}
 	for _, diag := range diagnostics {
-		sdiag, err := pkg.FindDiagnostic(diag)
+		srcErr, err := s.FindAnalysisError(ctx, cph.ID(), diag)
 		if err != nil {
 			continue
 		}
-		for _, fix := range sdiag.SuggestedFixes {
+		for _, fix := range srcErr.SuggestedFixes {
 			edits := make(map[string][]protocol.TextEdit)
 			for uri, e := range fix.Edits {
 				edits[protocol.NewURI(uri)] = e

@@ -10,7 +10,6 @@ import (
 	"context"
 	"go/format"
 
-	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -28,7 +27,10 @@ func Format(ctx context.Context, view View, f File) ([]protocol.TextEdit, error)
 	if err != nil {
 		return nil, err
 	}
-	cph := NarrowestCheckPackageHandle(cphs)
+	cph, err := NarrowestCheckPackageHandle(cphs)
+	if err != nil {
+		return nil, err
+	}
 	pkg, err := cph.Check(ctx)
 	if err != nil {
 		return nil, err
@@ -46,7 +48,7 @@ func Format(ctx context.Context, view View, f File) ([]protocol.TextEdit, error)
 	if err != nil {
 		return nil, err
 	}
-	if hasListErrors(pkg.GetErrors()) || hasParseErrors(pkg, f.URI()) {
+	if hasListErrors(pkg) || hasParseErrors(pkg, f.URI()) {
 		// Even if this package has list or parse errors, this file may not
 		// have any parse errors and can still be formatted. Using format.Node
 		// on an ast with errors may result in code being added or removed.
@@ -55,7 +57,7 @@ func Format(ctx context.Context, view View, f File) ([]protocol.TextEdit, error)
 		if err != nil {
 			return nil, err
 		}
-		return computeTextEdits(ctx, ph.File(), m, string(formatted))
+		return computeTextEdits(ctx, view, ph.File(), m, string(formatted))
 	}
 
 	fset := view.Session().Cache().FileSet()
@@ -68,7 +70,7 @@ func Format(ctx context.Context, view View, f File) ([]protocol.TextEdit, error)
 	if err := format.Node(buf, fset, file); err != nil {
 		return nil, err
 	}
-	return computeTextEdits(ctx, ph.File(), m, buf.String())
+	return computeTextEdits(ctx, view, ph.File(), m, buf.String())
 }
 
 func formatSource(ctx context.Context, s Snapshot, f File) ([]byte, error) {
@@ -83,7 +85,7 @@ func formatSource(ctx context.Context, s Snapshot, f File) ([]byte, error) {
 }
 
 // Imports formats a file using the goimports tool.
-func Imports(ctx context.Context, view View, f File, rng span.Range) ([]protocol.TextEdit, error) {
+func Imports(ctx context.Context, view View, f File) ([]protocol.TextEdit, error) {
 	ctx, done := trace.StartSpan(ctx, "source.Imports")
 	defer done()
 
@@ -91,12 +93,15 @@ func Imports(ctx context.Context, view View, f File, rng span.Range) ([]protocol
 	if err != nil {
 		return nil, err
 	}
-	cph := NarrowestCheckPackageHandle(cphs)
+	cph, err := NarrowestCheckPackageHandle(cphs)
+	if err != nil {
+		return nil, err
+	}
 	pkg, err := cph.Check(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if hasListErrors(pkg.GetErrors()) {
+	if hasListErrors(pkg) {
 		return nil, errors.Errorf("%s has list errors, not running goimports", f.URI())
 	}
 	ph, err := pkg.File(f.URI())
@@ -134,7 +139,7 @@ func Imports(ctx context.Context, view View, f File, rng span.Range) ([]protocol
 	if err != nil {
 		return nil, err
 	}
-	return computeTextEdits(ctx, ph.File(), m, string(formatted))
+	return computeTextEdits(ctx, view, ph.File(), m, string(formatted))
 }
 
 type ImportFix struct {
@@ -154,12 +159,15 @@ func AllImportsFixes(ctx context.Context, view View, f File) (edits []protocol.T
 	if err != nil {
 		return nil, nil, err
 	}
-	cph := NarrowestCheckPackageHandle(cphs)
+	cph, err := NarrowestCheckPackageHandle(cphs)
+	if err != nil {
+		return nil, nil, err
+	}
 	pkg, err := cph.Check(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
-	if hasListErrors(pkg.GetErrors()) {
+	if hasListErrors(pkg) {
 		return nil, nil, errors.Errorf("%s has list errors, not running goimports", f.URI())
 	}
 	options := &imports.Options{
@@ -198,7 +206,7 @@ func AllImportsFixes(ctx context.Context, view View, f File) (edits []protocol.T
 		if err != nil {
 			return err
 		}
-		edits, err = computeTextEdits(ctx, ph.File(), m, string(formatted))
+		edits, err = computeTextEdits(ctx, view, ph.File(), m, string(formatted))
 		if err != nil {
 			return err
 		}
@@ -209,7 +217,7 @@ func AllImportsFixes(ctx context.Context, view View, f File) (edits []protocol.T
 			if err != nil {
 				return err
 			}
-			edits, err := computeTextEdits(ctx, ph.File(), m, string(formatted))
+			edits, err := computeTextEdits(ctx, view, ph.File(), m, string(formatted))
 			if err != nil {
 				return err
 			}
@@ -260,24 +268,23 @@ func CandidateImports(ctx context.Context, view View, filename string) (pkgs []i
 // hasParseErrors returns true if the given file has parse errors.
 func hasParseErrors(pkg Package, uri span.URI) bool {
 	for _, err := range pkg.GetErrors() {
-		spn := packagesErrorSpan(err)
-		if spn.URI() == uri && err.Kind == packages.ParseError {
+		if err.URI == uri && err.Kind == ParseError {
 			return true
 		}
 	}
 	return false
 }
 
-func hasListErrors(errors []packages.Error) bool {
-	for _, err := range errors {
-		if err.Kind == packages.ListError {
+func hasListErrors(pkg Package) bool {
+	for _, err := range pkg.GetErrors() {
+		if err.Kind == ListError {
 			return true
 		}
 	}
 	return false
 }
 
-func computeTextEdits(ctx context.Context, fh FileHandle, m *protocol.ColumnMapper, formatted string) ([]protocol.TextEdit, error) {
+func computeTextEdits(ctx context.Context, view View, fh FileHandle, m *protocol.ColumnMapper, formatted string) ([]protocol.TextEdit, error) {
 	ctx, done := trace.StartSpan(ctx, "source.computeTextEdits")
 	defer done()
 
@@ -285,7 +292,7 @@ func computeTextEdits(ctx context.Context, fh FileHandle, m *protocol.ColumnMapp
 	if err != nil {
 		return nil, err
 	}
-	edits := diff.ComputeEdits(fh.Identity().URI, string(data), formatted)
+	edits := view.Options().ComputeEdits(fh.Identity().URI, string(data), formatted)
 	return ToProtocolEdits(m, edits)
 }
 

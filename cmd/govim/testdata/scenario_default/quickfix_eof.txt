@@ -17,4 +17,4 @@ package main
 
 var _ *
 -- errors.golden --
-main.go|3 col 8| expected ';', found 'EOF'
+main.go|4 col 1| expected ';', found 'EOF'

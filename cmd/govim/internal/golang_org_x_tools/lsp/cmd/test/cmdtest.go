@@ -26,13 +26,15 @@ type runner struct {
 	exporter packagestest.Exporter
 	data     *tests.Data
 	ctx      context.Context
+	options  func(*source.Options)
 }
 
-func NewRunner(exporter packagestest.Exporter, data *tests.Data, ctx context.Context) tests.Tests {
+func NewRunner(exporter packagestest.Exporter, data *tests.Data, ctx context.Context, options func(*source.Options)) tests.Tests {
 	return &runner{
 		exporter: exporter,
 		data:     data,
 		ctx:      ctx,
+		options:  options,
 	}
 }
 
@@ -72,10 +74,6 @@ func (r *runner) Highlight(t *testing.T, name string, locations []span.Span) {
 	//TODO: add command line highlight tests when it works
 }
 
-func (r *runner) Reference(t *testing.T, src span.Span, itemList []span.Span) {
-	//TODO: add command line references tests when it works
-}
-
 func (r *runner) PrepareRename(t *testing.T, src span.Span, want *source.PrepareItem) {
 	//TODO: add command line prepare rename tests when it works
 }
@@ -90,10 +88,6 @@ func (r *runner) SignatureHelp(t *testing.T, spn span.Span, expectedSignature *s
 
 func (r *runner) Link(t *testing.T, uri span.URI, wantLinks []tests.Link) {
 	//TODO: add command line link tests when it works
-}
-
-func (r *runner) Import(t *testing.T, spn span.Span) {
-	//TODO: add command line imports tests when it works
 }
 
 func (r *runner) SuggestedFix(t *testing.T, spn span.Span) {
