@@ -11,7 +11,17 @@ cmp main.go main.go.golden
 module mod.com
 
 -- main.go --
+
+
+
+
+
 package main
+
+
+
+
+
 
 func main() {
 	println("Hello, world!")

@@ -38,6 +38,19 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 		if err != nil {
 			return fmt.Errorf("failed to derive end point from position: %v", err)
 		}
+		// special case deleting of complete lines
+		if start.Col() == 1 && end.Col() == 1 && e.NewText == "" {
+			delstart := min(start.Line(), len(blines))
+			delend := min(end.Line()-1, len(blines))
+			changes = append(changes, textEdit{
+				call:   "deletebufline",
+				buffer: b.Num,
+				start:  delstart,
+				end:    delend,
+			})
+			blines = append(blines[:delstart-1], blines[delend:]...)
+			continue
+		}
 		newLines := strings.Split(e.NewText, "\n")
 		appendAdjust := 1
 		if start.Line()-1 < len(blines) {
