@@ -3,17 +3,20 @@
 #   main.go|6 col 39| undeclared name: v
 #   main.go|9 col 19| missing return
 #   main.go|10 col 19| missing return
+#
+# TODO: Add tests for diagnostics with info & hint severity. Currently there are no such diagnostics in gopls.
+# TODO: Add tests for two diagnostics with different severities on the same line. Currently not supported by gopls.
 
 vim ex 'e main.go'
 errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_placelist\"'
 
-# Assert that the error sign is defined
+# Assert that the different signs are defined
 vim -indent expr 'sign_getdefined()'
 ! stderr .+
 cmp stdout defined.golden
 
 
-# There must be only one sign per line
+# There must be only one sign per line (per prio)
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed_openfile.golden
@@ -53,6 +56,16 @@ cmp stdout placed_nosign.golden
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 
+# Two warnings on one line should place a single warning sign
+vim call append '[5, "\tvar x, y int\n\tx, y = x, y"]'
+errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_placelist\"'
+vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+! stderr .+
+cmp stdout placed_twowarnings.golden
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+
 -- go.mod --
 module mod.com
 
@@ -71,9 +84,24 @@ func f2() string {}
 -- defined.golden --
 [
   {
-    "name": "govimerr",
+    "name": "govimErrSign",
     "text": "\u003e\u003e",
-    "texthl": "Error"
+    "texthl": "govimErr"
+  },
+  {
+    "name": "govimWarnSign",
+    "text": "\u003e\u003e",
+    "texthl": "govimWarn"
+  },
+  {
+    "name": "govimInfoSign",
+    "text": "\u003e\u003e",
+    "texthl": "govimInfo"
+  },
+  {
+    "name": "govimHintSign",
+    "text": "\u003e\u003e",
+    "texthl": "govimHint"
   }
 ]
 -- placed_openfile.golden --
@@ -85,22 +113,22 @@ func f2() string {}
         "group": "govim",
         "id": 1,
         "lnum": 6,
-        "name": "govimerr",
-        "priority": 10
+        "name": "govimErrSign",
+        "priority": 14
       },
       {
         "group": "govim",
         "id": 2,
         "lnum": 9,
-        "name": "govimerr",
-        "priority": 10
+        "name": "govimErrSign",
+        "priority": 14
       },
       {
         "group": "govim",
         "id": 3,
         "lnum": 10,
-        "name": "govimerr",
-        "priority": 10
+        "name": "govimErrSign",
+        "priority": 14
       }
     ]
   }
@@ -114,8 +142,8 @@ func f2() string {}
         "group": "govim",
         "id": 1,
         "lnum": 6,
-        "name": "govimerr",
-        "priority": 10
+        "name": "govimErrSign",
+        "priority": 14
       }
     ]
   }
@@ -125,5 +153,20 @@ func f2() string {}
   {
     "bufnr": 1,
     "signs": []
+  }
+]
+-- placed_twowarnings.golden --
+[
+  {
+    "bufnr": 1,
+    "signs": [
+      {
+        "group": "govim",
+        "id": 1,
+        "lnum": 7,
+        "name": "govimWarnSign",
+        "priority": 12
+      }
+    ]
   }
 ]

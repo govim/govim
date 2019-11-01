@@ -9,10 +9,27 @@ import (
 // Using a sign group creates a separate namespace for all signs placed by govim
 const signGroup = "govim"
 
-// Name of different sign types used, only one at the moment, errors.
-const (
-	errorSign = "govimerr"
-)
+// signSuffix is used when naming the different sign types. It is appended to each
+// highlight type and passed in as name to sign_define().
+const signSuffix = "Sign"
+
+// Each sign in vim has a priority. If there are multiple signs on the same line, it
+// is the one with highest priority that shows. For details see ":help sign-priority".
+// The default priority in vim, if not specified, is 10.
+var signPriority = map[types.Severity]int{
+	types.SeverityErr:  14,
+	types.SeverityWarn: 12,
+	types.SeverityInfo: 10,
+	types.SeverityHint: 8,
+}
+
+// signName is used to map a priority to the defined sign type (i.e. "sign name")
+var signName = map[int]string{
+	signPriority[types.SeverityErr]:  types.HighlightErr + signSuffix,
+	signPriority[types.SeverityWarn]: types.HighlightWarn + signSuffix,
+	signPriority[types.SeverityInfo]: types.HighlightInfo + signSuffix,
+	signPriority[types.SeverityHint]: types.HighlightHint + signSuffix,
+}
 
 // defineDict is the representation of arguments used in vim's sign_define()
 type defineDict struct {
@@ -20,15 +37,17 @@ type defineDict struct {
 	TextHighlight string `json:"texthl"` // Highlight used
 }
 
-// signDefine defines the govim error sign and must be called once before placing any signs
+// signDefine defines the sign types (sign names) and must be called once before placing any signs
 func (v *vimstate) signDefine() error {
-	arg := defineDict{
-		Text:          ">>",
-		TextHighlight: "Error",
-	}
+	for _, hi := range []string{types.HighlightErr, types.HighlightWarn, types.HighlightInfo, types.HighlightHint} {
+		arg := defineDict{
+			Text:          ">>",
+			TextHighlight: hi,
+		}
 
-	if v.ParseInt(v.ChannelCall("sign_define", errorSign, arg)) != 0 {
-		return fmt.Errorf("sign_define failed")
+		if v.ParseInt(v.ChannelCall("sign_define", hi+signSuffix, arg)) != 0 {
+			return fmt.Errorf("sign_define failed")
+		}
 	}
 	return nil
 }
@@ -41,23 +60,23 @@ type getPlacedDict struct {
 // bufferSigns represents a single element in the response from a sign_getplaced() call
 type bufferSigns struct {
 	Signs []struct {
-		Lnum  int    `json:"lnum"`
-		ID    int    `json:"id"`
-		Name  string `json:"name"`
-		Prio  int    `json:"priority"`
-		Group string `json:"group"`
+		Lnum     int    `json:"lnum"`
+		ID       int    `json:"id"`
+		Name     string `json:"name"`
+		Priority int    `json:"priority"`
+		Group    string `json:"group"`
 	} `json:"signs"`
 	BufNr int `json:"bufnr"`
 }
 
 // placeDict is the representation of arguments used in vim's sign_place() and sign_placelist()
 type placeDict struct {
-	Buffer int    `json:"buffer"`          // sign_placelist() only
-	Group  string `json:"group,omitempty"` // sign_placelist() only
-	ID     int    `json:"id,omitempty"`    // sign_placelist() only
-	Lnum   int    `json:"lnum,omitempty"`
-	Name   string `json:"name"` // sign_placelist() only
-	Prio   int    `json:"priority,omitempty"`
+	Buffer   int    `json:"buffer"`          // sign_placelist() only
+	Group    string `json:"group,omitempty"` // sign_placelist() only
+	ID       int    `json:"id,omitempty"`    // sign_placelist() only
+	Lnum     int    `json:"lnum,omitempty"`
+	Name     string `json:"name"` // sign_placelist() only
+	Priority int    `json:"priority,omitempty"`
 }
 
 // unplaceDict is the representation of arguments used in vim's sign_unplace() and sign_unplacelist()
@@ -67,12 +86,13 @@ type unplaceDict struct {
 	ID     int    `json:"id,omitempty"`
 }
 
-// redefineSigns ensures that there is only one govim sign per buffer line
-// by calculating a difference between current state and the list of quickfix entries
+// redefineSigns ensures that there is only one govim sign per buffer line & priority
+// by calculating a difference between current state and the list of diagnostics
 func (v *vimstate) redefineSigns(fixes []types.Diagnostic) error {
 	type bufLine struct {
-		buf  int
-		line int
+		buf      int
+		line     int
+		priority int
 	}
 
 	remove := make(map[bufLine]int) // Value is sign ID, used to unplace duplicates
@@ -95,12 +115,12 @@ func (v *vimstate) redefineSigns(fixes []types.Diagnostic) error {
 	// Assume all existing signs should be removed, unless found in quickfix entry list
 	for _, placed := range bufs {
 		for _, sign := range placed.Signs {
-			bl := bufLine{placed.BufNr, sign.Lnum}
+			bl := bufLine{placed.BufNr, sign.Lnum, sign.Priority}
 			if _, exist := remove[bl]; exist {
 				// As each sign isn't tracked individually, we might end up with several
-				// signs on the same line when, for example, a line is removed.
-				// By removing duplicates here we ensure that there is only one
-				// sign per line.
+				// same priority signs on the same line when, for example, a line is removed.
+				// By removing duplicates here we ensure that there is only one sign per
+				// line & priority.
 				v.ChannelCall("sign_unplace", signGroup, unplaceDict{Buffer: bl.buf, ID: sign.ID})
 				continue
 			}
@@ -116,7 +136,12 @@ func (v *vimstate) redefineSigns(fixes []types.Diagnostic) error {
 	// delete existing entries from the list of signs to removed
 	inx := 0
 	for _, f := range fixes {
-		bl := bufLine{f.Buf, f.Range.Start.Line()}
+		priority, ok := signPriority[f.Severity]
+		if !ok {
+			v.Logf("no sign priority defined for severity: %v", f.Severity)
+			continue
+		}
+		bl := bufLine{f.Buf, f.Range.Start.Line(), priority}
 		if _, exist := remove[bl]; exist {
 			delete(remove, bl)
 			continue
@@ -137,11 +162,17 @@ func (v *vimstate) redefineSigns(fixes []types.Diagnostic) error {
 		placeList := make([]placeDict, len(place))
 		// Use insert order as index to avoid sorting
 		for bl, i := range place {
+			name, ok := signName[bl.priority]
+			if !ok {
+				v.Logf("no sign defined for priority %d, can't place sign", bl.priority)
+				continue
+			}
 			placeList[i] = placeDict{
-				Buffer: bl.buf,
-				Group:  signGroup,
-				Lnum:   bl.line,
-				Name:   errorSign}
+				Buffer:   bl.buf,
+				Group:    signGroup,
+				Lnum:     bl.line,
+				Priority: bl.priority,
+				Name:     name}
 		}
 		v.BatchChannelCall("sign_placelist", placeList)
 	}

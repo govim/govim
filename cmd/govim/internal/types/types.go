@@ -222,5 +222,23 @@ type Diagnostic struct {
 	Range    Range
 	Text     string
 	Buf      int
-	Severity int
+	Severity Severity
 }
+
+// Severity is the govim internal representation of the LSP DiagnosticSeverites
+type Severity int
+
+const (
+	SeverityErr  = Severity(protocol.SeverityError)
+	SeverityWarn = Severity(protocol.SeverityWarning)
+	SeverityInfo = Severity(protocol.SeverityInformation)
+	SeverityHint = Severity(protocol.SeverityHint)
+)
+
+// Highlight names as defined by ftplugin/go.vim.
+const (
+	HighlightErr  string = "govimErr"
+	HighlightWarn string = "govimWarn"
+	HighlightInfo string = "govimInfo"
+	HighlightHint string = "govimHint"
+)

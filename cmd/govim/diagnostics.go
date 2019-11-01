@@ -70,7 +70,7 @@ func (v *vimstate) redefineDiagnostics() error {
 				Range:    types.Range{Start: s, End: e},
 				Text:     d.Message,
 				Buf:      buf.Num,
-				Severity: int(d.Severity),
+				Severity: types.Severity(d.Severity),
 			})
 		}
 	}
