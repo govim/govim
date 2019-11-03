@@ -49,6 +49,8 @@ let s:userBusy = 0
 set ballooneval
 set balloonevalterm
 
+let s:inSchedule = 0
+let s:pendingDrain = 0
 let s:waitingToDrain = 0
 let s:scheduleBacklog = []
 let s:activeGovimCalls = 0
@@ -74,6 +76,7 @@ function s:ch_evalexpr(args)
 endfunction
 
 function s:schedule(id)
+  let s:inSchedule = 1
   call add(s:scheduleBacklog, a:id)
   " The only state('wxc') in which it is safe to run work immediately is 'c'.
   " Reason being, in state 's' the only active callback is the one processing
@@ -96,12 +99,17 @@ function s:schedule(id)
     call ch_log("minVimSafeState: running work immediately because state is ".string(state()))
   endif
   call s:drainScheduleBacklog(v:false)
+  let s:inSchedule = 0
 endfunction
 
 function s:drainScheduleBacklog(drop)
   if s:minVimSafeState
     if a:drop
       au! govimScheduler SafeState,SafeStateAgain
+    endif
+    if s:inSchedule
+      let s:pendingDrain = 1
+      return
     endif
   elseif s:activeGovimCalls != 0
     call ch_log("old safe state: cannot drain schedule backlog with pending calls")
@@ -260,6 +268,10 @@ function s:define(channel, msg)
     let l:resp[2][0] = 'Caught ' . string(v:exception) . ' in ' . v:throwpoint
   endtry
   call ch_sendexpr(a:channel, l:resp)
+  if !s:inSchedule && s:pendingDrain
+    call s:drainScheduleBacklog(v:false)
+    let s:pendingDrain = 0
+  endif
 endfunction
 
 func s:defineAutoCommand(name, def, exprs)
