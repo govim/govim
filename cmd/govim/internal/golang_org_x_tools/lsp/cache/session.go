@@ -18,7 +18,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 	errors "golang.org/x/xerrors"
@@ -320,13 +319,11 @@ func (s *session) openOverlay(ctx context.Context, uri span.URI, kind source.Fil
 		hash:      hashContents(data),
 		unchanged: true,
 	}
-	_, hash, err := s.cache.GetFile(uri, kind).Read(ctx)
-	if err != nil {
-		log.Error(ctx, "failed to read", err, telemetry.File)
-		return
-	}
-	if hash == s.overlays[uri].hash {
-		s.overlays[uri].sameContentOnDisk = true
+	// If the file is on disk, check if its content is the same as the overlay.
+	if _, hash, err := s.cache.GetFile(uri, kind).Read(ctx); err == nil {
+		if hash == s.overlays[uri].hash {
+			s.overlays[uri].sameContentOnDisk = true
+		}
 	}
 }
 
