@@ -13,6 +13,7 @@ import (
 	"go/types"
 	"strings"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -90,17 +91,11 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 
 	// If this candidate needs an additional import statement,
 	// add the additional text edits needed.
-	if cand.imp != nil {
-		edit, err := addNamedImport(c.view.Session().Cache().FileSet(), c.file, cand.imp.Name, cand.imp.ImportPath)
-		if err != nil {
-			return CompletionItem{}, err
-		}
-		addlEdits, err := ToProtocolEdits(c.mapper, edit)
-		if err != nil {
-			return CompletionItem{}, err
-		}
-		protocolEdits = append(protocolEdits, addlEdits...)
+	addlEdits, err := c.importEdits(cand.imp)
+	if err != nil {
+		return CompletionItem{}, err
 	}
+	protocolEdits = append(protocolEdits, addlEdits...)
 
 	detail = strings.TrimPrefix(detail, "untyped ")
 	item := CompletionItem{
@@ -149,6 +144,20 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 		item.Documentation = hover.FullDocumentation
 	}
 	return item, nil
+}
+
+// importEdits produces the text eddits necessary to add the given import to the current file.
+func (c *completer) importEdits(imp *imports.ImportInfo) ([]protocol.TextEdit, error) {
+	if imp == nil {
+		return nil, nil
+	}
+
+	edit, err := addNamedImport(c.view.Session().Cache().FileSet(), c.file, imp.Name, imp.ImportPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return ToProtocolEdits(c.mapper, edit)
 }
 
 func (c *completer) formatBuiltin(cand candidate) CompletionItem {

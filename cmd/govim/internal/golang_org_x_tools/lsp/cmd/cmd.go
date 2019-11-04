@@ -143,10 +143,14 @@ func (app *Application) commands() []tool.Application {
 		&bug{},
 		&check{app: app},
 		&format{app: app},
+		&links{app: app},
 		&imports{app: app},
 		&query{app: app},
 		&references{app: app},
 		&rename{app: app},
+		&signature{app: app},
+		&suggestedfix{app: app},
+		&symbols{app: app},
 		&version{app: app},
 	}
 }

@@ -16,7 +16,6 @@ import (
 	"testing"
 
 	"golang.org/x/tools/go/packages/packagestest"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/tests"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -78,20 +77,8 @@ func (r *runner) PrepareRename(t *testing.T, src span.Span, want *source.Prepare
 	//TODO: add command line prepare rename tests when it works
 }
 
-func (r *runner) Symbol(t *testing.T, uri span.URI, expectedSymbols []protocol.DocumentSymbol) {
-	//TODO: add command line symbol tests when it works
-}
-
-func (r *runner) SignatureHelp(t *testing.T, spn span.Span, expectedSignature *source.SignatureInformation) {
-	//TODO: add command line signature tests when it works
-}
-
-func (r *runner) Link(t *testing.T, uri span.URI, wantLinks []tests.Link) {
-	//TODO: add command line link tests when it works
-}
-
-func (r *runner) SuggestedFix(t *testing.T, spn span.Span) {
-	//TODO: add suggested fix tests when it works
+func (r *runner) Implementation(t *testing.T, spn span.Span, imp tests.Implementations) {
+	//TODO: add implements tests when it works
 }
 
 func CaptureStdOut(t testing.TB, f func()) string {
