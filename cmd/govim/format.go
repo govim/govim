@@ -53,7 +53,6 @@ func (v *vimstate) formatCurrentBufferRange(mode config.FormatOnSave, flags govi
 
 func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, flags govim.CommandFlags, args ...string) error {
 	var err error
-	var edits []protocol.TextEdit
 
 	var ran *protocol.Range
 	if flags.Range != nil {
@@ -72,28 +71,11 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 	}
 
 	switch mode {
-	case config.FormatOnSaveGoFmt:
-		if flags.Range != nil {
-			params := &protocol.DocumentRangeFormattingParams{
-				TextDocument: b.ToTextDocumentIdentifier(),
-				Range:        *ran,
-			}
-			edits, err = v.server.RangeFormatting(context.Background(), params)
-			if err != nil {
-				v.Logf("gopls.RangeFormatting returned an error; nothing to do")
-				return nil
-			}
-		} else {
-			params := &protocol.DocumentFormattingParams{
-				TextDocument: b.ToTextDocumentIdentifier(),
-			}
-			edits, err = v.server.Formatting(context.Background(), params)
-			if err != nil {
-				v.Logf("gopls.Formatting returned an error; nothing to do")
-				return nil
-			}
-		}
-	case config.FormatOnSaveGoImports:
+	case config.FormatOnSaveGoFmt, config.FormatOnSaveGoImports:
+	default:
+		return fmt.Errorf("unknown format mode specified: %v", mode)
+	}
+	if mode == config.FormatOnSaveGoImports {
 		params := &protocol.CodeActionParams{
 			TextDocument: b.ToTextDocumentIdentifier(),
 		}
@@ -117,17 +99,42 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 
 		switch len(organizeImports) {
 		case 0:
-			return nil
 		case 1:
-			edits = (*organizeImports[0].Edit.Changes)[string(b.URI())]
+			edits := (*organizeImports[0].Edit.Changes)[string(b.URI())]
+			if len(edits) != 0 {
+				if err := v.applyProtocolTextEdits(b, edits); err != nil {
+					return err
+				}
+			}
 		default:
 			return fmt.Errorf("don't know how to handle %v actions", len(organizeImports))
 		}
-	default:
-		return fmt.Errorf("unknown format mode specified: %v", mode)
 	}
-	if len(edits) == 0 {
-		return nil
+	if mode == config.FormatOnSaveGoImports || mode == config.FormatOnSaveGoFmt {
+		var edits []protocol.TextEdit
+		if flags.Range != nil {
+			params := &protocol.DocumentRangeFormattingParams{
+				TextDocument: b.ToTextDocumentIdentifier(),
+				Range:        *ran,
+			}
+			edits, err = v.server.RangeFormatting(context.Background(), params)
+			if err != nil {
+				v.Logf("gopls.RangeFormatting returned an error; nothing to do")
+				return nil
+			}
+		} else {
+			params := &protocol.DocumentFormattingParams{
+				TextDocument: b.ToTextDocumentIdentifier(),
+			}
+			edits, err = v.server.Formatting(context.Background(), params)
+			if err != nil {
+				v.Logf("gopls.Formatting returned an error; nothing to do")
+				return nil
+			}
+		}
+		if len(edits) != 0 {
+			return v.applyProtocolTextEdits(b, edits)
+		}
 	}
-	return v.applyProtocolTextEdits(b, edits)
+	return nil
 }
