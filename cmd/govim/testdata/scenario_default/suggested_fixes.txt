@@ -5,7 +5,7 @@
 [!vim] [!gvim] skip
 
 
-# Tests basic case with a single diagnostic, no fix selected 
+# Tests basic case with a single diagnostic, no fix selected
 cp main.go.single main.go
 vim ex 'e main.go'
 errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
@@ -34,6 +34,7 @@ cmp main.go main.go.single.golden
 # second one since that is the cursor position line.
 cp main.go.different_lines main.go
 vim ex 'e! main.go'
+vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
 errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
 
 vim ex 'call cursor(7,2)'
@@ -46,6 +47,7 @@ errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{
 # title to indicate more than one. It shall also be possible to cycle forward and backwards.
 cp main.go.same_line main.go
 vim ex 'e! main.go'
+vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
 errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
 
 vim ex 'call cursor(6,2)'
