@@ -46,7 +46,7 @@ func (v *vimstate) redefineDiagnostics() error {
 				continue
 			}
 			// create a temp buffer
-			buf = types.NewBuffer(-1, fn, byts)
+			buf = types.NewBuffer(-1, fn, byts, false)
 		}
 		// make fn relative for reporting purposes
 		fn, err := filepath.Rel(cwd, fn)

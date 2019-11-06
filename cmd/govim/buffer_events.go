@@ -106,6 +106,15 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 	return nil, v.server.DidChange(context.Background(), params)
 }
 
+func (v *vimstate) bufUnload(args ...json.RawMessage) error {
+	bufnr := v.ParseInt(args[0])
+	if _, ok := v.buffers[bufnr]; !ok {
+		return nil
+	}
+	v.buffers[bufnr].Loaded = false
+	return nil
+}
+
 func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 	v.triggerBufferASTUpdate(b)
 	if b.Version == 0 {
