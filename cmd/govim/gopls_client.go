@@ -19,6 +19,7 @@ const (
 	goplsStaticcheck             = "staticcheck"
 	goplsCaseSensitiveCompletion = "caseSensitiveCompletion"
 	goplsCompleteUnimported      = "completeUnimported"
+	goplsGoImportsLocalPrefix    = "local"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -128,6 +129,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if g.vimstate.config.CompleteUnimported != nil {
 		conf[goplsCompleteUnimported] = *g.vimstate.config.CompleteUnimported
+	}
+	if g.vimstate.config.GoImportsLocalPrefix != nil {
+		conf[goplsGoImportsLocalPrefix] = *g.vimstate.config.GoImportsLocalPrefix
 	}
 	res[0] = conf
 

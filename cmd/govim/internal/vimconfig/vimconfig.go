@@ -15,6 +15,7 @@ type VimConfig struct {
 	Staticcheck                                  *int
 	CompletionCaseSensitive                      *int
 	CompleteUnimported                           *int
+	GoImportsLocalPrefix                         *string
 	ExperimentalMouseTriggeredHoverPopupOptions  *map[string]interface{}
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
 }
@@ -29,6 +30,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		Staticcheck:                                  boolVal(c.Staticcheck, d.Staticcheck),
 		CompletionCaseSensitive:                      boolVal(c.CompletionCaseSensitive, d.CompletionCaseSensitive),
 		CompleteUnimported:                           boolVal(c.CompleteUnimported, d.CompleteUnimported),
+		GoImportsLocalPrefix:                         stringVal(c.GoImportsLocalPrefix, d.GoImportsLocalPrefix),
 		ExperimentalMouseTriggeredHoverPopupOptions:  copyMap(c.ExperimentalMouseTriggeredHoverPopupOptions, d.ExperimentalMouseTriggeredHoverPopupOptions),
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),
 	}
@@ -44,6 +46,13 @@ func boolVal(i *int, j *bool) *bool {
 	}
 	b := *i != 0
 	return &b
+}
+
+func stringVal(i, j *string) *string {
+	if i == nil {
+		return j
+	}
+	return i
 }
 
 func copyMap(i, j *map[string]interface{}) *map[string]interface{} {

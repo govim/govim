@@ -49,6 +49,13 @@ function! s:validBool(v)
   return [v:true, ""]
 endfunction
 
+function! s:validString(v)
+  if type(a:v) != 1
+    return [v:false, "must be of type string"
+  endif
+  return [v:true, ""]
+endfunction
+
 function! s:validQuickfixAutoDiagnostics(v)
   return s:validBool(a:v)
 endfunction
@@ -75,6 +82,10 @@ endfunction
 
 function! s:validCompleteUnimported(v)
   return s:validBool(a:v)
+endfunction
+
+function! s:validGoImportsLocalPrefix(v)
+  return s:validString(a:v)
 endfunction
 
 function! s:validExperimentalMouseTriggeredHoverPopupOptions(v)
@@ -104,6 +115,7 @@ let s:validators = {
       \ "Staticcheck": function("s:validStaticcheck"),
       \ "CompletionCaseSensitive": function("s:validCompletionCaseSensitive"),
       \ "CompleteUnimported": function("s:validCompleteUnimported"),
+      \ "GoImportsLocalPrefix": function("s:validGoImportsLocalPrefix"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
       \ }
