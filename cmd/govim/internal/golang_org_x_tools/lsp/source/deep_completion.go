@@ -8,8 +8,6 @@ import (
 	"go/types"
 	"strings"
 	"time"
-
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 )
 
 // Limit deep completion results because in most cases there are too many
@@ -142,7 +140,7 @@ func (c *completer) shouldPrune() bool {
 
 // deepSearch searches through obj's subordinate objects for more
 // completion items.
-func (c *completer) deepSearch(obj types.Object, imp *imports.ImportInfo) {
+func (c *completer) deepSearch(obj types.Object, imp *importInfo) {
 	if c.deepState.maxDepth == 0 {
 		return
 	}

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
@@ -21,7 +20,7 @@ import (
 
 // literal generates composite literal, function literal, and make()
 // completion items.
-func (c *completer) literal(literalType types.Type, imp *imports.ImportInfo) {
+func (c *completer) literal(literalType types.Type, imp *importInfo) {
 	if c.expectedType.objType == nil {
 		return
 	}
