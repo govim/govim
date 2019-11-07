@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	exprAutocmdCurrBufInfo = `{"Num": eval(expand('<abuf>')), "Name": fnamemodify(bufname(eval(expand('<abuf>'))),':p'), "Contents": join(getbufline(eval(expand('<abuf>')), 0, "$"), "\n")."\n"}`
+	exprAutocmdCurrBufInfo = `{"Num": eval(expand('<abuf>')), "Name": fnamemodify(bufname(eval(expand('<abuf>'))),':p'), "Contents": join(getbufline(eval(expand('<abuf>')), 0, "$"), "\n")."\n", "Loaded": bufloaded(eval(expand('<abuf>')))}`
 )
 
 // currentBufferInfo is a helper function to unmarshal autocmd current
@@ -18,9 +18,10 @@ func (v *vimstate) currentBufferInfo(expr json.RawMessage) *types.Buffer {
 		Num      int
 		Name     string
 		Contents string
+		Loaded   int
 	}
 	v.Parse(expr, &buf)
-	return types.NewBuffer(buf.Num, buf.Name, []byte(buf.Contents))
+	return types.NewBuffer(buf.Num, buf.Name, []byte(buf.Contents), buf.Loaded == 1)
 }
 
 func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {

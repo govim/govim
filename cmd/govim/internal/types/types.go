@@ -23,6 +23,9 @@ type Buffer struct {
 	Version  int
 	Listener int
 
+	// Loaded reflects vim's "loaded" buffer state. See :help bufloaded() for details.
+	Loaded bool
+
 	// AST is the parsed result of the Buffer. Buffer events (i.e. changes to
 	// the buffer contents) trigger an asynchronous re-parse of the buffer.
 	// These events are triggered from the *vimstate thread. Any subsequent
@@ -47,11 +50,12 @@ type Buffer struct {
 	cc *span.TokenConverter
 }
 
-func NewBuffer(num int, name string, contents []byte) *Buffer {
+func NewBuffer(num int, name string, contents []byte, loaded bool) *Buffer {
 	return &Buffer{
 		Num:      num,
 		Name:     name,
 		contents: contents,
+		Loaded:   loaded,
 	}
 }
 
