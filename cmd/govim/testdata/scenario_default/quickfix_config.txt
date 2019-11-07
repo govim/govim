@@ -93,22 +93,22 @@ main.go|10 col 19| missing return
         "group": "govim",
         "id": 1,
         "lnum": 6,
-        "name": "govimerr",
-        "priority": 10
+        "name": "govimErrSign",
+        "priority": 14
       },
       {
         "group": "govim",
         "id": 2,
         "lnum": 9,
-        "name": "govimerr",
-        "priority": 10
+        "name": "govimErrSign",
+        "priority": 14
       },
       {
         "group": "govim",
         "id": 3,
         "lnum": 10,
-        "name": "govimerr",
-        "priority": 10
+        "name": "govimErrSign",
+        "priority": 14
       }
     ]
   }
