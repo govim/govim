@@ -15,6 +15,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
@@ -49,6 +50,11 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 		snip = c.functionCallSnippet(label, params)
 		results, writeParens := formatResults(sig.Results(), c.qf)
 		detail = "func" + formatFunction(params, results, writeParens)
+
+		// Add variadic "..." if we are using a function result to fill in a variadic parameter.
+		if sig.Results().Len() == 1 && c.expectedType.matchesVariadic(sig.Results().At(0).Type()) {
+			snip.WriteText("...")
+		}
 	}
 
 	switch obj := obj.(type) {
@@ -72,6 +78,12 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 
 		if sig, ok := obj.Type().Underlying().(*types.Signature); ok && cand.expandFuncCall {
 			expandFuncCall(sig)
+		}
+
+		// Add variadic "..." if we are using a variable to fill in a variadic parameter.
+		if c.expectedType.matchesVariadic(obj.Type()) {
+			snip = &snippet.Builder{}
+			snip.WriteText(insert + "...")
 		}
 	case *types.Func:
 		sig, ok := obj.Type().Underlying().(*types.Signature)
@@ -143,22 +155,27 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 	}
 	ph, pkg, err := c.view.FindFileInPackage(c.ctx, uri, searchPkg)
 	if err != nil {
-		return CompletionItem{}, err
+		log.Error(c.ctx, "error finding file in package", err, telemetry.URI.Of(uri), telemetry.Package.Of(searchPkg.ID()))
+		return item, nil
 	}
 	file, _, _, err := ph.Cached()
 	if err != nil {
-		return CompletionItem{}, err
+		log.Error(c.ctx, "no cached file", err, telemetry.URI.Of(uri))
+		return item, nil
 	}
 	if !(file.Pos() <= obj.Pos() && obj.Pos() <= file.End()) {
-		return CompletionItem{}, errors.Errorf("no file for completion object %s", obj.Name())
+		log.Error(c.ctx, "no file for object", errors.Errorf("no file for completion object %s", obj.Name()), telemetry.URI.Of(uri))
+		return item, nil
 	}
 	ident, err := findIdentifier(c.ctx, c.snapshot, pkg, file, obj.Pos())
 	if err != nil {
-		return CompletionItem{}, err
+		log.Error(c.ctx, "failed to findIdentifier", err, telemetry.URI.Of(uri))
+		return item, nil
 	}
 	hover, err := ident.Hover(c.ctx)
 	if err != nil {
-		return CompletionItem{}, err
+		log.Error(c.ctx, "failed to find Hover", err, telemetry.URI.Of(uri))
+		return item, nil
 	}
 	item.Documentation = hover.Synopsis
 	if c.opts.FullDocumentation {

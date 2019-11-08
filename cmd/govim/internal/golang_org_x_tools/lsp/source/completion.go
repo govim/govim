@@ -1053,10 +1053,8 @@ type typeNameInference struct {
 
 // expectedType returns information about the expected type for an expression at
 // the query position.
-func expectedType(c *completer) typeInference {
-	inf := typeInference{
-		typeName: expectTypeName(c),
-	}
+func expectedType(c *completer) (inf typeInference) {
+	inf.typeName = expectTypeName(c)
 
 	if c.enclosingCompositeLiteral != nil {
 		inf.objType = c.expectedCompositeLiteralType()
@@ -1101,17 +1099,75 @@ Nodes:
 
 				if tv, ok := c.pkg.GetTypesInfo().Types[node.Fun]; ok {
 					if sig, ok := tv.Type.(*types.Signature); ok {
-						if sig.Params().Len() == 0 {
+						numParams := sig.Params().Len()
+						if numParams == 0 {
 							return inf
 						}
-						i := indexExprAtPos(c.pos, node.Args)
-						// Make sure not to run past the end of expected parameters.
-						if i >= sig.Params().Len() {
-							i = sig.Params().Len() - 1
+
+						var (
+							exprIdx         = indexExprAtPos(c.pos, node.Args)
+							isLastParam     = exprIdx == numParams-1
+							beyondLastParam = exprIdx >= numParams
+						)
+
+						if sig.Variadic() {
+							// If we are beyond the last param or we are the last
+							// param w/ further expressions, we expect a single
+							// variadic item.
+							if beyondLastParam || isLastParam && len(node.Args) > numParams {
+								inf.objType = sig.Params().At(numParams - 1).Type().(*types.Slice).Elem()
+								break Nodes
+							}
+
+							// Otherwise if we are at the last param then we are
+							// completing the variadic positition (i.e. we expect a
+							// slice type []T or an individual item T).
+							if isLastParam {
+								inf.variadic = true
+							}
 						}
-						inf.objType = sig.Params().At(i).Type()
-						inf.variadic = sig.Variadic() && i == sig.Params().Len()-1
+
+						// Make sure not to run past the end of expected parameters.
+						if beyondLastParam {
+							inf.objType = sig.Params().At(numParams - 1).Type()
+						} else {
+							inf.objType = sig.Params().At(exprIdx).Type()
+						}
+
 						break Nodes
+					}
+				}
+
+				if funIdent, ok := node.Fun.(*ast.Ident); ok {
+					switch c.pkg.GetTypesInfo().ObjectOf(funIdent) {
+					case types.Universe.Lookup("append"):
+						defer func() {
+							exprIdx := indexExprAtPos(c.pos, node.Args)
+
+							// Check if we are completing the variadic append()
+							// param. We defer this since we don't want to inherit
+							// variadicity from the next node.
+							inf.variadic = exprIdx == 1 && len(node.Args) <= 2
+
+							// If we are completing an individual element of the
+							// variadic param, "deslice" the expected type.
+							if !inf.variadic && exprIdx > 0 {
+								if slice, ok := inf.objType.(*types.Slice); ok {
+									inf.objType = slice.Elem()
+								}
+							}
+						}()
+
+						// The expected type of append() arguments is the expected
+						// type of the append() call itself. For example:
+						//
+						// var foo []int
+						// foo = append(<>)
+						//
+						// To find the expected type at <> we "skip" the append()
+						// node and get the expected type one level up, which is
+						// []int.
+						continue Nodes
 					}
 				}
 			}
@@ -1223,6 +1279,12 @@ func (ti typeInference) applyTypeNameModifiers(typ types.Type) types.Type {
 		}
 	}
 	return typ
+}
+
+// matchesVariadic returns true if we are completing a variadic
+// parameter and candType is a compatible slice type.
+func (ti typeInference) matchesVariadic(candType types.Type) bool {
+	return ti.variadic && types.AssignableTo(ti.objType, candType)
 }
 
 // findSwitchStmt returns an *ast.CaseClause's corresponding *ast.SwitchStmt or
@@ -1441,6 +1503,13 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 			cand.expandFuncCall = true
 			return true
 		}
+	}
+
+	// When completing the variadic parameter, say objType matches if
+	// []objType matches. This is because you can use []T or T for the
+	// variadic parameter.
+	if c.expectedType.variadic && typeMatches(types.NewSlice(objType)) {
+		return true
 	}
 
 	if c.expectedType.convertibleTo != nil {
