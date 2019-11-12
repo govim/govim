@@ -237,9 +237,10 @@ type View interface {
 	Options() Options
 
 	// SetOptions sets the options of this view to new values.
-	// Warning: Do not use this, unless in a test.
-	// This function does not correctly invalidate the view when needed.
-	SetOptions(Options)
+	// Calling this may cause the view to be invalidated and a replacement view
+	// added to the session. If so the new view will be returned, otherwise the
+	// original one will be.
+	SetOptions(context.Context, Options) (View, error)
 
 	// CheckPackageHandles returns the CheckPackageHandles for the packages
 	// that this file belongs to.
@@ -276,9 +277,12 @@ type Snapshot interface {
 	// that this file belongs to.
 	CheckPackageHandles(ctx context.Context, f File) ([]CheckPackageHandle, error)
 
-	// KnownImportPaths returns all the packages loaded in this snapshot,
+	// KnownImportPaths returns all the imported packages loaded in this snapshot,
 	// indexed by their import path.
 	KnownImportPaths() map[string]Package
+
+	// KnownPackages returns all the packages loaded in this snapshot.
+	KnownPackages(ctx context.Context) []Package
 }
 
 // File represents a source file of any type.
