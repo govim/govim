@@ -37,6 +37,9 @@ func (r *Config) Apply(v *Config) {
 	if v.ExperimentalTempModfile != nil {
 		r.ExperimentalTempModfile = v.ExperimentalTempModfile
 	}
+	if v.GoplsEnv != nil {
+		r.GoplsEnv = v.GoplsEnv
+	}
 	if v.ExperimentalMouseTriggeredHoverPopupOptions != nil {
 		r.ExperimentalMouseTriggeredHoverPopupOptions = v.ExperimentalMouseTriggeredHoverPopupOptions
 	}

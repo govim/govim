@@ -19,24 +19,26 @@ type VimConfig struct {
 	GoImportsLocalPrefix                         *string
 	CompletionBudget                             *string
 	ExperimentalTempModfile                      *int
+	GoplsEnv                                     *map[string]string
 	ExperimentalMouseTriggeredHoverPopupOptions  *map[string]interface{}
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
 }
 
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
 	v := config.Config{
-		FormatOnSave:                                 c.FormatOnSave,
-		QuickfixSigns:                                boolVal(c.QuickfixSigns, d.QuickfixSigns),
-		QuickfixAutoDiagnostics:                      boolVal(c.QuickfixAutoDiagnostics, d.QuickfixAutoDiagnostics),
-		HighlightDiagnostics:                         boolVal(c.HighlightDiagnostics, d.HighlightDiagnostics),
-		HoverDiagnostics:                             boolVal(c.HoverDiagnostics, d.HoverDiagnostics),
-		CompletionDeepCompletions:                    boolVal(c.CompletionDeepCompletions, d.CompletionDeepCompletions),
-		CompletionMatcher:                            c.CompletionMatcher,
-		Staticcheck:                                  boolVal(c.Staticcheck, d.Staticcheck),
-		CompleteUnimported:                           boolVal(c.CompleteUnimported, d.CompleteUnimported),
-		GoImportsLocalPrefix:                         stringVal(c.GoImportsLocalPrefix, d.GoImportsLocalPrefix),
-		CompletionBudget:                             stringVal(c.CompletionBudget, d.CompletionBudget),
-		ExperimentalTempModfile:                      boolVal(c.ExperimentalTempModfile, d.ExperimentalTempModfile),
+		FormatOnSave:              c.FormatOnSave,
+		QuickfixSigns:             boolVal(c.QuickfixSigns, d.QuickfixSigns),
+		QuickfixAutoDiagnostics:   boolVal(c.QuickfixAutoDiagnostics, d.QuickfixAutoDiagnostics),
+		HighlightDiagnostics:      boolVal(c.HighlightDiagnostics, d.HighlightDiagnostics),
+		HoverDiagnostics:          boolVal(c.HoverDiagnostics, d.HoverDiagnostics),
+		CompletionDeepCompletions: boolVal(c.CompletionDeepCompletions, d.CompletionDeepCompletions),
+		CompletionMatcher:         c.CompletionMatcher,
+		Staticcheck:               boolVal(c.Staticcheck, d.Staticcheck),
+		CompleteUnimported:        boolVal(c.CompleteUnimported, d.CompleteUnimported),
+		GoImportsLocalPrefix:      stringVal(c.GoImportsLocalPrefix, d.GoImportsLocalPrefix),
+		CompletionBudget:          stringVal(c.CompletionBudget, d.CompletionBudget),
+		ExperimentalTempModfile:   boolVal(c.ExperimentalTempModfile, d.ExperimentalTempModfile),
+		GoplsEnv:                  copyStringValMap(c.GoplsEnv, d.GoplsEnv),
 		ExperimentalMouseTriggeredHoverPopupOptions:  copyMap(c.ExperimentalMouseTriggeredHoverPopupOptions, d.ExperimentalMouseTriggeredHoverPopupOptions),
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),
 	}
@@ -62,6 +64,21 @@ func stringVal(i, j *string) *string {
 		return j
 	}
 	return i
+}
+
+func copyStringValMap(i, j *map[string]string) *map[string]string {
+	toCopy := i
+	if i == nil {
+		toCopy = j
+		if j == nil {
+			return nil
+		}
+	}
+	res := make(map[string]string)
+	for ck, cv := range *toCopy {
+		res[ck] = cv
+	}
+	return &res
 }
 
 func copyMap(i, j *map[string]interface{}) *map[string]interface{} {

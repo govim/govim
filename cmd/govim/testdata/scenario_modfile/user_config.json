@@ -1,0 +1,3 @@
+{
+	"GoplsEnv": {"GOFLAGS": "-modfile=go.local.mod"}
+}

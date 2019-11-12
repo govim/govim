@@ -1,0 +1,72 @@
+# Test that calling govim#config#Set with a value for GoplsEnv of GOFLAGS
+# does the right thing. This will necessarily involve a number of checks
+# for the various build flags that can be set via GOFLAGS.
+
+skip 'Pending fix for golang.org/issues/36789'
+
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+
+vim ex 'e main.go'
+vimexprwait pre.golden GOVIMTest_getqflist()
+vim ex 'w'
+
+# We have to sleep here because there is no event we are waiting for
+sleep $GOVIM_ERRLOGMATCH_WAIT
+
+# Verify go.mod has not changed
+cmp go.mod go.mod.golden.pre
+
+# Change go.mod from outside Vim
+exec go get example.com/blah@v1.0.0
+exec go mod tidy
+cmp go.mod go.mod.golden.post
+
+# Verify the diagnostic has been updated
+vimexprwait post.golden GOVIMTest_getqflist()
+
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.13
+-- go.mod.golden.pre --
+module mod.com
+
+go 1.13
+-- go.mod.golden.post --
+module mod.com
+
+go 1.13
+
+require example.com/blah v1.0.0
+-- main.go --
+package main
+
+import "example.com/blah"
+
+func main() {
+	println(blah.Name)
+}
+-- pre.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 8,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "could not import example.com/blah (no package for import example.com/blah)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- post.golden --
+[]
