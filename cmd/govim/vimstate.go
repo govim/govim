@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -89,19 +90,16 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 		}
 	}
 
-	// TODO: when https://github.com/golang/go/issues/32258 is fixed, we will
-	// need to trigger a didChangeConfiguration call here for gopls-related
-	// config, e.g.:
-	//
-	// CompletionDeepCompletiionsDisable
-	// CompletionFuzzyMatchingDisable
-	// CompletionCaseSensitive
-	//
-	// As a workaround for now, users will need to set config in their .vimrc
-	// and then restart Vim (even then there is a race condition for Vim8
-	// package users that might mean even this doesn't work.)
+	var err error
 
-	return nil, nil
+	// v.server will be nil when we are Init()-ing govim. The init process
+	// triggers a "manual" call of govim#config#Set() and hence this function
+	// gets called before we have even started gopls.
+	if v.server != nil {
+		err = v.server.DidChangeConfiguration(context.Background(), &protocol.DidChangeConfigurationParams{})
+	}
+
+	return nil, err
 }
 
 func (v *vimstate) popupSelection(args ...json.RawMessage) (interface{}, error) {
