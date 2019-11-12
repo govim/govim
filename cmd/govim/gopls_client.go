@@ -18,6 +18,7 @@ const (
 	goplsFuzzyMatching           = "fuzzyMatching"
 	goplsStaticcheck             = "staticcheck"
 	goplsCaseSensitiveCompletion = "caseSensitiveCompletion"
+	goplsCompleteUnimported      = "completeUnimported"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -104,6 +105,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if g.vimstate.config.CompletionCaseSensitive != nil {
 		conf[goplsCaseSensitiveCompletion] = *g.vimstate.config.CompletionCaseSensitive
+	}
+	if g.vimstate.config.CompleteUnimported != nil {
+		conf[goplsCompleteUnimported] = *g.vimstate.config.CompleteUnimported
 	}
 	res[0] = conf
 

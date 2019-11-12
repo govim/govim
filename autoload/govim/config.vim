@@ -73,6 +73,10 @@ function! s:validCompletionCaseSensitive(v)
   return s:validBool(a:v)
 endfunction
 
+function! s:validCompleteUnimported(v)
+  return s:validBool(a:v)
+endfunction
+
 function! s:validExperimentalMouseTriggeredHoverPopupOptions(v)
   if has_key(a:v, "line")
     if type(a:v["line"]) != 0
@@ -99,6 +103,7 @@ let s:validators = {
       \ "QuickfixSigns": function("s:validQuickfixSigns"),
       \ "Staticcheck": function("s:validStaticcheck"),
       \ "CompletionCaseSensitive": function("s:validCompletionCaseSensitive"),
+      \ "CompleteUnimported": function("s:validCompleteUnimported"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
       \ }

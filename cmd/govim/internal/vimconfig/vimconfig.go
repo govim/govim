@@ -14,6 +14,7 @@ type VimConfig struct {
 	CompletionFuzzyMatching                      *int
 	Staticcheck                                  *int
 	CompletionCaseSensitive                      *int
+	CompleteUnimported                           *int
 	ExperimentalMouseTriggeredHoverPopupOptions  *map[string]interface{}
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
 }
@@ -27,6 +28,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		CompletionFuzzyMatching:                      boolVal(c.CompletionFuzzyMatching, d.CompletionFuzzyMatching),
 		Staticcheck:                                  boolVal(c.Staticcheck, d.Staticcheck),
 		CompletionCaseSensitive:                      boolVal(c.CompletionCaseSensitive, d.CompletionCaseSensitive),
+		CompleteUnimported:                           boolVal(c.CompleteUnimported, d.CompleteUnimported),
 		ExperimentalMouseTriggeredHoverPopupOptions:  copyMap(c.ExperimentalMouseTriggeredHoverPopupOptions, d.ExperimentalMouseTriggeredHoverPopupOptions),
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),
 	}

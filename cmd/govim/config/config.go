@@ -69,6 +69,11 @@ type Config struct {
 	// CompletionFuzzyMatching are set to false.
 	CompletionCaseSensitive *bool `json:",omitempty"`
 
+	// CompleteUnimported configures gopls to attempt completions for unimported
+	// standard library packages. e.g. when a user completes rand.<>, propose
+	// rand.Seed (from math/rand) and rand.Prime (from crypto/rand), etc.
+	CompleteUnimported *bool `json:",omitempty"`
+
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
 	// over an identifier. It corresponds to the second argument to popup_create

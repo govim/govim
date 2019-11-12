@@ -1,0 +1,29 @@
+# Test that completing of unimported std library packages works.
+
+vim ex 'e main.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+
+# lower from lo
+vim ex 'call cursor(4,1)'
+vim normal Sfmt.Pr
+vim ex 'execute \"normal A\\<C-X>\\<C-O>\\<C-N>\\<C-N>\"'
+vim ex 'w'
+cmp main.go main.go.golden
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+func main() {
+
+}
+-- main.go.golden --
+package main
+
+func main() {
+	fmt.Println
+}
