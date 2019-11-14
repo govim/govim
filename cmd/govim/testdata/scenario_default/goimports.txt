@@ -6,10 +6,10 @@
 # perspective which throws the observed diagnostics etc.
 
 # :GOVIMGoImports whole file
+cp file.go.orig file.go
 vim ex 'e! file.go'
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'GOVIMGoImports'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'noautocmd w'
 cmp file.go file.go.goimports
 
@@ -19,7 +19,6 @@ vim call 'govim#config#Set' '["FormatOnSave", "goimports"]'
 vim ex 'e! file.go'
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'w'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 cmp file.go file.go.goimports
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -31,9 +30,10 @@ vim ex 'e! file.go'
 errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"file\.go","lnum":3,"col":1,"text":"expected declaration, found blah","buf":1\}\],"r"\]\]\]\]'
 vim ex 'w'
 cmp file.go file.go.bad
-vim expr 'getqflist()'
-stdout '^\Q[{"bufnr":1,"col":1,"lnum":3,"module":"","nr":0,"pattern":"","text":"expected declaration, found blah","type":"","valid":1,"vcol":0}]\E$'
-! stderr .+
+vim ex 'copen'
+vim ex 'w errors'
+cmp errors errors.golden
+vim ex 'cclose'
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -43,6 +43,7 @@ skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
 # :GOVIMGoImports range
 cp file.go.orig file.go
 vim ex 'e! file.go'
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex '3,5GOVIMGoImports'
 vim ex 'noautocmd w'
 cmp file.go file.go.goimports
@@ -52,13 +53,6 @@ cmp file.go file.go.goimports
 
 -- go.mod --
 module mod.com
-
--- file.go --
-package blah
-
-const ( x = 5
-y = os.PathSeparator
- )
 
 -- file.go.orig --
 package blah
@@ -80,3 +74,5 @@ const (
 	x = 5
 	y = os.PathSeparator
 )
+-- errors.golden --
+file.go|3 col 1| expected declaration, found blah

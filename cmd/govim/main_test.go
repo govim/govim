@@ -121,10 +121,21 @@ func TestScripts(t *testing.T) {
 					if err != nil {
 						t.Fatalf("failed to read defaults from %v: %v", defaultsPath, err)
 					}
+					// We now ensure we have a default for at least CompletionBudget because
+					// unless we are specifically testing the behaviour of that config value
+					// (which would be unusual because it's really only intended for integration
+					// tests) we definitely want to set the value to "0ms"
 					userPath := filepath.Join("testdata", entry.Name(), "user_config.json")
 					user, err := readConfig(userPath)
 					if err != nil {
 						t.Fatalf("failed to read user from %v: %v", userPath, err)
+					}
+					if user == nil {
+						user = new(config.Config)
+					}
+					if user.CompletionBudget == nil {
+						s := "0ms"
+						user.CompletionBudget = &s
 					}
 
 					d := newplugin(string(goplsPath), e.Vars, defaults, user)

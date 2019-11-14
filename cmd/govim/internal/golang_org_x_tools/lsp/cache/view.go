@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -53,6 +54,9 @@ type view struct {
 	// Name is the user visible name of this view.
 	name string
 
+	// modfiles are the go.mod files attributed to this view.
+	modfiles *modfiles
+
 	// Folder is the root of this view.
 	folder span.URI
 
@@ -72,8 +76,8 @@ type view struct {
 
 	// keep track of files by uri and by basename, a single file may be mapped
 	// to multiple uris, and the same basename may map to multiple files
-	filesByURI  map[span.URI]viewFile
-	filesByBase map[string][]viewFile
+	filesByURI  map[span.URI]*fileBase
+	filesByBase map[string][]*fileBase
 
 	snapshotMu sync.Mutex
 	snapshot   *snapshot
@@ -84,6 +88,11 @@ type view struct {
 	// ignoredURIs is the set of URIs of files that we ignore.
 	ignoredURIsMu sync.Mutex
 	ignoredURIs   map[span.URI]struct{}
+}
+
+// modfiles holds the real and temporary go.mod files that are attributed to a view.
+type modfiles struct {
+	real, temp string
 }
 
 func (v *view) Session() source.Session {
@@ -122,7 +131,7 @@ func (v *view) SetOptions(ctx context.Context, options source.Options) (source.V
 		v.options = options
 		return v, nil
 	}
-	newView, err := v.session.updateView(ctx, v, options)
+	newView, _, err := v.session.updateView(ctx, v, options)
 	return newView, err
 }
 
@@ -130,11 +139,18 @@ func (v *view) SetOptions(ctx context.Context, options source.Options) (source.V
 // go/packages API. It is shared across all views.
 func (v *view) Config(ctx context.Context) *packages.Config {
 	// TODO: Should we cache the config and/or overlay somewhere?
+
+	// We want to run the go commands with the -modfile flag if the version of go
+	// that we are using supports it.
+	buildFlags := v.options.BuildFlags
+	if v.modfiles != nil {
+		buildFlags = append(buildFlags, fmt.Sprintf("-modfile=%s", v.modfiles.temp))
+	}
 	return &packages.Config{
 		Dir:        v.folder.Filename(),
 		Context:    ctx,
 		Env:        v.options.Env,
-		BuildFlags: v.options.BuildFlags,
+		BuildFlags: buildFlags,
 		Mode: packages.NeedName |
 			packages.NeedFiles |
 			packages.NeedCompiledGoFiles |
@@ -273,8 +289,8 @@ func (v *view) storeModFileVersions() {
 
 func (v *view) fileVersion(filename string, kind source.FileKind) string {
 	uri := span.FileURI(filename)
-	f := v.session.GetFile(uri, kind)
-	return f.Identity().Identifier
+	fh := v.session.GetFile(uri, kind)
+	return fh.Identity().String()
 }
 
 func (v *view) Shutdown(ctx context.Context) {
@@ -298,6 +314,13 @@ func (v *view) Ignore(uri span.URI) bool {
 	defer v.ignoredURIsMu.Unlock()
 
 	_, ok := v.ignoredURIs[uri]
+
+	// Files with _ prefixes are always ignored.
+	if !ok && strings.HasPrefix(filepath.Base(uri.Filename()), "_") {
+		v.ignoredURIs[uri] = struct{}{}
+		return true
+	}
+
 	return ok
 }
 
@@ -323,28 +346,41 @@ func (v *view) getSnapshot() *snapshot {
 	return v.snapshot
 }
 
-// SetContent sets the overlay contents for a file.
-func (v *view) SetContent(ctx context.Context, uri span.URI, content []byte) (bool, error) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
+// invalidateContent invalidates the content of a Go file,
+// including any position and type information that depends on it.
+// It returns true if we were already tracking the given file, false otherwise.
+func (v *view) invalidateContent(ctx context.Context, uri span.URI, kind source.FileKind, action source.FileAction) source.Snapshot {
+	// Detach the context so that content invalidation cannot be canceled.
+	ctx = xcontext.Detach(ctx)
 
 	// Cancel all still-running previous requests, since they would be
 	// operating on stale data.
-	v.cancel()
-	v.backgroundCtx, v.cancel = context.WithCancel(v.baseCtx)
-
-	if v.Ignore(uri) {
-		return false, nil
+	switch action {
+	case source.Change, source.Close:
+		v.cancelBackground()
 	}
 
-	kind := source.DetectLanguage("", uri.Filename())
-	return v.session.SetOverlay(uri, kind, content), nil
+	// This should be the only time we hold the view's snapshot lock for any period of time.
+	v.snapshotMu.Lock()
+	defer v.snapshotMu.Unlock()
+
+	v.snapshot = v.snapshot.clone(ctx, uri, kind)
+	return v.snapshot
+}
+
+func (v *view) cancelBackground() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	v.cancel()
+	v.backgroundCtx, v.cancel = context.WithCancel(v.baseCtx)
 }
 
 // FindFile returns the file if the given URI is already a part of the view.
-func (v *view) FindFile(ctx context.Context, uri span.URI) source.File {
+func (v *view) findFileLocked(ctx context.Context, uri span.URI) *fileBase {
 	v.mu.Lock()
 	defer v.mu.Unlock()
+
 	f, err := v.findFile(uri)
 	if err != nil {
 		return nil
@@ -352,9 +388,9 @@ func (v *view) FindFile(ctx context.Context, uri span.URI) source.File {
 	return f
 }
 
-// GetFile returns a File for the given URI. It will always succeed because it
+// getFileLocked returns a File for the given URI. It will always succeed because it
 // adds the file to the managed set if needed.
-func (v *view) GetFile(ctx context.Context, uri span.URI) (source.File, error) {
+func (v *view) getFileLocked(ctx context.Context, uri span.URI) (*fileBase, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
@@ -364,7 +400,7 @@ func (v *view) GetFile(ctx context.Context, uri span.URI) (source.File, error) {
 }
 
 // getFile is the unlocked internal implementation of GetFile.
-func (v *view) getFile(ctx context.Context, uri span.URI, kind source.FileKind) (viewFile, error) {
+func (v *view) getFile(ctx context.Context, uri span.URI, kind source.FileKind) (*fileBase, error) {
 	f, err := v.findFile(uri)
 	if err != nil {
 		return nil, err
@@ -374,12 +410,8 @@ func (v *view) getFile(ctx context.Context, uri span.URI, kind source.FileKind) 
 	f = &fileBase{
 		view:  v,
 		fname: uri.Filename(),
-		kind:  source.Go,
+		kind:  kind,
 	}
-	v.session.filesWatchMap.Watch(uri, func(changeType protocol.FileChangeType) bool {
-		ctx := xcontext.Detach(ctx)
-		return v.invalidateContent(ctx, f, kind, changeType)
-	})
 	v.mapFile(uri, f)
 	return f, nil
 }
@@ -388,7 +420,7 @@ func (v *view) getFile(ctx context.Context, uri span.URI, kind source.FileKind) 
 //
 // An error is only returned for an irreparable failure, for example, if the
 // filename in question does not exist.
-func (v *view) findFile(uri span.URI) (viewFile, error) {
+func (v *view) findFile(uri span.URI) (*fileBase, error) {
 	if f := v.filesByURI[uri]; f != nil {
 		// a perfect match
 		return f, nil
@@ -424,7 +456,7 @@ func (f *fileBase) addURI(uri span.URI) int {
 	return len(f.uris)
 }
 
-func (v *view) mapFile(uri span.URI, f viewFile) {
+func (v *view) mapFile(uri span.URI, f *fileBase) {
 	v.filesByURI[uri] = f
 	if f.addURI(uri) == 1 {
 		basename := basename(f.filename())
@@ -432,23 +464,10 @@ func (v *view) mapFile(uri span.URI, f viewFile) {
 	}
 }
 
-func (v *view) openFiles(ctx context.Context, uris []span.URI) (results []source.File) {
-	v.mu.Lock()
-	defer v.mu.Unlock()
-
-	for _, uri := range uris {
-		// Call unlocked version of getFile since we hold the lock on the view.
-		if f, err := v.getFile(ctx, uri, source.Go); err == nil && v.session.IsOpen(uri) {
-			results = append(results, f)
-		}
-	}
-	return results
-}
-
-func (v *view) FindPosInPackage(searchpkg source.Package, pos token.Pos) (*ast.File, *protocol.ColumnMapper, source.Package, error) {
+func (v *view) FindPosInPackage(searchpkg source.Package, pos token.Pos) (*ast.File, source.Package, error) {
 	tok := v.session.cache.fset.File(pos)
 	if tok == nil {
-		return nil, nil, nil, errors.Errorf("no file for pos in package %s", searchpkg.ID())
+		return nil, nil, errors.Errorf("no file for pos in package %s", searchpkg.ID())
 	}
 	uri := span.FileURI(tok.Name())
 
@@ -464,21 +483,42 @@ func (v *view) FindPosInPackage(searchpkg source.Package, pos token.Pos) (*ast.F
 		ph, pkg, err = findFileInPackage(searchpkg, uri)
 	}
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
-	file, m, _, err := ph.Cached()
+	file, _, _, err := ph.Cached()
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	if !(file.Pos() <= pos && pos <= file.End()) {
-		return nil, nil, nil, err
+		return nil, nil, fmt.Errorf("pos %v, apparently in file %q, is not between %v and %v", pos, ph.File().Identity().URI, file.Pos(), file.End())
 	}
-	return file, m, pkg, nil
+	return file, pkg, nil
+}
+
+func (v *view) FindMapperInPackage(searchpkg source.Package, uri span.URI) (*protocol.ColumnMapper, error) {
+	// Special case for ignored files.
+	var (
+		ph  source.ParseGoHandle
+		err error
+	)
+	if v.Ignore(uri) {
+		ph, _, err = v.findIgnoredFile(uri)
+	} else {
+		ph, _, err = findFileInPackage(searchpkg, uri)
+	}
+	if err != nil {
+		return nil, err
+	}
+	_, m, _, err := ph.Cached()
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 func (v *view) findIgnoredFile(uri span.URI) (source.ParseGoHandle, source.Package, error) {
 	// Check the builtin package.
-	for _, h := range v.BuiltinPackage().Files() {
+	for _, h := range v.BuiltinPackage().CompiledGoFiles() {
 		if h.File().Identity().URI == uri {
 			return h, nil, nil
 		}
@@ -495,10 +535,8 @@ func findFileInPackage(pkg source.Package, uri span.URI) (source.ParseGoHandle, 
 		queue = queue[1:]
 		seen[pkg.ID()] = true
 
-		for _, ph := range pkg.Files() {
-			if ph.File().Identity().URI == uri {
-				return ph, pkg, nil
-			}
+		if f, err := pkg.File(uri); err == nil {
+			return f, pkg, nil
 		}
 		for _, dep := range pkg.Imports() {
 			if !seen[dep.ID()] {
@@ -508,8 +546,3 @@ func findFileInPackage(pkg source.Package, uri span.URI) (source.ParseGoHandle, 
 	}
 	return nil, nil, errors.Errorf("no file for %s in package %s", uri, pkg.ID())
 }
-
-type debugView struct{ *view }
-
-func (v debugView) ID() string             { return v.id }
-func (v debugView) Session() debug.Session { return debugSession{v.session} }

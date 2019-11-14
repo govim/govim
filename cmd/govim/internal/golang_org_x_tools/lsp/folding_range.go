@@ -14,11 +14,19 @@ func (s *Server) foldingRange(ctx context.Context, params *protocol.FoldingRange
 	if err != nil {
 		return nil, err
 	}
-	f, err := view.GetFile(ctx, uri)
+	snapshot := view.Snapshot()
+	fh, err := snapshot.GetFile(ctx, uri)
 	if err != nil {
 		return nil, err
 	}
-	ranges, err := source.FoldingRange(ctx, view, f, view.Options().LineFoldingOnly)
+	var ranges []*source.FoldingRangeInfo
+	switch fh.Identity().Kind {
+	case source.Go:
+		ranges, err = source.FoldingRange(ctx, snapshot, fh, view.Options().LineFoldingOnly)
+	case source.Mod:
+		ranges = nil
+	}
+
 	if err != nil {
 		return nil, err
 	}

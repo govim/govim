@@ -1,5 +1,7 @@
 # Test that the file watcher picks up file changes that occurs outside the editor
 
+[short] skip 'Skip because we sleep for DEFAULT_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+
 # New file in the same package
 vim ex 'e main.go'
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
@@ -9,7 +11,7 @@ errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\
 vim ex 'call cursor(6,16)'
 vim ex 'call feedkeys(\"iConst2\\<ESC>\", \"x\")'
 vim ex 'w'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+sleep $DEFAULT_ERRLOGMATCH_WAIT
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'

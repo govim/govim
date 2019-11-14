@@ -109,7 +109,7 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 		}
 
 		alts := make([]string, len(suggestions))
-		edits := make([]*protocol.WorkspaceEdit, len(suggestions))
+		edits := make([]protocol.WorkspaceEdit, len(suggestions))
 		for j := range suggestions {
 			alts[j] = suggestions[j].msg
 			edits[j] = suggestions[j].edit
@@ -133,7 +133,7 @@ type resolvableDiag struct {
 
 type suggestion struct {
 	msg  string
-	edit *protocol.WorkspaceEdit
+	edit protocol.WorkspaceEdit
 }
 
 func diagSuggestions(codeActions []protocol.CodeAction) []resolvableDiag {

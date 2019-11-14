@@ -198,7 +198,6 @@ func (v *vimstate) bufWritePost(args ...json.RawMessage) error {
 			TextDocumentIdentifier: cb.ToTextDocumentIdentifier(),
 			Version:                float64(cb.Version),
 		},
-		Text: string(cb.Contents()),
 	}
 	if err := v.server.DidSave(context.Background(), params); err != nil {
 		return fmt.Errorf("failed to call gopls.DidSave on %v: %v", cb.Name, err)

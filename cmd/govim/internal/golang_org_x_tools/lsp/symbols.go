@@ -9,7 +9,9 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
 )
 
@@ -22,9 +24,22 @@ func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSy
 	if err != nil {
 		return nil, err
 	}
-	f, err := view.GetFile(ctx, uri)
+	snapshot := view.Snapshot()
+	fh, err := snapshot.GetFile(ctx, uri)
 	if err != nil {
 		return nil, err
 	}
-	return source.DocumentSymbols(ctx, view, f)
+	var symbols []protocol.DocumentSymbol
+	switch fh.Identity().Kind {
+	case source.Go:
+		symbols, err = source.DocumentSymbols(ctx, snapshot, fh)
+	case source.Mod:
+		return []protocol.DocumentSymbol{}, nil
+	}
+
+	if err != nil {
+		log.Error(ctx, "DocumentSymbols failed", err, telemetry.URI.Of(uri))
+		return []protocol.DocumentSymbol{}, nil
+	}
+	return symbols, nil
 }

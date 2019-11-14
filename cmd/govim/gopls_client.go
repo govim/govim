@@ -21,6 +21,7 @@ const (
 	goplsCaseSensitiveCompletion = "caseSensitiveCompletion"
 	goplsCompleteUnimported      = "completeUnimported"
 	goplsGoImportsLocalPrefix    = "local"
+	goplsCompletionBudget        = "completionBudget"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -87,7 +88,8 @@ func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFol
 	defer absorbShutdownErr()
 	panic("not implemented yet")
 }
-func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ParamConfig) ([]interface{}, error) {
+
+func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ParamConfiguration) ([]interface{}, error) {
 	defer absorbShutdownErr()
 
 	// TODO this is a rather fragile workaround for https://github.com/golang/go/issues/35817
@@ -143,6 +145,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if g.vimstate.config.GoImportsLocalPrefix != nil {
 		conf[goplsGoImportsLocalPrefix] = *g.vimstate.config.GoImportsLocalPrefix
+	}
+	if g.vimstate.config.CompletionBudget != nil {
+		conf[goplsCompletionBudget] = *g.vimstate.config.CompletionBudget
 	}
 	res[0] = conf
 

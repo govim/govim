@@ -233,7 +233,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			config:                *defaults,
 			watchedFiles:          make(map[string]*types.WatchedFile),
 			quickfixIsDiagnostics: true,
-			suggestedFixesPopups:  make(map[int][]*protocol.WorkspaceEdit),
+			suggestedFixesPopups:  make(map[int][]protocol.WorkspaceEdit),
 		},
 	}
 	res.vimstate.govimplugin = res
@@ -355,9 +355,9 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 		g: g,
 	}
 
-	initParams := &protocol.ParamInitia{}
+	initParams := &protocol.ParamInitialize{}
 	initParams.RootURI = string(span.FileURI(g.vimstate.workingDirectory))
-	initParams.Capabilities.TextDocument.Hover = &protocol.HoverClientCapabilities{
+	initParams.Capabilities.TextDocument.Hover = protocol.HoverClientCapabilities{
 		ContentFormat: []protocol.MarkupKind{protocol.PlainText},
 	}
 	initParams.Capabilities.Workspace.Configuration = true

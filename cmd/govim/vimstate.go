@@ -65,7 +65,7 @@ type vimstate struct {
 	// suggestedFixesPopups is a set of suggested fixes keyed by popup ID. It represents
 	// currently defined popups (both hidden and visible) and have a lifespan of single
 	// codeAction call.
-	suggestedFixesPopups map[int][]*protocol.WorkspaceEdit
+	suggestedFixesPopups map[int][]protocol.WorkspaceEdit
 
 	// working directory (when govim was started)
 	// TODO: handle changes to current working directory during runtime
@@ -127,7 +127,7 @@ func (v *vimstate) popupSelection(args ...json.RawMessage) (interface{}, error) 
 	v.Parse(args[0], &popupID)
 	v.Parse(args[1], &selection)
 
-	var edits []*protocol.WorkspaceEdit
+	var edits []protocol.WorkspaceEdit
 	var ok bool
 	if edits, ok = v.suggestedFixesPopups[popupID]; !ok {
 		return nil, fmt.Errorf("couldn't find popup id: %d", popupID)
