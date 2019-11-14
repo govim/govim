@@ -87,7 +87,8 @@ func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFol
 	defer absorbShutdownErr()
 	panic("not implemented yet")
 }
-func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ParamConfig) ([]interface{}, error) {
+
+func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ParamConfiguration) ([]interface{}, error) {
 	defer absorbShutdownErr()
 
 	// TODO this is a rather fragile workaround for https://github.com/golang/go/issues/35817

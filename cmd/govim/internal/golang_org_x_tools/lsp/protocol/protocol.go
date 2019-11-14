@@ -7,6 +7,7 @@ package protocol
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
@@ -39,7 +40,16 @@ func (canceller) Request(ctx context.Context, conn *jsonrpc2.Conn, direction jso
 		if err := json.Unmarshal(*r.Params, &params); err != nil {
 			log.Error(ctx, "", err)
 		} else {
-			conn.Cancel(params.ID)
+			v := jsonrpc2.ID{}
+			if n, ok := params.ID.(float64); ok {
+				v.Number = int64(n)
+			} else if s, ok := params.ID.(string); ok {
+				v.Name = s
+			} else {
+				log.Error(ctx, fmt.Sprintf("Request ID %v malformed", params.ID), nil)
+				return ctx
+			}
+			conn.Cancel(v)
 		}
 	}
 	return ctx

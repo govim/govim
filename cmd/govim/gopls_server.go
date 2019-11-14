@@ -21,7 +21,7 @@ func (l loggingGoplsServer) Logf(format string, args ...interface{}) {
 	l.g.Logf("gopls server start =======================\n"+format+"gopls server end =======================\n", args...)
 }
 
-func (l loggingGoplsServer) Initialize(ctxt context.Context, params *protocol.ParamInitia) (*protocol.InitializeResult, error) {
+func (l loggingGoplsServer) Initialize(ctxt context.Context, params *protocol.ParamInitialize) (*protocol.InitializeResult, error) {
 	l.Logf("gopls.Initialize() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Initialize(ctxt, params)
 	l.Logf("gopls.Initialize() return; err: %v; res:\n%v", err, pretty.Sprint(res))
@@ -280,7 +280,7 @@ func (l loggingGoplsServer) FoldingRange(ctxt context.Context, params *protocol.
 	return res, err
 }
 
-func (l loggingGoplsServer) Declaration(ctxt context.Context, params *protocol.DeclarationParams) ([]protocol.DeclarationLink, error) {
+func (l loggingGoplsServer) Declaration(ctxt context.Context, params *protocol.DeclarationParams) (protocol.Declaration, error) {
 	l.Logf("gopls.Declaration() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Declaration(ctxt, params)
 	l.Logf("gopls.Declaration() return; err: %v; res\n%v%v", err, pretty.Sprint(res))
@@ -294,7 +294,7 @@ func (l loggingGoplsServer) LogTraceNotification(ctxt context.Context, params *p
 	return err
 }
 
-func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.PrepareRenameParams) (*protocol.Range, error) {
+func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.PrepareRenameParams) (interface{}, error) {
 	l.Logf("gopls.PrepareRename() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.PrepareRename(ctxt, params)
 	l.Logf("gopls.PrepareRename() return; err: %v; res\n%v", err, pretty.Sprint(res))

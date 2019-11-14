@@ -1,0 +1,20 @@
+# Test format on save for a file that does not yet exist on disk in the
+# context of a package that does already exist
+
+vim ex 'e main.go'
+vim ex 'e const.go'
+vim ex 'r const.txt'
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/const.go
+vim ex 'w const.go'
+cmp const.go const.txt
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+func main() {
+}
+-- const.txt --
+package main

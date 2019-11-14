@@ -29,7 +29,6 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 	if err != nil {
 		return nil, err
 	}
-
 	snapshot := view.Snapshot()
 	fh := snapshot.Handle(ctx, f)
 
@@ -72,7 +71,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 			},
 		})
 	case source.Go:
-		edits, editsPerFix, err := source.AllImportsFixes(ctx, view, f)
+		edits, editsPerFix, err := source.AllImportsFixes(ctx, snapshot, f)
 		if err != nil {
 			return nil, err
 		}
@@ -94,7 +93,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 						codeActions = append(codeActions, protocol.CodeAction{
 							Title: importFixTitle(importFix.Fix),
 							Kind:  protocol.QuickFix,
-							Edit: &protocol.WorkspaceEdit{
+							Edit: protocol.WorkspaceEdit{
 								DocumentChanges: documentChanges(fh, importFix.Edits),
 							},
 							Diagnostics: fixDiagnostics,
@@ -107,7 +106,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 			codeActions = append(codeActions, protocol.CodeAction{
 				Title: "Organize Imports",
 				Kind:  protocol.SourceOrganizeImports,
-				Edit: &protocol.WorkspaceEdit{
+				Edit: protocol.WorkspaceEdit{
 					DocumentChanges: documentChanges(fh, edits),
 				},
 			})
@@ -204,20 +203,24 @@ func importDiagnostics(fix *imports.ImportFix, diagnostics []protocol.Diagnostic
 	return results
 }
 
-func quickFixes(ctx context.Context, s source.Snapshot, f source.File, diagnostics []protocol.Diagnostic) ([]protocol.CodeAction, error) {
+func quickFixes(ctx context.Context, snapshot source.Snapshot, f source.File, diagnostics []protocol.Diagnostic) ([]protocol.CodeAction, error) {
 	var codeActions []protocol.CodeAction
-	cphs, err := s.CheckPackageHandles(ctx, f)
+
+	fh := snapshot.Handle(ctx, f)
+	phs, err := snapshot.PackageHandles(ctx, fh)
 	if err != nil {
 		return nil, err
 	}
 	// We get the package that source.Diagnostics would've used. This is hack.
 	// TODO(golang/go#32443): The correct solution will be to cache diagnostics per-file per-snapshot.
-	cph, err := source.WidestCheckPackageHandle(cphs)
+	ph, err := source.WidestCheckPackageHandle(phs)
 	if err != nil {
 		return nil, err
 	}
 	for _, diag := range diagnostics {
-		srcErr, err := s.FindAnalysisError(ctx, cph.ID(), diag)
+		// This code assumes that the analyzer name is the Source of the diagnostic.
+		// If this ever changes, this will need to be addressed.
+		srcErr, err := snapshot.FindAnalysisError(ctx, ph.ID(), diag.Source, diag.Message, diag.Range)
 		if err != nil {
 			continue
 		}
@@ -226,15 +229,15 @@ func quickFixes(ctx context.Context, s source.Snapshot, f source.File, diagnosti
 				Title:       fix.Title,
 				Kind:        protocol.QuickFix,
 				Diagnostics: []protocol.Diagnostic{diag},
-				Edit:        &protocol.WorkspaceEdit{},
+				Edit:        protocol.WorkspaceEdit{},
 			}
 			for uri, edits := range fix.Edits {
-				f, err := s.View().GetFile(ctx, uri)
+				f, err := snapshot.View().GetFile(ctx, uri)
 				if err != nil {
 					log.Error(ctx, "no file", err, telemetry.URI.Of(uri))
 					continue
 				}
-				fh := s.Handle(ctx, f)
+				fh := snapshot.Handle(ctx, f)
 				action.Edit.DocumentChanges = append(action.Edit.DocumentChanges, documentChanges(fh, edits)...)
 			}
 			codeActions = append(codeActions, action)

@@ -21,11 +21,12 @@ func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*prot
 	if err != nil {
 		return nil, err
 	}
+	snapshot := view.Snapshot()
 	f, err := view.GetFile(ctx, uri)
 	if err != nil {
 		return nil, err
 	}
-	ident, err := source.Identifier(ctx, view, f, params.Position)
+	ident, err := source.Identifier(ctx, snapshot, f, params.Position)
 	if err != nil {
 		return nil, nil
 	}
@@ -40,7 +41,7 @@ func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*prot
 	contents := s.toProtocolHoverContents(ctx, hover, view.Options())
 	return &protocol.Hover{
 		Contents: contents,
-		Range:    &rng,
+		Range:    rng,
 	}, nil
 }
 
@@ -72,6 +73,7 @@ func (s *Server) toProtocolHoverContents(ctx context.Context, h *source.HoverInf
 		} else {
 			content.Value = signature
 		}
+		content.Value += "\n" + h.DocumentationLink(options)
 	case source.FullDocumentation:
 		if h.FullDocumentation != "" {
 			doc := h.FullDocumentation
@@ -82,6 +84,7 @@ func (s *Server) toProtocolHoverContents(ctx context.Context, h *source.HoverInf
 		} else {
 			content.Value = signature
 		}
+		content.Value += "\n" + h.DocumentationLink(options)
 	case source.Structured:
 		b, err := json.Marshal(h)
 		if err != nil {
