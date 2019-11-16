@@ -167,9 +167,13 @@ type govimplugin struct {
 
 	modWatcher *modWatcher
 
-	// diagnostics gives us the current diagnostics by URI
-	diagnostics     map[span.URI]*protocol.PublishDiagnosticsParams
-	diagnosticsLock sync.Mutex
+	// rawDiagnostics holds the current raw (LSP) diagnostics by URI
+	rawDiagnostics     map[span.URI]*protocol.PublishDiagnosticsParams
+	rawDiagnosticsLock sync.Mutex
+
+	// diagnosticsCache isn't inteded to be used directly since it might
+	// contain old data. Call diagnostics() to get the latest instead.
+	diagnosticsCache []types.Diagnostic
 
 	bufferUpdates chan *bufferUpdate
 }
@@ -185,9 +189,9 @@ func newplugin(goplspath string, defaults *config.Config) *govimplugin {
 	}
 	d := plugin.NewDriver(PluginPrefix)
 	res := &govimplugin{
-		diagnostics: make(map[span.URI]*protocol.PublishDiagnosticsParams),
-		goplspath:   goplspath,
-		Driver:      d,
+		rawDiagnostics: make(map[span.URI]*protocol.PublishDiagnosticsParams),
+		goplspath:      goplspath,
+		Driver:         d,
 		vimstate: &vimstate{
 			Driver:                d,
 			buffers:               make(map[int]*types.Buffer),

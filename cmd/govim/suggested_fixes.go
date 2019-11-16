@@ -67,8 +67,8 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 	textDoc := cb.ToTextDocumentIdentifier()
 
 	var coveredDiags []protocol.Diagnostic
-	v.diagnosticsLock.Lock()
-	if diags, ok := v.diagnostics[cb.URI()]; ok {
+	v.rawDiagnosticsLock.Lock()
+	if diags, ok := v.rawDiagnostics[cb.URI()]; ok {
 		for _, d := range diags.Diagnostics {
 			// TODO: should we go for "current line" as default?
 			if int(pos.ToPosition().Line) >= int(d.Range.Start.Line) &&
@@ -77,7 +77,7 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 			}
 		}
 	}
-	v.diagnosticsLock.Unlock()
+	v.rawDiagnosticsLock.Unlock()
 
 	params := &protocol.CodeActionParams{
 		TextDocument: textDoc,

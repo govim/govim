@@ -83,9 +83,9 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 				v.ChannelCall("setqflist", v.lastQuickFixDiagnostics, "r")
 			}
 		} else {
-			v.diagnosticsLock.Lock()
+			v.rawDiagnosticsLock.Lock()
 			v.diagnosticsChanged = true
-			v.diagnosticsLock.Unlock()
+			v.rawDiagnosticsLock.Unlock()
 			return nil, v.redefineDiagnostics()
 		}
 	}

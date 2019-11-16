@@ -126,11 +126,11 @@ func (g *govimplugin) Event(context.Context, *interface{}) error {
 func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.PublishDiagnosticsParams) error {
 	defer absorbShutdownErr()
 	g.logGoplsClientf("PublishDiagnostics callback: %v", pretty.Sprint(params))
-	g.diagnosticsLock.Lock()
+	g.rawDiagnosticsLock.Lock()
 	uri := span.URI(params.URI)
-	curr, ok := g.diagnostics[uri]
-	g.diagnostics[uri] = params
-	g.diagnosticsLock.Unlock()
+	curr, ok := g.rawDiagnostics[uri]
+	g.rawDiagnostics[uri] = params
+	g.rawDiagnosticsLock.Unlock()
 	if !ok {
 		if len(params.Diagnostics) == 0 {
 			return nil
