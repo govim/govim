@@ -127,7 +127,7 @@ func (v *vimstate) popupSelection(args ...json.RawMessage) (interface{}, error) 
 
 	edit := edits[selection-1]
 
-	return nil, v.applyMultiBufTextedits(nil, edit.Changes)
+	return nil, v.applyMultiBufTextedits(nil, edit.DocumentChanges)
 }
 
 func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {

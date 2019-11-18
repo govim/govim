@@ -215,6 +215,7 @@ func (v *vimstate) handleEvent(event fswatcher.Event) error {
 		wf, ok := v.watchedFiles[path]
 		if !ok {
 			wf = &types.WatchedFile{
+				Version:  1,
 				Path:     path,
 				Contents: byts,
 			}
@@ -223,7 +224,7 @@ func (v *vimstate) handleEvent(event fswatcher.Event) error {
 				TextDocument: protocol.TextDocumentItem{
 					LanguageID: "go",
 					URI:        string(wf.URI()),
-					Version:    float64(0),
+					Version:    float64(wf.Version),
 					Text:       string(wf.Contents),
 				},
 			}

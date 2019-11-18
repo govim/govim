@@ -21,19 +21,22 @@ import (
 
 func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionParams) ([]protocol.CodeAction, error) {
 	uri := span.NewURI(params.TextDocument.URI)
-	view := s.session.ViewOf(uri)
+	view, err := s.session.ViewOf(uri)
+	if err != nil {
+		return nil, err
+	}
 	f, err := view.GetFile(ctx, uri)
 	if err != nil {
 		return nil, err
 	}
 
 	snapshot := view.Snapshot()
+	fh := snapshot.Handle(ctx, f)
 
 	// Determine the supported actions for this file kind.
-	fileKind := snapshot.Handle(ctx, f).Identity().Kind
-	supportedCodeActions, ok := view.Options().SupportedCodeActions[fileKind]
+	supportedCodeActions, ok := view.Options().SupportedCodeActions[fh.Identity().Kind]
 	if !ok {
-		return nil, fmt.Errorf("no supported code actions for %v file kind", fileKind)
+		return nil, fmt.Errorf("no supported code actions for %v file kind", fh.Identity().Kind)
 	}
 
 	// The Only field of the context specifies which code actions the client wants.
@@ -52,7 +55,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 	}
 
 	var codeActions []protocol.CodeAction
-	switch fileKind {
+	switch fh.Identity().Kind {
 	case source.Mod:
 		if !wanted[protocol.SourceOrganizeImports] {
 			return nil, nil
@@ -92,9 +95,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 							Title: importFixTitle(importFix.Fix),
 							Kind:  protocol.QuickFix,
 							Edit: &protocol.WorkspaceEdit{
-								Changes: &map[string][]protocol.TextEdit{
-									string(uri): importFix.Edits,
-								},
+								DocumentChanges: documentChanges(fh, importFix.Edits),
 							},
 							Diagnostics: fixDiagnostics,
 						})
@@ -107,9 +108,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 				Title: "Organize Imports",
 				Kind:  protocol.SourceOrganizeImports,
 				Edit: &protocol.WorkspaceEdit{
-					Changes: &map[string][]protocol.TextEdit{
-						string(uri): edits,
-					},
+					DocumentChanges: documentChanges(fh, edits),
 				},
 			})
 		}
@@ -223,19 +222,37 @@ func quickFixes(ctx context.Context, s source.Snapshot, f source.File, diagnosti
 			continue
 		}
 		for _, fix := range srcErr.SuggestedFixes {
-			edits := make(map[string][]protocol.TextEdit)
-			for uri, e := range fix.Edits {
-				edits[protocol.NewURI(uri)] = e
-			}
-			codeActions = append(codeActions, protocol.CodeAction{
+			action := protocol.CodeAction{
 				Title:       fix.Title,
 				Kind:        protocol.QuickFix,
 				Diagnostics: []protocol.Diagnostic{diag},
-				Edit: &protocol.WorkspaceEdit{
-					Changes: &edits,
-				},
-			})
+				Edit:        &protocol.WorkspaceEdit{},
+			}
+			for uri, edits := range fix.Edits {
+				f, err := s.View().GetFile(ctx, uri)
+				if err != nil {
+					log.Error(ctx, "no file", err, telemetry.URI.Of(uri))
+					continue
+				}
+				fh := s.Handle(ctx, f)
+				action.Edit.DocumentChanges = append(action.Edit.DocumentChanges, documentChanges(fh, edits)...)
+			}
+			codeActions = append(codeActions, action)
 		}
 	}
 	return codeActions, nil
+}
+
+func documentChanges(fh source.FileHandle, edits []protocol.TextEdit) []protocol.TextDocumentEdit {
+	return []protocol.TextDocumentEdit{
+		{
+			TextDocument: protocol.VersionedTextDocumentIdentifier{
+				Version: fh.Identity().Version,
+				TextDocumentIdentifier: protocol.TextDocumentIdentifier{
+					URI: protocol.NewURI(fh.Identity().URI),
+				},
+			},
+			Edits: edits,
+		},
+	}
 }

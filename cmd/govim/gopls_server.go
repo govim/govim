@@ -108,7 +108,7 @@ func (l loggingGoplsServer) WillSave(ctxt context.Context, params *protocol.Will
 func (l loggingGoplsServer) WillSaveWaitUntil(ctxt context.Context, params *protocol.WillSaveTextDocumentParams) ([]protocol.TextEdit, error) {
 	l.Logf("gopls.WillSaveWaitUntil() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.WillSaveWaitUntil(ctxt, params)
-	l.Logf("gopls.WillSaveWaitUntil() return; err: %v; res\n", err, pretty.Sprint(res))
+	l.Logf("gopls.WillSaveWaitUntil() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
@@ -255,35 +255,35 @@ func (l loggingGoplsServer) Formatting(ctxt context.Context, params *protocol.Do
 func (l loggingGoplsServer) RangeFormatting(ctxt context.Context, params *protocol.DocumentRangeFormattingParams) ([]protocol.TextEdit, error) {
 	l.Logf("gopls.RangeFormatting() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.RangeFormatting(ctxt, params)
-	l.Logf("gopls.RangeFormatting() return; err: %v; res\n", err, pretty.Sprint(res))
+	l.Logf("gopls.RangeFormatting() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
 func (l loggingGoplsServer) OnTypeFormatting(ctxt context.Context, params *protocol.DocumentOnTypeFormattingParams) ([]protocol.TextEdit, error) {
 	l.Logf("gopls.OnTypeFormatting() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.OnTypeFormatting(ctxt, params)
-	l.Logf("gopls.OnTypeFormatting() return; err: %v; res\n", err, pretty.Sprint(res))
+	l.Logf("gopls.OnTypeFormatting() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
 func (l loggingGoplsServer) Rename(ctxt context.Context, params *protocol.RenameParams) (*protocol.WorkspaceEdit, error) {
 	l.Logf("gopls.Rename() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Rename(ctxt, params)
-	l.Logf("gopls.Rename() return; err: %v; res\n", err, pretty.Sprint(res))
+	l.Logf("gopls.Rename() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
 func (l loggingGoplsServer) FoldingRange(ctxt context.Context, params *protocol.FoldingRangeParams) ([]protocol.FoldingRange, error) {
 	l.Logf("gopls.FoldingRange() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.FoldingRange(ctxt, params)
-	l.Logf("gopls.FoldingRange() return; err: %v; res\n", err, pretty.Sprint(res))
+	l.Logf("gopls.FoldingRange() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
 func (l loggingGoplsServer) Declaration(ctxt context.Context, params *protocol.DeclarationParams) ([]protocol.DeclarationLink, error) {
 	l.Logf("gopls.Declaration() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Declaration(ctxt, params)
-	l.Logf("gopls.Declaration() return; err: %v; res\n", err, pretty.Sprint(res))
+	l.Logf("gopls.Declaration() return; err: %v; res\n%v%v", err, pretty.Sprint(res))
 	return res, err
 }
 
@@ -297,7 +297,7 @@ func (l loggingGoplsServer) LogTraceNotification(ctxt context.Context, params *p
 func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.PrepareRenameParams) (*protocol.Range, error) {
 	l.Logf("gopls.PrepareRename() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.PrepareRename(ctxt, params)
-	l.Logf("gopls.PrepareRename() return; err: %v; res\n", err, pretty.Sprint(res))
+	l.Logf("gopls.PrepareRename() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
@@ -311,7 +311,7 @@ func (l loggingGoplsServer) SetTraceNotification(ctxt context.Context, params *p
 func (l loggingGoplsServer) SelectionRange(ctxt context.Context, params *protocol.SelectionRangeParams) ([]protocol.SelectionRange, error) {
 	l.Logf("gopls.SelectionRange() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.SelectionRange(ctxt, params)
-	l.Logf("gopls.SelectionRange() return; err: %v; res\n", err, pretty.Sprint(res))
+	l.Logf("gopls.SelectionRange() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 

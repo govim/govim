@@ -33,9 +33,9 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 		nb.Version = wf.Version + 1
 	} else {
 		// first time we have seen the buffer
-		nb.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), nb.Num))
-		nb.Version = 0
+		nb.Version = 1
 	}
+	nb.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), nb.Num))
 	return v.handleBufferEvent(nb)
 }
 
@@ -117,7 +117,7 @@ func (v *vimstate) bufUnload(args ...json.RawMessage) error {
 
 func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 	v.triggerBufferASTUpdate(b)
-	if b.Version == 0 {
+	if b.Version == 1 {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
 				LanguageID: "go",
