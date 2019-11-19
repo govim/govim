@@ -20,13 +20,21 @@ import (
 
 // FileIdentity uniquely identifies a file at a version from a FileSystem.
 type FileIdentity struct {
-	URI     span.URI
-	Version string
-	Kind    FileKind
+	URI span.URI
+
+	// Version is the version of the file, as specified by the client.
+	Version float64
+
+	// Identifier represents a unique identifier for the file.
+	// It could be a file's modification time or its SHA1 hash if it is not on disk.
+	Identifier string
+
+	// Kind is the file's kind.
+	Kind FileKind
 }
 
 func (identity FileIdentity) String() string {
-	return fmt.Sprintf("%s%s%s", identity.URI, identity.Version, identity.Kind)
+	return fmt.Sprintf("%s%f%s%s", identity.URI, identity.Version, identity.Identifier, identity.Kind)
 }
 
 // FileHandle represents a handle to a specific version of a single file from
@@ -151,7 +159,7 @@ type Session interface {
 	View(name string) View
 
 	// ViewOf returns a view corresponding to the given URI.
-	ViewOf(uri span.URI) View
+	ViewOf(uri span.URI) (View, error)
 
 	// Views returns the set of active views built by this session.
 	Views() []View
@@ -252,7 +260,7 @@ type View interface {
 
 	// FindFileInPackage returns the AST and type information for a file that may
 	// belong to or be part of a dependency of the given package.
-	FindFileInPackage(ctx context.Context, uri span.URI, pkg Package) (ParseGoHandle, Package, error)
+	FindPosInPackage(pkg Package, pos token.Pos) (*ast.File, *protocol.ColumnMapper, Package, error)
 
 	// Snapshot returns the current snapshot for the view.
 	Snapshot() Snapshot

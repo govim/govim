@@ -13,6 +13,7 @@ import (
 	"go/types"
 	"strings"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
@@ -153,18 +154,9 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 	if cand.imp != nil && cand.imp.pkg != nil {
 		searchPkg = cand.imp.pkg
 	}
-	ph, pkg, err := c.view.FindFileInPackage(c.ctx, uri, searchPkg)
+	file, _, pkg, err := c.view.FindPosInPackage(searchPkg, obj.Pos())
 	if err != nil {
 		log.Error(c.ctx, "error finding file in package", err, telemetry.URI.Of(uri), telemetry.Package.Of(searchPkg.ID()))
-		return item, nil
-	}
-	file, _, _, err := ph.Cached()
-	if err != nil {
-		log.Error(c.ctx, "no cached file", err, telemetry.URI.Of(uri))
-		return item, nil
-	}
-	if !(file.Pos() <= obj.Pos() && obj.Pos() <= file.End()) {
-		log.Error(c.ctx, "no file for object", errors.Errorf("no file for completion object %s", obj.Name()), telemetry.URI.Of(uri))
 		return item, nil
 	}
 	ident, err := findIdentifier(c.ctx, c.snapshot, pkg, file, obj.Pos())
@@ -190,12 +182,25 @@ func (c *completer) importEdits(imp *importInfo) ([]protocol.TextEdit, error) {
 		return nil, nil
 	}
 
-	edit, err := addNamedImport(c.view.Session().Cache().FileSet(), c.file, imp.name, imp.importPath)
-	if err != nil {
-		return nil, err
+	uri := span.FileURI(c.filename)
+	var ph ParseGoHandle
+	for _, h := range c.pkg.Files() {
+		if h.File().Identity().URI == uri {
+			ph = h
+		}
+	}
+	if ph == nil {
+		return nil, errors.Errorf("no ParseGoHandle for %s", c.filename)
 	}
 
-	return ToProtocolEdits(c.mapper, edit)
+	return computeOneImportFixEdits(c.ctx, c.view, ph, &imports.ImportFix{
+		StmtInfo: imports.ImportInfo{
+			ImportPath: imp.importPath,
+			Name:       imp.name,
+		},
+		// IdentName is unused on this path and is difficult to get.
+		FixType: imports.AddImport,
+	})
 }
 
 func (c *completer) formatBuiltin(cand candidate) CompletionItem {

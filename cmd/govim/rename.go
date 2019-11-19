@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -35,14 +36,11 @@ func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
 		return fmt.Errorf("called to gopls.Rename failed: %v", err)
 	}
 
-	return v.applyMultiBufTextedits(flags.Mods, res.Changes)
+	return v.applyMultiBufTextedits(flags.Mods, res.DocumentChanges)
 }
 
-func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes *map[string][]protocol.TextEdit) error {
-	var allChanges map[string][]protocol.TextEdit
-	if changes != nil {
-		allChanges = *changes
-	}
+func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes []protocol.TextDocumentEdit) error {
+	allChanges := changes
 	if len(allChanges) == 0 {
 		v.Logf("No changes to apply for rename")
 		return nil
@@ -56,9 +54,12 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes *
 	vp := v.Viewport()
 	bufNrs := make(map[string]int)
 	var fps []string
-	for filepath := range allChanges {
-		fps = append(fps, filepath)
+	uriMap := make(map[string]protocol.TextDocumentEdit)
+	for _, c := range allChanges {
+		uriMap[c.TextDocument.TextDocumentIdentifier.URI] = c
+		fps = append(fps, string(c.TextDocument.TextDocumentIdentifier.URI))
 	}
+	// So that we have reproducible behaviour
 	sort.Strings(fps)
 
 	for _, filepath := range fps {
@@ -85,8 +86,8 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes *
 	v.ChannelCall("win_gotoid", vp.Current.WinID)
 
 	for _, filepath := range fps {
-		changes := allChanges[filepath]
-		if len(changes) == 0 {
+		changes := uriMap[filepath]
+		if len(changes.Edits) == 0 {
 			continue
 		}
 		tf := strings.TrimPrefix(filepath, "file://")
@@ -95,7 +96,13 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes *
 		if !ok {
 			return fmt.Errorf("expected to have a buffer for %v; did not", tf)
 		}
-		if err := v.applyProtocolTextEdits(b, changes); err != nil {
+		// We previously verified the filepath above by doing the reverse
+		// lookup from filepath -> buffer, so just verify the version
+		ev := int(math.Round(changes.TextDocument.Version))
+		if ev > 0 && ev != b.Version {
+			return fmt.Errorf("edit for buffer %v (%v) was for version %v, current version is %v", tf, bufnr, ev, b.Version)
+		}
+		if err := v.applyProtocolTextEdits(b, changes.Edits); err != nil {
 			return fmt.Errorf("failed to apply edits for %v: %v", tf, err)
 		}
 	}
