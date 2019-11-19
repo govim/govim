@@ -11,19 +11,22 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
-func (v *vimstate) redefineDiagnostics() error {
-	v.diagnosticsLock.Lock()
+// diagnostics returns the last received LSP diagnostics from gopls
+// and acts as a lazy conversion mechanism. The purpose is to avoid converting
+// lsp diagnostics unless they are needed by govim.
+func (v *vimstate) diagnostics() []types.Diagnostic {
+	v.rawDiagnosticsLock.Lock()
+	if !v.diagnosticsChanged {
+		v.rawDiagnosticsLock.Unlock()
+		return v.diagnosticsCache
+	}
+
 	filediags := make(map[span.URI][]protocol.Diagnostic)
-	for k, v := range v.diagnostics {
+	for k, v := range v.rawDiagnostics {
 		filediags[k] = v.Diagnostics
 	}
-	doWork := v.diagnosticsChanged
 	v.diagnosticsChanged = false
-	v.diagnosticsLock.Unlock()
-
-	if !doWork {
-		return nil
-	}
+	v.rawDiagnosticsLock.Unlock()
 
 	// TODO: this will become fragile at some point
 	cwd := v.ParseString(v.ChannelCall("getcwd"))
@@ -87,6 +90,12 @@ func (v *vimstate) redefineDiagnostics() error {
 		return cmp < 0
 	})
 
+	v.diagnosticsCache = diags
+	return v.diagnosticsCache
+}
+
+func (v *vimstate) redefineDiagnostics() error {
+	diags := v.diagnostics()
 	if err := v.updateQuickfix(diags); err != nil {
 		return err
 	}
