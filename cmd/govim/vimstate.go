@@ -68,6 +68,10 @@ type vimstate struct {
 	// currently defined popups (both hidden and visible) and have a lifespan of single
 	// codeAction call.
 	suggestedFixesPopups map[int][]*protocol.WorkspaceEdit
+
+	// working directory (when govim was started)
+	// TODO: handle changes to current working directory during runtime
+	workingDirectory string
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {

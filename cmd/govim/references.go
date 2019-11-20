@@ -32,9 +32,6 @@ func (v *vimstate) references(flags govim.CommandFlags, args ...string) error {
 		},
 	}
 
-	// TODO this will become fragile at some point
-	cwd := v.ParseString(v.ChannelCall("getcwd"))
-
 	// must be non-nil
 	locs := []quickfixEntry{}
 
@@ -64,9 +61,9 @@ func (v *vimstate) references(flags govim.CommandFlags, args ...string) error {
 			buf = types.NewBuffer(-1, fn, byts, false)
 		}
 		// make fn relative for reporting purposes
-		fn, err := filepath.Rel(cwd, fn)
+		fn, err := filepath.Rel(v.workingDirectory, fn)
 		if err != nil {
-			v.Logf("references: failed to call filepath.Rel(%q, %q): %v", cwd, fn, err)
+			v.Logf("references: failed to call filepath.Rel(%q, %q): %v", v.workingDirectory, fn, err)
 			continue
 		}
 		p, err := types.PointFromPosition(buf, ref.Range.Start)

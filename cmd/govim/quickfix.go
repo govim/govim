@@ -1,6 +1,8 @@
 package main
 
 import (
+	"path/filepath"
+
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
@@ -24,8 +26,15 @@ func (v *vimstate) updateQuickfix(diags []types.Diagnostic) error {
 	fixes := []quickfixEntry{}
 
 	for _, d := range diags {
+		// make fn relative for reporting purposes
+		fn, err := filepath.Rel(v.workingDirectory, d.Filename)
+		if err != nil {
+			v.Logf("redefineDiagnostics: failed to call filepath.Rel(%q, %q): %v", v.workingDirectory, fn, err)
+			continue
+		}
+
 		fixes = append(fixes, quickfixEntry{
-			Filename: d.Filename,
+			Filename: fn,
 			Lnum:     d.Range.Start.Line(),
 			Col:      d.Range.Start.Col(),
 			Text:     d.Text,

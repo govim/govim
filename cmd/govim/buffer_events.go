@@ -17,6 +17,15 @@ import (
 
 func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	nb := v.currentBufferInfo(args[0])
+
+	// If we load a buffer that already had diagnostics reported by gopls, the buffer number must be
+	// updated to ensure that sign placement etc. works.
+	for i, d := range v.diagnosticsCache {
+		if d.Buf == -1 && d.Filename == nb.URI().Filename() {
+			v.diagnosticsCache[i].Buf = nb.Num
+		}
+	}
+
 	if cb, ok := v.buffers[nb.Num]; ok {
 		// reload of buffer, e.v. e!
 		cb.SetContents(nb.Contents())
@@ -36,6 +45,13 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 		nb.Version = 1
 	}
 	nb.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), nb.Num))
+
+	if v.placeSigns() {
+		if err := v.redefineSigns(v.diagnostics()); err != nil {
+			v.Logf("failed to update signs for buffer %d: %v", nb.Num, err)
+		}
+	}
+
 	return v.handleBufferEvent(nb)
 }
 
@@ -151,6 +167,17 @@ func (v *vimstate) deleteCurrentBuffer(args ...json.RawMessage) error {
 	if !ok {
 		return fmt.Errorf("tried to remove buffer %v; but we have no record of it", currBufNr)
 	}
+
+	// The diagnosticsCache is updated with -1 (unknown buffer) as bufnr.
+	// We don't want to remove the entries completely here since we want to show them in
+	// the quickfix window. And we don't need to remove existing signs or text properties
+	// either here since they are removed by vim automatically when a buffer is deleted.
+	for i := range v.diagnosticsCache {
+		if v.diagnosticsCache[i].Buf == currBufNr {
+			v.diagnosticsCache[i].Buf = -1
+		}
+	}
+
 	v.ChannelCall("listener_remove", cb.Listener)
 	delete(v.buffers, cb.Num)
 	params := &protocol.DidCloseTextDocumentParams{

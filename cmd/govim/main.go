@@ -211,6 +211,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.vimstate.Driver.Govim = gg.Scheduled()
 	g.ChannelEx(`augroup govim`)
 	g.ChannelEx(`augroup END`)
+	g.vimstate.workingDirectory = g.ParseString(g.ChannelCall("getcwd", -1))
 	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.vimstate.balloonExpr)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufUnload}, govim.Patterns{"*.go"}, false, g.vimstate.bufUnload, "eval(expand('<abuf>'))")
 	g.DefineAutoCommand("", govim.Events{govim.EventBufRead, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.vimstate.bufReadPost, exprAutocmdCurrBufInfo)
@@ -312,9 +313,8 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 		g: g,
 	}
 
-	wd := g.ParseString(g.ChannelCall("getcwd", -1))
 	initParams := &protocol.ParamInitia{}
-	initParams.RootURI = string(span.FileURI(wd))
+	initParams.RootURI = string(span.FileURI(g.vimstate.workingDirectory))
 	initParams.Capabilities.TextDocument.Hover = &protocol.HoverClientCapabilities{
 		ContentFormat: []protocol.MarkupKind{protocol.PlainText},
 	}
@@ -335,7 +335,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 
 	// Temporary fix for the fact that gopls does not yet support watching (via
 	// the client) changed files: https://github.com/golang/go/issues/31553
-	gomodpath, err := goModPath(wd)
+	gomodpath, err := goModPath(g.vimstate.workingDirectory)
 	if err != nil {
 		return fmt.Errorf("failed to derive go.mod path: %v", err)
 	}
