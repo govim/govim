@@ -1,0 +1,28 @@
+# A simple test that verifies the setup of goproxytest
+
+vim ex 'e main.go'
+errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vim ex 'w'
+cmp go.mod go.mod.golden
+
+-- go.mod --
+module mod.com
+
+go 1.13
+
+require example.com/blah v1.0.0
+-- go.mod.golden --
+module mod.com
+
+go 1.13
+
+require example.com/blah v1.0.0
+-- main.go --
+package main
+
+import "example.com/blah"
+
+func main() {
+	println(blah.Name)
+}
+

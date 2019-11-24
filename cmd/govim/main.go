@@ -103,7 +103,7 @@ func mainerr() error {
 func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 	defer out.Close()
 
-	d := newplugin(goplspath, nil)
+	d := newplugin(goplspath, nil, nil)
 
 	tf, err := createLogFile("govim_log")
 	if err != nil {
@@ -155,6 +155,10 @@ type govimplugin struct {
 	plugin.Driver
 	vimstate *vimstate
 
+	// goplsEnv is the environment with which to start gopls. This is
+	// set in os/exec.Command.Env
+	goplsEnv []string
+
 	goplspath   string
 	gopls       *os.Process
 	goplsConn   *jsonrpc2.Conn
@@ -178,7 +182,7 @@ type govimplugin struct {
 	bufferUpdates chan *bufferUpdate
 }
 
-func newplugin(goplspath string, defaults *config.Config) *govimplugin {
+func newplugin(goplspath string, goplsEnv []string, defaults *config.Config) *govimplugin {
 	if defaults == nil {
 		defaults = &config.Config{
 			FormatOnSave:            vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImports),
@@ -190,6 +194,7 @@ func newplugin(goplspath string, defaults *config.Config) *govimplugin {
 	d := plugin.NewDriver(PluginPrefix)
 	res := &govimplugin{
 		rawDiagnostics: make(map[span.URI]*protocol.PublishDiagnosticsParams),
+		goplsEnv:       goplsEnv,
 		goplspath:      goplspath,
 		Driver:         d,
 		vimstate: &vimstate{
@@ -263,6 +268,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	}
 
 	gopls := exec.Command(g.goplspath, goplsArgs...)
+	gopls.Env = g.goplsEnv
 	g.Logf("Running gopls: %v", strings.Join(gopls.Args, " "))
 	stderr, err := gopls.StderrPipe()
 	if err != nil {
