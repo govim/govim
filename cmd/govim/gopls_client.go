@@ -81,6 +81,26 @@ func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFol
 	panic("not implemented yet")
 }
 func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ParamConfig) ([]interface{}, error) {
+	// TODO this is a rather fragile workaround for https://github.com/golang/go/issues/35817
+	// It's fragile because we are relying on gopls not handling any requests until the response
+	// to Configuration is received and processed. In practice this appears to currently be
+	// the case but there is no guarantee of this going forward. Rather we hope that a fix
+	// for https://github.com/golang/go/issues/35817 lands sooner rather than later at whic
+	// point this workaround can go.
+	//
+	// We also use a lock here because, despite it appearing that will only be a single
+	// Configuration call and that if there were more they would be serial, we can't rely on
+	// this.
+	defer func() {
+		g.initalConfigurationCalledLock.Lock()
+		defer g.initalConfigurationCalledLock.Unlock()
+		select {
+		case <-g.initalConfigurationCalled:
+		default:
+			close(g.initalConfigurationCalled)
+		}
+	}()
+
 	defer absorbShutdownErr()
 	g.logGoplsClientf("Configuration: %v", pretty.Sprint(params))
 
