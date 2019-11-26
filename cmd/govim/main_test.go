@@ -22,6 +22,7 @@ import (
 	"github.com/govim/govim/testdriver"
 	"github.com/govim/govim/testsetup"
 	"github.com/kr/pty"
+	"github.com/rogpeppe/go-internal/goproxytest"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
@@ -52,6 +53,11 @@ func TestScripts(t *testing.T) {
 	goplspath := filepath.Join(td, "gopls")
 	govimPath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
 
+	proxy, err := goproxytest.NewServer("testdata/mod", "")
+	if err != nil {
+		t.Fatalf("cannot start proxy: %v", err)
+	}
+
 	entries, err := ioutil.ReadDir("testdata")
 	if err != nil {
 		t.Fatalf("failed to list testdata: %v", err)
@@ -78,6 +84,8 @@ func TestScripts(t *testing.T) {
 					home := filepath.Join(e.WorkDir, "home")
 					e.Vars = append(e.Vars,
 						"TMPDIR="+tmp,
+						"GOPROXY="+proxy.URL,
+						"GONOSUMDB=*",
 						"HOME="+home,
 						"PLUGIN_PATH="+govimPath,
 						"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
@@ -143,7 +151,7 @@ func TestScripts(t *testing.T) {
 						}
 					}
 
-					d := newplugin(string(goplspath), defaults)
+					d := newplugin(string(goplspath), e.Vars, defaults)
 
 					config := &testdriver.Config{
 						Name:           filepath.Base(e.WorkDir),
