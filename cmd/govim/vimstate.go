@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -37,6 +38,7 @@ type vimstate struct {
 
 	defaultConfig config.Config
 	config        config.Config
+	configLock    sync.Mutex
 
 	// userBusy indicates the user is moving the cusor doing something
 	userBusy bool
@@ -74,7 +76,9 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	preConfig := v.config
 	var vc vimconfig.VimConfig
 	v.Parse(args[0], &vc)
+	v.configLock.Lock()
 	v.config = vc.ToConfig(v.defaultConfig)
+	v.configLock.Unlock()
 	if !vimconfig.EqualBool(v.config.QuickfixAutoDiagnostics, preConfig.QuickfixAutoDiagnostics) ||
 		!vimconfig.EqualBool(v.config.QuickfixSigns, preConfig.QuickfixSigns) {
 		if v.config.QuickfixAutoDiagnostics != nil && !*v.config.QuickfixAutoDiagnostics {

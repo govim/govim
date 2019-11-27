@@ -104,6 +104,10 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	defer absorbShutdownErr()
 	g.logGoplsClientf("Configuration: %v", pretty.Sprint(params))
 
+	g.vimstate.configLock.Lock()
+	config := g.vimstate.config
+	defer g.vimstate.configLock.Unlock()
+
 	// gopls now sends params.Items for each of the configured
 	// workspaces. For now, we assume that the first item will be
 	// for the section "gopls" and only configure that. We will
@@ -114,20 +118,20 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	res := make([]interface{}, len(params.Items))
 	conf := make(map[string]interface{})
 	conf[goplsConfigHoverKind] = "FullDocumentation"
-	if g.vimstate.config.CompletionDeepCompletions != nil {
-		conf[goplsDeepCompletion] = *g.vimstate.config.CompletionDeepCompletions
+	if config.CompletionDeepCompletions != nil {
+		conf[goplsDeepCompletion] = config.CompletionDeepCompletions
 	}
-	if g.vimstate.config.CompletionFuzzyMatching != nil {
-		conf[goplsFuzzyMatching] = *g.vimstate.config.CompletionFuzzyMatching
+	if config.CompletionFuzzyMatching != nil {
+		conf[goplsFuzzyMatching] = config.CompletionFuzzyMatching
 	}
-	if g.vimstate.config.Staticcheck != nil {
-		conf[goplsStaticcheck] = *g.vimstate.config.Staticcheck
+	if config.Staticcheck != nil {
+		conf[goplsStaticcheck] = config.Staticcheck
 	}
-	if g.vimstate.config.CompletionCaseSensitive != nil {
-		conf[goplsCaseSensitiveCompletion] = *g.vimstate.config.CompletionCaseSensitive
+	if config.CompletionCaseSensitive != nil {
+		conf[goplsCaseSensitiveCompletion] = config.CompletionCaseSensitive
 	}
-	if g.vimstate.config.CompleteUnimported != nil {
-		conf[goplsCompleteUnimported] = *g.vimstate.config.CompleteUnimported
+	if config.CompleteUnimported != nil {
+		conf[goplsCompleteUnimported] = config.CompleteUnimported
 	}
 	res[0] = conf
 
