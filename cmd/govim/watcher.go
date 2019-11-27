@@ -117,8 +117,7 @@ func (m *modWatcher) watch() {
 					continue
 				}
 				if !dirInfo.IsDir() {
-					// Is Vim handling this file?
-					// Is this a file we care about? go.mod, *.go?
+					// Is Vim handling this file? Is this a file we care about?
 					if !ofInterest(path) {
 						continue
 					}
@@ -170,8 +169,7 @@ func (m *modWatcher) watch() {
 }
 
 func ofInterest(path string) bool {
-	// TODO when https://github.com/golang/go/issues/32178 is fixed re-add go.mod here
-	return filepath.Ext(path) == ".go"
+	return filepath.Ext(path) == ".go" || filepath.Base(path) == "go.mod"
 }
 
 func (v *vimstate) handleEvent(event fswatcher.Event) error {
