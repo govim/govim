@@ -46,10 +46,8 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	}
 	nb.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), nb.Num))
 
-	if v.placeSigns() {
-		if err := v.redefineSigns(v.diagnostics()); err != nil {
-			v.Logf("failed to update signs for buffer %d: %v", nb.Num, err)
-		}
+	if err := v.updateSigns(v.diagnostics(), true); err != nil {
+		v.Logf("failed to update signs for buffer %d: %v", nb.Num, err)
 	}
 
 	return v.handleBufferEvent(nb)

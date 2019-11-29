@@ -52,23 +52,6 @@ func (v *vimstate) signDefine() error {
 	return nil
 }
 
-// getPlacedDict is the representation of arguments used in vim's sign_getplaced()
-type getPlacedDict struct {
-	Group string `json:"group"`
-}
-
-// bufferSigns represents a single element in the response from a sign_getplaced() call
-type bufferSigns struct {
-	Signs []struct {
-		Lnum     int    `json:"lnum"`
-		ID       int    `json:"id"`
-		Name     string `json:"name"`
-		Priority int    `json:"priority"`
-		Group    string `json:"group"`
-	} `json:"signs"`
-	BufNr int `json:"bufnr"`
-}
-
 // placeDict is the representation of arguments used in vim's sign_place() and sign_placelist()
 type placeDict struct {
 	Buffer   int    `json:"buffer"`          // sign_placelist() only
@@ -79,111 +62,71 @@ type placeDict struct {
 	Priority int    `json:"priority,omitempty"`
 }
 
-// unplaceDict is the representation of arguments used in vim's sign_unplace() and sign_unplacelist()
-type unplaceDict struct {
-	Buffer int    `json:"buffer,omitempty"`
-	Group  string `json:"group,omitempty"` // sign_unplacelist() only
-	ID     int    `json:"id,omitempty"`
-}
-
-// redefineSigns ensures that there is only one govim sign per buffer line & priority
-// by calculating a difference between current state and the list of diagnostics
-func (v *vimstate) redefineSigns(fixes []types.Diagnostic) error {
-	type bufLine struct {
-		buf      int
-		line     int
-		priority int
+// updateSigns ensures that Vim is updated with signs corresponding to the
+// diagnostics fixes.
+func (v *vimstate) updateSigns(fixes []types.Diagnostic, force bool) error {
+	if v.config.QuickfixSigns == nil || !*v.config.QuickfixSigns {
+		return nil
 	}
-
-	remove := make(map[bufLine]int) // Value is sign ID, used to unplace duplicates
-	place := make(map[bufLine]int)  // Value is insert order, used to avoid sorting
-
-	// One call per buffer is needed since sign_getplaced() doesn't support getting
-	// signs from all buffers within a specific sign group.
-	v.BatchStart()
-	for buf := range v.buffers {
-		v.BatchChannelCall("sign_getplaced", buf, getPlacedDict{signGroup})
-	}
-
-	var bufs []bufferSigns
-	for _, res := range v.BatchEnd() {
-		var tmp []bufferSigns
-		v.Parse(res, &tmp)
-		bufs = append(bufs, tmp...)
-	}
-
-	// Assume all existing signs should be removed, unless found in quickfix entry list
-	for _, placed := range bufs {
-		for _, sign := range placed.Signs {
-			bl := bufLine{placed.BufNr, sign.Lnum, sign.Priority}
-			if _, exist := remove[bl]; exist {
-				// As each sign isn't tracked individually, we might end up with several
-				// same priority signs on the same line when, for example, a line is removed.
-				// By removing duplicates here we ensure that there is only one sign per
-				// line & priority.
-				v.ChannelCall("sign_unplace", signGroup, unplaceDict{Buffer: bl.buf, ID: sign.ID})
-				continue
-			}
-			remove[bl] = sign.ID
-		}
-	}
-
-	if v.config.QuickfixSigns != nil && !*v.config.QuickfixSigns {
+	v.diagnosticsChangedLock.Lock()
+	work := v.diagnosticsChangedSigns
+	v.diagnosticsChangedSigns = false
+	v.diagnosticsChangedLock.Unlock()
+	if !force && !work {
 		return nil
 	}
 
-	// Add signs for quickfix entry lines that doesn't already have a sign, and
-	// delete existing entries from the list of signs to removed
-	inx := 0
-	for _, f := range fixes {
-		priority, ok := signPriority[f.Severity]
-		if !ok {
-			v.Logf("no sign priority defined for severity: %v", f.Severity)
-			continue
-		}
-		bl := bufLine{f.Buf, f.Range.Start.Line(), priority}
-		if _, exist := remove[bl]; exist {
-			delete(remove, bl)
-			continue
-		}
-
-		if bl.buf == -1 {
-			continue // Don't place signs in unknown buffers
-		}
-
-		if _, exist := place[bl]; !exist {
-			place[bl] = inx
-			inx++
-		}
-	}
+	// We do this by batching a removal of all govim signs then a placing of all
+	// signs.
+	//
+	// Is this not incredibly inefficient? Always re-placing signs? Possibly,
+	// but for now it has not proved to be a problem. And the simplicity of not
+	// keeping track of sign state in govim is attractive.
+	//
+	// However, this may prove to be insufficient for a couple of reason:
+	//
+	// 1. despite batching the removal and additional we might see flickering
+	// 2. the CPU/wire/memory load of placing lots of signs may become
+	// noticeable
+	//
+	// Point 1, if it becomes an issue, might well be sovlable by having two
+	// identical signgroups, and flipping between the two. i.e. place signs in
+	// signGroup2, then remove all signs in signGroup1 (we current remove then
+	// place).
+	//
+	// Point 2, if it becomes an issue, will require us to keep sign state in
+	// govim.  This should not be a problem because govim will (in normal
+	// operation) be the source of truth for these signs. Hence, the CPU and
+	// memory cost can be borne by govim, and we minimise the wire exchange
+	// govim <-> Vim.
 
 	v.BatchStart()
-	if len(place) > 0 {
-		placeList := make([]placeDict, len(place))
-		// Use insert order as index to avoid sorting
-		for bl, i := range place {
-			name, ok := signName[bl.priority]
-			if !ok {
-				v.Logf("no sign defined for priority %d, can't place sign", bl.priority)
-				continue
-			}
-			placeList[i] = placeDict{
-				Buffer:   bl.buf,
-				Group:    signGroup,
-				Lnum:     bl.line,
-				Priority: bl.priority,
-				Name:     name}
+	defer v.BatchCancelIfNotEnded()
+	v.BatchAssertChannelCall(AssertIsZero, "sign_unplace", signGroup)
+	var placeList []placeDict
+	for _, f := range fixes {
+		if f.Buf == -1 {
+			// The diagnostic is for a file that we do not have open,
+			// i.e. there is no buffer. Do no try and place a sign
+			continue
 		}
-		v.BatchChannelCall("sign_placelist", placeList)
+		priority, ok := signPriority[f.Severity]
+		if !ok {
+			return fmt.Errorf("no sign priority defined for severity: %v", f.Severity)
+		}
+		name, ok := signName[priority]
+		if !ok {
+			return fmt.Errorf("no sign defined for priority %d, can't place sign", priority)
+		}
+		placeList = append(placeList, placeDict{
+			Buffer:   f.Buf,
+			Group:    signGroup,
+			Lnum:     f.Range.Start.Line(),
+			Priority: priority,
+			Name:     name})
 	}
-
-	// Remove signs on all lines that didn't have a corresponding quickfix entry
-	if len(remove) > 0 {
-		unplaceList := make([]unplaceDict, 0, len(remove))
-		for bl, id := range remove {
-			unplaceList = append(unplaceList, unplaceDict{Buffer: bl.buf, Group: signGroup, ID: id})
-		}
-		v.BatchChannelCall("sign_unplacelist", unplaceList)
+	if len(placeList) > 0 {
+		v.BatchChannelCall("sign_placelist", placeList)
 	}
 	v.BatchEnd()
 

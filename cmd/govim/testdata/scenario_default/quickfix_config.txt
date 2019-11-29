@@ -16,8 +16,6 @@ cmp stdout signs.golden
 # There must be no quickfix entries or signs when both are explicitly disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 0]'
 vim call 'govim#config#Set' '["QuickfixSigns", 0]'
-vim ex 'cexpr []' # clear quickfix list
-vim expr 'sign_unplace(\"*\")' # clear signs
 vim call append '[10,""]'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
@@ -36,7 +34,7 @@ cmp errors errors.golden
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 cmp stdout nosigns.golden
 
-## Enabling signs should place signs
+## Enabling signs should place signs again
 vim call 'govim#config#Set' '["QuickfixSigns", 1]'
 vim ex 'copen'
 vim ex 'w errors'
@@ -46,10 +44,8 @@ errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 cmp stdout signs.golden
 
-# Signs should not be placed with quickfix autodiagnostics disabled
+# Signs should be placed with quickfix autodiagnostics disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 0]'
-vim ex 'cexpr []' # clear quickfix list
-vim expr 'sign_unplace(\"*\")' # clear signs
 vim call append '[10,""]'
 errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
@@ -57,10 +53,7 @@ vim ex 'w errors'
 vim ex 'cclose'
 cmp errors empty
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
-cmp stdout nosigns.golden
-
-# Make sure that there were only two cases above that placed signs, to avoid flaky false positives
-errlogmatch -start -count=2 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
+cmp stdout signs.golden
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -91,6 +84,13 @@ main.go|10 col 19| missing return
     "signs": [
       {
         "group": "govim",
+        "id": 2,
+        "lnum": 6,
+        "name": "govimErrSign",
+        "priority": 14
+      },
+      {
+        "group": "govim",
         "id": 1,
         "lnum": 6,
         "name": "govimErrSign",
@@ -98,14 +98,14 @@ main.go|10 col 19| missing return
       },
       {
         "group": "govim",
-        "id": 2,
+        "id": 3,
         "lnum": 9,
         "name": "govimErrSign",
         "priority": 14
       },
       {
         "group": "govim",
-        "id": 3,
+        "id": 4,
         "lnum": 10,
         "name": "govimErrSign",
         "priority": 14

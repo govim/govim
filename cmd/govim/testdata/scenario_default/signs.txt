@@ -19,7 +19,7 @@ cmp stdout defined.golden
 # There must be only one sign per line (per prio)
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
-cmp stdout placed_openfile.golden
+cmp stdout placed_openfile1.golden
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
@@ -27,10 +27,10 @@ cmp stdout placed_openfile.golden
 # Removing one of the two quickfix entires on one line shouldn't remove the sign
 vim ex 'call cursor(6,36)'
 vim ex 'call feedkeys(\"3x\", \"x\")' # Remove "i, " from Printf-line
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[\{"buffer":1,"group":"govim"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
-cmp stdout placed_openfile.golden
+cmp stdout placed_openfile2.golden
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
@@ -38,7 +38,7 @@ cmp stdout placed_openfile.golden
 # Removing lines should also remove the signs
 vim ex 'call cursor(9,1)'
 vim ex 'call feedkeys(\"2dd\", \"x\")' # Remove line 9 & 10
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_unplacelist\"'
+errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[\{"buffer":1,"group":"govim"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed_onesign.golden
@@ -48,7 +48,7 @@ cmp stdout placed_onesign.golden
 
 # Fixing the last quickfix entry should remove the last sign
 vim call append '[5, "\tvar v string"]'
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_unplacelist\"'
+errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\]\]\]\]'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed_nosign.golden
@@ -56,9 +56,9 @@ cmp stdout placed_nosign.golden
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 
-# Two warnings on one line should place a single warning sign
+# Two warnings on one line should place two warnings
 vim call append '[5, "\tvar x, y int\n\tx, y = x, y"]'
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_placelist\"'
+errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[\{"buffer":1,"group":"govim"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed_twowarnings.golden
@@ -103,7 +103,43 @@ func f2() string {}
     "texthl": "govimHint"
   }
 ]
--- placed_openfile.golden --
+-- placed_openfile1.golden --
+[
+  {
+    "bufnr": 1,
+    "signs": [
+      {
+        "group": "govim",
+        "id": 2,
+        "lnum": 6,
+        "name": "govimErrSign",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 1,
+        "lnum": 6,
+        "name": "govimErrSign",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 3,
+        "lnum": 9,
+        "name": "govimErrSign",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 4,
+        "lnum": 10,
+        "name": "govimErrSign",
+        "priority": 14
+      }
+    ]
+  }
+]
+-- placed_openfile2.golden --
 [
   {
     "bufnr": 1,
@@ -159,6 +195,13 @@ func f2() string {}
   {
     "bufnr": 1,
     "signs": [
+      {
+        "group": "govim",
+        "id": 2,
+        "lnum": 7,
+        "name": "govimWarnSign",
+        "priority": 12
+      },
       {
         "group": "govim",
         "id": 1,

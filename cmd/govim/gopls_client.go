@@ -163,11 +163,14 @@ func (g *govimplugin) Event(context.Context, *interface{}) error {
 func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.PublishDiagnosticsParams) error {
 	defer absorbShutdownErr()
 	g.logGoplsClientf("PublishDiagnostics callback: %v", pretty.Sprint(params))
-	g.rawDiagnosticsLock.Lock()
+	g.diagnosticsChangedLock.Lock()
 	uri := span.URI(params.URI)
 	curr, ok := g.rawDiagnostics[uri]
 	g.rawDiagnostics[uri] = params
-	g.rawDiagnosticsLock.Unlock()
+	g.diagnosticsChanged = true
+	g.diagnosticsChangedQuickfix = true
+	g.diagnosticsChangedSigns = true
+	g.diagnosticsChangedLock.Unlock()
 	if !ok {
 		if len(params.Diagnostics) == 0 {
 			return nil
@@ -180,17 +183,10 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 
 	g.Schedule(func(govim.Govim) error {
 		v := g.vimstate
-		v.diagnosticsChanged = true
-		if v.config.QuickfixAutoDiagnostics != nil && !*v.config.QuickfixAutoDiagnostics {
-			return nil
-		}
-		if !v.quickfixIsDiagnostics {
-			return nil
-		}
 		if v.userBusy {
 			return nil
 		}
-		return v.redefineDiagnostics()
+		return v.handleDiagnosticsChanged()
 	})
 	return nil
 }
