@@ -103,7 +103,7 @@ func mainerr() error {
 func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 	defer out.Close()
 
-	d := newplugin(goplspath, nil, nil)
+	d := newplugin(goplspath, nil, nil, nil)
 
 	tf, err := createLogFile("govim_log")
 	if err != nil {
@@ -190,7 +190,7 @@ type govimplugin struct {
 	inShutdown chan struct{}
 }
 
-func newplugin(goplspath string, goplsEnv []string, defaults *config.Config) *govimplugin {
+func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Config) *govimplugin {
 	if defaults == nil {
 		defaults = &config.Config{
 			FormatOnSave:            vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImports),
@@ -198,6 +198,10 @@ func newplugin(goplspath string, goplsEnv []string, defaults *config.Config) *go
 			QuickfixSigns:           vimconfig.BoolVal(true),
 			Staticcheck:             vimconfig.BoolVal(false),
 		}
+	}
+	// Overlay the initial user values on the defaults
+	if user != nil {
+		defaults.Apply(user)
 	}
 	d := plugin.NewDriver(PluginPrefix)
 	res := &govimplugin{

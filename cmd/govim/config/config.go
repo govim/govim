@@ -23,6 +23,8 @@ const (
 	EnvVarGoplsFlags EnvVar = "GOVIM_GOPLS_FLAGS"
 )
 
+//go:generate go run github.com/govim/govim/cmd/govim/config/internal/applygen Config
+
 type Config struct {
 	// FormatOnSave is a string value that configures which tool to use for
 	// formatting on save. Options are given by constants of type FormatOnSave.

@@ -110,48 +110,18 @@ func TestScripts(t *testing.T) {
 						t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
 					}
 
-					var defaults *config.Config
-
-					// check whether we have a default config to apply
-					configPath := filepath.Join("testdata", entry.Name(), "default_config.json")
-					if fi, err := os.Stat(configPath); err == nil {
-						if fi.Mode().IsRegular() {
-							config, err := ioutil.ReadFile(configPath)
-							if err != nil {
-								t.Fatalf("failed to read %v: %v", configPath, err)
-							}
-							if err := json.Unmarshal(config, &defaults); err != nil {
-								t.Fatalf("failed to unmarshal JSON config in %v: %v\n%s", configPath, err, config)
-							}
-							// Now verify that we haven't supplied superfluous JSON
-							var i interface{}
-							if err := json.Unmarshal(config, &i); err != nil {
-								t.Fatalf("failed to re-parse JSON config in %v: %v\n%s", configPath, err, config)
-							}
-							var defaultsCheck []byte
-							first, err := json.MarshalIndent(defaults, "", "  ")
-							if err != nil {
-								t.Fatalf("failed to remarshal defaults: %v", err)
-							}
-							var j interface{}
-							if err := json.Unmarshal(first, &j); err != nil {
-								t.Fatalf("failed to re-re-parse JSON config in %v: %v\n%s", configPath, err, config)
-							}
-							defaultsCheck, err = json.MarshalIndent(j, "", "  ")
-							if err != nil {
-								t.Fatalf("failed to remarshal defaults: %v", err)
-							}
-							iCheck, err := json.MarshalIndent(i, "", "  ")
-							if err != nil {
-								t.Fatalf("failed to remarshal re-parsed JSON: %v", err)
-							}
-							if !bytes.Equal(defaultsCheck, iCheck) {
-								t.Fatalf("%v contains superfluous JSON:\n\n%s\n\n vs parsed defaults:\n\n%s\n", configPath, iCheck, defaultsCheck)
-							}
-						}
+					defaultsPath := filepath.Join("testdata", entry.Name(), "default_config.json")
+					defaults, err := readConfig(defaultsPath)
+					if err != nil {
+						t.Fatalf("failed to read defaults from %v: %v", defaultsPath, err)
+					}
+					userPath := filepath.Join("testdata", entry.Name(), "user_config.json")
+					user, err := readConfig(userPath)
+					if err != nil {
+						t.Fatalf("failed to read user from %v: %v", userPath, err)
 					}
 
-					d := newplugin(string(goplspath), e.Vars, defaults)
+					d := newplugin(string(goplspath), e.Vars, defaults, user)
 
 					config := &testdriver.Config{
 						Name:           filepath.Base(e.WorkDir),
@@ -306,4 +276,46 @@ func installGoplsToTempDir() (string, error) {
 		return "", fmt.Errorf("failed to install temp version of golang.org/x/tools/gopls: %v\n%s", err, out)
 	}
 	return td, nil
+}
+
+func readConfig(path string) (*config.Config, error) {
+	// check whether we have a default config to apply
+	fi, err := os.Stat(path)
+	if err != nil || !fi.Mode().IsRegular() {
+		return nil, nil
+	}
+	configByts, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %v: %v", path, err)
+	}
+	var res *config.Config
+	if err := json.Unmarshal(configByts, &res); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON config in %v: %v\n%s", path, err, configByts)
+	}
+	// Now verify that we haven't supplied superfluous JSON
+	var i interface{}
+	if err := json.Unmarshal(configByts, &i); err != nil {
+		return nil, fmt.Errorf("failed to re-parse JSON config in %v: %v\n%s", path, err, configByts)
+	}
+	var resCheck []byte
+	first, err := json.MarshalIndent(res, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to remarshal res: %v", err)
+	}
+	var j interface{}
+	if err := json.Unmarshal(first, &j); err != nil {
+		return nil, fmt.Errorf("failed to re-re-parse JSON config in %v: %v\n%s", path, err, configByts)
+	}
+	resCheck, err = json.MarshalIndent(j, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to remarshal res: %v", err)
+	}
+	iCheck, err := json.MarshalIndent(i, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to remarshal re-parsed JSON: %v", err)
+	}
+	if !bytes.Equal(resCheck, iCheck) {
+		return nil, fmt.Errorf("%v contains superfluous JSON:\n\n%s\n\n vs parsed res:\n\n%s\n", path, iCheck, resCheck)
+	}
+	return res, nil
 }
