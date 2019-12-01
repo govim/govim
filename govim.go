@@ -469,14 +469,26 @@ func (g *govimImpl) run() error {
 					return nil
 				})
 			case unscheduledCallback:
-				g.tomb.Go(func() error {
-					select {
-					case ch <- toSend:
-					case <-g.tomb.Dying():
-						return ErrShuttingDown
-					}
-					return nil
-				})
+				select {
+				case <-g.tomb.Dying():
+					// TODO remove once we work out why this is happening
+					//
+					// We are getting test failures where the g.tomb.Go below
+					// fails because the tomb is already dead. However this doesn't
+					// make sense because the tomb should only die when the read
+					// loop finishes because we receive an EOF. But a panic at
+					// this point means we've just read a message.
+					panic(fmt.Errorf("got message %v\n\nTomb was dying because of %v", pretty.Sprint(args), g.tomb.Err()))
+				default:
+					g.tomb.Go(func() error {
+						select {
+						case ch <- toSend:
+						case <-g.tomb.Dying():
+							return ErrShuttingDown
+						}
+						return nil
+					})
+				}
 			default:
 				panic(fmt.Errorf("unknown type of callback responser: %T", ch))
 			}
