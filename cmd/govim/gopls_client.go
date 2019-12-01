@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -42,13 +43,13 @@ func (g *govimplugin) ShowMessage(ctxt context.Context, params *protocol.ShowMes
 		opts["mousemoved"] = "any"
 		opts["moved"] = "any"
 		opts["padding"] = []int{0, 1, 0, 1}
-		opts["wrap"] = false
+		opts["wrap"] = true
 		opts["border"] = []int{}
 		opts["highlight"] = hl
 		opts["line"] = 1
 		opts["close"] = "click"
 
-		g.ChannelCall("popup_create", params.Message, opts)
+		g.ChannelCall("popup_create", strings.Split(params.Message, "\n"), opts)
 		return nil
 	})
 	return nil
