@@ -139,7 +139,7 @@ func (m *modWatcher) watch() {
 					// We have a dir
 					switch filepath.Base(path)[0] {
 					case '.', '_':
-						return nil
+						return filepath.SkipDir
 					}
 					if path != m.root {
 						// check we are not in a submodule

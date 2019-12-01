@@ -47,11 +47,11 @@ func TestScripts(t *testing.T) {
 			},
 			Condition: testdriver.Condition,
 			Setup: func(e *testscript.Env) error {
-				home := filepath.Join(e.WorkDir, "home")
+				home := filepath.Join(e.WorkDir, ".home")
 				e.Vars = append(e.Vars,
 					"HOME="+home,
 				)
-				testPluginPath := filepath.Join(e.WorkDir, "home", ".vim", "pack", "plugins", "start", "govim")
+				testPluginPath := filepath.Join(home, ".vim", "pack", "plugins", "start", "govim")
 
 				var vimDebugLogPath, govimDebugLogPath string
 
