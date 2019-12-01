@@ -163,6 +163,7 @@ type govimplugin struct {
 	gopls       *os.Process
 	goplsConn   *jsonrpc2.Conn
 	goplsCancel context.CancelFunc
+	goplsStdin  io.WriteCloser
 	server      protocol.Server
 
 	isGui bool
@@ -184,6 +185,9 @@ type govimplugin struct {
 	// TODO: See comment at top of (*govimplugin.Configuration)
 	initalConfigurationCalled     chan struct{}
 	initalConfigurationCalledLock sync.Mutex
+
+	// inShutdown is closed when govim is told to Shutdown
+	inShutdown chan struct{}
 }
 
 func newplugin(goplspath string, goplsEnv []string, defaults *config.Config) *govimplugin {
@@ -202,6 +206,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults *config.Config) *go
 		goplspath:                 goplspath,
 		Driver:                    d,
 		initalConfigurationCalled: make(chan struct{}),
+		inShutdown:                make(chan struct{}),
 		vimstate: &vimstate{
 			Driver:                d,
 			buffers:               make(map[int]*types.Buffer),
@@ -297,15 +302,23 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	if err != nil {
 		return fmt.Errorf("failed to create stdin pipe for gopls: %v", err)
 	}
+	g.goplsStdin = stdin
 	if err := gopls.Start(); err != nil {
 		return fmt.Errorf("failed to start gopls: %v", err)
 	}
 	g.tomb.Go(func() (err error) {
 		if err = gopls.Wait(); err != nil {
 			err = fmt.Errorf("got error running gopls: %v", err)
-			errCh <- err
 		}
-		return
+		select {
+		case <-g.inShutdown:
+			return nil
+		default:
+			if err != nil {
+				errCh <- err
+			}
+			return
+		}
 	})
 
 	stream := jsonrpc2.NewHeaderStream(stdout, stdin)
@@ -379,13 +392,20 @@ func goModPath(wd string) (string, error) {
 }
 
 func (g *govimplugin) Shutdown() error {
+	close(g.inShutdown)
 	close(g.bufferUpdates)
 	if err := g.server.Shutdown(context.Background()); err != nil {
-		return err
+		return fmt.Errorf("failed to call gopls Shutdown: %v", err)
+	}
+	// We "kill" gopls by closing its stdin. Standard practice for processes
+	// that communicate over stdin/stdout is to exit cleanly when stdin is
+	// closed.
+	if err := g.goplsStdin.Close(); err != nil {
+		return fmt.Errorf("failed to close gopls stdin: %v", err)
 	}
 	if g.modWatcher != nil {
 		if err := g.modWatcher.close(); err != nil {
-			return err
+			return fmt.Errorf("failed to close file watcher: %v", err)
 		}
 	}
 	return nil
