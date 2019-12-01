@@ -74,6 +74,11 @@ type Config struct {
 	// rand.Seed (from math/rand) and rand.Prime (from crypto/rand), etc.
 	CompleteUnimported *bool `json:",omitempty"`
 
+	// GoImportsLocalPrefix is used to specify goimports's -local behavior. When
+	// set, put imports beginning with this string after 3rd-party packages;
+	// comma-separated list
+	GoImportsLocalPrefix *string `json:",omitempty"`
+
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
 	// over an identifier. It corresponds to the second argument to popup_create

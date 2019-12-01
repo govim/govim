@@ -1,0 +1,13 @@
+-- .mod --
+module rubbish.com/useless
+
+-- .info --
+{"Version":"v1.0.0","Time":"2018-10-22T18:45:39Z"}
+
+-- go.mod --
+module rubbish.com/useless
+
+-- main.go --
+package useless
+
+const Name = "rubbish.com/useless"
