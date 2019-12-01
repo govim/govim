@@ -2,7 +2,6 @@ package main
 
 import (
 	"io/ioutil"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -28,9 +27,6 @@ func (v *vimstate) diagnostics() []types.Diagnostic {
 	v.diagnosticsChanged = false
 	v.rawDiagnosticsLock.Unlock()
 
-	// TODO: this will become fragile at some point
-	cwd := v.ParseString(v.ChannelCall("getcwd"))
-
 	// must be non-nil
 	diags := []types.Diagnostic{}
 
@@ -50,12 +46,6 @@ func (v *vimstate) diagnostics() []types.Diagnostic {
 			}
 			// create a temp buffer
 			buf = types.NewBuffer(-1, fn, byts, false)
-		}
-		// make fn relative for reporting purposes
-		fn, err := filepath.Rel(cwd, fn)
-		if err != nil {
-			v.Logf("redefineDiagnostics: failed to call filepath.Rel(%q, %q): %v", cwd, fn, err)
-			continue
 		}
 		for _, d := range lspDiags {
 			s, err := types.PointFromPosition(buf, d.Range.Start)

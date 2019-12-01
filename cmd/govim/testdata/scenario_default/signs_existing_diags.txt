@@ -1,0 +1,45 @@
+# Test that signs are placed when opening a file that already has diagnostics.
+vim ex 'e main.go'
+errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_placelist\"'
+vim ex 'e other.go'
+errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_placelist\"'
+vim -indent expr 'sign_getplaced(\"other.go\", {\"group\": \"*\"})'
+! stderr .+
+cmp stdout placed.golden
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+func main() {
+    var z int
+    z = z
+}
+-- other.go --
+package main
+
+import "fmt"
+
+func foo() {
+    fmt.Printf("%v")
+}
+
+-- placed.golden --
+[
+  {
+    "bufnr": 2,
+    "signs": [
+      {
+        "group": "govim",
+        "id": 1,
+        "lnum": 6,
+        "name": "govimWarnSign",
+        "priority": 12
+      }
+    ]
+  }
+]
