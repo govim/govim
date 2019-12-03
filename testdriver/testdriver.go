@@ -41,8 +41,9 @@ type TestDriver struct {
 	driverListener net.Listener
 	govim          govim.Govim
 
-	Log   io.Writer
-	debug Debug
+	readLog *LockingBuffer
+	log     io.Writer
+	debug   Debug
 
 	cmd *exec.Cmd
 
@@ -67,7 +68,8 @@ type TestDriver struct {
 type Config struct {
 	Name, GovimPath, TestHomePath, TestPluginPath string
 	Debug
-	Log io.Writer
+	ReadLog *LockingBuffer
+	Log     io.Writer
 	*testscript.Env
 	Plugin govim.Plugin
 }
@@ -94,9 +96,10 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		plugin: c.Plugin,
 	}
 	if c.Log != nil {
-		res.Log = c.Log
+		res.readLog = c.ReadLog
+		res.log = c.Log
 	} else {
-		res.Log = ioutil.Discard
+		res.log = ioutil.Discard
 	}
 	gl, err := net.Listen("tcp4", "localhost:0")
 	if err != nil {
@@ -169,7 +172,7 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 }
 
 func (d *TestDriver) Logf(format string, a ...interface{}) {
-	fmt.Fprintf(d.Log, format+"\n", a...)
+	fmt.Fprintf(d.log, format+"\n", a...)
 }
 func (d *TestDriver) LogStripANSI(r io.Reader) {
 	scanner := bufio.NewScanner(r)
@@ -177,11 +180,11 @@ func (d *TestDriver) LogStripANSI(r io.Reader) {
 		ok := scanner.Scan()
 		if !ok {
 			if scanner.Err() != nil {
-				fmt.Fprintf(d.Log, "Erroring copying log: %+v\n", scanner.Err())
+				fmt.Fprintf(d.log, "Erroring copying log: %+v\n", scanner.Err())
 			}
 			return
 		}
-		fmt.Fprint(d.Log, stripansi.Strip(scanner.Text()))
+		fmt.Fprint(d.log, stripansi.Strip(scanner.Text()))
 	}
 }
 
@@ -237,7 +240,6 @@ func (d *TestDriver) Wait() error {
 }
 
 func (d *TestDriver) runVim() error {
-	d.Logf("Starting vim")
 	thepty, err := pty.Start(d.cmd)
 	if err != nil {
 		close(d.doneQuitVim)
@@ -250,7 +252,6 @@ func (d *TestDriver) runVim() error {
 			thepty.Close()
 			close(d.doneQuitVim)
 		}()
-		d.Logf("Waiting for command to exit")
 		if err := d.cmd.Wait(); err != nil {
 			select {
 			case <-d.quitVim:
@@ -267,7 +268,6 @@ func (d *TestDriver) runVim() error {
 		io.Copy(ioutil.Discard, thepty)
 	}
 
-	d.Logf("Vim running")
 	return nil
 }
 
@@ -303,15 +303,15 @@ func (d *TestDriver) Close() {
 					panic(r)
 				}
 			}()
-			d.govim.ChannelEx("qall!")
+			_, err := d.govim.Schedule(func(g govim.Govim) (err error) {
+				g.ChannelEx("qall!")
+				return
+			})
+			if err != nil {
+				panic(err)
+			}
 		}()
 		<-d.doneQuitVim
-	}
-	select {
-	case <-d.doneQuitGovim:
-	default:
-		d.govimListener.Close()
-		<-d.doneQuitGovim
 	}
 	select {
 	case <-d.doneQuitDriver:
@@ -350,7 +350,6 @@ func (d *TestDriver) listenGovim() error {
 			close(d.doneQuitDriver)
 		}
 	}()
-	d.Logf("Waiting for govim connection on %v...", d.govimListener.Addr())
 	conn, err := d.govimListener.Accept()
 	if err != nil {
 		select {
@@ -360,13 +359,15 @@ func (d *TestDriver) listenGovim() error {
 			return fmt.Errorf("failed to accept connection on %v: %v", d.govimListener.Addr(), err)
 		}
 	}
-	d.Logf("Accepted govim connection on %s", d.govimListener.Addr().String())
+	if err := d.govimListener.Close(); err != nil {
+		return fmt.Errorf("failed to close listener: %v", err)
+	}
 
 	var log io.Writer = ioutil.Discard
-	if d.Log != nil {
-		log = d.Log
+	if d.log != nil {
+		log = d.log
 	}
-	g, err := govim.NewGovim(d.plugin, conn, conn, log)
+	g, err := govim.NewGovim(d.plugin, conn, conn, log, &d.tomb)
 	if err != nil {
 		return fmt.Errorf("failed to create govim: %v", err)
 	}
@@ -395,7 +396,6 @@ func (d *TestDriver) listenDriver() error {
 	err := d.govim.DoProto(func() error {
 	Accept:
 		for {
-			d.Logf("Waiting for govim driver connection on %s...", d.driverListener.Addr().String())
 			conn, err := d.driverListener.Accept()
 			if err != nil {
 				select {
@@ -405,7 +405,6 @@ func (d *TestDriver) listenDriver() error {
 					panic(fmt.Errorf("failed to accept connection to driver on %v: %v", d.driverListener.Addr(), err))
 				}
 			}
-			d.Logf("Accepted driver connection on %v", d.driverListener.Addr())
 			dec := json.NewDecoder(conn)
 			var args []interface{}
 			if err := dec.Decode(&args); err != nil {
@@ -423,6 +422,19 @@ func (d *TestDriver) listenDriver() error {
 				res = append(res, toAdd)
 			}
 			schedule := func(f func(govim.Govim) error) chan struct{} {
+				// If we get an error or panic whilst trying to issue a command
+				// from a script something has gone very wrong. Typically this will
+				// happen when govim is shutting down for some reason. This should
+				// never happen but did, for example, when the race detector found
+				// a race in gopls which caused gopls to panic and quit, something
+				// which triggers govim to shutdown (correctly).
+				defer func() {
+					r := recover()
+					if r == nil {
+						return
+					}
+					panic(fmt.Errorf("we are in test: %v\n\nLog is: \n%s\n\nPanic was: %v", d.name, d.readLog.Bytes(), r))
+				}()
 				ch, err := d.govim.Schedule(f)
 				if err != nil {
 					panic(err)
@@ -642,7 +654,6 @@ func Vim() (exitCode int) {
 			}
 		}
 	}
-	conn.Close()
 	return 0
 }
 

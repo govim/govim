@@ -120,12 +120,12 @@ func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 		fmt.Fprintf(os.Stderr, "New connection will log to %v\n", tf.Name())
 	}
 
-	g, err := govim.NewGovim(d, in, out, log)
+	g, err := govim.NewGovim(d, in, out, log, &d.tomb)
 	if err != nil {
 		return fmt.Errorf("failed to create govim instance: %v", err)
 	}
 
-	d.tomb.Kill(g.Run())
+	d.tomb.Go(g.Run)
 	return d.tomb.Wait()
 }
 

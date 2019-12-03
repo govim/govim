@@ -26,6 +26,7 @@ const (
 var _ protocol.Client = (*govimplugin)(nil)
 
 func (g *govimplugin) ShowMessage(ctxt context.Context, params *protocol.ShowMessageParams) error {
+	defer absorbShutdownErr()
 	g.logGoplsClientf("ShowMessage callback: %v", params.Message)
 
 	var hl string
@@ -56,6 +57,7 @@ func (g *govimplugin) ShowMessage(ctxt context.Context, params *protocol.ShowMes
 }
 
 func (g *govimplugin) ShowMessageRequest(context.Context, *protocol.ShowMessageRequestParams) (*protocol.MessageActionItem, error) {
+	defer absorbShutdownErr()
 	panic("not implemented yet")
 }
 
@@ -66,6 +68,7 @@ func (g *govimplugin) LogMessage(ctxt context.Context, params *protocol.LogMessa
 }
 
 func (g *govimplugin) Telemetry(context.Context, interface{}) error {
+	defer absorbShutdownErr()
 	panic("not implemented yet")
 }
 
@@ -76,13 +79,17 @@ func (g *govimplugin) RegisterCapability(ctxt context.Context, params *protocol.
 }
 
 func (g *govimplugin) UnregisterCapability(context.Context, *protocol.UnregistrationParams) error {
+	defer absorbShutdownErr()
 	panic("not implemented yet")
 }
 
 func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFolder, error) {
+	defer absorbShutdownErr()
 	panic("not implemented yet")
 }
 func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ParamConfig) ([]interface{}, error) {
+	defer absorbShutdownErr()
+
 	// TODO this is a rather fragile workaround for https://github.com/golang/go/issues/35817
 	// It's fragile because we are relying on gopls not handling any requests until the response
 	// to Configuration is received and processed. In practice this appears to currently be
@@ -103,7 +110,6 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 		}
 	}()
 
-	defer absorbShutdownErr()
 	g.logGoplsClientf("Configuration: %v", pretty.Sprint(params))
 
 	g.vimstate.configLock.Lock()
@@ -145,10 +151,12 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 }
 
 func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {
+	defer absorbShutdownErr()
 	panic("not implemented yet")
 }
 
 func (g *govimplugin) Event(context.Context, *interface{}) error {
+	defer absorbShutdownErr()
 	panic("not implemented yet")
 }
 

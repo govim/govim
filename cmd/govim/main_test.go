@@ -156,6 +156,7 @@ func TestScripts(t *testing.T) {
 					config := &testdriver.Config{
 						Name:           filepath.Base(e.WorkDir),
 						GovimPath:      govimPath,
+						ReadLog:        errLog,
 						Log:            io.MultiWriter(outputs...),
 						TestHomePath:   home,
 						TestPluginPath: testPluginPath,

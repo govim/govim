@@ -175,7 +175,7 @@ type govimImpl struct {
 	shutdown    chan struct{}
 
 	eventQueue *queue.Queue
-	tomb       tomb.Tomb
+	tomb       *tomb.Tomb
 
 	flavor     Flavor
 	version    string
@@ -200,7 +200,7 @@ type unscheduledCallback chan callbackResp
 
 func (u unscheduledCallback) isCallback() {}
 
-func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, error) {
+func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer, t *tomb.Tomb) (Govim, error) {
 	g := &govimImpl{
 		in:  json.NewDecoder(in),
 		out: json.NewEncoder(out),
@@ -209,6 +209,8 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer) (Govim, e
 		funcHandlers: make(map[string]handler),
 
 		plugin: plug,
+
+		tomb: t,
 
 		loaded:      make(chan struct{}),
 		initialized: make(chan struct{}),
@@ -254,11 +256,6 @@ func (g *govimImpl) Enqueue(f func(Govim) error) chan struct{} {
 }
 
 func (g *govimImpl) Schedule(f func(Govim) error) (chan struct{}, error) {
-	defer func() {
-		if r := recover(); r != nil && r != ErrShuttingDown {
-			panic(r)
-		}
-	}()
 	g.scheduledCallsLock.Lock()
 	id := g.scheduleVimNextID
 	g.scheduleVimNextID++
@@ -281,7 +278,10 @@ func (g *govimImpl) goHandleShutdown(f func() error) {
 				panic(r)
 			}
 		}()
-		return f()
+		if err := f(); err != nil && err != ErrShuttingDown {
+			return err
+		}
+		return nil
 	})
 }
 
@@ -416,9 +416,6 @@ func (g *govimImpl) Run() error {
 	if shutdownErr != nil {
 		return shutdownErr
 	}
-	if err := g.tomb.Wait(); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -469,26 +466,14 @@ func (g *govimImpl) run() error {
 					return nil
 				})
 			case unscheduledCallback:
-				select {
-				case <-g.tomb.Dying():
-					// TODO remove once we work out why this is happening
-					//
-					// We are getting test failures where the g.tomb.Go below
-					// fails because the tomb is already dead. However this doesn't
-					// make sense because the tomb should only die when the read
-					// loop finishes because we receive an EOF. But a panic at
-					// this point means we've just read a message.
-					panic(fmt.Errorf("got message %v\n\nTomb was dying because of %v", pretty.Sprint(args), g.tomb.Err()))
-				default:
-					g.tomb.Go(func() error {
-						select {
-						case ch <- toSend:
-						case <-g.tomb.Dying():
-							return ErrShuttingDown
-						}
-						return nil
-					})
-				}
+				g.tomb.Go(func() error {
+					select {
+					case ch <- toSend:
+					case <-g.tomb.Dying():
+						return tomb.ErrDying
+					}
+					return nil
+				})
 			default:
 				panic(fmt.Errorf("unknown type of callback responser: %T", ch))
 			}
