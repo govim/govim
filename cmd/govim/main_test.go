@@ -81,7 +81,7 @@ func TestScripts(t *testing.T) {
 					if err := os.MkdirAll(tmp, 0777); err != nil {
 						return fmt.Errorf("failed to create temp dir %v: %v", tmp, err)
 					}
-					home := filepath.Join(e.WorkDir, "home")
+					home := filepath.Join(e.WorkDir, ".home")
 					e.Vars = append(e.Vars,
 						"TMPDIR="+tmp,
 						"GOPROXY="+proxy.URL,
@@ -90,7 +90,7 @@ func TestScripts(t *testing.T) {
 						"PLUGIN_PATH="+govimPath,
 						"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
 					)
-					testPluginPath := filepath.Join(e.WorkDir, "home", ".vim", "pack", "plugins", "start", "govim")
+					testPluginPath := filepath.Join(home, ".vim", "pack", "plugins", "start", "govim")
 
 					errLog := new(testdriver.LockingBuffer)
 					outputs := []io.Writer{
