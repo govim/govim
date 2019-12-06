@@ -1,6 +1,6 @@
 # Test completions for a file that does not yet exist on disk
 
-skip 'Pending resolution of https://github.com/golang/go/issues/35114'
+# skip 'Pending resolution of https://github.com/golang/go/issues/35114'
 
 vim ex 'e main.go'
 vim ex 'r main.txt | 0d_'
