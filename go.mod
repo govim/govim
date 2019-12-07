@@ -20,6 +20,6 @@ require (
 	honnef.co/go/tools v0.0.1-2019.2.3
 )
 
-replace golang.org/x/tools => github.com/myitcvforks/tools v0.0.0-20191119111301-0222b4b716c6
+replace golang.org/x/tools => github.com/myitcvforks/tools v0.0.0-20191207011554-b8ce9b8c6b5a
 
-replace golang.org/x/tools/gopls => github.com/myitcvforks/tools/gopls v0.0.0-20191119111301-0222b4b716c6
+replace golang.org/x/tools/gopls => github.com/myitcvforks/tools/gopls v0.0.0-20191207011554-b8ce9b8c6b5a
