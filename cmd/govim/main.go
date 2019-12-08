@@ -172,9 +172,24 @@ type govimplugin struct {
 
 	modWatcher *modWatcher
 
+	// diagnosticsChangedLock protects access to rawDiagnostics,
+	// diagnosticsChanged, diagnosticsChangedQuickfix and
+	// diagnosticsChangedSigns
+	diagnosticsChangedLock sync.Mutex
+
 	// rawDiagnostics holds the current raw (LSP) diagnostics by URI
-	rawDiagnostics     map[span.URI]*protocol.PublishDiagnosticsParams
-	rawDiagnosticsLock sync.Mutex
+	rawDiagnostics map[span.URI]*protocol.PublishDiagnosticsParams
+
+	// diagnosticsChanged indicates that the new diagnostics are available
+	diagnosticsChanged bool
+
+	// diagnosticsChangedQuickfix indicates that the quickfix window needs to be updated with
+	// the latest diagnostics
+	diagnosticsChangedQuickfix bool
+
+	// diagnosticsChangedSigns indicates that the quickfix window needs to be updated with
+	// the latest diagnostics
+	diagnosticsChangedSigns bool
 
 	// diagnosticsCache isn't inteded to be used directly since it might
 	// contain old data. Call diagnostics() to get the latest instead.
@@ -253,10 +268,8 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandRename), g.vimstate.rename, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandStringFn), g.vimstate.stringfns, govim.RangeLine, govim.CompleteCustomList(PluginPrefix+config.FunctionStringFnComplete), govim.NArgsOneOrMore)
 	g.DefineFunction(string(config.FunctionStringFnComplete), []string{"ArgLead", "CmdLine", "CursorPos"}, g.vimstate.stringfncomplete)
-	if g.placeSigns() {
-		if err := g.vimstate.signDefine(); err != nil {
-			return fmt.Errorf("failed to define signs: %v", err)
-		}
+	if err := g.vimstate.signDefine(); err != nil {
+		return fmt.Errorf("failed to define signs: %v", err)
 	}
 	g.DefineFunction(string(config.FunctionMotion), []string{"direction", "target"}, g.vimstate.motion)
 
@@ -413,14 +426,4 @@ func (g *govimplugin) Shutdown() error {
 		}
 	}
 	return nil
-}
-
-func (g *govimplugin) placeSigns() bool {
-	if g.Flavor() != govim.FlavorVim && g.Flavor() != govim.FlavorGvim {
-		return false
-	}
-	if os.Getenv(testsetup.EnvDisableSignPlace) == "true" {
-		return false
-	}
-	return true
 }

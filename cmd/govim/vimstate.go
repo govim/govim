@@ -50,10 +50,6 @@ type vimstate struct {
 	// calls GOVIMQuickfixDiagnostics, which sets the flag to true.
 	quickfixIsDiagnostics bool
 
-	// diagnosticsChanged indicates that the quickfix window needs to be updated with
-	// the latest diagnostics
-	diagnosticsChanged bool
-
 	// popupWinId is the id of the window currently being used for a hover-based popup
 	popupWinId int
 
@@ -83,26 +79,41 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	v.configLock.Lock()
 	v.config = vc.ToConfig(v.defaultConfig)
 	v.configLock.Unlock()
-	if !vimconfig.EqualBool(v.config.QuickfixAutoDiagnostics, preConfig.QuickfixAutoDiagnostics) ||
-		!vimconfig.EqualBool(v.config.QuickfixSigns, preConfig.QuickfixSigns) {
-		if v.config.QuickfixAutoDiagnostics != nil && !*v.config.QuickfixAutoDiagnostics {
+
+	// Remember: the boolean value fields are effectively tri-state. Because they
+	// are actually *bool.
+
+	if !vimconfig.EqualBool(v.config.QuickfixAutoDiagnostics, preConfig.QuickfixAutoDiagnostics) {
+		if v.config.QuickfixAutoDiagnostics == nil || !*v.config.QuickfixAutoDiagnostics {
+			// QuickfixAutoDiagnostics is now not on
 			v.lastQuickFixDiagnostics = []quickfixEntry{}
 			if v.quickfixIsDiagnostics {
 				v.ChannelCall("setqflist", v.lastQuickFixDiagnostics, "r")
 			}
 		} else {
-			v.rawDiagnosticsLock.Lock()
-			v.diagnosticsChanged = true
-			v.rawDiagnosticsLock.Unlock()
-			return nil, v.redefineDiagnostics()
+			// QuickfixAutoDiagnostics is now on
+			if err := v.updateQuickfix(v.diagnostics(), true); err != nil {
+				return nil, fmt.Errorf("failed to update diagnostics: %v", err)
+			}
 		}
 	}
 
-	var err error
+	if !vimconfig.EqualBool(v.config.QuickfixSigns, preConfig.QuickfixSigns) {
+		if v.config.QuickfixSigns == nil || !*v.config.QuickfixSigns {
+			// QuickfixSigns is now not on - clear all signs
+			v.ChannelCall("sign_unplace", signGroup)
+		} else {
+			// QuickfixSigns is now on
+			if err := v.updateSigns(v.diagnostics(), true); err != nil {
+				return nil, fmt.Errorf("failed to update placed signs: %v", err)
+			}
+		}
+	}
 
 	// v.server will be nil when we are Init()-ing govim. The init process
 	// triggers a "manual" call of govim#config#Set() and hence this function
 	// gets called before we have even started gopls.
+	var err error
 	if v.server != nil {
 		err = v.server.DidChangeConfiguration(context.Background(), &protocol.DidChangeConfigurationParams{})
 	}
@@ -142,10 +153,10 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	var isBusy int
 	v.Parse(args[0], &isBusy)
 	v.userBusy = isBusy != 0
-	if v.userBusy || (v.config.QuickfixAutoDiagnostics != nil && !*v.config.QuickfixAutoDiagnostics) || !v.quickfixIsDiagnostics {
+	if v.userBusy {
 		return nil, nil
 	}
-	return nil, v.redefineDiagnostics()
+	return nil, v.handleDiagnosticsChanged()
 }
 
 type batch struct {

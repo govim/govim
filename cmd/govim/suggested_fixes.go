@@ -67,7 +67,7 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 	textDoc := cb.ToTextDocumentIdentifier()
 
 	var coveredDiags []protocol.Diagnostic
-	v.rawDiagnosticsLock.Lock()
+	v.diagnosticsChangedLock.Lock()
 	if diags, ok := v.rawDiagnostics[cb.URI()]; ok {
 		for _, d := range diags.Diagnostics {
 			// TODO: should we go for "current line" as default?
@@ -77,7 +77,7 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 			}
 		}
 	}
-	v.rawDiagnosticsLock.Unlock()
+	v.diagnosticsChangedLock.Unlock()
 
 	params := &protocol.CodeActionParams{
 		TextDocument: textDoc,

@@ -36,17 +36,16 @@ type Config struct {
 	// whether auto-population of the quickfix window with gopls diagnostics is
 	// enabled or not. When enabled, govim waits for updatetime (help
 	// updatetime) before populating the quickfix window with the current gopls
-	// diagnostics. When disabled, the CommandQuickfixDiagnostics command can be
-	// used to manually trigger the population.
+	// diagnostics. When disabled, CommandQuickfixDiagnostics can be used to
+	// manually trigger the population.
 	//
 	// Default: true
 	QuickfixAutoDiagnostics *bool `json:",omitempty"`
 
 	// QuickfixSigns is a boolean (0 or 1 in VimScript) that controls whether
-	// quickfix entries should be annotated with signs in the gutter.  Signs are
-	// placed when gopls diagnostics updates the quickfix list, either
-	// automatically when QuickfixAutoDiagnostics is true, or when the user run
-	// :GOVIMQuickfixDiagnostics.
+	// diagnostic errors should be shown with signs in the gutter. When enabled,
+	// govim waits for updatetime (help updatetime) before placing signs
+	// using the current gopls diagnostics.
 	//
 	// Default: true
 	QuickfixSigns *bool `json:",omitempty"`

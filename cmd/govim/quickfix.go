@@ -16,12 +16,22 @@ type quickfixEntry struct {
 }
 
 func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string) error {
-	v.diagnosticsChanged = true
 	v.quickfixIsDiagnostics = true
-	return v.redefineDiagnostics()
+	return v.updateQuickfix(v.diagnostics(), true)
 }
 
-func (v *vimstate) updateQuickfix(diags []types.Diagnostic) error {
+func (v *vimstate) updateQuickfix(diags []types.Diagnostic, force bool) error {
+	if v.config.QuickfixAutoDiagnostics == nil || !*v.config.QuickfixAutoDiagnostics {
+		return nil
+	}
+	v.diagnosticsChangedLock.Lock()
+	work := v.diagnosticsChangedQuickfix
+	v.diagnosticsChangedQuickfix = false
+	v.diagnosticsChangedLock.Unlock()
+	if (!force && !work) || !v.quickfixIsDiagnostics {
+		return nil
+	}
+
 	// must be non-nil
 	fixes := []quickfixEntry{}
 

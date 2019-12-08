@@ -25,8 +25,7 @@ const (
 
 // user environment variables
 const (
-	EnvDisableSignPlace = "GOVIM_DISABLE_SIGNPLACE"
-	EnvLogfileTmpl      = "GOVIM_LOGFILE_TMPL"
+	EnvLogfileTmpl = "GOVIM_LOGFILE_TMPL"
 )
 
 // vim versions

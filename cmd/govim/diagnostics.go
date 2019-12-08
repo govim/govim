@@ -14,9 +14,9 @@ import (
 // and acts as a lazy conversion mechanism. The purpose is to avoid converting
 // lsp diagnostics unless they are needed by govim.
 func (v *vimstate) diagnostics() []types.Diagnostic {
-	v.rawDiagnosticsLock.Lock()
+	v.diagnosticsChangedLock.Lock()
 	if !v.diagnosticsChanged {
-		v.rawDiagnosticsLock.Unlock()
+		v.diagnosticsChangedLock.Unlock()
 		return v.diagnosticsCache
 	}
 
@@ -25,7 +25,7 @@ func (v *vimstate) diagnostics() []types.Diagnostic {
 		filediags[k] = v.Diagnostics
 	}
 	v.diagnosticsChanged = false
-	v.rawDiagnosticsLock.Unlock()
+	v.diagnosticsChangedLock.Unlock()
 
 	// must be non-nil
 	diags := []types.Diagnostic{}
@@ -84,16 +84,14 @@ func (v *vimstate) diagnostics() []types.Diagnostic {
 	return v.diagnosticsCache
 }
 
-func (v *vimstate) redefineDiagnostics() error {
+func (v *vimstate) handleDiagnosticsChanged() error {
 	diags := v.diagnostics()
-	if err := v.updateQuickfix(diags); err != nil {
+	if err := v.updateQuickfix(diags, false); err != nil {
 		return err
 	}
 
-	if v.placeSigns() {
-		if err := v.redefineSigns(diags); err != nil {
-			v.Logf("redefineDiagnostics: failed to place/remove signs: %v", err)
-		}
+	if err := v.updateSigns(diags, false); err != nil {
+		v.Logf("redefineDiagnostics: failed to place/remove signs: %v", err)
 	}
 	return nil
 }
