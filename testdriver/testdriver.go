@@ -131,8 +131,32 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		return nil, fmt.Errorf("need to add vimrc behaviour for flavour %v", flav)
 	}
 
-	if err := copyFile(dstVimrc, srcVimrc); err != nil {
-		return nil, fmt.Errorf("failed to copy %v to %v: %v", srcVimrc, dstVimrc, err)
+	// We use the minimal srcVimrc, augmented with some testdriver specific
+	// commands.
+	//
+	// Before a test script starts, the files from the txtar archive are
+	// extracted. Then govim (and gopls) are started. In some rare cases, gopls
+	// can end up calculating diagnostics before the testscript has started.
+	// Which means that it can be the case, because govim and Vim are already up
+	// and running, that the first buffer actually gets used for quickfix as
+	// opposed to, say, the first file we open.
+	//
+	// Instead below we copen then cclose in vimrc to reserve and establish a
+	// definite buffer number for the quickfix window. The quickfix buffer will
+	// always be buffer number 2 (vim creates a buffer when opening, copen then
+	// creates a new window and buffer, the original buffer created when opening
+	// vim gets used for the first file we open, say)
+	vimrcBytes, err := ioutil.ReadFile(srcVimrc)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from src vimrc %v: %v", srcVimrc, err)
+	}
+	vimrc := bytes.NewBuffer(vimrcBytes)
+	vimrc.WriteString("\n")
+	vimrc.WriteString("copen\n")
+	vimrc.WriteString("cclose\n")
+
+	if err := ioutil.WriteFile(dstVimrc, vimrc.Bytes(), 0666); err != nil {
+		return nil, fmt.Errorf("failed to write to dst vimrc %v: %v", dstVimrc, err)
 	}
 
 	res.govimListener = gl
