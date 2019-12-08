@@ -6,7 +6,7 @@ vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 1]'
 
 # Initial location population
 vim ex 'e main.go'
-errlogmatch -wait 60s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'call cursor(15,24)'
 vim ex 'GOVIMReferences'
 vim ex 'copen'
@@ -18,7 +18,7 @@ vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
 vim expr 'bufname(\"\")'
 vim ex 'call cursor(15,1)'
 vim ex 'call feedkeys(\"ofmt.Printf(\\\"%v\\\")\\<ESC>\", \"xt\")'
-errlogmatch -wait 60s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
 vim ex 'w locations'
 cmp locations locations.golden

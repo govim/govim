@@ -1,10 +1,10 @@
 # Test that signs are placed when opening a file that already has diagnostics.
 
 vim ex 'e main.go'
-errlogmatch -wait 30s -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-errlogmatch -wait 30s -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
+errlogmatch -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
 vim ex 'e other.go'
-errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[.*\{"buffer":3,"group":"govim"'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[.*\{"buffer":3,"group":"govim"'
 vim -indent expr 'sign_getplaced(\"other.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed.golden

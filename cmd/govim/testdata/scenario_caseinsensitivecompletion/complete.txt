@@ -2,7 +2,7 @@
 # already has the relevant import required for the completion.
 
 vim ex 'e main.go'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 
 # lower completed from lo
 vim ex 'call cursor(7,1)'

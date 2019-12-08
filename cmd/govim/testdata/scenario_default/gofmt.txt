@@ -7,9 +7,9 @@
 
 # :GOVIMGoFmt whole file
 vim ex 'e! file.go'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'GOVIMGoFmt'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'noautocmd w'
 cmp file.go file.go.gofmt
 
@@ -17,9 +17,9 @@ cmp file.go file.go.gofmt
 cp file.go.orig file.go
 vim call 'govim#config#Set' '["FormatOnSave", "gofmt"]'
 vim ex 'e! file.go'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex 'w'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 cmp file.go file.go.gofmt
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -28,7 +28,7 @@ cmp file.go file.go.gofmt
 # Format on save (bad syntax)
 cp file.go.bad file.go
 vim ex 'e! file.go'
-errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"file\.go","lnum":3,"col":1,"text":"expected declaration, found blah","buf":1\}\],"r"\]\]\]\]'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"file\.go","lnum":3,"col":1,"text":"expected declaration, found blah","buf":1\}\],"r"\]\]\]\]'
 vim ex 'w'
 cmp file.go file.go.bad
 vim expr 'getqflist()'
@@ -43,7 +43,7 @@ skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
 # :GOVIMGoFmt range
 cp file.go.orig file.go
 vim ex 'e! file.go'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/file.go
 vim ex '3,5GOVIMGoFmt'
 vim ex 'noautocmd w'
 cmp file.go file.go.gofmt

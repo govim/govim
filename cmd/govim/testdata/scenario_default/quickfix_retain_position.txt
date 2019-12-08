@@ -2,7 +2,7 @@
 
 # First ensure we get the expected errors
 vim ex 'e main.go'
-errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go","lnum":6,"col":2,"text":"undeclared name: asdf","buf":1\},\{"filename":"main\.go","lnum":8,"col":2,"text":"undeclared name: fdas","buf":1\}\],"r"\]\]\]\]'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go","lnum":6,"col":2,"text":"undeclared name: asdf","buf":1\},\{"filename":"main\.go","lnum":8,"col":2,"text":"undeclared name: fdas","buf":1\}\],"r"\]\]\]\]'
 vim ex 'copen'
 vim ex 'w errors'
 cmp errors errors.golden.orig
@@ -22,7 +22,7 @@ stdout '{"idx":2}'
 
 # Now add another error and check the index
 cp other.go.orig other.go
-errlogmatch -wait 30s 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist"'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist"'
 vim ex 'copen'
 vim ex 'w errors'
 cmp errors errors.golden.updated
