@@ -1,5 +1,4 @@
 {
-	"FormatOnSave": "goimports",
 	"CompletionDeepCompletions": false,
 	"CompletionFuzzyMatching": false
 }

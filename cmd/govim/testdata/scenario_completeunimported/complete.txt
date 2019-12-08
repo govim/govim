@@ -7,7 +7,7 @@ errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnostics
 vim ex 'call cursor(4,1)'
 vim normal Sfmt.Pr
 vim ex 'execute \"normal A\\<C-X>\\<C-O>\\<C-N>\\<C-N>\"'
-vim ex 'w'
+vim ex 'noau w'
 cmp main.go main.go.golden
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
