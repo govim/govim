@@ -66,6 +66,7 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 		tf := strings.TrimPrefix(filepath, "file://")
 		var bufinfo []struct {
 			BufNr   int   `json:"bufnr"`
+			Loaded  int   `json:"loaded"`
 			Windows []int `json:"windows"`
 		}
 		v.Parse(v.ChannelCall("getbufinfo", tf), &bufinfo)

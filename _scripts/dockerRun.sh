@@ -37,12 +37,44 @@ go install golang.org/x/tools/gopls
 rm -f $(git ls-files -- ':!:cmd/govim/internal/golang_org_x_tools' '**/gen_*.*' 'gen_*.*') .travis.yml
 
 go generate $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
-go test $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
+go test $(go list ./... | grep -v 'govim/internal/golang_org_x_tools') > /dev/null 2>&1 &
+bg="$!"
 
-if [ "${CI:-}" == "true" ] && [ "${TRAVIS_BRANCH:-}_${TRAVIS_PULL_REQUEST_BRANCH:-}" == "master_" ]
-then
-	go test -race $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
-fi
+GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+
+wait $bg
+
+# if [ "${CI:-}" == "true" ] && [ "${TRAVIS_BRANCH:-}_${TRAVIS_PULL_REQUEST_BRANCH:-}" == "master_" ]
+# then
+	go test -race $(go list ./... | grep -v 'govim/internal/golang_org_x_tools') &
+	bg="$!"
+
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+	GOVIM_TESTSCRIPT_STDERR=true go test -count=1 -v -run "TestScripts/scenario_default/rename" ./cmd/govim
+
+	wait $bg
+# fi
 
 go vet $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 go run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
