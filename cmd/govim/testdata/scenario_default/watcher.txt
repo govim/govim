@@ -2,14 +2,14 @@
 
 # New file in the same package
 vim ex 'e main.go'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 cp const.go.orig const.go
-errlogmatch -wait 30s '&protocol.DidOpenTextDocumentParams{\n\S+:\s+TextDocument: protocol.TextDocumentItem{URI:"file://'$WORK/const.go
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/const.go
+errlogmatch '&protocol.DidOpenTextDocumentParams{\n\S+:\s+TextDocument: protocol.TextDocumentItem{URI:"file://'$WORK/const.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/const.go
 vim ex 'call cursor(6,16)'
 vim ex 'call feedkeys(\"iConst2\\<ESC>\", \"x\")'
 vim ex 'w'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
@@ -21,13 +21,13 @@ skip 'Temporary disabled due to https://github.com/govim/govim/issues/492'
 # New package, note that this is currently handled by a separate lib in darwin
 vim ex 'call cursor(7,1)'
 vim ex 'call feedkeys(\"ifmt.Println(foo.Bar)\n\\<ESC>\",\"x\")'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 mkdir foo
 cp foo_foo.go.orig foo/foo.go
-errlogmatch -wait 30s '&protocol.DidOpenTextDocumentParams{\n\S+:\s+TextDocument: protocol.TextDocumentItem{URI:"file://'$WORK/foo/foo.go
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/foo/foo.go
+errlogmatch '&protocol.DidOpenTextDocumentParams{\n\S+:\s+TextDocument: protocol.TextDocumentItem{URI:"file://'$WORK/foo/foo.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/foo/foo.go
 vim ex 'w'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'

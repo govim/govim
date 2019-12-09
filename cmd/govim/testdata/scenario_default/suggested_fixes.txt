@@ -8,24 +8,24 @@
 # Tests basic case with a single diagnostic, no fix selected
 cp main.go.single main.go
 vim ex 'e main.go'
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
+errlogmatch 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
 
 vim ex 'call cursor(6,2)'
 vim ex 'GOVIMSuggestedFixes'
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of x to x\"'
+errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of x to x\"'
 ! stderr .+
 # Can't do vim ex 'normal .. here since the key press must reach the popup menu
 vim ex 'call feedkeys(\"\\<ESC>\", \"xt\")'
-errlogmatch -wait 30s 'recvJSONMsg: .*GOVIM_internal_PopupSelection'
+errlogmatch 'recvJSONMsg: .*GOVIM_internal_PopupSelection'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout no_popup.golden
 
 
 # Tests basic case with a single diagnostic, fix applied
 vim ex 'GOVIMSuggestedFixes'
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of x to x\"'
+errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of x to x\"'
 vim ex 'call feedkeys(\"\\<Enter>\", \"xt\")'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'w'
 cmp main.go main.go.single.golden
 
@@ -35,11 +35,11 @@ cmp main.go main.go.single.golden
 cp main.go.different_lines main.go
 vim ex 'e! main.go'
 vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
+errlogmatch 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
 
 vim ex 'call cursor(7,2)'
 vim ex 'GOVIMSuggestedFixes'
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of y to y\"'
+errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of y to y\"'
 ! stderr .+
 
 
@@ -48,25 +48,25 @@ errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{
 cp main.go.same_line main.go
 vim ex 'e! main.go'
 vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
+errlogmatch 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
 
 vim ex 'call cursor(6,2)'
 vim ex 'GOVIMSuggestedFixes'
-errlogmatch -wait 30s -peek 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of a to a \[1/4\]\"'
-errlogmatch -wait 30s -peek 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"hidden\":1.*\"title\":\"self-assignment of b to b \[2/4\]\"'
-errlogmatch -wait 30s -peek 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"hidden\":1.*\"title\":\"self-assignment of x to x \[3/4\]\"'
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"hidden\":1.*\"title\":\"self-assignment of y to y \[4/4\]\"'
+errlogmatch -peek 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of a to a \[1/4\]\"'
+errlogmatch -peek 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"hidden\":1.*\"title\":\"self-assignment of b to b \[2/4\]\"'
+errlogmatch -peek 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"hidden\":1.*\"title\":\"self-assignment of x to x \[3/4\]\"'
+errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"hidden\":1.*\"title\":\"self-assignment of y to y \[4/4\]\"'
 
 # TODO: when it's possible to get the popup title of the visible popup, we can also verify that the cycle buttons really do cycle to the next popup
 # What we can do now is to ensure that nothing breaks when we cycle popups
 
 vim ex 'call feedkeys(\"\\<c-n>\", \"xt\")'
-errlogmatch -wait 30s -peek 'sendJSONMsg: .*\"call\",\"popup_hide\"'
-errlogmatch -wait 30s  'sendJSONMsg: .*\"call\",\"popup_show\"'
+errlogmatch -peek 'sendJSONMsg: .*\"call\",\"popup_hide\"'
+errlogmatch  'sendJSONMsg: .*\"call\",\"popup_show\"'
 
 vim ex 'call feedkeys(\"\\<c-p>\", \"xt\")'
-errlogmatch -wait 30s -peek 'sendJSONMsg: .*\"call\",\"popup_hide\"'
-errlogmatch -wait 30s  'sendJSONMsg: .*\"call\",\"popup_show\"'
+errlogmatch -peek 'sendJSONMsg: .*\"call\",\"popup_hide\"'
+errlogmatch  'sendJSONMsg: .*\"call\",\"popup_show\"'
 
 vim ex 'call feedkeys(\"\\<c-p>\", \"xt\")'
 vim ex 'call feedkeys(\"\\<c-p>\", \"xt\")'
@@ -74,8 +74,8 @@ vim ex 'call feedkeys(\"\\<c-p>\", \"xt\")'
 vim ex 'call feedkeys(\"\\<c-p>\", \"xt\")'
 vim ex 'call feedkeys(\"\\<c-p>\", \"xt\")'
 
-errlogmatch -wait 30s -peek -count 5 'sendJSONMsg: .*\"call\",\"popup_hide\"'
-errlogmatch -wait 30s -count 5 'sendJSONMsg: .*\"call\",\"popup_show\"'
+errlogmatch -peek -count 5 'sendJSONMsg: .*\"call\",\"popup_hide\"'
+errlogmatch -count 5 'sendJSONMsg: .*\"call\",\"popup_show\"'
 
 # TODO: add tests of diagnostics that have multiple suggested fixes, when added to gopls
 

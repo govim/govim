@@ -2,12 +2,12 @@
 
 # Default behaviour is quickfix autodiagnostics & sign placment enabled
 vim ex 'e main.go'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
 cmp errors errors.golden
-errlogmatch -wait 30s 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
+errlogmatch 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 cmp stdout signs.golden
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -17,7 +17,7 @@ cmp stdout signs.golden
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 0]'
 vim call 'govim#config#Set' '["QuickfixSigns", 0]'
 vim call append '[10,""]'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
@@ -40,14 +40,14 @@ vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
 cmp errors errors.golden
-errlogmatch -wait 30s 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
+errlogmatch 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 cmp stdout signs.golden
 
 # Signs should be placed with quickfix autodiagnostics disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 0]'
 vim call append '[10,""]'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'

@@ -3,7 +3,7 @@
 # Verify that new imports get correctly placed
 exec go mod download
 vim ex 'e main.go'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'GOVIMGoImports'
 vim ex 'noautocmd w'
 cmp main.go main.go.golden

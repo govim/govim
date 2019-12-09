@@ -4,7 +4,7 @@
 
 vim expr 'GOVIM_internal_ShowMessagePopup()'
 
-errlogmatch -wait 10s 'ShowMessage callback: Something went wrong'
+errlogmatch 'ShowMessage callback: Something went wrong'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout popup.golden
 

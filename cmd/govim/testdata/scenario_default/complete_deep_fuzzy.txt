@@ -1,7 +1,7 @@
 # Test that deep fuzzy complete works by default.
 
 vim ex 'e main.go'
-errlogmatch -wait 30s 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'call cursor(11,1)'
 vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\\<ESC>\", \"xt\")'
 vim ex 'w'
