@@ -187,6 +187,25 @@ func (v *vimstate) deleteCurrentBuffer(args ...json.RawMessage) error {
 	return nil
 }
 
+func (v *vimstate) bufWritePost(args ...json.RawMessage) error {
+	currBufNr := v.ParseInt(args[0])
+	cb, ok := v.buffers[currBufNr]
+	if !ok {
+		return fmt.Errorf("tried to handle BufWritePost for buffer %v; but we have no record of it", currBufNr)
+	}
+	params := &protocol.DidSaveTextDocumentParams{
+		TextDocument: protocol.VersionedTextDocumentIdentifier{
+			TextDocumentIdentifier: cb.ToTextDocumentIdentifier(),
+			Version:                float64(cb.Version),
+		},
+		Text: string(cb.Contents()),
+	}
+	if err := v.server.DidSave(context.Background(), params); err != nil {
+		return fmt.Errorf("failed to call gopls.DidSave on %v: %v", cb.Name, err)
+	}
+	return nil
+}
+
 type bufferUpdate struct {
 	buffer   *types.Buffer
 	wait     chan bool
