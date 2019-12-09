@@ -21,18 +21,18 @@ env:
     - GO111MODULE=on
     - GOPROXY=https://proxy.golang.org
   matrix:
-    - GO_VERSION="go1.12.13" VIM_FLAVOR="vim" VIM_VERSION="v8.1.1711" VIM_COMMAND="vim"
-    - GO_VERSION="go1.13.4" VIM_FLAVOR="vim" VIM_VERSION="v8.1.1711" VIM_COMMAND="vim"
-    - GO_VERSION="go1.12.13" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.1711" VIM_COMMAND="xvfb-run -a gvim -f"
-    - GO_VERSION="go1.13.4" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.1711" VIM_COMMAND="xvfb-run -a gvim -f"
-    - GO_VERSION="go1.12.13" VIM_FLAVOR="vim" VIM_VERSION="v8.1.2056" VIM_COMMAND="vim"
-    - GO_VERSION="go1.13.4" VIM_FLAVOR="vim" VIM_VERSION="v8.1.2056" VIM_COMMAND="vim"
-    - GO_VERSION="go1.12.13" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.2056" VIM_COMMAND="xvfb-run -a gvim -f"
-    - GO_VERSION="go1.13.4" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.2056" VIM_COMMAND="xvfb-run -a gvim -f"
-    - GO_VERSION="go1.12.13" VIM_FLAVOR="vim" VIM_VERSION="v8.1.2253" VIM_COMMAND="vim"
-    - GO_VERSION="go1.13.4" VIM_FLAVOR="vim" VIM_VERSION="v8.1.2253" VIM_COMMAND="vim"
-    - GO_VERSION="go1.12.13" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.2253" VIM_COMMAND="xvfb-run -a gvim -f"
-    - GO_VERSION="go1.13.4" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.2253" VIM_COMMAND="xvfb-run -a gvim -f"
+    - GO_VERSION="go1.12.14" VIM_FLAVOR="vim" VIM_VERSION="v8.1.1711" VIM_COMMAND="vim"
+    - GO_VERSION="go1.13.5" VIM_FLAVOR="vim" VIM_VERSION="v8.1.1711" VIM_COMMAND="vim"
+    - GO_VERSION="go1.12.14" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.1711" VIM_COMMAND="xvfb-run -a gvim -f"
+    - GO_VERSION="go1.13.5" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.1711" VIM_COMMAND="xvfb-run -a gvim -f"
+    - GO_VERSION="go1.12.14" VIM_FLAVOR="vim" VIM_VERSION="v8.1.2056" VIM_COMMAND="vim"
+    - GO_VERSION="go1.13.5" VIM_FLAVOR="vim" VIM_VERSION="v8.1.2056" VIM_COMMAND="vim"
+    - GO_VERSION="go1.12.14" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.2056" VIM_COMMAND="xvfb-run -a gvim -f"
+    - GO_VERSION="go1.13.5" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.2056" VIM_COMMAND="xvfb-run -a gvim -f"
+    - GO_VERSION="go1.12.14" VIM_FLAVOR="vim" VIM_VERSION="v8.1.2414" VIM_COMMAND="vim"
+    - GO_VERSION="go1.13.5" VIM_FLAVOR="vim" VIM_VERSION="v8.1.2414" VIM_COMMAND="vim"
+    - GO_VERSION="go1.12.14" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.2414" VIM_COMMAND="xvfb-run -a gvim -f"
+    - GO_VERSION="go1.13.5" VIM_FLAVOR="gvim" VIM_VERSION="v8.1.2414" VIM_COMMAND="xvfb-run -a gvim -f"
 
 # Add this before_install until we have a definitive resolution on
 # https://travis-ci.community/t/files-in-checkout-have-eol-changed-from-lf-to-crlf/349/2
