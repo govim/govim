@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	stdlog "log"
 	"os"
 	"sync"
 
@@ -66,6 +67,7 @@ func (s *snapshot) PackageHandles(ctx context.Context, fh source.FileHandle) ([]
 	meta := s.getMetadataForURI(fh.Identity().URI)
 	// Determine if we need to type-check the package.
 	phs, load, check := s.shouldCheck(meta)
+	stdlog.Printf("snapshot %v PackagesHandles for %v: meta %#v, shouldCheck %#v %v %v", s.id, fh.Identity().URI, meta, phs, load, check)
 
 	// We may need to re-load package metadata.
 	// We only need to this if it has been invalidated, and is therefore unvailable.
@@ -81,6 +83,7 @@ func (s *snapshot) PackageHandles(ctx context.Context, fh source.FileHandle) ([]
 			check = check && !sameSet(missingImports(meta), newMissing)
 		}
 		meta = newMeta
+		stdlog.Printf("snapshot %v PackagesHandles for %v: loaded new meta %#v", s.id, fh.Identity().URI, meta)
 	}
 	if check {
 		var results []source.PackageHandle
@@ -542,6 +545,7 @@ func (s *snapshot) ID() uint64 {
 //
 // Note: The logic in this function is convoluted. Do not change without significant thought.
 func (v *view) invalidateContent(ctx context.Context, f source.File, kind source.FileKind, action source.FileAction) bool {
+	stdlog.Printf("invalidate %v with action %v", f.URI(), action)
 	var (
 		withoutTypes    = make(map[span.URI]struct{})
 		withoutMetadata = make(map[span.URI]struct{})

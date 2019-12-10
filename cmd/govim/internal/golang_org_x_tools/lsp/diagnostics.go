@@ -8,6 +8,8 @@ import (
 	"context"
 	"strings"
 
+	stdlog "log"
+
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
@@ -56,10 +58,11 @@ func (s *Server) diagnoseFile(snapshot source.Snapshot, uri span.URI) {
 	defer done()
 
 	ctx = telemetry.File.With(ctx, uri)
+	stdlog.Printf("generating diagnostics for %v", uri)
 
 	f, err := snapshot.View().GetFile(ctx, uri)
 	if err != nil {
-		log.Error(ctx, "diagnoseFile: no file", err)
+		stdlog.Printf("diagnoseFile: no file: %v", err)
 		return
 	}
 	reports, warningMsg, err := source.Diagnostics(ctx, snapshot, f, true, snapshot.View().Options().DisabledAnalyses)
@@ -71,11 +74,10 @@ func (s *Server) diagnoseFile(snapshot source.Snapshot, uri span.URI) {
 		})
 	}
 	if err != nil {
-		if err != context.Canceled {
-			log.Error(ctx, "diagnoseFile: could not generate diagnostics", err)
-		}
+		stdlog.Printf("diagnoseFile: could not generate diagnostics for %v: %v", uri, err)
 		return
 	}
+	stdlog.Printf("diagnoseFile: publishing diagnostics for %v: %#v", uri, reports)
 	// Publish empty diagnostics for files.
 	s.publishReports(ctx, reports, true)
 }
@@ -83,16 +85,19 @@ func (s *Server) diagnoseFile(snapshot source.Snapshot, uri span.URI) {
 func (s *Server) publishReports(ctx context.Context, reports map[source.FileIdentity][]source.Diagnostic, publishEmpty bool) {
 	// Check for context cancellation before publishing diagnostics.
 	if ctx.Err() != nil {
+		stdlog.Printf("publishReports: could not publish diagnostics %#v: %v", reports, ctx.Err())
 		return
 	}
 
 	for fileID, diagnostics := range reports {
 		// Don't deliver diagnostics if the context has already been canceled.
 		if ctx.Err() != nil {
+			stdlog.Printf("publishReports: could not publish diagnostics %#v: %v", reports, ctx.Err())
 			break
 		}
 		// Don't publish empty diagnostics unless specified.
 		if len(diagnostics) == 0 && !publishEmpty {
+			stdlog.Printf("publishReports: not publishing for %#v for %v: %v", diagnostics, fileID, publishEmpty)
 			continue
 		}
 		if err := s.client.PublishDiagnostics(ctx, &protocol.PublishDiagnosticsParams{
@@ -100,7 +105,7 @@ func (s *Server) publishReports(ctx context.Context, reports map[source.FileIden
 			URI:         protocol.NewURI(fileID.URI),
 			Version:     fileID.Version,
 		}); err != nil {
-			log.Error(ctx, "failed to deliver diagnostic", err, telemetry.File)
+			stdlog.Printf("failed to deliver diagnostics %#v: %v", reports, err)
 			continue
 		}
 	}
