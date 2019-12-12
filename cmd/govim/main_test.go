@@ -83,6 +83,7 @@ func TestScripts(t *testing.T) {
 					}
 					home := filepath.Join(e.WorkDir, ".home")
 					e.Vars = append(e.Vars,
+						"DEFAULT_ERRLOGMATCH_WAIT="+testdriver.DefaultErrLogMatchWait,
 						"TMPDIR="+tmp,
 						"GOPROXY="+proxy.URL,
 						"GONOSUMDB=*",

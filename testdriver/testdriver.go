@@ -34,6 +34,22 @@ const (
 	KeyErrLog = "errLog"
 )
 
+var (
+	DefaultErrLogMatchWait string
+)
+
+func init() {
+	v := os.Getenv("GOVIM_ERRLOGMATCH_WAIT")
+	if v == "" {
+		DefaultErrLogMatchWait = "30s"
+	} else {
+		if _, err := time.ParseDuration(v); err != nil {
+			panic(fmt.Errorf("failed to parse duration %q from GOVIM_ERRLOGMATCH_WAIT: %v", v, err))
+		}
+		DefaultErrLogMatchWait = v
+	}
+}
+
 // TODO - this code is a mess and needs to be fixed
 
 type TestDriver struct {
@@ -796,11 +812,6 @@ func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("errlogmatch %v was not the right type", KeyErrLog)
 	}
 
-	defaultWait := os.Getenv("GOVIM_ERRLOGMATCH_WAIT")
-	if defaultWait == "" {
-		defaultWait = "30s"
-	}
-
 	fs := flag.NewFlagSet("errlogmatch", flag.ContinueOnError)
 	fStart := fs.Bool("start", false, "search from beginning, not last snapshot")
 	fPeek := fs.Bool("peek", false, "do not adjust the NextSearchInx field on the errlog")
@@ -821,7 +832,7 @@ func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
 		ts.Fatalf("-wait is not compatible with negating the command")
 	}
 	if !neg && *fWait == "" {
-		fWait = &defaultWait
+		fWait = &DefaultErrLogMatchWait
 	}
 
 	switch {
