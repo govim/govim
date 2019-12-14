@@ -321,13 +321,7 @@ func (g *govimImpl) load() error {
 				return err
 			}
 			g.decodeJSON(v, &details)
-
-			l := details.VersionLong
-			maj := l / 1000000
-			min := (l / 10000) % 10
-			pat := l % 10000
-			g.version = fmt.Sprintf("v%v.%v.%v", maj, min, pat)
-
+			g.version = ParseVersionLong(details.VersionLong)
 			if details.GuiRunning == 1 {
 				g.flavor = FlavorGvim
 			} else {
@@ -974,4 +968,11 @@ type errProto struct {
 
 func (e errProto) Error() string {
 	return fmt.Sprintf("protocol error: %v", e.underlying)
+}
+
+func ParseVersionLong(l int) string {
+	maj := l / 1000000
+	min := (l / 10000) % 10
+	pat := l % 10000
+	return fmt.Sprintf("v%v.%v.%v", maj, min, pat)
 }

@@ -743,45 +743,27 @@ func Condition(cond string) (bool, error) {
 	}
 	switch f {
 	case govim.FlavorVim, govim.FlavorGvim:
-		cmd := cmd.BuildCommand("-v", "--version")
+		var allArgs []string
+		allArgs = append(allArgs, cmd...)
+		allArgs = append(allArgs, "-v", "--cmd", "echo v:versionlong | qall", "--not-a-term")
+		cmd := exec.Command(allArgs[0], allArgs[1:]...)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
-			return false, fmt.Errorf("failed to run %v: %v\n%s", strings.Join(cmd.Args, " "), err, out)
+			return false, fmt.Errorf("failed to get v:versionlong value from Vim via %v: %v\n%s", strings.Join(cmd.Args, " "), err, out)
 		}
-		version, err := parseVimVersion(out)
+		versionStr := strings.TrimSpace(stripansi.Strip(string(out)))
+		versionInt, err := strconv.Atoi(versionStr)
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("failed to convert Vim v:versionlong value %v to an integer: %v", versionStr, err)
+		}
+		version := govim.ParseVersionLong(versionInt)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse version from %v: %v", versionStr, err)
 		}
 		return semver.Compare(version, v) >= 0, nil
 	}
 
 	panic("should not reach here")
-}
-
-func parseVimVersion(b []byte) (string, error) {
-	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-	av := "v"
-	av += strings.Fields(lines[0])[4] // 5th element is the major.minor
-
-	// Depending on OS/build, the patch versions are printed on different lines
-	var patch string
-	for _, line := range lines {
-		if strings.Contains(line, ": ") {
-			patch = strings.Fields(line)[2]
-			patchI := strings.Index(patch, "-")
-			if patchI == -1 {
-				return "", fmt.Errorf("failed to parse patch version from %v", patch)
-			}
-			patch = patch[patchI+1:]
-			break
-		}
-	}
-	av += "." + patch
-	if !semver.IsValid(av) {
-		return "", fmt.Errorf("failed to calculate valid Vim version from %q; got %v", b, av)
-	}
-
-	return av, nil
 }
 
 type LockingBuffer struct {
