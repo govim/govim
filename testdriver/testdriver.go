@@ -23,7 +23,7 @@ import (
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/testsetup"
-	"github.com/kr/pty"
+	"github.com/creack/pty"
 	"github.com/rogpeppe/go-internal/semver"
 	"github.com/rogpeppe/go-internal/testscript"
 	"gopkg.in/retry.v1"

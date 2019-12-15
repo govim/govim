@@ -4,10 +4,10 @@ go 1.12
 
 require (
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d
+	github.com/creack/pty v1.1.9
 	github.com/fsnotify/fsevents v0.1.1
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/kr/pretty v0.1.0
-	github.com/kr/pty v1.1.5
 	github.com/myitcv/vbash v0.0.4
 	github.com/rogpeppe/go-internal v1.3.2
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58

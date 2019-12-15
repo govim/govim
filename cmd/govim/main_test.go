@@ -21,7 +21,7 @@ import (
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/testdriver"
 	"github.com/govim/govim/testsetup"
-	"github.com/kr/pty"
+	"github.com/creack/pty"
 	"github.com/rogpeppe/go-internal/goproxytest"
 	"github.com/rogpeppe/go-internal/testscript"
 )
