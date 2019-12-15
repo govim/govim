@@ -48,12 +48,12 @@ func (v *vimstate) diagnostics() []types.Diagnostic {
 			buf = types.NewBuffer(-1, fn, byts, false)
 		}
 		for _, d := range lspDiags {
-			s, err := types.PointFromPosition(buf, d.Range.Start)
+			s, err := types.VisualPointFromPosition(buf, d.Range.Start)
 			if err != nil {
 				v.Logf("redefineDiagnostics: failed to resolve start position: %v", err)
 				continue
 			}
-			e, err := types.PointFromPosition(buf, d.Range.End)
+			e, err := types.VisualPointFromPosition(buf, d.Range.End)
 			if err != nil {
 				v.Logf("redefineDiagnostics: failed to resolve end position: %v", err)
 				continue

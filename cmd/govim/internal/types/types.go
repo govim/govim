@@ -178,6 +178,25 @@ func PointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 	return res, nil
 }
 
+func VisualPointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
+	p, err := PointFromPosition(b, pos)
+	if err != nil {
+		return p, err
+	}
+	c := b.Contents()
+	l := len(c)
+	if p.Offset() == l && l > 0 && c[l-1] == '\n' {
+		cc := b.tokenConvertor()
+		var newLine, newCol int
+		newLine, newCol, err = cc.ToPosition(l - 1)
+		if err != nil {
+			return p, err
+		}
+		p, err = PointFromVim(b, newLine, newCol)
+	}
+	return p, err
+}
+
 // Line refers to the 1-indexed line in the buffer. This is how Vim refers to
 // line numbers.
 func (p Point) Line() int {
