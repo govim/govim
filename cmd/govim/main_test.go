@@ -27,7 +27,8 @@ import (
 )
 
 var (
-	fDebugLog = flag.Bool("debugLog", false, "whether to log debugging info from vim, govim and the test shim")
+	fDebugLog  = flag.Bool("debugLog", false, "Whether to log debugging info from vim, govim and the test shim")
+	fGoplsPath = flag.String("gopls", "", "Path to the gopls binary for use in scenario tests. If unset, gopls is built from a tagged version.")
 )
 
 func init() {
@@ -45,12 +46,16 @@ func TestScripts(t *testing.T) {
 	var waitLock sync.Mutex
 	var waitList []func() error
 
-	td, err := installGoplsToTempDir()
-	if err != nil {
-		t.Fatalf("failed to install gopls to temp directory: %v", err)
+	goplsPath := *fGoplsPath
+	if goplsPath == "" {
+		td, err := installGoplsToTempDir()
+		if err != nil {
+			t.Fatalf("failed to install gopls to temp directory: %v", err)
+		}
+		defer os.RemoveAll(td)
+		goplsPath = filepath.Join(td, "gopls")
 	}
-	defer os.RemoveAll(td)
-	goplspath := filepath.Join(td, "gopls")
+	t.Logf("using gopls at %q", goplsPath)
 	govimPath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
 
 	proxy, err := goproxytest.NewServer("testdata/mod", "")
@@ -122,7 +127,7 @@ func TestScripts(t *testing.T) {
 						t.Fatalf("failed to read user from %v: %v", userPath, err)
 					}
 
-					d := newplugin(string(goplspath), e.Vars, defaults, user)
+					d := newplugin(string(goplsPath), e.Vars, defaults, user)
 
 					config := &testdriver.Config{
 						Name:           filepath.Base(e.WorkDir),
