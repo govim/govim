@@ -26,6 +26,10 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
+const (
+	EnvInstallScripts = "GOVIM_RUN_INSTALL_TESTSCRIPTS"
+)
+
 var (
 	fDebugLog  = flag.Bool("debugLog", false, "Whether to log debugging info from vim, govim and the test shim")
 	fGoplsPath = flag.String("gopls", "", "Path to the gopls binary for use in scenario tests. If unset, gopls is built from a tagged version.")
@@ -199,8 +203,8 @@ func TestScripts(t *testing.T) {
 }
 
 func TestInstallScripts(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Install scripts are long-running")
+	if os.Getenv(EnvInstallScripts) != "true" {
+		t.Skipf("Skipping install scripts; %v != true", EnvInstallScripts)
 	}
 
 	govimPath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
