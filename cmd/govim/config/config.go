@@ -80,6 +80,13 @@ type Config struct {
 	// comma-separated list
 	GoImportsLocalPrefix *string `json:",omitempty"`
 
+	// CompletionBudget is the soft latency string-format time.Duration goal for
+	// gopls completion requests. Most requests finish in a couple milliseconds,
+	// but in some cases deep completions can take much longer. As we use up our
+	// budget we dynamically reduce the search scope to ensure we return timely
+	// results. Zero seconds means unlimited. Examples values: "0s", "100ms"
+	CompletionBudget *string `json:",omitempty"`
+
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
 	// over an identifier. It corresponds to the second argument to popup_create

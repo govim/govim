@@ -22,7 +22,7 @@ stdout '{"idx":2}'
 
 # Now add another error and check the index
 cp other.go.orig other.go
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist"'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist".*"filename":"other\.go"'
 vim ex 'copen'
 vim ex 'w errors'
 cmp errors errors.golden.updated

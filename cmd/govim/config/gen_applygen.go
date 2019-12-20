@@ -28,6 +28,9 @@ func (r *Config) Apply(v *Config) {
 	if v.GoImportsLocalPrefix != nil {
 		r.GoImportsLocalPrefix = v.GoImportsLocalPrefix
 	}
+	if v.CompletionBudget != nil {
+		r.CompletionBudget = v.CompletionBudget
+	}
 	if v.ExperimentalMouseTriggeredHoverPopupOptions != nil {
 		r.ExperimentalMouseTriggeredHoverPopupOptions = v.ExperimentalMouseTriggeredHoverPopupOptions
 	}

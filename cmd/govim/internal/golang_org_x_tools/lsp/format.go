@@ -18,9 +18,21 @@ func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormat
 	if err != nil {
 		return nil, err
 	}
-	f, err := view.GetFile(ctx, uri)
+	snapshot := view.Snapshot()
+	fh, err := snapshot.GetFile(ctx, uri)
 	if err != nil {
 		return nil, err
 	}
-	return source.Format(ctx, view, f)
+	var edits []protocol.TextEdit
+	switch fh.Identity().Kind {
+	case source.Go:
+		edits, err = source.Format(ctx, snapshot, fh)
+	case source.Mod:
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return edits, nil
 }

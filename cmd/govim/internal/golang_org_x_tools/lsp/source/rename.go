@@ -7,6 +7,7 @@ package source
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"go/ast"
 	"go/format"
 	"go/token"
@@ -54,7 +55,16 @@ func (i *IdentifierInfo) PrepareRename(ctx context.Context) (*PrepareItem, error
 		if err != nil {
 			return nil, err
 		}
-		i = ident
+		rng, err := ident.mappedRange.Range()
+		if err != nil {
+			return nil, err
+		}
+		// We're not really renaming the import path.
+		rng.End = rng.Start
+		return &PrepareItem{
+			Range: rng,
+			Text:  ident.Name,
+		}, nil
 	}
 
 	// Do not rename builtin identifiers.
@@ -98,7 +108,7 @@ func (i *IdentifierInfo) Rename(ctx context.Context, newName string) (map[span.U
 		return nil, errors.Errorf("cannot rename builtin %q", i.Name)
 	}
 	if i.pkg == nil || i.pkg.IsIllTyped() {
-		return nil, errors.Errorf("package for %s is ill typed", i.File.File().Identity().URI)
+		return nil, errors.Errorf("package for %s is ill typed", i.URI())
 	}
 	// Do not rename identifiers declared in another package.
 	if i.pkg.GetTypes() != i.Declaration.obj.Pkg() {
@@ -109,6 +119,9 @@ func (i *IdentifierInfo) Rename(ctx context.Context, newName string) (map[span.U
 	if err != nil {
 		return nil, err
 	}
+
+	// Make sure to add the declaration of the identifier.
+	refs = append(refs, i.DeclarationReferenceInfo())
 
 	r := renamer{
 		ctx:          ctx,
@@ -142,11 +155,10 @@ func (i *IdentifierInfo) Rename(ctx context.Context, newName string) (map[span.U
 	for uri, edits := range changes {
 		// These edits should really be associated with FileHandles for maximal correctness.
 		// For now, this is good enough.
-		f, err := i.Snapshot.View().GetFile(ctx, uri)
+		fh, err := i.Snapshot.GetFile(ctx, uri)
 		if err != nil {
 			return nil, err
 		}
-		fh := i.Snapshot.Handle(ctx, f)
 		data, _, err := fh.Read(ctx)
 		if err != nil {
 			return nil, err
@@ -168,12 +180,12 @@ func (i *IdentifierInfo) Rename(ctx context.Context, newName string) (map[span.U
 	return result, nil
 }
 
-// getPkgName gets the pkg name associated with an identifer representing
+// getPkgName gets the pkg name associated with an identifier representing
 // the import path in an import spec.
 func (i *IdentifierInfo) getPkgName(ctx context.Context) (*IdentifierInfo, error) {
 	ph, err := i.pkg.File(i.URI())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("finding file for identifier %v: %v", i.Name, err)
 	}
 	file, _, _, err := ph.Cached()
 	if err != nil {
@@ -209,25 +221,22 @@ func (i *IdentifierInfo) getPkgName(ctx context.Context) (*IdentifierInfo, error
 // pkgName must be in the same package and file as ident.
 func getPkgNameIdentifier(ctx context.Context, ident *IdentifierInfo, pkgName *types.PkgName) (*IdentifierInfo, error) {
 	decl := Declaration{
-		obj:         pkgName,
-		wasImplicit: true,
+		obj: pkgName,
 	}
 	var err error
-	if decl.mappedRange, err = objToMappedRange(ctx, ident.Snapshot.View(), ident.pkg, decl.obj); err != nil {
+	if decl.mappedRange, err = objToMappedRange(ident.Snapshot.View(), ident.pkg, decl.obj); err != nil {
 		return nil, err
 	}
-	if decl.node, err = objToNode(ctx, ident.Snapshot.View(), ident.pkg, decl.obj); err != nil {
+	if decl.node, err = objToNode(ident.Snapshot.View(), ident.pkg, decl.obj); err != nil {
 		return nil, err
 	}
 	return &IdentifierInfo{
-		Snapshot:         ident.Snapshot,
-		Name:             pkgName.Name(),
-		mappedRange:      decl.mappedRange,
-		File:             ident.File,
-		Declaration:      decl,
-		pkg:              ident.pkg,
-		wasEmbeddedField: false,
-		qf:               ident.qf,
+		Snapshot:    ident.Snapshot,
+		Name:        pkgName.Name(),
+		mappedRange: decl.mappedRange,
+		Declaration: decl,
+		pkg:         ident.pkg,
+		qf:          ident.qf,
 	}, nil
 }
 

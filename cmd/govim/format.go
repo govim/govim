@@ -89,10 +89,9 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			v.Logf("gopls.CodeAction returned an error; nothing to do")
 			return nil
 		}
-
+		var organizeImports []protocol.CodeAction
 		// We might get other kinds in the response, like QuickFix for example.
 		// They will be handled via issue #510 (add/enable support for suggested fixes)
-		var organizeImports []protocol.CodeAction
 		for _, action := range actions {
 			if action.Kind == protocol.SourceOrganizeImports {
 				organizeImports = append(organizeImports, action)

@@ -16,6 +16,7 @@ type VimConfig struct {
 	CompletionCaseSensitive                      *int
 	CompleteUnimported                           *int
 	GoImportsLocalPrefix                         *string
+	CompletionBudget                             *string
 	ExperimentalMouseTriggeredHoverPopupOptions  *map[string]interface{}
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
 }
@@ -31,6 +32,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		CompletionCaseSensitive:                      boolVal(c.CompletionCaseSensitive, d.CompletionCaseSensitive),
 		CompleteUnimported:                           boolVal(c.CompleteUnimported, d.CompleteUnimported),
 		GoImportsLocalPrefix:                         stringVal(c.GoImportsLocalPrefix, d.GoImportsLocalPrefix),
+		CompletionBudget:                             stringVal(c.CompletionBudget, d.CompletionBudget),
 		ExperimentalMouseTriggeredHoverPopupOptions:  copyMap(c.ExperimentalMouseTriggeredHoverPopupOptions, d.ExperimentalMouseTriggeredHoverPopupOptions),
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),
 	}

@@ -18,6 +18,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
@@ -33,8 +34,8 @@ type Serve struct {
 	Mode    string `flag:"mode" help:"no effect"`
 	Port    int    `flag:"port" help:"port on which to run gopls for debugging purposes"`
 	Address string `flag:"listen" help:"address on which to listen for remote connections"`
-	Trace   bool   `flag:"rpc.trace" help:"Print the full rpc trace in lsp inspector format"`
-	Debug   string `flag:"debug" help:"Serve debug information on the supplied address"`
+	Trace   bool   `flag:"rpc.trace" help:"print the full rpc trace in lsp inspector format"`
+	Debug   string `flag:"debug" help:"serve debug information on the supplied address"`
 
 	app *Application
 }
@@ -87,16 +88,16 @@ func (s *Serve) Run(ctx context.Context, args ...string) error {
 	}
 	run := func(ctx context.Context, srv *lsp.Server) { go prepare(ctx, srv).Run(ctx) }
 	if s.Address != "" {
-		return lsp.RunServerOnAddress(ctx, s.app.cache, s.Address, run)
+		return lsp.RunServerOnAddress(ctx, cache.New(s.app.options), s.Address, run)
 	}
 	if s.Port != 0 {
-		return lsp.RunServerOnPort(ctx, s.app.cache, s.Port, run)
+		return lsp.RunServerOnPort(ctx, cache.New(s.app.options), s.Port, run)
 	}
 	stream := jsonrpc2.NewHeaderStream(os.Stdin, os.Stdout)
 	if s.Trace {
 		stream = protocol.LoggingStream(stream, out)
 	}
-	ctx, srv := lsp.NewServer(ctx, s.app.cache, stream)
+	ctx, srv := lsp.NewServer(ctx, cache.New(s.app.options), stream)
 	return prepare(ctx, srv).Run(ctx)
 }
 
