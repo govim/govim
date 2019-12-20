@@ -1,7 +1,7 @@
 # Test that GoImportsLocalPrefix works for new imports
 
 # Verify that new imports get correctly placed
-exec go mod download
+go mod download
 vim ex 'e main.go'
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'call cursor(10,1)'
