@@ -36,6 +36,9 @@ go install golang.org/x/tools/gopls
 # remove all generated files to ensure we are never stale
 rm -f $(git ls-files -- ':!:cmd/govim/internal/golang_org_x_tools' '**/gen_*.*' 'gen_*.*') .travis.yml
 
+# run the install scripts
+export GOVIM_RUN_INSTALL_TESTSCRIPTS=true
+
 go generate $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 go test $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 
