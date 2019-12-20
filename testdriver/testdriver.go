@@ -121,7 +121,7 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create listener for govim: %v", err)
 	}
-	dl, err := net.Listen("tcp4", ":0")
+	dl, err := net.Listen("tcp4", "localhost:0")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create listener for driver: %v", err)
 	}
