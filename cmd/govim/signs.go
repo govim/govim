@@ -27,13 +27,40 @@ type defineDict struct {
 
 // signDefine defines the sign types (sign names) and must be called once before placing any signs
 func (v *vimstate) signDefine() error {
-	for _, hi := range []config.Highlight{config.HighlightSignErr, config.HighlightSignWarn, config.HighlightSignInfo, config.HighlightSignHint} {
+	signnames := []config.Highlight{
+		config.HighlightSignErr,
+		config.HighlightSignWarn,
+		config.HighlightSignInfo,
+		config.HighlightSignHint,
+	}
+	var useDefault []config.Highlight
+
+	// The user might have defined a sign name already in their vimrc, and govim should respect
+	// that and not override it.
+	v.BatchStart()
+	for _, hi := range signnames {
+		v.BatchChannelCall("sign_getdefined", string(hi))
+	}
+	for i, res := range v.BatchEnd() {
+		var d []defineDict
+		v.Parse(res, &d)
+		if len(d) == 0 {
+			useDefault = append(useDefault, signnames[i])
+		}
+	}
+
+	// Define default sign names
+	v.BatchStart()
+	for _, hi := range useDefault {
 		arg := defineDict{
 			Text:          ">>",
 			TextHighlight: string(hi),
 		}
 
-		if v.ParseInt(v.ChannelCall("sign_define", hi, arg)) != 0 {
+		v.BatchChannelCall("sign_define", hi, arg)
+	}
+	for _, res := range v.BatchEnd() {
+		if v.ParseInt(res) != 0 {
 			return fmt.Errorf("sign_define failed")
 		}
 	}
