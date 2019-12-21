@@ -136,10 +136,10 @@ func writeMaxVersions() {
 		return semver.Compare(lhs, rhs) < 0
 	})
 	sort.Slice(vimVersions, func(i, j int) bool {
-		return semver.Compare(vimVersions[i], vimVersions[j]) < 0
+		return vimSemverCompare(vimVersions[i], vimVersions[j]) < 0
 	})
 	sort.Slice(gvimVersions, func(i, j int) bool {
-		return semver.Compare(gvimVersions[i], gvimVersions[j]) < 0
+		return vimSemverCompare(gvimVersions[i], gvimVersions[j]) < 0
 	})
 	sort.Slice(neovimVersions, func(i, j int) bool {
 		return semver.Compare(neovimVersions[i], neovimVersions[j]) < 0
@@ -162,6 +162,22 @@ func writeMaxVersions() {
 	}
 	vs.ValidFlavors = strings.Join(flavStrings, " ")
 	writeFileFromTmpl(filepath.Join("_scripts", "gen_maxVersions_genconfig.bash"), maxVersions, vs)
+}
+
+// vimSemverCompare compares two Vim versions. Vim incorrectly puts leading
+// zeroes on its versions, which means they are not semver.
+func vimSemverCompare(i, j string) int {
+	nonvi := i[1:]
+	nonvj := j[1:]
+	lhs := strings.Split(nonvi, ".")
+	rhs := strings.Split(nonvj, ".")
+	for i := 0; i < 3; i++ {
+		lhs[i] = strings.TrimLeft(lhs[i], "0")
+		rhs[i] = strings.TrimLeft(rhs[i], "0")
+	}
+	lhsv := fmt.Sprintf("v%v", strings.Join(lhs, "."))
+	rhsv := fmt.Sprintf("v%v", strings.Join(rhs, "."))
+	return semver.Compare(lhsv, rhsv)
 }
 
 // writeTravisYml assumes and writes a simple MxN matrix of Go versions and Vim versions
