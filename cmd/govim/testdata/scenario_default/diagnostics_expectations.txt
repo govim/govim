@@ -1,0 +1,19 @@
+# Test to verify expectations on the what expectations are sent when
+# by gopls
+
+# Starting with an error in main.go we should receive one diagnostics notification
+vim ex 'e main.go'
+sleep $DEFAULT_ERRLOGMATCH_WAIT
+errlogmatch -start -count 1 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+blah
+
+func main() {
+}
+
