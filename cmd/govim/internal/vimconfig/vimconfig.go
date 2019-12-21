@@ -10,6 +10,7 @@ type VimConfig struct {
 	FormatOnSave                                 *config.FormatOnSave
 	QuickfixAutoDiagnostics                      *int
 	QuickfixSigns                                *int
+	HighlightDiagnostics                         *int
 	CompletionDeepCompletions                    *int
 	CompletionFuzzyMatching                      *int
 	Staticcheck                                  *int
@@ -26,6 +27,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		FormatOnSave:                                 c.FormatOnSave,
 		QuickfixSigns:                                boolVal(c.QuickfixSigns, d.QuickfixSigns),
 		QuickfixAutoDiagnostics:                      boolVal(c.QuickfixAutoDiagnostics, d.QuickfixAutoDiagnostics),
+		HighlightDiagnostics:                         boolVal(c.HighlightDiagnostics, d.HighlightDiagnostics),
 		CompletionDeepCompletions:                    boolVal(c.CompletionDeepCompletions, d.CompletionDeepCompletions),
 		CompletionFuzzyMatching:                      boolVal(c.CompletionFuzzyMatching, d.CompletionFuzzyMatching),
 		Staticcheck:                                  boolVal(c.Staticcheck, d.Staticcheck),

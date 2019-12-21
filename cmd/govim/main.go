@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -212,6 +213,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			QuickfixAutoDiagnostics: vimconfig.BoolVal(true),
 			QuickfixSigns:           vimconfig.BoolVal(true),
 			Staticcheck:             vimconfig.BoolVal(false),
+			HighlightDiagnostics:    vimconfig.BoolVal(true),
 		}
 	}
 	// Overlay the initial user values on the defaults
@@ -269,8 +271,12 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandRename), g.vimstate.rename, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandStringFn), g.vimstate.stringfns, govim.RangeLine, govim.CompleteCustomList(PluginPrefix+config.FunctionStringFnComplete), govim.NArgsOneOrMore)
 	g.DefineFunction(string(config.FunctionStringFnComplete), []string{"ArgLead", "CmdLine", "CursorPos"}, g.vimstate.stringfncomplete)
+	g.defineHighlights()
 	if err := g.vimstate.signDefine(); err != nil {
 		return fmt.Errorf("failed to define signs: %v", err)
+	}
+	if err := g.vimstate.textpropDefine(); err != nil {
+		return fmt.Errorf("failed to defined text property types: %v", err)
 	}
 	g.DefineFunction(string(config.FunctionMotion), []string{"direction", "target"}, g.vimstate.motion)
 
@@ -427,4 +433,26 @@ func (g *govimplugin) Shutdown() error {
 		}
 	}
 	return nil
+}
+
+func (g *govimplugin) defineHighlights() {
+	warnColor := 166 // Orange
+	if vimColors, err := strconv.Atoi(g.ParseString(g.ChannelExpr(`&t_Co`))); err != nil || vimColors < 256 {
+		warnColor = 3 // Yellow, fallback when the terminal doesn't support at least 256 colors
+	}
+	g.vimstate.BatchStart()
+	for _, hi := range []string{
+		fmt.Sprintf("highlight default %s term=underline cterm=underline gui=undercurl ctermfg=1 guisp=Red", config.HighlightErr),
+		fmt.Sprintf("highlight default %s term=underline cterm=underline gui=undercurl ctermfg=%d guisp=Orange", config.HighlightWarn, warnColor),
+		fmt.Sprintf("highlight default %s term=underline cterm=underline gui=undercurl ctermfg=6 guisp=Cyan", config.HighlightInfo),
+		fmt.Sprintf("highlight default link %s %s", config.HighlightHint, config.HighlightInfo),
+
+		fmt.Sprintf("highlight default link %s ErrorMsg", config.HighlightSignErr),
+		fmt.Sprintf("highlight default %s ctermfg=15 ctermbg=%d guisp=Orange guifg=Orange", config.HighlightSignWarn, warnColor),
+		fmt.Sprintf("highlight default %s ctermfg=15 ctermbg=6 guisp=Cyan guifg=Cyan", config.HighlightSignInfo),
+		fmt.Sprintf("highlight default link %s %s", config.HighlightSignHint, config.HighlightSignInfo),
+	} {
+		g.vimstate.BatchChannelCall("execute", hi)
+	}
+	g.vimstate.BatchEnd()
 }

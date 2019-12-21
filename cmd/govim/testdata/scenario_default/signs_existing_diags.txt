@@ -39,7 +39,7 @@ func foo() {
         "group": "govim",
         "id": 1,
         "lnum": 6,
-        "name": "govimWarnSign",
+        "name": "GOVIMSignWarn",
         "priority": 12
       }
     ]

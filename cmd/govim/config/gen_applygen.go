@@ -10,6 +10,9 @@ func (r *Config) Apply(v *Config) {
 	if v.QuickfixSigns != nil {
 		r.QuickfixSigns = v.QuickfixSigns
 	}
+	if v.HighlightDiagnostics != nil {
+		r.HighlightDiagnostics = v.HighlightDiagnostics
+	}
 	if v.CompletionDeepCompletions != nil {
 		r.CompletionDeepCompletions = v.CompletionDeepCompletions
 	}

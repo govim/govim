@@ -110,6 +110,17 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 		}
 	}
 
+	if !vimconfig.EqualBool(v.config.HighlightDiagnostics, preConfig.HighlightDiagnostics) {
+		if v.config.HighlightDiagnostics == nil || !*v.config.HighlightDiagnostics {
+			// HighlightDiagnostics is now not on - remove existing text properties
+			v.redefineHighlights([]types.Diagnostic{})
+		} else {
+			if err := v.redefineHighlights(v.diagnostics()); err != nil {
+				return nil, fmt.Errorf("failed to update diagnostic highlights: %v", err)
+			}
+		}
+	}
+
 	// v.server will be nil when we are Init()-ing govim. The init process
 	// triggers a "manual" call of govim#config#Set() and hence this function
 	// gets called before we have even started gopls.

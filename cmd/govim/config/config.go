@@ -50,6 +50,14 @@ type Config struct {
 	// Default: true
 	QuickfixSigns *bool `json:",omitempty"`
 
+	// HighlightDiagnostics enables in-code highlighting of diagnostics using
+	// text properties. Each diagnostic reported by gopls will be highlighted
+	// according to it's severity, using the following vim defined highlight
+	// groups: GOVIMErr, GOVIMWarn, GOVIMInfo & GOVIMHint.
+	//
+	// Default: true
+	HighlightDiagnostics *bool `json:",omitempty"`
+
 	// CompletionDeepCompletiions enables gopls' deep completion option
 	// in the derivation of completion candidates.
 	//
@@ -240,4 +248,30 @@ const (
 	// FormatOnSaveGoImports specifies that gopls should run a goimports-based
 	// formatting on a .go file before as it is saved.
 	FormatOnSaveGoImports FormatOnSave = "goimports"
+)
+
+// Highlight typed constants define the different highlight groups used by govim.
+// All highlights can be overridden in vimrc, e.g.:
+//
+// highlight GOVIMErr ctermfg=16 ctermbg=4
+type Highlight string
+
+const (
+	// HighlightErr is the group used to add text properties to errors
+	HighlightErr Highlight = "GOVIMErr"
+	// HighlightWarn is the group used to add text properties to warnings
+	HighlightWarn Highlight = "GOVIMWarn"
+	// HighlightInfo is the group used to add text properties to informations
+	HighlightInfo Highlight = "GOVIMInfo"
+	// HighlightHints is the group used to add text properties to hints
+	HighlightHint Highlight = "GOVIMHint"
+
+	// HighlightSignErr is the group used to add error signs in the gutter
+	HighlightSignErr Highlight = "GOVIMSignErr"
+	// HighlightSignWarn is the group used to add warning signs in the gutter
+	HighlightSignWarn Highlight = "GOVIMSignWarn"
+	// HighlightSignInfo is the group used to add info signs in the gutter
+	HighlightSignInfo Highlight = "GOVIMSignInfo"
+	// HighlightSignHint is the group used to add hint signs in the gutter
+	HighlightSignHint Highlight = "GOVIMSignHint"
 )

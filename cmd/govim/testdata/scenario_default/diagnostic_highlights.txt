@@ -1,0 +1,199 @@
+# Tests text property highlights of diagnostics. The test contains two files, main.go with errors and other.go with a warning.
+#
+# Since vim removes text properties when a buffer is unloaded, we also test that text properties are added back when the buffer
+# is loaded again.
+#
+# TODO: Add tests of hint & info severity when gopls reports diagnostics with other severities than error and warning.
+# TODO: Rewrite property listing when vim implements prop_find().
+
+# Errors are placed with ranges matching the diagnostic
+vim ex 'e main.go'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","prop_remove",\{"id":0,"bufnr":\d,"all":1\}\],\["call","s:mustNothing","prop_add"'
+# prop_find() isn't implemented in vim (as of 8.1.2389) so call prop_list on each line.
+vim -indent expr 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+cmp stdout main_go_errors.golden
+
+
+# Removing the two empty funcs, should remove those errors.
+vim ex 'call cursor(9,1)'
+vim ex 'normal 2dd'
+vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","prop_remove",\{"id":0,"bufnr":\d,"all":1\}\],\["call","s:mustNothing","prop_add"'
+vim -indent expr 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+cmp stdout main_go_errors2.golden
+
+
+# Adding declaration of i and v should remove the last errors and instead add warnings for main.go (since other.go isn't loaded)
+vim call append '[5, "\tvar i, v string"]'
+vim ex 'w'
+errlogmatch -count 2 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","prop_remove",\{"id":0,"bufnr":\d,"all":1\}\],\["call","s:mustNothing","prop_add"'
+vim -indent expr 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+cmp stdout main_go_warning.golden
+
+
+# Switching to a new buffer (other.go) should add warnings in that buffer
+vim ex 'split other.go'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","prop_remove",\{"id":0,"bufnr":\d,"all":1\}\],\["call","s:mustNothing","prop_remove",\{"id":0,"bufnr":\d,"all":1\}\],\["call","s:mustNothing","prop_add"'
+vim -indent expr 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+cmp stdout other_go_warning.golden
+
+
+# Closing the split shouldn't remove warnings in main.go
+vim ex 'bwipe'
+vim -indent expr 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+cmp stdout main_go_warning.golden
+
+
+# Open without split should also add warnings in the new buffer
+vim ex 'e other.go'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","prop_remove",\{"id":0,"bufnr":\d,"all":1\}\],\["call","s:mustNothing","prop_add"'
+vim -indent expr 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+cmp stdout other_go_warning.golden
+
+
+# Closing the other.go buffer shouldn't remove warnings in main.go
+vim ex 'bwipe'
+vim -indent expr 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+cmp stdout main_go_warning.golden
+
+
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("This is a test %v\n", i, v)
+}
+
+func f1() string {}
+func f2() string {}
+-- other.go --
+package main
+
+import "fmt"
+
+func foo() {
+    fmt.Println("%v")
+}
+-- main_go_errors.golden --
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 36,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr"
+    },
+    {
+      "col": 39,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr"
+    }
+  ],
+  [],
+  [],
+  [
+    {
+      "col": 19,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr"
+    }
+  ],
+  [
+    {
+      "col": 19,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr"
+    }
+  ]
+]
+-- main_go_errors2.golden --
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 36,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr"
+    },
+    {
+      "col": 39,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr"
+    }
+  ],
+  [],
+  []
+]
+-- main_go_warning.golden --
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 0,
+      "length": 39,
+      "start": 1,
+      "type": "GOVIMWarn"
+    }
+  ],
+  []
+]
+-- other_go_warning.golden --
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 5,
+      "end": 1,
+      "id": 0,
+      "length": 17,
+      "start": 1,
+      "type": "GOVIMWarn"
+    }
+  ],
+  []
+]

@@ -83,24 +83,24 @@ func f2() string {}
 -- defined.golden --
 [
   {
-    "name": "govimErrSign",
+    "name": "GOVIMSignErr",
     "text": "\u003e\u003e",
-    "texthl": "govimErr"
+    "texthl": "GOVIMSignErr"
   },
   {
-    "name": "govimWarnSign",
+    "name": "GOVIMSignWarn",
     "text": "\u003e\u003e",
-    "texthl": "govimWarn"
+    "texthl": "GOVIMSignWarn"
   },
   {
-    "name": "govimInfoSign",
+    "name": "GOVIMSignInfo",
     "text": "\u003e\u003e",
-    "texthl": "govimInfo"
+    "texthl": "GOVIMSignInfo"
   },
   {
-    "name": "govimHintSign",
+    "name": "GOVIMSignHint",
     "text": "\u003e\u003e",
-    "texthl": "govimHint"
+    "texthl": "GOVIMSignHint"
   }
 ]
 -- placed_openfile1.golden --
@@ -112,28 +112,28 @@ func f2() string {}
         "group": "govim",
         "id": 2,
         "lnum": 6,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       },
       {
         "group": "govim",
         "id": 1,
         "lnum": 6,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       },
       {
         "group": "govim",
         "id": 3,
         "lnum": 9,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       },
       {
         "group": "govim",
         "id": 4,
         "lnum": 10,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       }
     ]
@@ -148,21 +148,21 @@ func f2() string {}
         "group": "govim",
         "id": 1,
         "lnum": 6,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       },
       {
         "group": "govim",
         "id": 2,
         "lnum": 9,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       },
       {
         "group": "govim",
         "id": 3,
         "lnum": 10,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       }
     ]
@@ -177,7 +177,7 @@ func f2() string {}
         "group": "govim",
         "id": 1,
         "lnum": 6,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       }
     ]
@@ -199,14 +199,14 @@ func f2() string {}
         "group": "govim",
         "id": 2,
         "lnum": 7,
-        "name": "govimWarnSign",
+        "name": "GOVIMSignWarn",
         "priority": 12
       },
       {
         "group": "govim",
         "id": 1,
         "lnum": 7,
-        "name": "govimWarnSign",
+        "name": "GOVIMSignWarn",
         "priority": 12
       }
     ]

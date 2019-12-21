@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"math"
 
+	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
@@ -258,10 +259,19 @@ const (
 	SeverityHint = Severity(protocol.SeverityHint)
 )
 
-// Highlight names as defined by ftplugin/go.vim.
-const (
-	HighlightErr  string = "govimErr"
-	HighlightWarn string = "govimWarn"
-	HighlightInfo string = "govimInfo"
-	HighlightHint string = "govimHint"
-)
+// SeverityPriority is used when placing signs and text property highlights.
+// Values are based on the default value for signs, 10.
+var SeverityPriority = map[Severity]int{
+	SeverityErr:  14,
+	SeverityWarn: 12,
+	SeverityInfo: 10,
+	SeverityHint: 8,
+}
+
+// Highlight returns corresponding highlight name for a severity.
+var SeverityHighlight = map[Severity]config.Highlight{
+	SeverityErr:  config.HighlightErr,
+	SeverityWarn: config.HighlightWarn,
+	SeverityInfo: config.HighlightInfo,
+	SeverityHint: config.HighlightHint,
+}

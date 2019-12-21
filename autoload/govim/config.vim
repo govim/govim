@@ -64,6 +64,10 @@ function! s:validQuickfixSigns(v)
   return s:validBool(a:v)
 endfunction
 
+function! s:validHighlightDiagnostics(v)
+    return s:validBool(a:v)
+endfunction
+
 function! s:validCompletionDeepCompletions(v)
   return s:validBool(a:v)
 endfunction
@@ -116,6 +120,7 @@ let s:validators = {
       \ "CompletionDeepCompletions": function("s:validCompletionDeepCompletions"),
       \ "CompletionFuzzyMatching": function("s:validCompletionFuzzyMatching"),
       \ "QuickfixSigns": function("s:validQuickfixSigns"),
+      \ "HighlightDiagnostics": function("s:validHighlightDiagnostics"),
       \ "Staticcheck": function("s:validStaticcheck"),
       \ "CompletionCaseSensitive": function("s:validCompletionCaseSensitive"),
       \ "CompleteUnimported": function("s:validCompleteUnimported"),

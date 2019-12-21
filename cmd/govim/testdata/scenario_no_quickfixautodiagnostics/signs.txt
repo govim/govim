@@ -30,28 +30,28 @@ func f2() string {}
         "group": "govim",
         "id": 2,
         "lnum": 6,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       },
       {
         "group": "govim",
         "id": 1,
         "lnum": 6,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       },
       {
         "group": "govim",
         "id": 3,
         "lnum": 9,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       },
       {
         "group": "govim",
         "id": 4,
         "lnum": 10,
-        "name": "govimErrSign",
+        "name": "GOVIMSignErr",
         "priority": 14
       }
     ]
