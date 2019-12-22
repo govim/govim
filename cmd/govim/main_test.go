@@ -23,6 +23,7 @@ import (
 	"github.com/govim/govim/testdriver"
 	"github.com/govim/govim/testsetup"
 	"github.com/rogpeppe/go-internal/goproxytest"
+	"github.com/rogpeppe/go-internal/gotooltest"
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
@@ -77,7 +78,7 @@ func TestScripts(t *testing.T) {
 			continue
 		}
 		t.Run(entry.Name(), func(t *testing.T) {
-			testscript.Run(t, testscript.Params{
+			params := testscript.Params{
 				Dir: filepath.Join("testdata", entry.Name()),
 				Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 					"sleep":       testdriver.Sleep,
@@ -169,7 +170,11 @@ func TestScripts(t *testing.T) {
 					})
 					return nil
 				},
-			})
+			}
+			if err := gotooltest.Setup(&params); err != nil {
+				t.Fatal(err)
+			}
+			testscript.Run(t, params)
 		})
 	}
 
