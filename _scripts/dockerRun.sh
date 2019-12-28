@@ -2,6 +2,8 @@
 
 source "${BASH_SOURCE%/*}/common.bash"
 
+trap 'set +ev' EXIT
+
 if [ "${VIM_COMMAND:-}" == "" ]
 then
 	eval "VIM_COMMAND=\"\$DEFAULT_${VIM_FLAVOR^^}_COMMAND\""
@@ -36,10 +38,11 @@ go install golang.org/x/tools/gopls
 # remove all generated files to ensure we are never stale
 rm -f $(git ls-files -- ':!:cmd/govim/internal/golang_org_x_tools' '**/gen_*.*' 'gen_*.*') .travis.yml
 
+go generate $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
+
 # run the install scripts
 export GOVIM_RUN_INSTALL_TESTSCRIPTS=true
 
-go generate $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 go test $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 
 if [ "${CI:-}" == "true" ] && [ "${TRAVIS_BRANCH:-}_${TRAVIS_PULL_REQUEST_BRANCH:-}" == "master_" ]

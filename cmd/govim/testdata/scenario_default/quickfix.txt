@@ -8,6 +8,8 @@ cmp errors errors.golden
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
+fail
+
 -- go.mod --
 module mod.com
 

@@ -54,4 +54,8 @@ before_install:
   - ./_scripts/buildGovimImage.sh
 
 script:
+  - jq --version
   - ./_scripts/runDockerRun.sh
+
+after_failure:
+  - ./_scripts/afterFailure.sh

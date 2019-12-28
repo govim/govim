@@ -40,7 +40,8 @@ func TestScripts(t *testing.T) {
 
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
-			Dir: "testdata",
+			TestWork: os.Getenv("GOTMPDIR") != "",
+			Dir:      "testdata",
 			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 				"sleep":       testdriver.Sleep,
 				"errlogmatch": testdriver.ErrLogMatch,
