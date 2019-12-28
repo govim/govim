@@ -39,6 +39,9 @@ rm -f $(git ls-files -- ':!:cmd/govim/internal/golang_org_x_tools' '**/gen_*.*' 
 # run the install scripts
 export GOVIM_RUN_INSTALL_TESTSCRIPTS=true
 
+export GOTMPDIR=$HOME/artefacts
+mkdir $GOTMPDIR
+
 go generate $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 go test $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 

@@ -32,7 +32,6 @@ const (
 )
 
 var (
-	fDebugLog  = flag.Bool("debugLog", false, "Whether to log debugging info from vim, govim and the test shim")
 	fGoplsPath = flag.String("gopls", "", "Path to the gopls binary for use in scenario tests. If unset, gopls is built from a tagged version.")
 )
 
@@ -79,7 +78,8 @@ func TestScripts(t *testing.T) {
 		}
 		t.Run(entry.Name(), func(t *testing.T) {
 			params := testscript.Params{
-				Dir: filepath.Join("testdata", entry.Name()),
+				TestWork: os.Getenv("GOTMPDIR") != "",
+				Dir:      filepath.Join("testdata", entry.Name()),
 				Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 					"sleep":       testdriver.Sleep,
 					"errlogmatch": testdriver.ErrLogMatch,
@@ -112,14 +112,16 @@ func TestScripts(t *testing.T) {
 						outputs = append(outputs, os.Stderr)
 					}
 
-					if *fDebugLog {
-						tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
-						if err != nil {
-							t.Fatalf("failed to create govim log file: %v", err)
-						}
-						outputs = append(outputs, tf)
-						t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
+					tf, err := ioutil.TempFile(tmp, "govim_log*")
+					if err != nil {
+						t.Fatalf("failed to create govim log file: %v", err)
 					}
+					e.Defer(func() {
+						if err := tf.Close(); err != nil {
+							panic(fmt.Errorf("failed to close govim logfile %v: %v", tf.Name(), err))
+						}
+					})
+					outputs = append(outputs, tf)
 
 					defaultsPath := filepath.Join("testdata", entry.Name(), "default_config.json")
 					defaults, err := readConfig(defaultsPath)
@@ -224,7 +226,8 @@ func TestInstallScripts(t *testing.T) {
 
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
-			Dir: filepath.Join("testdata", "install"),
+			TestWork: os.Getenv("GOTMPDIR") != "",
+			Dir:      filepath.Join("testdata", "install"),
 			Setup: func(e *testscript.Env) error {
 				e.Vars = append(e.Vars,
 					"PLUGIN_PATH="+govimPath,
@@ -238,7 +241,8 @@ func TestInstallScripts(t *testing.T) {
 
 	t.Run("scripts-with-gopls-from-path", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
-			Dir: filepath.Join("testdata", "install"),
+			TestWork: os.Getenv("GOTMPDIR") != "",
+			Dir:      filepath.Join("testdata", "install"),
 			Setup: func(e *testscript.Env) error {
 				var path string
 				for i := len(e.Vars) - 1; i >= 0; i-- {

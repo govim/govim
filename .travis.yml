@@ -55,3 +55,6 @@ before_install:
 
 script:
   - ./_scripts/runDockerRun.sh
+
+after_failure:
+  - ./_scripts/afterFailure.sh
