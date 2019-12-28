@@ -14,13 +14,14 @@ import (
 
 // dev environment variables
 const (
-	EnvTestSocket       = "GOVIMTEST_SOCKET"
-	EnvVimFlavor        = "VIM_FLAVOR"
-	EnvVimCommand       = "VIM_COMMAND"
-	EnvGithubUser       = "GH_USER"
-	EnvGithubToken      = "GH_TOKEN"
-	EnvLoadTestAPI      = "GOVIM_LOAD_TEST_API"
-	EnvTestscriptStderr = "GOVIM_TESTSCRIPT_STDERR"
+	EnvTestSocket            = "GOVIMTEST_SOCKET"
+	EnvVimFlavor             = "VIM_FLAVOR"
+	EnvVimCommand            = "VIM_COMMAND"
+	EnvGithubUser            = "GH_USER"
+	EnvGithubToken           = "GH_TOKEN"
+	EnvLoadTestAPI           = "GOVIM_LOAD_TEST_API"
+	EnvTestscriptStderr      = "GOVIM_TESTSCRIPT_STDERR"
+	EnvTestscriptWorkdirRoot = "GOVIM_TESTSCRIPT_WORKDIR_ROOT"
 )
 
 // user environment variables

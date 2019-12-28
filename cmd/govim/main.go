@@ -106,7 +106,7 @@ func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 
 	d := newplugin(goplspath, nil, nil, nil)
 
-	tf, err := createLogFile("govim_log")
+	tf, err := d.createLogFile("govim_log")
 	if err != nil {
 		return err
 	}
@@ -130,10 +130,10 @@ func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 	return d.tomb.Wait()
 }
 
-func createLogFile(prefix string) (*os.File, error) {
+func (g *govimplugin) createLogFile(prefix string) (*os.File, error) {
 	var tf *os.File
 	var err error
-	logfiletmpl := os.Getenv(testsetup.EnvLogfileTmpl)
+	logfiletmpl := getEnvVal(g.goplsEnv, testsetup.EnvLogfileTmpl)
 	if logfiletmpl == "" {
 		logfiletmpl = "%v_%v_%v"
 	}
@@ -141,10 +141,10 @@ func createLogFile(prefix string) (*os.File, error) {
 	logfiletmpl = strings.Replace(logfiletmpl, "%v", time.Now().Format("20060102_1504_05"), 1)
 	if strings.Contains(logfiletmpl, "%v") {
 		logfiletmpl = strings.Replace(logfiletmpl, "%v", "*", 1)
-		tf, err = ioutil.TempFile("", logfiletmpl)
+		tf, err = ioutil.TempFile(g.tmpDir, logfiletmpl)
 	} else {
 		// append to existing file
-		tf, err = os.OpenFile(filepath.Join(os.TempDir(), logfiletmpl), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		tf, err = os.OpenFile(filepath.Join(g.tmpDir, logfiletmpl), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	}
 	if err != nil {
 		err = fmt.Errorf("failed to create log file: %v", err)
@@ -155,6 +155,9 @@ func createLogFile(prefix string) (*os.File, error) {
 type govimplugin struct {
 	plugin.Driver
 	vimstate *vimstate
+
+	// tmpDir is the temp directory within which log files will be created
+	tmpDir string
 
 	// goplsEnv is the environment with which to start gopls. This is
 	// set in os/exec.Command.Env
@@ -207,6 +210,13 @@ type govimplugin struct {
 }
 
 func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Config) *govimplugin {
+	if goplsEnv == nil {
+		goplsEnv = os.Environ()
+	}
+	tmpDir := getEnvVal(goplsEnv, "TMPDIR")
+	if tmpDir == "" {
+		tmpDir = os.TempDir()
+	}
 	if defaults == nil {
 		defaults = &config.Config{
 			FormatOnSave:            vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImports),
@@ -222,6 +232,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	}
 	d := plugin.NewDriver(PluginPrefix)
 	res := &govimplugin{
+		tmpDir:                    tmpDir,
 		rawDiagnostics:            make(map[span.URI]*protocol.PublishDiagnosticsParams),
 		goplsEnv:                  goplsEnv,
 		goplspath:                 goplspath,
@@ -286,7 +297,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
-	logfile, err := createLogFile("gopls_log")
+	logfile, err := g.createLogFile("gopls_log")
 	if err != nil {
 		return err
 	}
@@ -455,4 +466,13 @@ func (g *govimplugin) defineHighlights() {
 		g.vimstate.BatchChannelCall("execute", hi)
 	}
 	g.vimstate.BatchEnd()
+}
+
+func getEnvVal(env []string, varname string) string {
+	for i := len(env) - 1; i >= 0; i-- {
+		if strings.HasPrefix(env[i], varname+"=") {
+			return strings.TrimPrefix(env[i], varname+"=")
+		}
+	}
+	return ""
 }

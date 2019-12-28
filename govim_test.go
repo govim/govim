@@ -35,22 +35,46 @@ func TestMain(m *testing.M) {
 }
 
 func TestScripts(t *testing.T) {
+	// TODO our approach with setting the workdir root via os.Setenv("GOTMPDIR")
+	// is hacky and gross. Working out a cleaner approach with rogpeppe, likely
+	// passing in such a value via Params
+	workdir := os.Getenv(testsetup.EnvTestscriptWorkdirRoot)
+	if workdir == "" {
+		// i.e. we are not going to call os.Setenv below
+		t.Parallel()
+	} else {
+		os.MkdirAll(workdir, 0777)
+		os.Setenv("GOTMPDIR", workdir)
+		defer os.Setenv("GOTMPDIR", os.Getenv("GOTMPDIR"))
+	}
+
 	var waitLock sync.Mutex
 	var waitList []func() error
 
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
-			Dir: "testdata",
+			TestWork: workdir != "",
+			Dir:      "testdata",
 			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 				"sleep":       testdriver.Sleep,
 				"errlogmatch": testdriver.ErrLogMatch,
 			},
 			Condition: testdriver.Condition,
 			Setup: func(e *testscript.Env) error {
+				// Set a special temp dir to make identifying it easier for log
+				// scraping
+				tmp := filepath.Join(e.WorkDir, "_tmp")
+				if err := os.MkdirAll(tmp, 0777); err != nil {
+					return fmt.Errorf("failed to create temp dir %v: %v", tmp, err)
+				}
 				home := filepath.Join(e.WorkDir, ".home")
 				e.Vars = append(e.Vars,
 					"HOME="+home,
+					"TMPDIR="+tmp,
 				)
+				if workdir != "" {
+					e.Vars = append(e.Vars, "GOVIM_LOGFILE_TMPL=%v")
+				}
 				testPluginPath := filepath.Join(home, ".vim", "pack", "plugins", "start", "govim")
 
 				var vimDebugLogPath, govimDebugLogPath string
