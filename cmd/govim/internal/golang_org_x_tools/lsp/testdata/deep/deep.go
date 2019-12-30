@@ -1,7 +1,3 @@
-// Copyright 2019 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package deep
 
 import "context"
@@ -117,9 +113,9 @@ func _() {
 		f foo
 	)
 
-	f.bar().valueReceiver    //@item(deepBarValue, "f.bar().valueReceiver", "func() int", "method")
-	f.barPtr().valueReceiver //@item(deepBarPtrValue, "f.barPtr().valueReceiver", "func() int", "method")
-	f.barPtr().ptrReceiver   //@item(deepBarPtrPtr, "f.barPtr().ptrReceiver", "func() int", "method")
+	f.b.ptrReceiver()      //@item(deepBPtr, "f.b.ptrReceiver", "func() int", "method")
+	f.bar().valueReceiver  //@item(deepBarValue, "f.bar().valueReceiver", "func() int", "method")
+	f.barPtr().ptrReceiver //@item(deepBarPtrPtr, "f.barPtr().ptrReceiver", "func() int", "method")
 
-	i = fb //@fuzzy(" //", deepBarValue, deepBarPtrPtr, deepBarPtrValue)
+	i = fb //@fuzzy(" //", deepBPtr, deepBarValue, deepBarPtrPtr)
 }

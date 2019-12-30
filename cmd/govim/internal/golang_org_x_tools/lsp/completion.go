@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
@@ -51,9 +52,12 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 	if err != nil {
 		return nil, err
 	}
-	// Sort the candidates by score, since that is not supported by LSP yet.
+	// Sort the candidates by score, then label, since that is not supported by LSP yet.
 	sort.SliceStable(candidates, func(i, j int) bool {
-		return candidates[i].Score > candidates[j].Score
+		if candidates[i].Score != candidates[j].Score {
+			return candidates[i].Score > candidates[j].Score
+		}
+		return candidates[i].Label < candidates[j].Label
 	})
 
 	// When using deep completions/fuzzy matching, report results as incomplete so
@@ -122,8 +126,12 @@ func toProtocolCompletionItems(candidates []source.CompletionItem, rng protocol.
 			// This is a hack so that the client sorts completion results in the order
 			// according to their score. This can be removed upon the resolution of
 			// https://github.com/Microsoft/language-server-protocol/issues/348.
-			SortText:      fmt.Sprintf("%05d", i),
-			FilterText:    candidate.InsertText,
+			SortText: fmt.Sprintf("%05d", i),
+
+			// Trim address operator (VSCode doesn't like weird characters
+			// in filterText).
+			FilterText: strings.TrimLeft(candidate.InsertText, "&"),
+
 			Preselect:     i == 0,
 			Documentation: candidate.Documentation,
 		}

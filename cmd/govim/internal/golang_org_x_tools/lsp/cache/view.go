@@ -171,7 +171,7 @@ func (v *view) Config(ctx context.Context) *packages.Config {
 	}
 }
 
-func (v *view) RunProcessEnvFunc(ctx context.Context, fn func(*imports.Options) error, opts *imports.Options) error {
+func (v *view) RunProcessEnvFunc(ctx context.Context, fn func(*imports.Options) error) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.processEnv == nil {
@@ -187,7 +187,17 @@ func (v *view) RunProcessEnvFunc(ctx context.Context, fn func(*imports.Options) 
 	}
 
 	// Run the user function.
-	opts.Env = v.processEnv
+	opts := &imports.Options{
+		// Defaults.
+		AllErrors:  true,
+		Comments:   true,
+		Fragment:   true,
+		FormatOnly: false,
+		TabIndent:  true,
+		TabWidth:   8,
+		Env:        v.processEnv,
+	}
+
 	if err := fn(opts); err != nil {
 		return err
 	}
@@ -206,9 +216,9 @@ func (v *view) RunProcessEnvFunc(ctx context.Context, fn func(*imports.Options) 
 
 			log.Print(context.Background(), "background imports cache refresh starting")
 			v.processEnv.GetResolver().ClearForNewScan()
-			_, err := imports.GetAllCandidates("", opts)
+			// TODO(heschi): prime the cache
 			v.cacheRefreshTime = time.Now()
-			log.Print(context.Background(), "background refresh finished with err: ", tag.Of("err", err))
+			log.Print(context.Background(), "background refresh finished with err: ", tag.Of("err", nil))
 		}()
 	}
 
@@ -303,6 +313,9 @@ func (v *view) shutdown(context.Context) {
 	if v.cancel != nil {
 		v.cancel()
 		v.cancel = nil
+	}
+	if v.modfiles != nil {
+		os.Remove(v.modfiles.temp)
 	}
 	debug.DropView(debugView{v})
 }
