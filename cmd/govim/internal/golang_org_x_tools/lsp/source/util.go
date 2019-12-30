@@ -387,6 +387,11 @@ func isPointer(T types.Type) bool {
 	return ok
 }
 
+func isVar(obj types.Object) bool {
+	_, ok := obj.(*types.Var)
+	return ok
+}
+
 // deref returns a pointer's element type, traversing as many levels as needed.
 // Otherwise it returns typ.
 func deref(typ types.Type) types.Type {
@@ -435,6 +440,16 @@ func enclosingSelector(path []ast.Node, pos token.Pos) *ast.SelectorExpr {
 	if _, ok := path[0].(*ast.Ident); ok && len(path) > 1 {
 		if sel, ok := path[1].(*ast.SelectorExpr); ok && pos >= sel.Sel.Pos() {
 			return sel
+		}
+	}
+
+	return nil
+}
+
+func enclosingValueSpec(path []ast.Node, pos token.Pos) *ast.ValueSpec {
+	for _, n := range path {
+		if vs, ok := n.(*ast.ValueSpec); ok {
+			return vs
 		}
 	}
 

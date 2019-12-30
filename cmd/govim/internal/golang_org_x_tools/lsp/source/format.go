@@ -98,19 +98,10 @@ func AllImportsFixes(ctx context.Context, snapshot Snapshot, fh FileHandle) (all
 	if hasListErrors(pkg) {
 		return nil, nil, errors.Errorf("%s has list errors, not running goimports", fh.Identity().URI)
 	}
-	options := &imports.Options{
-		// Defaults.
-		AllErrors:  true,
-		Comments:   true,
-		Fragment:   true,
-		FormatOnly: false,
-		TabIndent:  true,
-		TabWidth:   8,
-	}
 	err = snapshot.View().RunProcessEnvFunc(ctx, func(opts *imports.Options) error {
 		allFixEdits, editsPerFix, err = computeImportEdits(ctx, snapshot.View(), pgh, opts)
 		return err
-	}, options)
+	})
 	if err != nil {
 		return nil, nil, errors.Errorf("computing fix edits: %v", err)
 	}
@@ -310,57 +301,6 @@ func trimToFirstNonImport(fset *token.FileSet, f *ast.File, src []byte, err erro
 		}
 	}
 	return src[0:fset.Position(end).Offset], true
-}
-
-// CandidateImports returns every import that could be added to filename.
-func CandidateImports(ctx context.Context, view View, filename string) ([]imports.ImportFix, error) {
-	ctx, done := trace.StartSpan(ctx, "source.CandidateImports")
-	defer done()
-
-	options := &imports.Options{
-		// Defaults.
-		AllErrors:  true,
-		Comments:   true,
-		Fragment:   true,
-		FormatOnly: false,
-		TabIndent:  true,
-		TabWidth:   8,
-	}
-
-	var imps []imports.ImportFix
-	importFn := func(opts *imports.Options) error {
-		var err error
-		imps, err = imports.GetAllCandidates(filename, opts)
-		return err
-	}
-	err := view.RunProcessEnvFunc(ctx, importFn, options)
-	return imps, err
-}
-
-// PackageExports returns all the packages named pkg that could be imported by
-// filename, and their exports.
-func PackageExports(ctx context.Context, view View, pkg, filename string) ([]imports.PackageExport, error) {
-	ctx, done := trace.StartSpan(ctx, "source.PackageExports")
-	defer done()
-
-	options := &imports.Options{
-		// Defaults.
-		AllErrors:  true,
-		Comments:   true,
-		Fragment:   true,
-		FormatOnly: false,
-		TabIndent:  true,
-		TabWidth:   8,
-	}
-
-	var pkgs []imports.PackageExport
-	importFn := func(opts *imports.Options) error {
-		var err error
-		pkgs, err = imports.GetPackageExports(pkg, filename, opts)
-		return err
-	}
-	err := view.RunProcessEnvFunc(ctx, importFn, options)
-	return pkgs, err
 }
 
 // hasParseErrors returns true if the given file has parse errors.
