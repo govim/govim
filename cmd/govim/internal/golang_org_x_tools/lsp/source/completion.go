@@ -11,8 +11,10 @@ import (
 	"go/constant"
 	"go/token"
 	"go/types"
+	"math"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/tools/go/ast/astutil"
@@ -244,6 +246,13 @@ func (p Selection) Suffix() string {
 	return p.content[p.cursor-p.spanRange.Start:]
 }
 
+func (c *completer) deepCompletionContext() (context.Context, context.CancelFunc) {
+	if c.opts.Budget == 0 {
+		return context.WithCancel(c.ctx)
+	}
+	return context.WithDeadline(c.ctx, c.startTime.Add(c.opts.Budget))
+}
+
 func (c *completer) setSurrounding(ident *ast.Ident) {
 	if c.surrounding != nil {
 		return
@@ -281,7 +290,9 @@ func (c *completer) getSurrounding() *Selection {
 
 // found adds a candidate completion. We will also search through the object's
 // members for more candidates.
-func (c *completer) found(obj types.Object, score float64, imp *importInfo) {
+func (c *completer) found(cand candidate) {
+	obj := cand.obj
+
 	if obj.Pkg() != nil && obj.Pkg() != c.pkg.GetTypes() && !obj.Exported() {
 		// obj is not accessible because it lives in another package and is not
 		// exported. Don't treat it as a completion candidate.
@@ -311,12 +322,6 @@ func (c *completer) found(obj types.Object, score float64, imp *importInfo) {
 		return
 	}
 
-	cand := candidate{
-		obj:   obj,
-		score: score,
-		imp:   imp,
-	}
-
 	if c.matchingCandidate(&cand) {
 		cand.score *= highScore
 	} else if isTypeName(obj) {
@@ -325,7 +330,7 @@ func (c *completer) found(obj types.Object, score float64, imp *importInfo) {
 
 		// We only care about named types (i.e. don't want builtin types).
 		if _, isNamed := obj.Type().(*types.Named); isNamed {
-			c.literal(obj.Type(), imp)
+			c.literal(obj.Type(), cand.imp)
 		}
 	}
 
@@ -349,7 +354,7 @@ func (c *completer) found(obj types.Object, score float64, imp *importInfo) {
 		}
 	}
 
-	c.deepSearch(obj, imp)
+	c.deepSearch(cand)
 }
 
 // candidate represents a completion candidate.
@@ -366,6 +371,13 @@ type candidate struct {
 	// expandFuncCall is true if obj should be invoked in the completion.
 	// For example, expandFuncCall=true yields "foo()", expandFuncCall=false yields "foo".
 	expandFuncCall bool
+
+	// takeAddress is true if the completion should take a pointer to obj.
+	// For example, takeAddress=true yields "&foo", takeAddress=false yields "foo".
+	takeAddress bool
+
+	// addressable is true if a pointer can be taken to the candidate.
+	addressable bool
 
 	// imp is the import that needs to be added to this package in order
 	// for this candidate to be valid. nil if no import needed.
@@ -541,7 +553,8 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 	return c.items, c.getSurrounding(), nil
 }
 
-// populateCommentCompletions returns completions for an exported variable immediately preceeding comment
+// populateCommentCompletions yields completions for an exported
+// variable immediately preceding comment.
 func (c *completer) populateCommentCompletions(comment *ast.CommentGroup) {
 
 	// Using the comment position find the line after
@@ -575,7 +588,7 @@ func (c *completer) populateCommentCompletions(comment *ast.CommentGroup) {
 						}
 
 						exportedVar := c.pkg.GetTypesInfo().ObjectOf(name)
-						c.found(exportedVar, stdScore, nil)
+						c.found(candidate{obj: exportedVar, score: stdScore})
 					}
 				}
 			}
@@ -597,14 +610,14 @@ func (c *completer) wantTypeName() bool {
 }
 
 // See https://golang.org/issue/36001. Unimported completions are expensive.
-const maxUnimported = 20
+const unimportedTarget = 100
 
 // selector finds completions for the specified selector expression.
 func (c *completer) selector(sel *ast.SelectorExpr) error {
 	// Is sel a qualified identifier?
 	if id, ok := sel.X.(*ast.Ident); ok {
 		if pkgname, ok := c.pkg.GetTypesInfo().Uses[id].(*types.PkgName); ok {
-			c.packageMembers(pkgname.Imported(), nil)
+			c.packageMembers(pkgname.Imported(), stdScore, nil)
 			return nil
 		}
 	}
@@ -616,44 +629,75 @@ func (c *completer) selector(sel *ast.SelectorExpr) error {
 	}
 
 	// Try unimported packages.
-	if id, ok := sel.X.(*ast.Ident); ok {
-		pkgExports, err := PackageExports(c.ctx, c.snapshot.View(), id.Name, c.filename)
-		if err != nil {
+	if id, ok := sel.X.(*ast.Ident); ok && c.opts.Unimported && len(c.items) < unimportedTarget {
+		if err := c.unimportedMembers(id); err != nil {
 			return err
-		}
-		known := c.snapshot.KnownImportPaths()
-		startingItems := len(c.items)
-		for _, pkgExport := range pkgExports {
-			if len(c.items)-startingItems >= maxUnimported {
-				break
-			}
-			// If we've seen this import path, use the fully-typed version.
-			if knownPkg, ok := known[pkgExport.Fix.StmtInfo.ImportPath]; ok {
-				c.packageMembers(knownPkg.GetTypes(), &importInfo{
-					importPath: pkgExport.Fix.StmtInfo.ImportPath,
-					name:       pkgExport.Fix.StmtInfo.Name,
-					pkg:        knownPkg,
-				})
-				continue
-			}
-
-			// Otherwise, continue with untyped proposals.
-			pkg := types.NewPackage(pkgExport.Fix.StmtInfo.ImportPath, pkgExport.Fix.IdentName)
-			for _, export := range pkgExport.Exports {
-				c.found(types.NewVar(0, pkg, export, nil), 0.07, &importInfo{
-					importPath: pkgExport.Fix.StmtInfo.ImportPath,
-					name:       pkgExport.Fix.StmtInfo.Name,
-				})
-			}
 		}
 	}
 	return nil
 }
 
-func (c *completer) packageMembers(pkg *types.Package, imp *importInfo) {
+func (c *completer) unimportedMembers(id *ast.Ident) error {
+	// Try loaded packages first. They're relevant, fast, and fully typed.
+	known := c.snapshot.KnownImportPaths()
+	for path, pkg := range known {
+		if pkg.GetTypes().Name() != id.Name {
+			continue
+		}
+		// We don't know what this is, so assign it the highest score.
+		score := 0.01 * imports.MaxRelevance
+		c.packageMembers(pkg.GetTypes(), score, &importInfo{
+			importPath: path,
+			name:       pkg.GetTypes().Name(),
+			pkg:        pkg,
+		})
+		if len(c.items) >= unimportedTarget {
+			return nil
+		}
+	}
+
+	ctx, cancel := c.deepCompletionContext()
+	defer cancel()
+	var mu sync.Mutex
+	add := func(pkgExport imports.PackageExport) {
+		mu.Lock()
+		defer mu.Unlock()
+		if _, ok := known[pkgExport.Fix.StmtInfo.ImportPath]; ok {
+			return // We got this one above.
+		}
+
+		// Continue with untyped proposals.
+		pkg := types.NewPackage(pkgExport.Fix.StmtInfo.ImportPath, pkgExport.Fix.IdentName)
+		for _, export := range pkgExport.Exports {
+			score := 0.01 * float64(pkgExport.Fix.Relevance)
+			c.found(candidate{
+				obj:   types.NewVar(0, pkg, export, nil),
+				score: score,
+				imp: &importInfo{
+					importPath: pkgExport.Fix.StmtInfo.ImportPath,
+					name:       pkgExport.Fix.StmtInfo.Name,
+				},
+			})
+		}
+		if len(c.items) >= unimportedTarget {
+			cancel()
+		}
+	}
+	return c.snapshot.View().RunProcessEnvFunc(ctx, func(opts *imports.Options) error {
+		return imports.GetPackageExports(ctx, add, id.Name, c.filename, c.pkg.GetTypes().Name(), opts)
+	})
+}
+
+func (c *completer) packageMembers(pkg *types.Package, score float64, imp *importInfo) {
 	scope := pkg.Scope()
 	for _, name := range scope.Names() {
-		c.found(scope.Lookup(name), stdScore, imp)
+		obj := scope.Lookup(name)
+		c.found(candidate{
+			obj:         obj,
+			score:       score,
+			imp:         imp,
+			addressable: isVar(obj),
+		})
 	}
 }
 
@@ -671,12 +715,22 @@ func (c *completer) methodsAndFields(typ types.Type, addressable bool, imp *impo
 	}
 
 	for i := 0; i < mset.Len(); i++ {
-		c.found(mset.At(i).Obj(), stdScore, imp)
+		c.found(candidate{
+			obj:         mset.At(i).Obj(),
+			score:       stdScore,
+			imp:         imp,
+			addressable: addressable || isPointer(typ),
+		})
 	}
 
 	// Add fields of T.
 	for _, f := range fieldSelections(typ) {
-		c.found(f, stdScore, imp)
+		c.found(candidate{
+			obj:         f,
+			score:       stdScore - 0.01,
+			imp:         imp,
+			addressable: addressable || isPointer(typ),
+		})
 	}
 	return nil
 }
@@ -714,11 +768,14 @@ func (c *completer) lexical() error {
 		if scope == nil {
 			continue
 		}
+
+	Names:
 		for _, name := range scope.Names() {
 			declScope, obj := scope.LookupParent(name, c.pos)
 			if declScope != scope {
 				continue // Name was declared in some enclosing scope, or not at all.
 			}
+
 			// If obj's type is invalid, find the AST node that defines the lexical block
 			// containing the declaration of obj. Don't resolve types for packages.
 			if _, ok := obj.(*types.PkgName); !ok && !typeIsValid(obj.Type()) {
@@ -738,12 +795,22 @@ func (c *completer) lexical() error {
 				}
 			}
 
+			// Don't use LHS of value spec in RHS.
+			if vs := enclosingValueSpec(c.path, c.pos); vs != nil {
+				for _, ident := range vs.Names {
+					if obj.Pos() == ident.Pos() {
+						continue Names
+					}
+				}
+			}
+
 			// Don't suggest "iota" outside of const decls.
 			if obj == builtinIota && !c.inConstDecl() {
 				continue
 			}
 
-			score := stdScore
+			// Rank outer scopes lower than inner.
+			score := stdScore * math.Pow(.99, float64(i))
 
 			// Dowrank "nil" a bit so it is ranked below more interesting candidates.
 			if obj == builtinNil {
@@ -753,7 +820,11 @@ func (c *completer) lexical() error {
 			// If we haven't already added a candidate for an object with this name.
 			if _, ok := seen[obj.Name()]; !ok {
 				seen[obj.Name()] = struct{}{}
-				c.found(obj, score, nil)
+				c.found(candidate{
+					obj:         obj,
+					score:       score,
+					addressable: isVar(obj),
+				})
 			}
 		}
 	}
@@ -778,37 +849,63 @@ func (c *completer) lexical() error {
 					if imports.ImportPathToAssumedName(pkg.Path()) != pkg.Name() {
 						imp.name = pkg.Name()
 					}
-					c.found(obj, stdScore, imp)
+					c.found(candidate{
+						obj:   obj,
+						score: stdScore,
+						imp:   imp,
+					})
 				}
 			}
 		}
 	}
 
-	if c.opts.Unimported {
+	if c.opts.Unimported && len(c.items) < unimportedTarget {
+		ctx, cancel := c.deepCompletionContext()
+		defer cancel()
 		// Suggest packages that have not been imported yet.
-		pkgs, err := CandidateImports(c.ctx, c.snapshot.View(), c.filename)
-		if err != nil {
-			return err
+		prefix := ""
+		if c.surrounding != nil {
+			prefix = c.surrounding.Prefix()
 		}
-		score := stdScore
-		// Rank unimported packages significantly lower than other results.
-		score *= 0.07
-
-		startingItems := len(c.items)
-		for _, pkg := range pkgs {
-			if len(c.items)-startingItems >= maxUnimported {
-				break
+		var mu sync.Mutex
+		add := func(pkg imports.ImportFix) {
+			mu.Lock()
+			defer mu.Unlock()
+			if _, ok := seen[pkg.IdentName]; ok {
+				return
 			}
-			if _, ok := seen[pkg.IdentName]; !ok {
-				// Do not add the unimported packages to seen, since we can have
-				// multiple packages of the same name as completion suggestions, since
-				// only one will be chosen.
-				obj := types.NewPkgName(0, nil, pkg.IdentName, types.NewPackage(pkg.StmtInfo.ImportPath, pkg.IdentName))
-				c.found(obj, score, &importInfo{
+			// Rank unimported packages significantly lower than other results.
+			score := 0.01 * float64(pkg.Relevance)
+
+			// Do not add the unimported packages to seen, since we can have
+			// multiple packages of the same name as completion suggestions, since
+			// only one will be chosen.
+			obj := types.NewPkgName(0, nil, pkg.IdentName, types.NewPackage(pkg.StmtInfo.ImportPath, pkg.IdentName))
+			c.found(candidate{
+				obj:   obj,
+				score: score,
+				imp: &importInfo{
 					importPath: pkg.StmtInfo.ImportPath,
 					name:       pkg.StmtInfo.Name,
-				})
+				},
+			})
+
+			if len(c.items) >= unimportedTarget {
+				cancel()
 			}
+			c.found(candidate{
+				obj:   obj,
+				score: score,
+				imp: &importInfo{
+					importPath: pkg.StmtInfo.ImportPath,
+					name:       pkg.StmtInfo.Name,
+				},
+			})
+		}
+		if err := c.snapshot.View().RunProcessEnvFunc(ctx, func(opts *imports.Options) error {
+			return imports.GetAllCandidates(ctx, add, prefix, c.filename, c.pkg.GetTypes().Name(), opts)
+		}); err != nil {
+			return err
 		}
 	}
 
@@ -886,7 +983,10 @@ func (c *completer) structLiteralFieldName() error {
 		for i := 0; i < t.NumFields(); i++ {
 			field := t.Field(i)
 			if !addedFields[field] {
-				c.found(field, highScore, nil)
+				c.found(candidate{
+					obj:   field,
+					score: highScore,
+				})
 			}
 		}
 
@@ -1078,11 +1178,11 @@ type typeModifier struct {
 type typeMod int
 
 const (
-	star      typeMod = iota // dereference operator for expressions, pointer indicator for types
-	reference                // reference ("&") operator
-	chanRead                 // channel read ("<-") operator
-	slice                    // make a slice type ("[]" in "[]int")
-	array                    // make an array type ("[2]" in "[2]int")
+	star     typeMod = iota // pointer indirection for expressions, pointer indicator for types
+	address                 // address operator ("&")
+	chanRead                // channel read operator ("<-")
+	slice                   // make a slice type ("[]" in "[]int")
+	array                   // make an array type ("[2]" in "[2]int")
 )
 
 // typeInference holds information we have inferred about a type that can be
@@ -1160,6 +1260,11 @@ Nodes:
 				}
 			}
 			return inf
+		case *ast.ValueSpec:
+			if node.Type != nil && c.pos > node.Type.End() {
+				inf.objType = c.pkg.GetTypesInfo().TypeOf(node.Type)
+			}
+			break Nodes
 		case *ast.CallExpr:
 			// Only consider CallExpr args if position falls between parens.
 			if node.Lparen <= c.pos && c.pos <= node.Rparen {
@@ -1304,7 +1409,7 @@ Nodes:
 		case *ast.UnaryExpr:
 			switch node.Op {
 			case token.AND:
-				inf.modifiers = append(inf.modifiers, typeModifier{mod: reference})
+				inf.modifiers = append(inf.modifiers, typeModifier{mod: address})
 			case token.ARROW:
 				inf.modifiers = append(inf.modifiers, typeModifier{mod: chanRead})
 			}
@@ -1319,22 +1424,36 @@ Nodes:
 }
 
 // applyTypeModifiers applies the list of type modifiers to a type.
-func (ti typeInference) applyTypeModifiers(typ types.Type) types.Type {
+// It returns nil if the modifiers could not be applied.
+func (ti typeInference) applyTypeModifiers(typ types.Type, addressable bool) types.Type {
 	for _, mod := range ti.modifiers {
 		switch mod.mod {
 		case star:
-			// For every "*" deref operator, remove a pointer layer from candidate type.
-			typ = deref(typ)
-		case reference:
-			// For every "&" ref operator, add another pointer layer to candidate type.
-			typ = types.NewPointer(typ)
+			// For every "*" indirection operator, remove a pointer layer
+			// from candidate type.
+			if ptr, ok := typ.Underlying().(*types.Pointer); ok {
+				typ = ptr.Elem()
+			} else {
+				return nil
+			}
+		case address:
+			// For every "&" address operator, add another pointer layer to
+			// candidate type, if the candidate is addressable.
+			if addressable {
+				typ = types.NewPointer(typ)
+			} else {
+				return nil
+			}
 		case chanRead:
 			// For every "<-" operator, remove a layer of channelness.
 			if ch, ok := typ.(*types.Chan); ok {
 				typ = ch.Elem()
+			} else {
+				return nil
 			}
 		}
 	}
+
 	return typ
 }
 
@@ -1501,10 +1620,8 @@ Nodes:
 	}
 }
 
-// matchingType reports whether a type matches the expected type.
-func (c *completer) matchingType(T types.Type) bool {
-	fakeObj := types.NewVar(token.NoPos, c.pkg.GetTypes(), "", T)
-	return c.matchingCandidate(&candidate{obj: fakeObj})
+func (c *completer) fakeObj(T types.Type) *types.Var {
+	return types.NewVar(token.NoPos, c.pkg.GetTypes(), "", T)
 }
 
 // matchingCandidate reports whether a candidate matches our type
@@ -1533,7 +1650,10 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 		}
 
 		// Take into account any type modifiers on the expected type.
-		candType = c.expectedType.applyTypeModifiers(candType)
+		candType = c.expectedType.applyTypeModifiers(candType, cand.addressable)
+		if candType == nil {
+			return false
+		}
 
 		// Handle untyped values specially since AssignableTo gives false negatives
 		// for them (see https://golang.org/issue/32146).
@@ -1586,8 +1706,15 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 		}
 	}
 
-	if c.expectedType.convertibleTo != nil {
-		return types.ConvertibleTo(candType, c.expectedType.convertibleTo)
+	if c.expectedType.convertibleTo != nil && types.ConvertibleTo(candType, c.expectedType.convertibleTo) {
+		return true
+	}
+
+	// Check if cand is addressable and a pointer to cand matches our type inference.
+	if cand.addressable && c.matchingCandidate(&candidate{obj: c.fakeObj(types.NewPointer(candType))}) {
+		// Mark the candidate so we know to prepend "&" when formatting.
+		cand.takeAddress = true
+		return true
 	}
 
 	return false

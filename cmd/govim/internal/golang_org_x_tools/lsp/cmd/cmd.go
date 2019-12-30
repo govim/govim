@@ -106,7 +106,7 @@ language features. When no command is specified, gopls will default to the 'serv
 command. The language features can also be accessed via the gopls command-line interface.
 
 Available commands are:
-`, app.Name(), app.Name(), app.Serve.Name())
+`)
 	fmt.Fprint(f.Output(), `
 main:
 `)
@@ -404,6 +404,18 @@ func (c *cmdClient) getFile(ctx context.Context, uri span.URI) *cmdFile {
 		}
 	}
 	return file
+}
+
+func (file *cmdFile) waitForDiagnostics(ctx context.Context) ([]protocol.Diagnostic, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-file.hasDiagnostics:
+	}
+
+	file.diagnosticsMu.Lock()
+	defer file.diagnosticsMu.Unlock()
+	return file.diagnostics, nil
 }
 
 func (c *connection) AddFile(ctx context.Context, uri span.URI) *cmdFile {

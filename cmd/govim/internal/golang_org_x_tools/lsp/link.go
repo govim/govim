@@ -18,7 +18,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
-	errors "golang.org/x/xerrors"
 )
 
 func (s *Server) documentLink(ctx context.Context, params *protocol.DocumentLinkParams) ([]protocol.DocumentLink, error) {
@@ -62,7 +61,7 @@ func (s *Server) documentLink(ctx context.Context, params *protocol.DocumentLink
 			if n.Kind != token.STRING {
 				return false
 			}
-			l, err := findLinksInString(n.Value, n.Pos(), view, m)
+			l, err := findLinksInString(view, n.Value, n.Pos(), m)
 			if err != nil {
 				log.Error(ctx, "cannot find links in string", err)
 				return false
@@ -75,7 +74,7 @@ func (s *Server) documentLink(ctx context.Context, params *protocol.DocumentLink
 
 	for _, commentGroup := range file.Comments {
 		for _, comment := range commentGroup.List {
-			l, err := findLinksInString(comment.Text, comment.Pos(), view, m)
+			l, err := findLinksInString(view, comment.Text, comment.Pos(), m)
 			if err != nil {
 				log.Error(ctx, "cannot find links in comment", err)
 				continue
@@ -83,25 +82,35 @@ func (s *Server) documentLink(ctx context.Context, params *protocol.DocumentLink
 			links = append(links, l...)
 		}
 	}
-
 	return links, nil
 }
 
-func findLinksInString(src string, pos token.Pos, view source.View, mapper *protocol.ColumnMapper) ([]protocol.DocumentLink, error) {
+func findLinksInString(view source.View, src string, pos token.Pos, m *protocol.ColumnMapper) ([]protocol.DocumentLink, error) {
 	var links []protocol.DocumentLink
-	re, err := getURLRegexp()
-	if err != nil {
-		return nil, errors.Errorf("cannot create regexp for links: %s", err.Error())
-	}
-	indexUrl := re.FindAllIndex([]byte(src), -1)
-	for _, urlIndex := range indexUrl {
-		var target string
-		start := urlIndex[0]
-		end := urlIndex[1]
+	for _, index := range view.Options().URLRegexp.FindAllIndex([]byte(src), -1) {
+		start, end := index[0], index[1]
 		startPos := token.Pos(int(pos) + start)
 		endPos := token.Pos(int(pos) + end)
-		target = src[start:end]
-		l, err := toProtocolLink(view, mapper, target, startPos, endPos)
+		target := src[start:end]
+		l, err := toProtocolLink(view, m, target, startPos, endPos)
+		if err != nil {
+			return nil, err
+		}
+		links = append(links, l)
+	}
+	// Handle golang/go#1234-style links.
+	r := getIssueRegexp()
+	for _, index := range r.FindAllIndex([]byte(src), -1) {
+		start, end := index[0], index[1]
+		startPos := token.Pos(int(pos) + start)
+		endPos := token.Pos(int(pos) + end)
+		matches := r.FindStringSubmatch(src)
+		if len(matches) < 4 {
+			continue
+		}
+		org, repo, number := matches[1], matches[2], matches[3]
+		target := fmt.Sprintf("https://github.com/%s/%s/issues/%s", org, repo, number)
+		l, err := toProtocolLink(view, m, target, startPos, endPos)
 		if err != nil {
 			return nil, err
 		}
@@ -110,27 +119,24 @@ func findLinksInString(src string, pos token.Pos, view source.View, mapper *prot
 	return links, nil
 }
 
-const urlRegexpString = "((http|ftp|https)://)?([\\w_-]+(?:(?:\\.[\\w_-]+)+))([\\w.,@?^=%&:/~+#-]*[\\w@?^=%&/~+#-])?"
-
-var (
-	urlRegexp  *regexp.Regexp
-	regexpOnce sync.Once
-	regexpErr  error
-)
-
-func getURLRegexp() (*regexp.Regexp, error) {
-	regexpOnce.Do(func() {
-		urlRegexp, regexpErr = regexp.Compile(urlRegexpString)
+func getIssueRegexp() *regexp.Regexp {
+	once.Do(func() {
+		issueRegexp = regexp.MustCompile(`(\w+)/([\w-]+)#([0-9]+)`)
 	})
-	return urlRegexp, regexpErr
+	return issueRegexp
 }
 
-func toProtocolLink(view source.View, mapper *protocol.ColumnMapper, target string, start, end token.Pos) (protocol.DocumentLink, error) {
+var (
+	once        sync.Once
+	issueRegexp *regexp.Regexp
+)
+
+func toProtocolLink(view source.View, m *protocol.ColumnMapper, target string, start, end token.Pos) (protocol.DocumentLink, error) {
 	spn, err := span.NewRange(view.Session().Cache().FileSet(), start, end).Span()
 	if err != nil {
 		return protocol.DocumentLink{}, err
 	}
-	rng, err := mapper.Range(spn)
+	rng, err := m.Range(spn)
 	if err != nil {
 		return protocol.DocumentLink{}, err
 	}

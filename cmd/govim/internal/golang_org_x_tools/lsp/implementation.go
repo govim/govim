@@ -9,9 +9,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 )
 
 func (s *Server) implementation(ctx context.Context, params *protocol.ImplementationParams) ([]protocol.Location, error) {
@@ -28,43 +26,5 @@ func (s *Server) implementation(ctx context.Context, params *protocol.Implementa
 	if fh.Identity().Kind != source.Go {
 		return nil, nil
 	}
-	phs, err := snapshot.PackageHandles(ctx, fh)
-	if err != nil {
-		return nil, err
-	}
-	var (
-		allLocs []protocol.Location
-		seen    = make(map[protocol.Location]bool)
-	)
-	for _, ph := range phs {
-		ctx := telemetry.Package.With(ctx, ph.ID())
-
-		ident, err := source.Identifier(ctx, snapshot, fh, params.Position, source.SpecificPackageHandle(ph.ID()))
-		if err != nil {
-			if err == source.ErrNoIdentFound {
-				return nil, err
-			}
-			log.Error(ctx, "failed to find Identifer", err)
-			continue
-		}
-
-		locs, err := ident.Implementation(ctx)
-		if err != nil {
-			if err == source.ErrNotAnInterface {
-				return nil, err
-			}
-			log.Error(ctx, "failed to find Implemenation", err)
-			continue
-		}
-
-		for _, loc := range locs {
-			if seen[loc] {
-				continue
-			}
-			seen[loc] = true
-			allLocs = append(allLocs, loc)
-		}
-	}
-
-	return allLocs, nil
+	return source.Implementation(ctx, snapshot, fh, params.Position)
 }
