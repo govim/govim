@@ -3,20 +3,21 @@
 # Default behaviour is quickfix autodiagnostics & sign placment enabled
 vim ex 'e main.go'
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch -peek 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist"'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist"'
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
-cmp errors errors.golden
-errlogmatch 'sendJSONMsg:.*\"call\",.*,\"sign_placelist\"'
+cmp errors errors.golden1
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
-cmp stdout signs.golden
+cmp stdout signs.golden1
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # There must be no quickfix entries or signs when both are explicitly disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 0]'
 vim call 'govim#config#Set' '["QuickfixSigns", 0]'
-vim call append '[10,""]'
+vim call append '[6,"fmt.Printf(\"Test is a test %v\\n\", i, v)"]'
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'copen'
 vim ex 'w errors'
@@ -27,33 +28,35 @@ cmp stdout nosigns.golden
 
 # Enabling quickfix autodiagnostics should give quickfix entries but no signs
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 1]'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist"'
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
-cmp errors errors.golden
+cmp errors errors.golden2
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 cmp stdout nosigns.golden
 
 ## Enabling signs should place signs again
 vim call 'govim#config#Set' '["QuickfixSigns", 1]'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist"'
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
-cmp errors errors.golden
-errlogmatch 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
+cmp errors errors.golden2
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
-cmp stdout signs.golden
+cmp stdout signs.golden2
 
 # Signs should be placed with quickfix autodiagnostics disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 0]'
-vim call append '[10,""]'
+vim call append '[6,"fmt.Printf(\"Test is a test %v\\n\", i, v)"]'
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist"'
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
 cmp errors empty
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
-cmp stdout signs.golden
+cmp stdout signs.golden3
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -72,12 +75,12 @@ func main() {
 
 func f1() string {}
 func f2() string {}
--- errors.golden --
+-- errors.golden1 --
 main.go|6 col 36| undeclared name: i
 main.go|6 col 39| undeclared name: v
 main.go|9 col 19| missing return
 main.go|10 col 19| missing return
--- signs.golden --
+-- signs.golden1 --
 [
   {
     "bufnr": 1,
@@ -107,6 +110,127 @@ main.go|10 col 19| missing return
         "group": "govim",
         "id": 4,
         "lnum": 10,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      }
+    ]
+  }
+]
+-- errors.golden2 --
+main.go|6 col 36| undeclared name: i
+main.go|6 col 39| undeclared name: v
+main.go|7 col 35| undeclared name: i
+main.go|7 col 38| undeclared name: v
+main.go|10 col 19| missing return
+main.go|11 col 19| missing return
+-- signs.golden2 --
+[
+  {
+    "bufnr": 1,
+    "signs": [
+      {
+        "group": "govim",
+        "id": 2,
+        "lnum": 6,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 1,
+        "lnum": 6,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 4,
+        "lnum": 7,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 3,
+        "lnum": 7,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 5,
+        "lnum": 10,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 6,
+        "lnum": 11,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      }
+    ]
+  }
+]
+-- signs.golden3 --
+[
+  {
+    "bufnr": 1,
+    "signs": [
+      {
+        "group": "govim",
+        "id": 2,
+        "lnum": 6,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 1,
+        "lnum": 6,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 4,
+        "lnum": 7,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 3,
+        "lnum": 7,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 6,
+        "lnum": 8,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 5,
+        "lnum": 8,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 7,
+        "lnum": 11,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 8,
+        "lnum": 12,
         "name": "GOVIMSignErr",
         "priority": 14
       }
