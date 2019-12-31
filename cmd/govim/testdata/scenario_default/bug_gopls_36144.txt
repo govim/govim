@@ -1,0 +1,26 @@
+# A test that causes a failure similar to the scenario described by:
+# https://github.com/golang/go/issues/36144. This is marked as "skip" because
+# otherwise we would continually break the govim build. The issue has been
+# reported, its implications and severity are known, so there is no value in
+# having a red CI build.
+#
+# What's critical here is that the go.mod file is incomplete; it is missing
+# the go directive. Hence on the initial load that file gets changed, which
+# triggers a file watcher event in govim, which triggers a recalculation of
+# diagnostics when the go.mod file is changed, which sometimes causes a
+# cancellation of the initial diagnostics for the package, or the diagnostics
+# that are sent when a file is opened.
+
+skip 'Known issue reported as https://github.com/golang/go/issues/36144'
+
+vim ex 'e main.go'
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+
+-- go.mod --
+module mod.com
+
+-- main.go --
+package main
+
+func main() {
+}

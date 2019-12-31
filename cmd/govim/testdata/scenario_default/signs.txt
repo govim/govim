@@ -7,6 +7,9 @@
 # TODO: Add tests for diagnostics with info & hint severity. Currently there are no such diagnostics in gopls.
 # TODO: Add tests for two diagnostics with different severities on the same line. Currently not supported by gopls.
 
+# Soak up initial diagnostics
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
+
 vim ex 'e main.go'
 errlogmatch 'sendJSONMsg: .*\"call\",\"s:batchCall\",.*\"sign_placelist\"'
 
@@ -27,7 +30,7 @@ cmp stdout placed_openfile1.golden
 # Removing one of the two quickfix entires on one line shouldn't remove the sign
 vim ex 'call cursor(6,36)'
 vim ex 'call feedkeys(\"3x\", \"x\")' # Remove "i, " from Printf-line
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[\{"buffer":1,"group":"govim"'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[\{"buffer":3,"group":"govim"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed_openfile2.golden
@@ -38,7 +41,7 @@ cmp stdout placed_openfile2.golden
 # Removing lines should also remove the signs
 vim ex 'call cursor(9,1)'
 vim ex 'call feedkeys(\"2dd\", \"x\")' # Remove line 9 & 10
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[\{"buffer":1,"group":"govim"'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[\{"buffer":3,"group":"govim"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed_onesign.golden
@@ -58,7 +61,7 @@ cmp stdout placed_nosign.golden
 
 # Two warnings on one line should place two warnings
 vim call append '[5, "\tvar x, y int\n\tx, y = x, y"]'
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[\{"buffer":1,"group":"govim"'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[\{"buffer":3,"group":"govim"'
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed_twowarnings.golden
@@ -68,6 +71,7 @@ cmp stdout placed_twowarnings.golden
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 
@@ -106,7 +110,7 @@ func f2() string {}
 -- placed_openfile1.golden --
 [
   {
-    "bufnr": 1,
+    "bufnr": 3,
     "signs": [
       {
         "group": "govim",
@@ -142,7 +146,7 @@ func f2() string {}
 -- placed_openfile2.golden --
 [
   {
-    "bufnr": 1,
+    "bufnr": 3,
     "signs": [
       {
         "group": "govim",
@@ -171,7 +175,7 @@ func f2() string {}
 -- placed_onesign.golden --
 [
   {
-    "bufnr": 1,
+    "bufnr": 3,
     "signs": [
       {
         "group": "govim",
@@ -186,14 +190,14 @@ func f2() string {}
 -- placed_nosign.golden --
 [
   {
-    "bufnr": 1,
+    "bufnr": 3,
     "signs": []
   }
 ]
 -- placed_twowarnings.golden --
 [
   {
-    "bufnr": 1,
+    "bufnr": 3,
     "signs": [
       {
         "group": "govim",

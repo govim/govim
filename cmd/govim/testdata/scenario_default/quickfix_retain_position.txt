@@ -1,13 +1,13 @@
 # Test that the quickfix window logic around retaining its selected item
 
-# First ensure we get the expected errors
+# Soak up initial diagnostics
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
+
 vim ex 'e main.go'
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go","lnum":6,"col":2,"text":"undeclared name: asdf","buf":1\},\{"filename":"main\.go","lnum":8,"col":2,"text":"undeclared name: fdas","buf":1\}\],"r"\]\]\]\]'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
 vim ex 'copen'
 vim ex 'w errors'
 cmp errors errors.golden.orig
-# Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # Verify we have the first entry selected
 vim expr 'getqflist({\"idx\": 0})'
@@ -21,7 +21,9 @@ stdout '{"idx":2}'
 ! stderr .+
 
 # Now add another error and check the index
-cp other.go.orig other.go
+vim ex 'e other.go'
+vim ex 'call cursor(3,1)'
+vim normal Sasdf
 errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist".*"filename":"other\.go"'
 vim ex 'copen'
 vim ex 'w errors'
@@ -30,9 +32,13 @@ vim expr 'getqflist({\"idx\": 0})'
 stdout '{"idx":2}'
 ! stderr .+
 
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 
@@ -43,10 +49,10 @@ func main() {
 	fmt.Printf("This is a test %v")
 	fdas
 }
--- other.go.orig --
+-- other.go --
 package main
 
-asdf
+//
 -- errors.golden.orig --
 main.go|6 col 2| undeclared name: asdf
 main.go|8 col 2| undeclared name: fdas

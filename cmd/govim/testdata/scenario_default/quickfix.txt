@@ -1,16 +1,21 @@
 # Test that the quickfix window gets populated with error messages from gopls
 
+# Soak up initial diagnostics
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
+
 vim ex 'e main.go'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
 vim ex 'copen'
 vim ex 'w errors'
 cmp errors errors.golden
+
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 

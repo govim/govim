@@ -25,6 +25,7 @@ cmp main.go main.go.golden
 -- go.mod --
 module mod
 
+go 1.12
 -- main.go --
 package main
 

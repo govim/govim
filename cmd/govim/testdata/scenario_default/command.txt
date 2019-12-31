@@ -7,8 +7,6 @@ vim ex 'GOVIMHello'
 vim expr 'v:statusmsg'
 stdout '^\Q"Hello from command"\E$'
 ! stderr .+
-# Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # Test that we can pass args
 vim ex 'GOVIMHello goodbye'
@@ -17,5 +15,6 @@ vim ex 'GOVIMHello goodbye'
 vim expr 'v:statusmsg'
 stdout '^\Q"Hello from command; special note: goodbye"\E$'
 ! stderr .+
+
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'

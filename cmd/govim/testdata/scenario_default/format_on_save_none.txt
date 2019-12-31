@@ -1,17 +1,19 @@
 # Test that govim#config#Set("FormatOnSave", "") works
 
-cp file.go.orig file.go
+cp file.go file.go.orig
 vim call 'govim#config#Set' '["FormatOnSave", ""]'
 vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.orig
+
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com
 
--- file.go.orig --
+go 1.12
+-- file.go --
 package blah
 
 const ( x = 5
