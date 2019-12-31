@@ -2,7 +2,6 @@
 # already has the relevant import required for the completion.
 
 vim ex 'e main.go'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 
 # lower from lo
 vim ex 'call cursor(7,1)'
@@ -10,8 +9,6 @@ vim normal Slo
 vim ex 'execute \"normal A\\<C-X>\\<C-O>\"'
 vim ex 'w'
 cmp main.go main.go.lowercomplete
-# Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # UPPER from UP
 vim ex 'call cursor(7,1)'
@@ -19,8 +16,6 @@ vim normal SUP
 vim ex 'execute \"normal A\\<C-X>\\<C-O>\"'
 vim ex 'w'
 cmp main.go main.go.uppercomplete
-# Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # lower from LO
 vim ex 'call cursor(7,1)'
@@ -28,8 +23,6 @@ vim normal SLO
 vim ex 'execute \"normal A\\<C-X>\\<C-O>\"'
 vim ex 'w'
 cmp main.go main.go.lowermiss
-# Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # UPPER from up
 vim ex 'call cursor(7,1)'
@@ -37,54 +30,56 @@ vim normal Sup
 vim ex 'execute \"normal A\\<C-X>\\<C-O>\"'
 vim ex 'w'
 cmp main.go main.go.uppermiss
+
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 
-func main() {
-	var lower int
-	var UPPER int
+var lower int
+var UPPER int
 
+func main() {
 	//
 }
 -- main.go.lowercomplete --
 package main
 
-func main() {
-	var lower int
-	var UPPER int
+var lower int
+var UPPER int
 
+func main() {
 	lower
 }
 -- main.go.uppercomplete --
 package main
 
-func main() {
-	var lower int
-	var UPPER int
+var lower int
+var UPPER int
 
+func main() {
 	UPPER
 }
 -- main.go.lowermiss --
 package main
 
-func main() {
-	var lower int
-	var UPPER int
+var lower int
+var UPPER int
 
+func main() {
 	LO
 }
 -- main.go.uppermiss --
 package main
 
-func main() {
-	var lower int
-	var UPPER int
+var lower int
+var UPPER int
 
+func main() {
 	up
 }

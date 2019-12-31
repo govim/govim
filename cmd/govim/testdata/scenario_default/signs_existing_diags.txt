@@ -1,19 +1,27 @@
 # Test that signs are placed when opening a file that already has diagnostics.
 
+# We don't have any initial diagnostics; at least that is correct as of
+# https://github.com/golang/go/issues/36243#issuecomment-569958810
+#
+# There are also slightly bizarre expectations below given
+# https://github.com/golang/go/issues/36340
+
 vim ex 'e main.go'
-errlogmatch -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-errlogmatch -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
+errlogmatch -peek 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
 vim ex 'e other.go'
 errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[.*\{"buffer":3,"group":"govim"'
 vim -indent expr 'sign_getplaced(\"other.go\", {\"group\": \"*\"})'
 ! stderr .+
 cmp stdout placed.golden
+
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 

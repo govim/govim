@@ -1,13 +1,13 @@
 # Test that the quickfix window logic around retaining its selected item
 
-# First ensure we get the expected errors
+# Soak up initial diagnostics
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+
 vim ex 'e main.go'
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go","lnum":6,"col":2,"text":"undeclared name: asdf","buf":1\},\{"filename":"main\.go","lnum":8,"col":2,"text":"undeclared name: fdas","buf":1\}\],"r"\]\]\]\]'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
 vim ex 'copen'
 vim ex 'w errors'
 cmp errors errors.golden.orig
-# Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # Verify we have the first entry selected
 vim expr 'getqflist({\"idx\": 0})'
@@ -30,9 +30,13 @@ vim expr 'getqflist({\"idx\": 0})'
 stdout '{"idx":2}'
 ! stderr .+
 
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 

@@ -3,10 +3,8 @@
 # Verify that new imports get correctly placed
 go mod download
 vim ex 'e main.go'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'call cursor(10,1)'
 vim ex 'call feedkeys(\"$i, useless.Name\\<ESC>\", \"xt\")'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'GOVIMGoImports'
 vim ex 'noautocmd w'
 cmp main.go main.go.golden
@@ -16,6 +14,8 @@ cmp main.go main.go.golden
 
 -- go.mod --
 module mod.com
+
+go 1.12
 
 require (
 	example.com/blah v1.0.0

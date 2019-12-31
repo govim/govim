@@ -4,9 +4,7 @@
 
 # New file in the same package
 vim ex 'e main.go'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 cp const.go.orig const.go
-errlogmatch '&protocol.DidOpenTextDocumentParams{\n\S+:\s+TextDocument: protocol.TextDocumentItem{URI:"file://'$WORK/const.go
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/const.go
 vim ex 'call cursor(6,16)'
 vim ex 'call feedkeys(\"iConst2\\<ESC>\", \"x\")'
@@ -42,6 +40,7 @@ cmp errors errors.empty
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 

@@ -1,12 +1,10 @@
 # Test that the quickfix window gets populated with locations for the
 # GOVIMReferences command
 
-# Ensure quickfix diagnostics are turned on
-vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 1]'
+[short] skip 'Skip because we sleep for DEFAULT_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
 
 # Initial location population
 vim ex 'e main.go'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'call cursor(15,24)'
 vim ex 'GOVIMReferences'
 vim ex 'copen'
@@ -18,7 +16,7 @@ vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
 vim expr 'bufname(\"\")'
 vim ex 'call cursor(15,1)'
 vim ex 'call feedkeys(\"ofmt.Printf(\\\"%v\\\")\\<ESC>\", \"xt\")'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+sleep $DEFAULT_ERRLOGMATCH_WAIT
 vim ex 'copen'
 vim ex 'w locations'
 cmp locations locations.golden
@@ -30,13 +28,13 @@ vim ex 'copen'
 vim ex 'w errors'
 cmp errors errors.golden
 
-# Check for errors
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 

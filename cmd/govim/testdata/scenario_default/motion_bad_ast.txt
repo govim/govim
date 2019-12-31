@@ -11,6 +11,7 @@ stdout '\[8,29\]'
 -- go.mod --
 module mod
 
+go 1.12
 -- main.go --
 package main
 

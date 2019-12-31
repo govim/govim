@@ -4,7 +4,6 @@
 
 [!vim] [!gvim] skip
 
-
 # Tests basic case with a single diagnostic, no fix selected
 cp main.go.single main.go
 vim ex 'e main.go'
@@ -25,7 +24,6 @@ cmp stdout no_popup.golden
 vim ex 'GOVIMSuggestedFixes'
 errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of x to x\"'
 vim ex 'call feedkeys(\"\\<Enter>\", \"xt\")'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'w'
 cmp main.go main.go.single.golden
 
@@ -85,6 +83,7 @@ errlogmatch -count 5 'sendJSONMsg: .*\"call\",\"popup_show\"'
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go.single --
 package main
 

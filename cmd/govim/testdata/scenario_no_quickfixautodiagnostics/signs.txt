@@ -9,6 +9,7 @@ cmp stdout placed.golden
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 

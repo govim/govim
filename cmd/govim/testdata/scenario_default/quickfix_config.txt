@@ -1,9 +1,13 @@
 # Test that the config can be used to enable/disable quickfix features
 
+[short] skip 'Skip because we sleep for DEFAULT_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+
+# Soak up initial diagnostics
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+
 # Default behaviour is quickfix autodiagnostics & sign placment enabled
 vim ex 'e main.go'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-errlogmatch -peek 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist"'
+errlogmatch -peek 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist".*"filename":"main\.go"'
 errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist"'
 vim ex 'copen'
 vim ex 'w errors'
@@ -11,14 +15,12 @@ vim ex 'cclose'
 cmp errors errors.golden1
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 cmp stdout signs.golden1
-# Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 # There must be no quickfix entries or signs when both are explicitly disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 0]'
 vim call 'govim#config#Set' '["QuickfixSigns", 0]'
 vim call append '[6,"fmt.Printf(\"Test is a test %v\\n\", i, v)"]'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+sleep $DEFAULT_ERRLOGMATCH_WAIT
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
@@ -28,7 +30,7 @@ cmp stdout nosigns.golden
 
 # Enabling quickfix autodiagnostics should give quickfix entries but no signs
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 1]'
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist"'
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist".*"filename":"main\.go"'
 vim ex 'copen'
 vim ex 'w errors'
 vim ex 'cclose'
@@ -49,7 +51,6 @@ cmp stdout signs.golden2
 # Signs should be placed with quickfix autodiagnostics disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 0]'
 vim call append '[6,"fmt.Printf(\"Test is a test %v\\n\", i, v)"]'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist"'
 vim ex 'copen'
 vim ex 'w errors'
@@ -64,6 +65,7 @@ cmp stdout signs.golden3
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 
@@ -83,7 +85,7 @@ main.go|10 col 19| missing return
 -- signs.golden1 --
 [
   {
-    "bufnr": 1,
+    "bufnr": 3,
     "signs": [
       {
         "group": "govim",
@@ -126,7 +128,7 @@ main.go|11 col 19| missing return
 -- signs.golden2 --
 [
   {
-    "bufnr": 1,
+    "bufnr": 3,
     "signs": [
       {
         "group": "govim",
@@ -176,7 +178,7 @@ main.go|11 col 19| missing return
 -- signs.golden3 --
 [
   {
-    "bufnr": 1,
+    "bufnr": 3,
     "signs": [
       {
         "group": "govim",
@@ -240,7 +242,7 @@ main.go|11 col 19| missing return
 -- nosigns.golden --
 [
   {
-    "bufnr": 1,
+    "bufnr": 3,
     "signs": []
   }
 ]
