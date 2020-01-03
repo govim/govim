@@ -248,8 +248,6 @@ before_install:
   - git config --global core.autocrlf false
   - git clone --depth=50 _old $TRAVIS_REPO_SLUG
   - cd $TRAVIS_REPO_SLUG
-
-before_install:
   - docker --version
   - ./_scripts/buildGovimImage.sh
 
