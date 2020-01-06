@@ -50,7 +50,7 @@ fi
 go vet $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 go run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 
-if [ "${CI:-}" == "true" && "${TRAVIS_EVENT_TYPE:-}" != "cron" ]
+if [ "${CI:-}" == "true" ] && [ "${TRAVIS_EVENT_TYPE:-}" != "cron" ]
 then
 	go mod tidy
 	diff <(echo -n) <(go run golang.org/x/tools/cmd/goimports -d $(git ls-files '**/*.go' '*.go' | grep -v golang_org_x_tools))
