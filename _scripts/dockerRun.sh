@@ -2,6 +2,9 @@
 
 source "${BASH_SOURCE%/*}/common.bash"
 
+# This ensures that Travis properly runs the after_failure script
+trap 'set +ev' EXIT
+
 if [ "${VIM_COMMAND:-}" == "" ]
 then
 	eval "VIM_COMMAND=\"\$DEFAULT_${VIM_FLAVOR^^}_COMMAND\""

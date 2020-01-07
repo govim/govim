@@ -32,7 +32,6 @@ const (
 )
 
 var (
-	fDebugLog  = flag.Bool("debugLog", false, "Whether to log debugging info from vim, govim and the test shim")
 	fGoplsPath = flag.String("gopls", "", "Path to the gopls binary for use in scenario tests. If unset, gopls is built from a tagged version.")
 )
 
@@ -48,6 +47,18 @@ func TestMain(m *testing.M) {
 }
 
 func TestScripts(t *testing.T) {
+	// TODO our approach with setting the workdir root via os.Setenv("GOTMPDIR")
+	// is hacky and gross. Working out a cleaner approach with rogpeppe, likely
+	// passing in such a value via Params
+	var workdir string
+	if envworkdir := os.Getenv(testsetup.EnvTestscriptWorkdirRoot); envworkdir == "" {
+		// i.e. we are not going to call os.Setenv below
+		t.Parallel()
+	} else {
+		workdir = filepath.Join(envworkdir, "cmd", "govim"+raceOrNot())
+		defer os.Setenv("GOTMPDIR", os.Getenv("GOTMPDIR"))
+	}
+
 	var waitLock sync.Mutex
 	var waitList []func() error
 
@@ -77,9 +88,18 @@ func TestScripts(t *testing.T) {
 		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), "scenario_") {
 			continue
 		}
+		workdir := workdir
+		if workdir != "" {
+			workdir = filepath.Join(workdir, entry.Name())
+			os.MkdirAll(workdir, 0777)
+			os.Setenv("GOTMPDIR", workdir)
+		}
 		t.Run(entry.Name(), func(t *testing.T) {
+			// Do not call t.Parallel here. We currently rely on this being
+			// run on the test goroutine in order that os.Setenv is not racey
 			params := testscript.Params{
-				Dir: filepath.Join("testdata", entry.Name()),
+				TestWork: workdir != "",
+				Dir:      filepath.Join("testdata", entry.Name()),
 				Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 					"sleep":       testdriver.Sleep,
 					"errlogmatch": testdriver.ErrLogMatch,
@@ -101,6 +121,9 @@ func TestScripts(t *testing.T) {
 						"PLUGIN_PATH="+govimPath,
 						"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
 					)
+					if workdir != "" {
+						e.Vars = append(e.Vars, "GOVIM_LOGFILE_TMPL=%v")
+					}
 					testPluginPath := filepath.Join(home, ".vim", "pack", "plugins", "start", "govim")
 
 					errLog := new(testdriver.LockingBuffer)
@@ -112,14 +135,27 @@ func TestScripts(t *testing.T) {
 						outputs = append(outputs, os.Stderr)
 					}
 
-					if *fDebugLog {
-						tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
+					var err error
+					var tf *os.File
+					if workdir == "" {
+						tf, err = ioutil.TempFile(tmp, "govim_log*")
 						if err != nil {
 							t.Fatalf("failed to create govim log file: %v", err)
 						}
-						outputs = append(outputs, tf)
-						t.Logf("logging %v to %v\n", filepath.Base(e.WorkDir), tf.Name())
+					} else {
+						// create a "plain"-named logfile because as above we set
+						// GOVIM_LOGFILE_TMPL=%v
+						tf, err = os.OpenFile(filepath.Join(tmp, "govim_log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0666)
+						if err != nil {
+							t.Fatalf("failed to create non-tmp govim log file: %v", err)
+						}
 					}
+					e.Defer(func() {
+						if err := tf.Close(); err != nil {
+							panic(fmt.Errorf("failed to close govim logfile %v: %v", tf.Name(), err))
+						}
+					})
+					outputs = append(outputs, tf)
 
 					defaultsPath := filepath.Join("testdata", entry.Name(), "default_config.json")
 					defaults, err := readConfig(defaultsPath)
