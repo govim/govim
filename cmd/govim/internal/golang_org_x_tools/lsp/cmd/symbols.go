@@ -15,7 +15,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tool"
 )
 
-// references implements the references verb for gopls
+// symbols implements the symbols verb for gopls
 type symbols struct {
 	app *Application
 }
