@@ -3,8 +3,11 @@
 
 vim ex 'e main.go'
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-vim ex 'call cursor(11,17)'
-vim ex 'call feedkeys(\"i\\<C-X>\\<C-O>\\<C-N>\\<ESC>\", \"xt\")'
+vim ex 'call cursor(11,1)'
+vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\\<C-N>\\<C-N>\\<ESC>\", \"xt\")'
+vim ex 'call feedkeys(\"A(Con\", \"xt\")'
+vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\\<C-N>\\<ESC>\", \"xt\")'
+vim ex 'call feedkeys(\"A)\", \"xt\")'
 vim ex 'w'
 cmp main.go main.go.golden
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -24,7 +27,7 @@ const (
 )
 
 func main() {
-	fmt.Println(Con)
+	fmt.Print
 }
 -- main.go.golden --
 package main
