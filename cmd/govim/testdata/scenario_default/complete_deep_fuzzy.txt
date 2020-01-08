@@ -1,17 +1,18 @@
 # Test that deep fuzzy complete works by default.
 
 vim ex 'e main.go'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 vim ex 'call cursor(11,1)'
 vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\\<ESC>\", \"xt\")'
 vim ex 'w'
 cmp main.go main.go.golden
+
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 

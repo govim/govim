@@ -119,7 +119,6 @@ func TestScripts(t *testing.T) {
 						"GONOSUMDB=*",
 						"HOME="+home,
 						"PLUGIN_PATH="+govimPath,
-						"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
 					)
 					if workdir != "" {
 						e.Vars = append(e.Vars, "GOVIM_LOGFILE_TMPL=%v")
@@ -244,6 +243,7 @@ func TestScripts(t *testing.T) {
 }
 
 func TestInstallScripts(t *testing.T) {
+	t.Parallel()
 	if os.Getenv(EnvInstallScripts) != "true" {
 		t.Skipf("Skipping install scripts; %v != true", EnvInstallScripts)
 	}
@@ -264,7 +264,8 @@ func TestInstallScripts(t *testing.T) {
 			Setup: func(e *testscript.Env) error {
 				e.Vars = append(e.Vars,
 					"PLUGIN_PATH="+govimPath,
-					"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
+					"GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
+					"GOCACHE="+strings.TrimSpace(runCmd(t, "go", "env", "GOCACHE")),
 					testsetup.EnvLoadTestAPI+"=true",
 				)
 				return nil
@@ -292,7 +293,8 @@ func TestInstallScripts(t *testing.T) {
 				e.Vars = append(e.Vars,
 					"PATH="+path,
 					"PLUGIN_PATH="+govimPath,
-					"CURRENT_GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
+					"GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
+					"GOCACHE="+strings.TrimSpace(runCmd(t, "go", "env", "GOCACHE")),
 					string(config.EnvVarUseGoplsFromPath)+"=true",
 					testsetup.EnvLoadTestAPI+"=true",
 				)

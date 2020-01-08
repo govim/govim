@@ -1,0 +1,26 @@
+# Verify that we don't receive any diagnostics when there
+# are files with no errors in the package but that we then
+# do receive diagnostics for each file we then open.
+
+[short] skip 'Skip because we sleep for DEFAULT_ERRLOGMATCH_WAIT to verify we haven''t received diagnostics'
+
+sleep $DEFAULT_ERRLOGMATCH_WAIT
+errlogmatch -count=0 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams'
+
+vim ex 'e main.go'
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+
+vim ex 'e other.go'
+errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
+
+errlogmatch -count=1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch -count=1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+-- other.go --
+package main

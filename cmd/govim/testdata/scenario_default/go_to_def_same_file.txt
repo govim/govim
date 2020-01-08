@@ -12,11 +12,14 @@ vim expr 'bufname(\"\")'
 stdout '^\Q"'$WORK'/p.go"\E$'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[8,7]\E$'
+
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
 -- go.mod --
 module mod.com/p
+
+go 1.12
 
 replace mod.com/q => ./q
 
@@ -32,6 +35,8 @@ const SameFile = "samefile"
 
 -- q/go.mod --
 module mod.com/q
+
+go 1.12
 
 -- q/q.go --
 package q

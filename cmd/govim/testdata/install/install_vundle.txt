@@ -3,7 +3,6 @@
 [!net] skip
 
 env HOME=$WORK/home
-env GOPATH=$CURRENT_GOPATH
 
 exec git clone -q $PLUGIN_PATH $WORK/plugin
 

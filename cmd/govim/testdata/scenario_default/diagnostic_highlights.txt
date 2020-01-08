@@ -6,6 +6,9 @@
 # TODO: Add tests of hint & info severity when gopls reports diagnostics with other severities than error and warning.
 # TODO: Rewrite property listing when vim implements prop_find().
 
+# Soak up initial diagnostics
+errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
+
 # Errors are placed with ranges matching the diagnostic
 vim ex 'e main.go'
 errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","prop_remove",\{"id":0,"bufnr":\d,"all":1\}\],\["call","s:mustNothing","prop_add"'
@@ -63,6 +66,7 @@ cmp stdout main_go_warning.golden
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.go --
 package main
 

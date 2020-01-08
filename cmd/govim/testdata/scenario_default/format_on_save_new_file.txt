@@ -5,9 +5,13 @@ vim ex 'r main.txt | 0d_'
 vim ex 'w main.go'
 cmp main.go main.txt
 
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
 -- go.mod --
 module mod.com
 
+go 1.12
 -- main.txt --
 package main
 
