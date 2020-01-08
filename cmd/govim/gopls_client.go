@@ -171,6 +171,14 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 	g.diagnosticsChangedLock.Lock()
 	uri := span.URI(params.URI)
 	curr, ok := g.rawDiagnostics[uri]
+	// We need to ignore diagnostics for old versions. We might get new
+	// diagnostics for the same version if there are changes outside of this
+	// file that result in errors within the file.
+	if ok && curr.Version > params.Version {
+		g.Logf("** Received non-new diagnostics for %v; ignoring. Currently have: \n%v\nGot: \n%v", params.URI, tabIndent(pretty.Sprint(curr)), tabIndent(pretty.Sprint(params)))
+		g.diagnosticsChangedLock.Unlock()
+		return fmt.Errorf("client has already seen version %v for %v; you sent %v", curr.Version, uri, params.Version)
+	}
 	g.rawDiagnostics[uri] = params
 	g.diagnosticsChanged = true
 	g.diagnosticsChangedQuickfix = true
@@ -207,4 +215,8 @@ func (g *govimplugin) logGoplsClientf(format string, args ...interface{}) {
 		format = format + "\n"
 	}
 	g.Logf("gopls client start =======================\n"+format+"gopls client end =======================\n", args...)
+}
+
+func tabIndent(s string) string {
+	return "\t" + strings.ReplaceAll(s, "\n", "\n\t")
 }
