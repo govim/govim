@@ -59,6 +59,13 @@ cmp errors empty
 vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 cmp stdout signs.golden3
 
+# Calling :GOVIMQuickfixDiagnostics should force-populate the quickfix window
+vim ex 'GOVIMQuickfixDiagnostics'
+vim ex 'copen'
+vim ex 'w errors'
+vim ex 'cclose'
+cmp errors errors.golden3
+
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
@@ -239,6 +246,15 @@ main.go|11 col 19| missing return
     ]
   }
 ]
+-- errors.golden3 --
+main.go|6 col 36| undeclared name: i
+main.go|6 col 39| undeclared name: v
+main.go|7 col 35| undeclared name: i
+main.go|7 col 38| undeclared name: v
+main.go|8 col 35| undeclared name: i
+main.go|8 col 38| undeclared name: v
+main.go|11 col 19| missing return
+main.go|12 col 19| missing return
 -- nosigns.golden --
 [
   {
