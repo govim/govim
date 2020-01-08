@@ -21,7 +21,7 @@ func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string)
 }
 
 func (v *vimstate) updateQuickfix(diags []types.Diagnostic, force bool) error {
-	if v.config.QuickfixAutoDiagnostics == nil || !*v.config.QuickfixAutoDiagnostics {
+	if !force && (v.config.QuickfixAutoDiagnostics == nil || !*v.config.QuickfixAutoDiagnostics) {
 		return nil
 	}
 	v.diagnosticsChangedLock.Lock()
