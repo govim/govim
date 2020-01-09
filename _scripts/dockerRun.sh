@@ -28,6 +28,7 @@ vim --version
 
 if [ "${TRAVIS_EVENT_TYPE:-}" == "cron" ]
 then
+	go mod edit -dropreplace=golang.org/x/tools -dropreplace=golang.org/x/tools/gopls
 	go get golang.org/x/tools/gopls@master golang.org/x/tools@master
 	go list -m golang.org/x/tools/gopls golang.org/x/tools
 fi
