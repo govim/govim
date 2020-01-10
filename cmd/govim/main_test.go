@@ -137,14 +137,14 @@ func TestScripts(t *testing.T) {
 					var err error
 					var tf *os.File
 					if workdir == "" {
-						tf, err = ioutil.TempFile(tmp, "govim_log*")
+						tf, err = ioutil.TempFile(tmp, "govim.log*")
 						if err != nil {
 							t.Fatalf("failed to create govim log file: %v", err)
 						}
 					} else {
 						// create a "plain"-named logfile because as above we set
 						// GOVIM_LOGFILE_TMPL=%v
-						tf, err = os.OpenFile(filepath.Join(tmp, "govim_log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0666)
+						tf, err = os.OpenFile(filepath.Join(tmp, "govim.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0666)
 						if err != nil {
 							t.Fatalf("failed to create non-tmp govim log file: %v", err)
 						}
