@@ -320,5 +320,11 @@ func (l loggingGoplsServer) Progress(ctxt context.Context, params *protocol.Prog
 	err := l.u.Progress(ctxt, params)
 	l.Logf("gopls.Progress() return; err: %v\n", err)
 	return err
+}
 
+func (l loggingGoplsServer) NonstandardRequest(ctxt context.Context, method string, params interface{}) (interface{}, error) {
+	l.Logf("gopls.NonstandardRequest() call; method: %v, params:\n%v", method, pretty.Sprint(params))
+	res, err := l.u.NonstandardRequest(ctxt, method, params)
+	l.Logf("gopls.NonstandardRequest() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
 }

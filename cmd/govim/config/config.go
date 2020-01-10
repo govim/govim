@@ -64,19 +64,14 @@ type Config struct {
 	// Default: true
 	CompletionDeepCompletions *bool `json:",omitempty"`
 
-	// CompletionFuzzyMatching enables gopls' fuzzy matching in the derivation
-	// of completion candidates.
+	// CompletionMatcher is a string value that tells gopls which matcher
+	// to use when computing completion candidates.
 	//
-	// Default: true
-	CompletionFuzzyMatching *bool `json:",omitempty"`
+	// Default: CompletionMatcherFuzzy
+	CompletionMatcher *CompletionMatcher `json:",omitempty"`
 
 	// Staticcheck enables staticcheck analyses in gopls
 	Staticcheck *bool `json:",omitempty"`
-
-	// CompletionCaseSensitive configures gopls' matching to be case sensitive.
-	// This option only takes effect when both CompletionDeepCompletions and
-	// CompletionFuzzyMatching are set to false.
-	CompletionCaseSensitive *bool `json:",omitempty"`
 
 	// CompleteUnimported configures gopls to attempt completions for unimported
 	// standard library packages. e.g. when a user completes rand.<>, propose
@@ -233,7 +228,7 @@ const (
 )
 
 // FormatOnSave typed constants define the set of valid values that
-// GlobalFormatOnSave can take
+// Config.FormatOnSave can take
 type FormatOnSave string
 
 const (
@@ -248,6 +243,24 @@ const (
 	// FormatOnSaveGoImports specifies that gopls should run a goimports-based
 	// formatting on a .go file before as it is saved.
 	FormatOnSaveGoImports FormatOnSave = "goimports"
+)
+
+// CompletionMatcher typed constants define the set of valid values that
+// Config.Matcher can take
+type CompletionMatcher string
+
+const (
+	// CompletionMatcherFuzzy specifies that gopls should use fuzzy matching
+	// when computing completion candidates
+	CompletionMatcherFuzzy CompletionMatcher = "fuzzy"
+
+	// CompletionMatcherCaseSensitive specifies that gopls should use
+	// case-sensitive matching when computing completion candidates
+	CompletionMatcherCaseSensitive CompletionMatcher = "caseSensitive"
+
+	// CompletionMatcherCaseInsensitive specifies that gopls should use
+	// case-sensitive matching when computing completion candidates
+	CompletionMatcherCaseInsensitive CompletionMatcher = "caseInsensitive"
 )
 
 // Highlight typed constants define the different highlight groups used by govim.

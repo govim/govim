@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"time"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -63,15 +62,11 @@ func (s *suggestedfix) Run(ctx context.Context, args ...string) error {
 		return file.err
 	}
 
-	// Wait for diagnostics results
-	select {
-	case <-file.hasDiagnostics:
-	case <-time.After(30 * time.Second):
-		return errors.Errorf("timed out waiting for results from %v", file.uri)
+	if err := conn.diagnoseFiles(ctx, []span.URI{uri}); err != nil {
+		return err
 	}
-
-	file.diagnosticsMu.Lock()
-	defer file.diagnosticsMu.Unlock()
+	conn.Client.filesMu.Lock()
+	defer conn.Client.filesMu.Unlock()
 
 	p := protocol.CodeActionParams{
 		TextDocument: protocol.TextDocumentIdentifier{

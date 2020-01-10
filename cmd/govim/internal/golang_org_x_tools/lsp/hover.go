@@ -19,14 +19,14 @@ func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*prot
 		return nil, err
 	}
 	snapshot := view.Snapshot()
-	fh, err := snapshot.GetFile(ctx, uri)
+	fh, err := snapshot.GetFile(uri)
 	if err != nil {
 		return nil, err
 	}
 	if fh.Identity().Kind != source.Go {
 		return nil, nil
 	}
-	ident, err := source.Identifier(ctx, snapshot, fh, params.Position, source.WidestCheckPackageHandle)
+	ident, err := source.Identifier(ctx, snapshot, fh, params.Position, source.WidestPackageHandle)
 	if err != nil {
 		return nil, nil
 	}

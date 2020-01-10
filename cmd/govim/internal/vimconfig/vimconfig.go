@@ -12,9 +12,8 @@ type VimConfig struct {
 	QuickfixSigns                                *int
 	HighlightDiagnostics                         *int
 	CompletionDeepCompletions                    *int
-	CompletionFuzzyMatching                      *int
+	CompletionMatcher                            *config.CompletionMatcher
 	Staticcheck                                  *int
-	CompletionCaseSensitive                      *int
 	CompleteUnimported                           *int
 	GoImportsLocalPrefix                         *string
 	CompletionBudget                             *string
@@ -24,22 +23,24 @@ type VimConfig struct {
 
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
 	v := config.Config{
-		FormatOnSave:                                 c.FormatOnSave,
-		QuickfixSigns:                                boolVal(c.QuickfixSigns, d.QuickfixSigns),
-		QuickfixAutoDiagnostics:                      boolVal(c.QuickfixAutoDiagnostics, d.QuickfixAutoDiagnostics),
-		HighlightDiagnostics:                         boolVal(c.HighlightDiagnostics, d.HighlightDiagnostics),
-		CompletionDeepCompletions:                    boolVal(c.CompletionDeepCompletions, d.CompletionDeepCompletions),
-		CompletionFuzzyMatching:                      boolVal(c.CompletionFuzzyMatching, d.CompletionFuzzyMatching),
-		Staticcheck:                                  boolVal(c.Staticcheck, d.Staticcheck),
-		CompletionCaseSensitive:                      boolVal(c.CompletionCaseSensitive, d.CompletionCaseSensitive),
-		CompleteUnimported:                           boolVal(c.CompleteUnimported, d.CompleteUnimported),
-		GoImportsLocalPrefix:                         stringVal(c.GoImportsLocalPrefix, d.GoImportsLocalPrefix),
-		CompletionBudget:                             stringVal(c.CompletionBudget, d.CompletionBudget),
+		FormatOnSave:              c.FormatOnSave,
+		QuickfixSigns:             boolVal(c.QuickfixSigns, d.QuickfixSigns),
+		QuickfixAutoDiagnostics:   boolVal(c.QuickfixAutoDiagnostics, d.QuickfixAutoDiagnostics),
+		HighlightDiagnostics:      boolVal(c.HighlightDiagnostics, d.HighlightDiagnostics),
+		CompletionDeepCompletions: boolVal(c.CompletionDeepCompletions, d.CompletionDeepCompletions),
+		CompletionMatcher:         c.CompletionMatcher,
+		Staticcheck:               boolVal(c.Staticcheck, d.Staticcheck),
+		CompleteUnimported:        boolVal(c.CompleteUnimported, d.CompleteUnimported),
+		GoImportsLocalPrefix:      stringVal(c.GoImportsLocalPrefix, d.GoImportsLocalPrefix),
+		CompletionBudget:          stringVal(c.CompletionBudget, d.CompletionBudget),
 		ExperimentalMouseTriggeredHoverPopupOptions:  copyMap(c.ExperimentalMouseTriggeredHoverPopupOptions, d.ExperimentalMouseTriggeredHoverPopupOptions),
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),
 	}
 	if v.FormatOnSave == nil {
 		v.FormatOnSave = d.FormatOnSave
+	}
+	if v.CompletionMatcher == nil {
+		v.CompletionMatcher = d.CompletionMatcher
 	}
 	return v
 }

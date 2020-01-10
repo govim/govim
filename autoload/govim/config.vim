@@ -72,15 +72,15 @@ function! s:validCompletionDeepCompletions(v)
   return s:validBool(a:v)
 endfunction
 
-function! s:validCompletionFuzzyMatching(v)
-  return s:validBool(a:v)
+function! s:validCompletionMatcher(v)
+  let valid = ["caseInsensitive", "caseSensitive", "fuzzy"]
+  if index(valid, a:v) < 0
+    return [v:false, "must be one of: ".string(valid)]
+  endif
+  return [v:true, ""]
 endfunction
 
 function! s:validStaticcheck(v)
-  return s:validBool(a:v)
-endfunction
-
-function! s:validCompletionCaseSensitive(v)
   return s:validBool(a:v)
 endfunction
 
@@ -118,11 +118,10 @@ let s:validators = {
       \ "FormatOnSave": function("s:validFormatOnSave"),
       \ "QuickfixAutoDiagnostics": function("s:validQuickfixAutoDiagnostics"),
       \ "CompletionDeepCompletions": function("s:validCompletionDeepCompletions"),
-      \ "CompletionFuzzyMatching": function("s:validCompletionFuzzyMatching"),
+      \ "CompletionMatcher": function("s:validCompletionMatcher"),
       \ "QuickfixSigns": function("s:validQuickfixSigns"),
       \ "HighlightDiagnostics": function("s:validHighlightDiagnostics"),
       \ "Staticcheck": function("s:validStaticcheck"),
-      \ "CompletionCaseSensitive": function("s:validCompletionCaseSensitive"),
       \ "CompleteUnimported": function("s:validCompleteUnimported"),
       \ "GoImportsLocalPrefix": function("s:validGoImportsLocalPrefix"),
       \ "CompletionBudget": function("s:validCompletionBudget"),

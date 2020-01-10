@@ -21,7 +21,7 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 		if err != nil {
 			return nil, err
 		}
-		fh, err := view.Snapshot().GetFile(ctx, uri)
+		fh, err := view.Snapshot().GetFile(uri)
 		if err != nil {
 			return nil, err
 		}
@@ -29,7 +29,7 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 			return nil, errors.Errorf("%s is not a mod file", uri)
 		}
 		// Run go.mod tidy on the view.
-		if err := source.ModTidy(ctx, view); err != nil {
+		if _, err := source.InvokeGo(ctx, view.Folder().Filename(), view.Config(ctx).Env, "mod", "tidy"); err != nil {
 			return nil, err
 		}
 	}

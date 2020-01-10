@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
@@ -26,7 +27,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 		return nil, err
 	}
 	snapshot := view.Snapshot()
-	fh, err := snapshot.GetFile(ctx, uri)
+	fh, err := snapshot.GetFile(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -56,17 +57,19 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 	switch fh.Identity().Kind {
 	case source.Mod:
 		if !wanted[protocol.SourceOrganizeImports] {
-			return nil, nil
+			codeActions = append(codeActions, protocol.CodeAction{
+				Title: "Tidy",
+				Kind:  protocol.SourceOrganizeImports,
+				Command: &protocol.Command{
+					Title:     "Tidy",
+					Command:   "tidy",
+					Arguments: []interface{}{fh.Identity().URI},
+				},
+			})
 		}
-		codeActions = append(codeActions, protocol.CodeAction{
-			Title: "Tidy",
-			Kind:  protocol.SourceOrganizeImports,
-			Command: &protocol.Command{
-				Title:     "Tidy",
-				Command:   "tidy",
-				Arguments: []interface{}{fh.Identity().URI},
-			},
-		})
+		if diagnostics := params.Context.Diagnostics; len(diagnostics) > 0 {
+			codeActions = append(codeActions, mod.SuggestedFixes(fh, diagnostics)...)
+		}
 	case source.Go:
 		edits, editsPerFix, err := source.AllImportsFixes(ctx, snapshot, fh)
 		if err != nil {
@@ -209,7 +212,7 @@ func quickFixes(ctx context.Context, snapshot source.Snapshot, fh source.FileHan
 	}
 	// We get the package that source.Diagnostics would've used. This is hack.
 	// TODO(golang/go#32443): The correct solution will be to cache diagnostics per-file per-snapshot.
-	ph, err := source.WidestCheckPackageHandle(phs)
+	ph, err := source.WidestPackageHandle(phs)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +231,7 @@ func quickFixes(ctx context.Context, snapshot source.Snapshot, fh source.FileHan
 				Edit:        protocol.WorkspaceEdit{},
 			}
 			for uri, edits := range fix.Edits {
-				fh, err := snapshot.GetFile(ctx, uri)
+				fh, err := snapshot.GetFile(uri)
 				if err != nil {
 					log.Error(ctx, "no file", err, telemetry.URI.Of(uri))
 					continue

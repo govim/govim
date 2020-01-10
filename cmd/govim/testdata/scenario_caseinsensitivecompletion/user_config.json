@@ -1,4 +1,4 @@
 {
 	"CompletionDeepCompletions": false,
-	"CompletionFuzzyMatching": false
+	"CompletionMatcher": "caseInsensitive"
 }

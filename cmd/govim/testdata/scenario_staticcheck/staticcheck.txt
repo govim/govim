@@ -50,17 +50,5 @@ func main() {
     "type": "",
     "valid": 1,
     "vcol": 0
-  },
-  {
-    "bufnr": 1,
-    "col": 12,
-    "lnum": 9,
-    "module": "",
-    "nr": 0,
-    "pattern": "",
-    "text": "Printf format %v reads arg #1, but call has only 0 args",
-    "type": "",
-    "valid": 1,
-    "vcol": 0
   }
 ]

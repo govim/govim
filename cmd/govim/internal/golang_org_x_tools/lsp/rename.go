@@ -19,24 +19,22 @@ func (s *Server) rename(ctx context.Context, params *protocol.RenameParams) (*pr
 		return nil, err
 	}
 	snapshot := view.Snapshot()
-	fh, err := snapshot.GetFile(ctx, uri)
+	fh, err := snapshot.GetFile(uri)
 	if err != nil {
 		return nil, err
 	}
 	if fh.Identity().Kind != source.Go {
 		return nil, nil
 	}
-	ident, err := source.Identifier(ctx, snapshot, fh, params.Position, source.WidestCheckPackageHandle)
-	if err != nil {
-		return nil, nil
-	}
-	edits, err := ident.Rename(ctx, params.NewName)
+
+	edits, err := source.Rename(ctx, snapshot, fh, params.Position, params.NewName)
 	if err != nil {
 		return nil, err
 	}
+
 	var docChanges []protocol.TextDocumentEdit
 	for uri, e := range edits {
-		fh, err := snapshot.GetFile(ctx, uri)
+		fh, err := snapshot.GetFile(uri)
 		if err != nil {
 			return nil, err
 		}
@@ -54,20 +52,17 @@ func (s *Server) prepareRename(ctx context.Context, params *protocol.PrepareRena
 		return nil, err
 	}
 	snapshot := view.Snapshot()
-	fh, err := snapshot.GetFile(ctx, uri)
+	fh, err := snapshot.GetFile(uri)
 	if err != nil {
 		return nil, err
 	}
 	if fh.Identity().Kind != source.Go {
 		return nil, nil
 	}
-	ident, err := source.Identifier(ctx, snapshot, fh, params.Position, source.WidestCheckPackageHandle)
-	if err != nil {
-		return nil, nil // ignore errors
-	}
+
 	// Do not return errors here, as it adds clutter.
 	// Returning a nil result means there is not a valid rename.
-	item, err := ident.PrepareRename(ctx)
+	item, err := source.PrepareRename(ctx, snapshot, fh, params.Position)
 	if err != nil {
 		return nil, nil // ignore errors
 	}

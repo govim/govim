@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 	modulesWiki = "https://github.com/golang/go/wiki/Modules"
 )
 
-func checkCommonErrors(ctx context.Context, view View, uri span.URI) (string, error) {
+func checkCommonErrors(ctx context.Context, v View) (string, error) {
 	// Unfortunately, we probably can't have go/packages expose a function like this.
 	// Since we only really understand the `go` command, check the user's GOPACKAGESDRIVER
 	// and, if they are using `go list`, consider the possible error cases.
@@ -32,26 +32,17 @@ func checkCommonErrors(ctx context.Context, view View, uri span.URI) (string, er
 	//  2. The user is in module mode and has opened a subdirectory of their module
 	//
 	gopath := os.Getenv("GOPATH")
-	cfg := view.Config(ctx)
+	folder := v.Folder().Filename()
 
-	// Invoke `go env GOMOD` inside of the directory of the file.
-	fdir := filepath.Dir(uri.Filename())
-	b, err := InvokeGo(ctx, fdir, cfg.Env, "env", "GOMOD")
-	if err != nil {
-		return "", err
-	}
-	modFile := strings.TrimSpace(b.String())
-	if modFile == filepath.FromSlash("/dev/null") {
-		modFile = ""
-	}
+	modRoot := filepath.Dir(v.ModFile())
 
 	// Not inside of a module.
-	inAModule := modFile != ""
+	inAModule := v.ModFile() != "" && v.ModFile() != os.DevNull
 
 	// The user may have a multiple directories in their GOPATH.
 	var inGopath bool
 	for _, gp := range filepath.SplitList(gopath) {
-		if strings.HasPrefix(uri.Filename(), filepath.Join(gp, "src")) {
+		if strings.HasPrefix(folder, filepath.Join(gp, "src")) {
 			inGopath = true
 			break
 		}
@@ -62,9 +53,9 @@ func checkCommonErrors(ctx context.Context, view View, uri span.URI) (string, er
 	var msg string
 	// The user is in a module.
 	if inAModule {
-		// The workspace root is open to a directory different from the module root.
-		if modRoot := filepath.Dir(modFile); cfg.Dir != filepath.Dir(modFile) {
-			msg = fmt.Sprintf("Your workspace root is %s, but your module root is %s. Please add %s as a workspace folder.", cfg.Dir, modRoot, modRoot)
+		rel, err := filepath.Rel(modRoot, folder)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			msg = fmt.Sprintf("Your workspace root is %s, but your module root is %s. Please add %s or a subdirectory as a workspace folder.", folder, modRoot, modRoot)
 		}
 	} else if inGopath {
 		if moduleMode == "on" {
@@ -76,8 +67,8 @@ func checkCommonErrors(ctx context.Context, view View, uri span.URI) (string, er
 	return msg, nil
 }
 
-// invokeGo returns the stdout of a go command invocation.
-// Borrowed from golang.org/x/tools/go/packages/golist.go.
+// InvokeGo returns the output of a go command invocation.
+// It does not try to recover from errors.
 func InvokeGo(ctx context.Context, dir string, env []string, args ...string) (*bytes.Buffer, error) {
 	stdout := new(bytes.Buffer)
 	stderr := new(bytes.Buffer)
@@ -98,12 +89,10 @@ func InvokeGo(ctx context.Context, dir string, env []string, args ...string) (*b
 		if ee, ok := err.(*exec.Error); ok && ee.Err == exec.ErrNotFound {
 			return nil, fmt.Errorf("'gopls requires 'go', but %s", exec.ErrNotFound)
 		}
-		if _, ok := err.(*exec.ExitError); !ok {
-			// Catastrophic error:
-			// - context cancellation
-			return nil, fmt.Errorf("couldn't exec 'go %v': %s %T", args, err, err)
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
-		return stdout, fmt.Errorf("%s", stderr)
+		return stdout, errors.Errorf("err: %v: stderr: %s", err, stderr)
 	}
 	return stdout, nil
 }

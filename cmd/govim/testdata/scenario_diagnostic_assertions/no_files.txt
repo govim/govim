@@ -1,5 +1,5 @@
-# Verify that we don't receive any diagnostics when there
-# are no files in the package
+# Verify that we don't receive any diagnostics when there are no files in the
+# package
 
 [short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to verify we haven''t received diagnostics'
 
