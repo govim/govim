@@ -28,8 +28,18 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 
 	if cb, ok := v.buffers[nb.Num]; ok {
 		// reload of buffer, e.v. e!
-		cb.SetContents(nb.Contents())
 		cb.Loaded = nb.Loaded
+
+		// If the contents are the same we probably just re-loaded a currently unloaded buffer.
+		// We shouldn't increase version in that case, but we have to redefine highlights
+		// since text properties are removed when a buffer is unloaded.
+		if bytes.Equal(nb.Contents(), cb.Contents()) {
+			if err := v.redefineHighlights(v.diagnostics()); err != nil {
+				v.Logf("failed to update highlights for buffer %d: %v", nb.Num, err)
+			}
+			return nil
+		}
+		cb.SetContents(nb.Contents())
 		cb.Version++
 		return v.handleBufferEvent(cb)
 	}
@@ -49,6 +59,10 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 
 	if err := v.updateSigns(v.diagnostics(), true); err != nil {
 		v.Logf("failed to update signs for buffer %d: %v", nb.Num, err)
+	}
+
+	if err := v.redefineHighlights(v.diagnostics()); err != nil {
+		v.Logf("failed to update highlights for buffer %d: %v", nb.Num, err)
 	}
 
 	return v.handleBufferEvent(nb)
@@ -131,10 +145,6 @@ func (v *vimstate) bufUnload(args ...json.RawMessage) error {
 }
 
 func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
-	if err := v.redefineHighlights(v.diagnostics()); err != nil {
-		v.Logf("failed to update highlights for buffer %d: %v", b.Num, err)
-	}
-
 	v.triggerBufferASTUpdate(b)
 	if b.Version == 1 {
 		params := &protocol.DidOpenTextDocumentParams{
