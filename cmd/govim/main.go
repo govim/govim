@@ -106,7 +106,7 @@ func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 
 	d := newplugin(goplspath, nil, nil, nil)
 
-	tf, err := d.createLogFile("govim_log")
+	tf, err := d.createLogFile("govim")
 	if err != nil {
 		return err
 	}
@@ -137,6 +137,7 @@ func (g *govimplugin) createLogFile(prefix string) (*os.File, error) {
 	if logfiletmpl == "" {
 		logfiletmpl = "%v_%v_%v"
 	}
+	logfiletmpl += ".log"
 	logfiletmpl = strings.Replace(logfiletmpl, "%v", prefix, 1)
 	logfiletmpl = strings.Replace(logfiletmpl, "%v", time.Now().Format("20060102_1504_05"), 1)
 	if strings.Contains(logfiletmpl, "%v") {
@@ -297,7 +298,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
-	logfile, err := g.createLogFile("gopls_log")
+	logfile, err := g.createLogFile("gopls")
 	if err != nil {
 		return err
 	}
