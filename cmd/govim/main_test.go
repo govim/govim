@@ -47,16 +47,10 @@ func TestMain(m *testing.M) {
 }
 
 func TestScripts(t *testing.T) {
-	// TODO our approach with setting the workdir root via os.Setenv("GOTMPDIR")
-	// is hacky and gross. Working out a cleaner approach with rogpeppe, likely
-	// passing in such a value via Params
+	t.Parallel()
 	var workdir string
-	if envworkdir := os.Getenv(testsetup.EnvTestscriptWorkdirRoot); envworkdir == "" {
-		// i.e. we are not going to call os.Setenv below
-		t.Parallel()
-	} else {
+	if envworkdir := os.Getenv(testsetup.EnvTestscriptWorkdirRoot); envworkdir != "" {
 		workdir = filepath.Join(envworkdir, "cmd", "govim"+raceOrNot())
-		defer os.Setenv("GOTMPDIR", os.Getenv("GOTMPDIR"))
 	}
 
 	var waitLock sync.Mutex
@@ -92,14 +86,11 @@ func TestScripts(t *testing.T) {
 		if workdir != "" {
 			workdir = filepath.Join(workdir, entry.Name())
 			os.MkdirAll(workdir, 0777)
-			os.Setenv("GOTMPDIR", workdir)
 		}
 		t.Run(entry.Name(), func(t *testing.T) {
-			// Do not call t.Parallel here. We currently rely on this being
-			// run on the test goroutine in order that os.Setenv is not racey
 			params := testscript.Params{
-				TestWork: workdir != "",
-				Dir:      filepath.Join("testdata", entry.Name()),
+				WorkdirRoot: workdir,
+				Dir:         filepath.Join("testdata", entry.Name()),
 				Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 					"sleep":       testdriver.Sleep,
 					"errlogmatch": testdriver.ErrLogMatch,

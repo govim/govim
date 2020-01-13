@@ -35,26 +35,16 @@ func TestMain(m *testing.M) {
 }
 
 func TestScripts(t *testing.T) {
-	// TODO our approach with setting the workdir root via os.Setenv("GOTMPDIR")
-	// is hacky and gross. Working out a cleaner approach with rogpeppe, likely
-	// passing in such a value via Params
+	t.Parallel()
 	workdir := os.Getenv(testsetup.EnvTestscriptWorkdirRoot)
-	if workdir == "" {
-		// i.e. we are not going to call os.Setenv below
-		t.Parallel()
-	} else {
-		os.MkdirAll(workdir, 0777)
-		os.Setenv("GOTMPDIR", workdir)
-		defer os.Setenv("GOTMPDIR", os.Getenv("GOTMPDIR"))
-	}
 
 	var waitLock sync.Mutex
 	var waitList []func() error
 
 	t.Run("scripts", func(t *testing.T) {
 		testscript.Run(t, testscript.Params{
-			TestWork: workdir != "",
-			Dir:      "testdata",
+			WorkdirRoot: workdir,
+			Dir:         "testdata",
 			Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 				"sleep":       testdriver.Sleep,
 				"errlogmatch": testdriver.ErrLogMatch,
