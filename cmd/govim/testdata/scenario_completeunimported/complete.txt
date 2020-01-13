@@ -2,12 +2,28 @@
 
 vim ex 'e main.go'
 
-# lower from lo
+# Unimported completion
 vim ex 'call cursor(4,1)'
 vim normal Sfmt.Pr
-vim ex 'execute \"normal A\\<C-X>\\<C-O>\\<C-N>\\<C-N>\"'
+vim ex 'execute \"normal A\\<C-X>\\<C-O>\\<C-N>\\<C-N>(\\\"Hello\\\")\"'
+
+# Check import has been added
 vim ex 'noau w'
-cmp main.go main.go.golden
+cmp main.go main.go1.golden
+
+# Regular completion
+vim ex 'call cursor(7,1)'
+vim normal Sfmt.Pr
+vim ex 'execute \"normal A\\<C-X>\\<C-O>\\<C-N>(\\\"Hello\\\")\"'
+
+# Keyword complete
+vim ex 'call cursor(8,1)'
+vim normal Sfmt.Pr
+vim ex 'execute \"normal A\\<C-X>\\<C-N>(\\\"Hello\\\")\"'
+
+# Verify final result
+vim ex 'noau w'
+cmp main.go main.go2.golden
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -21,10 +37,26 @@ package main
 
 func main() {
 
+
+
 }
--- main.go.golden --
+-- main.go1.golden --
 package main
 
+import "fmt"
+
 func main() {
-	fmt.Println
+	fmt.Println("Hello")
+
+
+}
+-- main.go2.golden --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello")
+	fmt.Printf("Hello")
+	fmt.Println("Hello")
 }

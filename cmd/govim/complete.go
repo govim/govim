@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
@@ -47,13 +48,14 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 		v.lastCompleteResults = res
 		return start, nil
 	} else {
-		var matches []completionResult
+		var matches []govim.CompleteItem
 		for _, i := range v.lastCompleteResults.Items {
-			matches = append(matches, completionResult{
-				Abbr: i.Label,
-				Menu: i.Detail,
-				Word: i.TextEdit.NewText,
-				Info: i.Documentation,
+			matches = append(matches, govim.CompleteItem{
+				Abbr:     i.Label,
+				Menu:     i.Detail,
+				Word:     i.TextEdit.NewText,
+				Info:     i.Documentation,
+				UserData: "govim",
 			})
 		}
 
@@ -61,9 +63,31 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 	}
 }
 
-type completionResult struct {
-	Abbr string `json:"abbr"`
-	Word string `json:"word"`
-	Info string `json:"info"`
-	Menu string `json:"menu"`
+func (v *vimstate) completeDone(args ...json.RawMessage) error {
+	currBufNr := v.ParseInt(args[0])
+	b, ok := v.buffers[currBufNr]
+	if !ok {
+		return fmt.Errorf("failed to resolve buffer %v", currBufNr)
+	}
+	var chosen govim.CompleteItem
+	v.Parse(args[1], &chosen)
+	if chosen.Word == "" {
+		return nil
+	}
+	if chosen.UserData != "govim" {
+		return nil
+	}
+	var match *protocol.CompletionItem
+	for _, c := range v.lastCompleteResults.Items {
+		if c.Label == chosen.Abbr {
+			match = &c
+		}
+	}
+	if match == nil {
+		return fmt.Errorf("failed to find match for completed item %#v", chosen)
+	}
+	if len(match.AdditionalTextEdits) == 0 {
+		return nil
+	}
+	return v.applyProtocolTextEdits(b, match.AdditionalTextEdits)
 }
