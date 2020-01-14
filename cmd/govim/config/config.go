@@ -33,7 +33,7 @@ type Config struct {
 	// FormatOnSave is a string value that configures which tool to use for
 	// formatting on save. Options are given by constants of type FormatOnSave.
 	//
-	// Default: FormatOnSaveGoImports.
+	// Default: FormatOnSaveGoImportsGoFmt.
 	FormatOnSave *FormatOnSave `json:",omitempty"`
 
 	// QuickfixAutoDiagnostics is a boolean (0 or 1 in VimScript) that controls
@@ -183,7 +183,8 @@ const (
 	// CommandGoFmt applies gofmt to the entire buffer
 	CommandGoFmt Command = "GoFmt"
 
-	// CommandGoImports applies goimports to the entire buffer
+	// CommandGoImports fixes missing imports in the buffer much like the
+	// old goimports command, but it does not format the buffer.
 	CommandGoImports Command = "GoImports"
 
 	// CommandQuickfixDiagnostics populates the quickfix window with the current
@@ -266,13 +267,18 @@ const (
 	// saved
 	FormatOnSaveNone FormatOnSave = ""
 
-	// FormatOnSaveGoFmt specifies that gopls should run a gofmt-based
-	// formatting on a .go file before as it is saved.
+	// FormatOnSaveGoFmt specifies that gopls should run CommandGoFmt formatting
+	// on a .go file before it is saved
 	FormatOnSaveGoFmt FormatOnSave = "gofmt"
 
-	// FormatOnSaveGoImports specifies that gopls should run a goimports-based
-	// formatting on a .go file before as it is saved.
+	// FormatOnSaveGoImports specifies that gopls should run CommandGoImports
+	// import fixing on a .go file before it is saved.
 	FormatOnSaveGoImports FormatOnSave = "goimports"
+
+	// FormatOnSaveGoImportsGoFmt specifies that gopls should run
+	// CommandGoImports followed by CommandGoFmt on a .go file before it is
+	// saved
+	FormatOnSaveGoImportsGoFmt FormatOnSave = "goimports-gofmt"
 )
 
 // CompletionMatcher typed constants define the set of valid values that

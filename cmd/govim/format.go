@@ -25,14 +25,6 @@ func (v *vimstate) formatCurrentBuffer(args ...json.RawMessage) (err error) {
 	if tool == nil {
 		return nil
 	}
-	// TODO we should move this validation elsewhere...
-	switch *tool {
-	case config.FormatOnSaveNone:
-		return nil
-	case config.FormatOnSaveGoFmt, config.FormatOnSaveGoImports:
-	default:
-		return fmt.Errorf("unknown format tool specified: %v", tool)
-	}
 	return v.formatBufferRange(b, *tool, govim.CommandFlags{})
 }
 
@@ -56,6 +48,14 @@ func (v *vimstate) formatCurrentBufferRange(mode config.FormatOnSave, flags govi
 func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, flags govim.CommandFlags, args ...string) error {
 	var err error
 
+	switch mode {
+	case config.FormatOnSaveNone:
+		return nil
+	case config.FormatOnSaveGoFmt, config.FormatOnSaveGoImports, config.FormatOnSaveGoImportsGoFmt:
+	default:
+		return fmt.Errorf("unknown format mode specified: %v", mode)
+	}
+
 	var ran *protocol.Range
 	if flags.Range != nil {
 		start, err := types.PointFromVim(b, *flags.Line1, 1)
@@ -72,12 +72,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 		}
 	}
 
-	switch mode {
-	case config.FormatOnSaveGoFmt, config.FormatOnSaveGoImports:
-	default:
-		return fmt.Errorf("unknown format mode specified: %v", mode)
-	}
-	if mode == config.FormatOnSaveGoImports {
+	if mode == config.FormatOnSaveGoImports || mode == config.FormatOnSaveGoImportsGoFmt {
 		params := &protocol.CodeActionParams{
 			TextDocument: b.ToTextDocumentIdentifier(),
 		}
@@ -128,7 +123,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			return fmt.Errorf("don't know how to handle %v actions", len(organizeImports))
 		}
 	}
-	if mode == config.FormatOnSaveGoImports || mode == config.FormatOnSaveGoFmt {
+	if mode == config.FormatOnSaveGoFmt || mode == config.FormatOnSaveGoImportsGoFmt {
 		var edits []protocol.TextEdit
 		if flags.Range != nil {
 			params := &protocol.DocumentRangeFormattingParams{
