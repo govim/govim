@@ -9,7 +9,7 @@ require (
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/kr/pretty v0.1.0
 	github.com/myitcv/vbash v0.0.4
-	github.com/rogpeppe/go-internal v1.5.1
+	github.com/rogpeppe/go-internal v1.5.2
 	golang.org/x/mod v0.1.1-0.20191105210325-c90efee705ee
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58
 	golang.org/x/sys v0.0.0-20190429190828-d89cdac9e872 // indirect
