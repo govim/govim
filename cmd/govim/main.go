@@ -250,7 +250,6 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			buffers:               make(map[int]*types.Buffer),
 			defaultConfig:         *defaults,
 			config:                *defaults,
-			watchedFiles:          make(map[string]*types.WatchedFile),
 			quickfixIsDiagnostics: true,
 			suggestedFixesPopups:  make(map[int][]protocol.WorkspaceEdit),
 		},
@@ -385,7 +384,10 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 		ContentFormat: []protocol.MarkupKind{protocol.PlainText},
 	}
 	initParams.Capabilities.Workspace.Configuration = true
+	// TODO: actually handle these registrations dynamically, if we ever want to
+	// target language servers other than gopls.
 	initParams.Capabilities.Workspace.DidChangeConfiguration.DynamicRegistration = true
+	initParams.Capabilities.Workspace.DidChangeWatchedFiles.DynamicRegistration = true
 	initOpts := make(map[string]interface{})
 	initOpts[goplsInitOptIncrementalSync] = true
 	initOpts["noDocsOnHover"] = true

@@ -14,4 +14,5 @@ type Op string
 const (
 	OpChanged Op = "changed"
 	OpRemoved Op = "removed"
+	OpCreated Op = "created"
 )

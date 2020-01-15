@@ -94,7 +94,9 @@ func TestScripts(t *testing.T) {
 		workdir := workdir
 		if workdir != "" {
 			workdir = filepath.Join(workdir, entry.Name())
-			os.MkdirAll(workdir, 0777)
+			if err := os.MkdirAll(workdir, 0777); err != nil {
+				t.Fatal("failed to make work dir")
+			}
 		}
 		t.Run(entry.Name(), func(t *testing.T) {
 			t.Parallel()

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/fswatcher"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
 type modWatcher struct {
@@ -100,7 +98,7 @@ func (m *modWatcher) watch() {
 					}
 				}
 				if didFind {
-					// it was probably a directory
+					// it was a directory
 					continue
 				}
 				if !ofInterest(path) {
@@ -109,7 +107,7 @@ func (m *modWatcher) watch() {
 				m.Enqueue(func(govim.Govim) error {
 					return m.vimstate.handleEvent(event)
 				})
-			case fswatcher.OpChanged:
+			case fswatcher.OpChanged, fswatcher.OpCreated:
 				path := event.Path
 				dirInfo, err := os.Stat(path)
 				if err != nil {
@@ -127,7 +125,10 @@ func (m *modWatcher) watch() {
 					continue
 				}
 
-				// Walk the dir that is event.Name
+				// Walk the dir that is event.Name. Because fsnotify isn't recursive,
+				// we must manually install watches ourselves.
+				// Note that this has a race condition:
+				// https://github.com/govim/govim/issues/492
 				err = filepath.Walk(event.Path, func(path string, info os.FileInfo, err error) error {
 					if err != nil {
 						return err
@@ -149,6 +150,7 @@ func (m *modWatcher) watch() {
 					}
 					err = m.watcher.Add(path)
 					if err != nil {
+						m.watches[path] = true
 						infof("added watch on %v", path)
 					}
 					return err
@@ -178,83 +180,26 @@ func (v *vimstate) handleEvent(event fswatcher.Event) error {
 		v.Logf("**** handleEvent error: "+format, args...)
 	}
 
-	path := event.Path
-
-	for _, b := range v.buffers {
-		if b.Name == path {
-			// Vim is handling this file, do nothing
-			v.Logf("handleEvent: Vim is in charge of %v; not handling ", event.Path)
-			return nil
-		}
-	}
-
+	var changeType protocol.FileChangeType
 	switch event.Op {
 	case fswatcher.OpRemoved:
-		if _, ok := v.watchedFiles[path]; !ok {
-			// We saw the Rename/Remove event but nothing before
-			return nil
-		}
-		params := &protocol.DidCloseTextDocumentParams{
-			TextDocument: protocol.TextDocumentIdentifier{
-				URI: string(span.URI(path)),
-			},
-		}
-		err := v.server.DidClose(context.Background(), params)
-		if err != nil {
-			errf("failed to call server.DidClose: %v", err)
-		}
-		return nil
+		changeType = protocol.Deleted
+	case fswatcher.OpCreated:
+		changeType = protocol.Created
 	case fswatcher.OpChanged:
-		byts, err := ioutil.ReadFile(path)
-		if err != nil {
-			errf("failed to read %v: %v", path, err)
-			return nil
-		}
-		wf, ok := v.watchedFiles[path]
-		if !ok {
-			wf = &types.WatchedFile{
-				Version:  1,
-				Path:     path,
-				Contents: byts,
-			}
-			v.watchedFiles[path] = wf
-			params := &protocol.DidOpenTextDocumentParams{
-				TextDocument: protocol.TextDocumentItem{
-					LanguageID: "go",
-					URI:        string(wf.URI()),
-					Version:    float64(wf.Version),
-					Text:       string(wf.Contents),
-				},
-			}
-			err := v.server.DidOpen(context.Background(), params)
-			if err != nil {
-				errf("failed to call server.DidOpen: %v", err)
-			}
-			v.Logf("handleEvent: handled %v", event)
-			return nil
-		}
-		wf.Version++
-		params := &protocol.DidChangeTextDocumentParams{
-			TextDocument: protocol.VersionedTextDocumentIdentifier{
-				TextDocumentIdentifier: protocol.TextDocumentIdentifier{
-					URI: string(wf.URI()),
-				},
-				Version: float64(wf.Version),
-			},
-			ContentChanges: []protocol.TextDocumentContentChangeEvent{
-				{
-					Text: string(byts),
-				},
-			},
-		}
-		err = v.server.DidChange(context.Background(), params)
-		if err != nil {
-			errf("failed to call server.DidChange: %v", err)
-		}
-		v.Logf("handleEvent: handled %v", event)
-		return nil
-
+		changeType = protocol.Changed
 	default:
-		panic(fmt.Errorf("unknown fsnotify event type: %v", event))
+		panic(fmt.Errorf("unknown fswatcher event type: %v", event))
 	}
+	params := &protocol.DidChangeWatchedFilesParams{
+		Changes: []protocol.FileEvent{
+			{URI: string(span.FileURI(event.Path)), Type: changeType},
+		},
+	}
+	err := v.server.DidChangeWatchedFiles(context.Background(), params)
+	if err != nil {
+		errf("failed to call server.DidChangeWatchedFiles: %v", err)
+	}
+	v.Logf("handleEvent: handled %v", event)
+	return nil
 }

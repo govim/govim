@@ -14,7 +14,8 @@ import (
 )
 
 const fRemoved = fsevents.ItemRemoved | fsevents.ItemRenamed
-const fChanged = fsevents.ItemCreated | fsevents.ItemModified | fsevents.ItemChangeOwner
+const fChanged = fsevents.ItemModified | fsevents.ItemChangeOwner
+const fCreated = fsevents.ItemCreated
 
 type fswatcher struct {
 	eventCh chan Event
@@ -71,6 +72,8 @@ func New(gomodpath string, tomb *tomb.Tomb) (*FSWatcher, error) {
 					eventCh <- Event{path, OpRemoved}
 				case event.Flags&fChanged > 0:
 					eventCh <- Event{path, OpChanged}
+				case event.Flags&fCreated > 0:
+					eventCh <- Event{path, OpCreated}
 				}
 			}
 		}

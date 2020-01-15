@@ -45,16 +45,7 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	}
 
 	v.buffers[nb.Num] = nb
-	if wf, ok := v.watchedFiles[nb.Name]; ok {
-		// We are now picking up from a file that was previously watched. If we subsequently
-		// close this buffer then we will handle that event and delete the entry in v.buffers
-		// at which point the file watching will take back over again.
-		delete(v.watchedFiles, nb.Name)
-		nb.Version = wf.Version + 1
-	} else {
-		// first time we have seen the buffer
-		nb.Version = 1
-	}
+	nb.Version = 1
 	nb.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), nb.Num))
 
 	if err := v.updateSigns(v.diagnostics(), true); err != nil {
