@@ -1,14 +1,8 @@
 # Test that the quickfix window gets populated with error messages from gopls
 # in the edge case of an error that references the end of file.
 
-# Soak up initial diagnostics
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
-
 vim ex 'e main.go'
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist".*"filename":"main\.go"'
-vim ex 'copen'
-vim ex 'w errors'
-cmp errors errors.golden
+vimexprwait errors.golden getqflist()
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -22,4 +16,17 @@ package main
 
 var _ *
 -- errors.golden --
-main.go|3 col 8| expected ';', found 'EOF'
+[
+  {
+    "bufnr": 1,
+    "col": 8,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected ';', found 'EOF'",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

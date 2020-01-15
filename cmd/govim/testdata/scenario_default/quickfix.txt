@@ -1,13 +1,7 @@
 # Test that the quickfix window gets populated with error messages from gopls
 
-# Soak up initial diagnostics
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
-
 vim ex 'e main.go'
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
-vim ex 'copen'
-vim ex 'w errors'
-cmp errors errors.golden
+vimexprwait errors.golden getqflist()
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -28,7 +22,53 @@ func main() {
 func f1() string {}
 func f2() string {}
 -- errors.golden --
-main.go|6 col 36| undeclared name: i
-main.go|6 col 39| undeclared name: v
-main.go|9 col 19| missing return
-main.go|10 col 19| missing return
+[
+  {
+    "bufnr": 1,
+    "col": 36,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: i",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 39,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 19,
+    "lnum": 9,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 19,
+    "lnum": 10,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

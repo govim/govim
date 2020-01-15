@@ -24,10 +24,7 @@ cp file.go.bad file.go
 vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.bad
-vim ex 'copen'
-vim ex 'w errors'
-cmp errors errors.golden
-vim ex 'cclose'
+vimexprwait errors.golden getqflist()
 
 skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
 
@@ -64,4 +61,17 @@ const (
 	y = x
 )
 -- errors.golden --
-file.go|3 col 1| expected declaration, found blah
+[
+  {
+    "bufnr": 1,
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found blah",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

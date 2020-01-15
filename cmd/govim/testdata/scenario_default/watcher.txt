@@ -1,19 +1,15 @@
 # Test that the file watcher picks up file changes that occurs outside the editor
 
-[short] skip 'Skip because we sleep for DEFAULT_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+[short] skip 'Skip because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
 
 # New file in the same package
 vim ex 'e main.go'
 cp const.go.orig const.go
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/const.go
+errlogmatch '&protocol\.DidOpenTextDocumentParams\{\n\S+:\s+TextDocument: protocol.TextDocumentItem{URI:"file://'$WORK/const.go
 vim ex 'call cursor(6,16)'
 vim ex 'call feedkeys(\"iConst2\\<ESC>\", \"x\")'
 vim ex 'w'
-sleep $DEFAULT_ERRLOGMATCH_WAIT
-vim ex 'copen'
-vim ex 'w errors'
-vim ex 'cclose'
-cmp errors errors.empty
+vimexprwait errors.empty getqflist()
 cmp main.go main.go.golden
 
 skip 'Temporary disabled due to https://github.com/govim/govim/issues/492'
@@ -28,10 +24,7 @@ errlogmatch '&protocol.DidOpenTextDocumentParams{\n\S+:\s+TextDocument: protocol
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/foo/foo.go
 vim ex 'w'
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-vim ex 'copen'
-vim ex 'w errors'
-vim ex 'cclose'
-cmp errors errors.empty
+vimexprwait errors.empty getqflist()
 
 # No warnings or errors during the test
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -69,3 +62,4 @@ package foo
 
 const Bar = 1
 -- errors.empty --
+[]

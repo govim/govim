@@ -1,32 +1,24 @@
 # Test that the quickfix window gets populated with locations for the
 # GOVIMReferences command
 
-[short] skip 'Skip because we sleep for DEFAULT_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+[short] skip 'Skip because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
 
 # Initial location population
 vim ex 'e main.go'
 vim ex 'call cursor(15,24)'
-vim ex 'GOVIMReferences'
-vim ex 'copen'
-vim ex 'w locations'
-cmp locations locations.golden
+vim ex 'GOVIMReferences' # note this moves the cursor to the quickfix window
+vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
+vimexprwait locations.golden getqflist()
 
 # Introduce an error - locations should remain
-vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
-vim expr 'bufname(\"\")'
 vim ex 'call cursor(15,1)'
 vim ex 'call feedkeys(\"ofmt.Printf(\\\"%v\\\")\\<ESC>\", \"xt\")'
-sleep $DEFAULT_ERRLOGMATCH_WAIT
-vim ex 'copen'
-vim ex 'w locations'
-cmp locations locations.golden
+sleep $GOVIM_ERRLOGMATCH_WAIT
+vimexprwait locations.golden getqflist()
 
 # Now use quickfix for errors
-vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
 vim ex 'GOVIMQuickfixDiagnostics'
-vim ex 'copen'
-vim ex 'w errors'
-cmp errors errors.golden
+vimexprwait errors.golden getqflist()
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -62,20 +54,200 @@ func DoIt() {
 	v += 6
 }
 -- locations.golden --
-main.go|5 col 5| var v int
-main.go|8 col 2| v = 5
-main.go|9 col 2| v += 1
-main.go|10 col 2| v += 1
-main.go|11 col 2| v += v + v + v + v
-main.go|11 col 7| v += v + v + v + v
-main.go|11 col 11| v += v + v + v + v
-main.go|11 col 15| v += v + v + v + v
-main.go|11 col 19| v += v + v + v + v
-main.go|12 col 2| v += 1
-main.go|13 col 2| v += 1
-main.go|14 col 2| v += 1
-main.go|15 col 24| fmt.Printf("v: %v\n", v)
-a.go|6 col 2| v += 5
-a.go|7 col 2| v += 6
+[
+  {
+    "bufnr": 1,
+    "col": 5,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "var v int",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 8,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv = 5",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 9,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += 1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 10,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += 1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 11,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += v + v + v + v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 7,
+    "lnum": 11,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += v + v + v + v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 11,
+    "lnum": 11,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += v + v + v + v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 15,
+    "lnum": 11,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += v + v + v + v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 19,
+    "lnum": 11,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += v + v + v + v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 12,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += 1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 13,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += 1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 14,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += 1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 24,
+    "lnum": 15,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tfmt.Printf(\"v: %v\\n\", v)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 2,
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += 5",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 2,
+    "col": 2,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "\tv += 6",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- errors.golden --
-main.go|16 col 2| Printf format %v reads arg #1, but call has 0 args
+[
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 16,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

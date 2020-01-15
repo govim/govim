@@ -1,10 +1,7 @@
 # Check that signs are still placed despite QuickfixAutoDiagnostics being turned off
 
 vim ex 'e main.go'
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[\{"buffer":1,"group":"govim"'
-vim -indent expr 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
-! stderr .+
-cmp stdout placed.golden
+vimexprwait placed.golden 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 -- go.mod --
 module mod.com

@@ -2,9 +2,9 @@
 # have compile errors but not for those that don't. Then
 # when we open any file we receive diagnostics for that file
 
-[short] skip 'Skip because we sleep for DEFAULT_ERRLOGMATCH_WAIT to verify we haven''t received diagnostics'
+[short] skip 'Skip because we sleep for GOVIM_ERRLOGMATCH_WAIT to verify we haven''t received diagnostics'
 
-sleep $DEFAULT_ERRLOGMATCH_WAIT
+sleep $GOVIM_ERRLOGMATCH_WAIT
 errlogmatch -count=1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
 errlogmatch -count=0 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
 

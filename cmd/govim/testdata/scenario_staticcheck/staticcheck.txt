@@ -5,10 +5,7 @@
 # for now in this test to give exposure to the staticcheck work
 
 vim ex 'e main.go'
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
-vim ex 'copen'
-vim ex 'w errors'
-cmp errors errors.golden
+vimexprwait errors.golden getqflist()
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -29,6 +26,41 @@ func main() {
 	fmt.Printf("%v")
 }
 -- errors.golden --
-main.go|7 col 6| the argument is already a string, there's no need to use fmt.Sprintf
-main.go|9 col 2| Printf format %v reads arg #1, but call has 0 args
-main.go|9 col 12| Printf format %v reads arg #1, but call has only 0 args
+[
+  {
+    "bufnr": 1,
+    "col": 6,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "the argument is already a string, there's no need to use fmt.Sprintf",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 9,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 12,
+    "lnum": 9,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Printf format %v reads arg #1, but call has only 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
