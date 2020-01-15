@@ -50,7 +50,7 @@ func TestScripts(t *testing.T) {
 	t.Parallel()
 	var workdir string
 	if envworkdir := os.Getenv(testsetup.EnvTestscriptWorkdirRoot); envworkdir != "" {
-		workdir = filepath.Join(envworkdir, "cmd", "govim"+raceOrNot())
+		workdir = filepath.Join(envworkdir, "govim", "cmd", "govim"+testsetup.RaceOrNot())
 	}
 
 	var waitLock sync.Mutex
@@ -325,7 +325,7 @@ func installGoplsToTempDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp install directory for gopls: %v", err)
 	}
-	cmd := exec.Command("go", "install", raceOrNot(), "golang.org/x/tools/gopls")
+	cmd := exec.Command("go", "install", testsetup.RaceOrNot(), "golang.org/x/tools/gopls")
 	cmd.Env = append(os.Environ(), "GOBIN="+td)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("failed to install temp version of golang.org/x/tools/gopls: %v\n%s", err, out)
