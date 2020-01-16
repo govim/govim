@@ -13,6 +13,9 @@ func (r *Config) Apply(v *Config) {
 	if v.HighlightDiagnostics != nil {
 		r.HighlightDiagnostics = v.HighlightDiagnostics
 	}
+	if v.HoverDiagnostics != nil {
+		r.HoverDiagnostics = v.HoverDiagnostics
+	}
 	if v.CompletionDeepCompletions != nil {
 		r.CompletionDeepCompletions = v.CompletionDeepCompletions
 	}
