@@ -36,7 +36,11 @@ func TestMain(m *testing.M) {
 
 func TestScripts(t *testing.T) {
 	t.Parallel()
-	workdir := os.Getenv(testsetup.EnvTestscriptWorkdirRoot)
+	var workdir string
+	if envworkdir := os.Getenv(testsetup.EnvTestscriptWorkdirRoot); envworkdir != "" {
+		workdir = filepath.Join(envworkdir, "govim"+testsetup.RaceOrNot())
+		os.MkdirAll(workdir, 0777)
+	}
 
 	var waitLock sync.Mutex
 	var waitList []func() error
