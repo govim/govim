@@ -3,7 +3,7 @@
 # we receive diagnostics for that file and any files that have
 # analysis errors.
 
-[short] skip 'Skip because we sleep for GOVIM_ERRLOGMATCH_WAIT to verify we haven''t received diagnostics'
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to verify we haven''t received diagnostics'
 
 sleep $GOVIM_ERRLOGMATCH_WAIT
 errlogmatch -count=0 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go

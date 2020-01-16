@@ -50,7 +50,6 @@ func (v *vimstate) references(flags govim.CommandFlags, args ...string) error {
 			}
 		}
 		fn := span.URI(ref.URI).Filename()
-		v.Logf("fn: %v\n", fn)
 		if buf == nil {
 			byts, err := ioutil.ReadFile(fn)
 			if err != nil {

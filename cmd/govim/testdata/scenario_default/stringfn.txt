@@ -8,9 +8,7 @@ cmp main.go main.go.golden1
 
 # With a visual selection
 
-# Skip for now because for some reason we can't get the commands
-# to play ball, even though doing this by hand works
-skip
+skip 'Pending work to fix up Vim commands in test'
 
 vim ex 'call cursor(6,15)'
 #vim ex ':execute \"normal ve\" | ''<,''>GOVIMStringFn crypto/sha256.Sum256 encoding/hex.EncodeToString'
