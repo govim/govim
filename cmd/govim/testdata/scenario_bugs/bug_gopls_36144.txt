@@ -11,10 +11,7 @@
 # cancellation of the initial diagnostics for the package, or the diagnostics
 # that are sent when a file is opened.
 
-skip 'Known issue reported as https://github.com/golang/go/issues/36144'
-
-vim ex 'e main.go'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+vimexprwait errors.golden getqflist()
 
 -- go.mod --
 module mod.com
@@ -22,5 +19,19 @@ module mod.com
 -- main.go --
 package main
 
-func main() {
-}
+blah
+-- errors.golden --
+[
+  {
+    "bufnr": 2,
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found blah",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
