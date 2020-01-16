@@ -225,6 +225,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			QuickfixSigns:           vimconfig.BoolVal(true),
 			Staticcheck:             vimconfig.BoolVal(false),
 			HighlightDiagnostics:    vimconfig.BoolVal(true),
+			HoverDiagnostics:        vimconfig.BoolVal(true),
 		}
 	}
 	// Overlay the initial user values on the defaults
@@ -448,9 +449,11 @@ func (g *govimplugin) Shutdown() error {
 }
 
 func (g *govimplugin) defineHighlights() {
-	warnColor := 166 // Orange
+	warnColor := 166    // Orange
+	diagSrcColor := 245 // Grey #8a8a8a
 	if vimColors, err := strconv.Atoi(g.ParseString(g.ChannelExpr(`&t_Co`))); err != nil || vimColors < 256 {
-		warnColor = 3 // Yellow, fallback when the terminal doesn't support at least 256 colors
+		warnColor = 3    // Yellow, fallback when the terminal doesn't support at least 256 colors
+		diagSrcColor = 7 // Silver
 	}
 	g.vimstate.BatchStart()
 	for _, hi := range []string{
@@ -463,6 +466,13 @@ func (g *govimplugin) defineHighlights() {
 		fmt.Sprintf("highlight default %s ctermfg=15 ctermbg=%d guisp=Orange guifg=Orange", config.HighlightSignWarn, warnColor),
 		fmt.Sprintf("highlight default %s ctermfg=15 ctermbg=6 guisp=Cyan guifg=Cyan", config.HighlightSignInfo),
 		fmt.Sprintf("highlight default link %s %s", config.HighlightSignHint, config.HighlightSignInfo),
+
+		fmt.Sprintf("highlight default %s cterm=bold gui=bold ctermfg=1", config.HighlightHoverErr),
+		fmt.Sprintf("highlight default %s cterm=bold gui=bold ctermfg=%d", config.HighlightHoverWarn, warnColor),
+		fmt.Sprintf("highlight default %s cterm=bold gui=bold ctermfg=6", config.HighlightHoverInfo),
+		fmt.Sprintf("highlight default link %s %s", config.HighlightHoverHint, config.HighlightHoverInfo),
+
+		fmt.Sprintf("highlight default %s cterm=none gui=italic ctermfg=%d guifg=#8a8a8a", config.HighlightHoverDiagSrc, diagSrcColor),
 	} {
 		g.vimstate.BatchChannelCall("execute", hi)
 	}

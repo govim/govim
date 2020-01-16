@@ -235,6 +235,12 @@ func (p Point) ToPosition() protocol.Position {
 	}
 }
 
+// IsWithin returns true if a point is within the given range
+func (p Point) IsWithin(r Range) bool {
+	return r.Start.Offset() <= p.Offset() &&
+		p.Offset() <= r.End.Offset()
+}
+
 func f2int(f float64) int {
 	return int(math.Round(f))
 }
@@ -243,6 +249,7 @@ func f2int(f float64) int {
 // populate quickfix list, place signs, highlight text ranges etc.
 type Diagnostic struct {
 	Filename string
+	Source   string
 	Range    Range
 	Text     string
 	Buf      int
@@ -268,10 +275,18 @@ var SeverityPriority = map[Severity]int{
 	SeverityHint: 8,
 }
 
-// Highlight returns corresponding highlight name for a severity.
+// SeverityHighlight returns corresponding highlight name for a severity.
 var SeverityHighlight = map[Severity]config.Highlight{
 	SeverityErr:  config.HighlightErr,
 	SeverityWarn: config.HighlightWarn,
 	SeverityInfo: config.HighlightInfo,
 	SeverityHint: config.HighlightHint,
+}
+
+// SeverityHoverHighlight returns corresponding hover highlight name for a severity.
+var SeverityHoverHighlight = map[Severity]config.Highlight{
+	SeverityErr:  config.HighlightHoverErr,
+	SeverityWarn: config.HighlightHoverWarn,
+	SeverityInfo: config.HighlightHoverInfo,
+	SeverityHint: config.HighlightHoverHint,
 }

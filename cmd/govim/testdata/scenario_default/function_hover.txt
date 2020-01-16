@@ -2,11 +2,51 @@
 
 [!vim] [!gvim] skip 'Test only known to work in Vim and GVim'
 
+# Docs as popup content
 vim ex 'e main.go'
 vim ex 'call cursor(6,6)'
 vim expr 'GOVIMHover()'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout popup.golden
+! stderr .+
+
+
+# Single warning (unreachable code) + docs as popup content
+vim call append '[5,"\treturn"]'
+vimexprwait warning.golden getqflist()
+vim expr 'GOVIMHover()'
+vim -stringout expr 'GOVIM_internal_DumpPopups()'
+cmp stdout warning_popup.golden
+! stderr .+
+
+
+# Two warnings (unreachable code + formatting directive %v) + docs
+vim ex '7s/Hello, world/%v/'
+vim ex 'call cursor(7,8)'
+vimexprwait warnings.golden getqflist()
+vim expr 'GOVIMHover()'
+vim -stringout expr 'GOVIM_internal_DumpPopups()'
+cmp stdout warnings_popup.golden
+! stderr .+
+
+
+# Two warnings, no docs
+vim ex 'call cursor(7,17)'
+vim expr 'GOVIMHover()'
+vim -stringout expr 'GOVIM_internal_DumpPopups()'
+cmp stdout warnings_nodoc_popup.golden
+! stderr .+
+
+
+# Error (compile error) as content content
+vim ex 'call cursor(6,1)'
+vim ex 'normal dd'
+vim ex 'call cursor(6,7)'
+vim ex 'normal x'
+vimexprwait error.golden getqflist()
+vim expr 'GOVIMHover()'
+vim -stringout expr 'GOVIM_internal_DumpPopups()'
+cmp stdout error_popup.golden
 ! stderr .+
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -29,3 +69,78 @@ func fmt.Println(a ...interface{}) (n int, err error)
 Println formats using the default formats for its operands and writes to standard output.
 Spaces are always added between operands and a newline is appended.
 It returns the number of bytes written and any write error encountered.
+-- warning_popup.golden --
+unreachable code unreachable
+func fmt.Println(a ...interface{}) (n int, err error)
+Println formats using the default formats for its operands and writes to standard output.
+Spaces are always added between operands and a newline is appended.
+It returns the number of bytes written and any write error encountered.
+-- warnings_popup.golden --
+Println call has possible formatting directive %v printf
+unreachable code unreachable
+func fmt.Println(a ...interface{}) (n int, err error)
+Println formats using the default formats for its operands and writes to standard output.
+Spaces are always added between operands and a newline is appended.
+It returns the number of bytes written and any write error encountered.
+-- warnings_nodoc_popup.golden --
+Println call has possible formatting directive %v printf
+unreachable code unreachable
+-- error_popup.golden --
+Pintln not declared by package fmt compiler
+-- warning.golden --
+[
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "unreachable code",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- warnings.golden --
+[
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Println call has possible formatting directive %v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "unreachable code",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- error.golden --
+[
+  {
+    "bufnr": 1,
+    "col": 6,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Pintln not declared by package fmt",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

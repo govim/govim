@@ -58,6 +58,19 @@ type Config struct {
 	// Default: true
 	HighlightDiagnostics *bool `json:",omitempty"`
 
+	// HoverDiagnostics is a boolean (0 or 1 in VimScript) that controls
+	// whether diagnostics should be shown in the hover popup. When enabled
+	// each diagnostic that covers the cursor/mouse position will be added
+	// to the popup and formatted using text properties with the following
+	// highlight groups: GOVIMHoverErr, GOVIMHoverWarn, GOVIMHoverInfo and
+	// GOVIMHoverHint. The diagnostic source part is formatted via highlight
+	// group GOVIMHoverDiagSrc.
+	// All text properties are combined into existing syntax (with diagnostic
+	// source being applied last) to provide a wide range of styles.
+	//
+	// Default: true
+	HoverDiagnostics *bool `json:",omitempty"`
+
 	// CompletionDeepCompletiions enables gopls' deep completion option
 	// in the derivation of completion candidates.
 	//
@@ -287,4 +300,16 @@ const (
 	HighlightSignInfo Highlight = "GOVIMSignInfo"
 	// HighlightSignHint is the group used to add hint signs in the gutter
 	HighlightSignHint Highlight = "GOVIMSignHint"
+
+	// HighlightHoverErr is ths group used to add errors to the hover popup
+	HighlightHoverErr Highlight = "GOVIMHoverErr"
+	// HighlightHoverWarn is ths group used to add warnings to the hover popup
+	HighlightHoverWarn Highlight = "GOVIMHoverWarn"
+	// HighlightHoverInfo is ths group used to add informations to the hover popup
+	HighlightHoverInfo Highlight = "GOVIMHoverInfo"
+	// HighlightHoverHint is ths group used to add hints to the hover popup
+	HighlightHoverHint Highlight = "GOVIMHoverHint"
+
+	// HighlightHoverDiagSrc is the group used to format the source part of a hover diagnostic
+	HighlightHoverDiagSrc Highlight = "GOVIMHoverDiagSrc"
 )
