@@ -1,6 +1,6 @@
 # Test the Vundle install approach
 
-[!net] skip
+[!net] skip 'Needs network connection'
 
 env HOME=$WORK/home
 

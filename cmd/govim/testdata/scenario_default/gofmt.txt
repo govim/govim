@@ -1,10 +1,5 @@
 # Test that govim#config#Set("FormatOnSave", "gofmt") and GOVIMGoFmt work
 
-# Notice below: file.go and file.go.orig are identical. This is so that we
-# don't need to copy file.go.orig to file.go before opening file.go Because
-# doing so triggers govim to consider the file change from a file watcher
-# perspective which throws the observed diagnostics etc.
-
 # :GOVIMGoFmt whole file
 cp file.go file.go.orig
 vim ex 'e! file.go'

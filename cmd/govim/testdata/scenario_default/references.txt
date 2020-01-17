@@ -1,7 +1,7 @@
 # Test that the quickfix window gets populated with locations for the
 # GOVIMReferences command
 
-[short] skip 'Skip because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
 
 # Initial location population
 vim ex 'e main.go'

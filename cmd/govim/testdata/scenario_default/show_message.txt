@@ -1,6 +1,6 @@
 # Test that popup shows up when message is of Error type
 
-[!vim] [!gvim] skip
+[!vim] [!gvim] skip 'Test only known to work in Vim and GVim'
 
 vim expr 'GOVIM_internal_ShowMessagePopup()'
 

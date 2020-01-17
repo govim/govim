@@ -2,7 +2,7 @@
 # Note that the checks for these tests should be rewritten to use the GOVIM_internal_DumpPopups()
 # mechanism as soon as it supports dumping title and visibility of each popup.
 
-[!vim] [!gvim] skip
+[!vim] [!gvim] skip 'Test only known to work in Vim and GVim'
 
 # Tests basic case with a single diagnostic, no fix selected
 vim ex 'e main.go'

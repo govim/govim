@@ -1,6 +1,6 @@
 # Test that the hover function works for triggering a hover "balloon"
 
-[!vim] [!gvim] skip
+[!vim] [!gvim] skip 'Test only known to work in Vim and GVim'
 
 vim ex 'e main.go'
 vim ex 'call cursor(6,6)'

@@ -1,6 +1,6 @@
 # Test that the file watcher picks up file changes that occurs outside the editor
 
-[short] skip 'Skip because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
 
 # New file in the same package
 vim ex 'e main.go'
