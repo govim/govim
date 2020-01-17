@@ -1,13 +1,7 @@
 # Test that the quickfix window logic around retaining its selected item
 
-# Soak up initial diagnostics
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
-
 vim ex 'e main.go'
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist",\[\{"filename":"main\.go"'
-vim ex 'copen'
-vim ex 'w errors'
-cmp errors errors.golden.orig
+vimexprwait errors.golden.orig getqflist()
 
 # Verify we have the first entry selected
 vim expr 'getqflist({\"idx\": 0})'
@@ -24,10 +18,7 @@ stdout '{"idx":2}'
 vim ex 'e other.go'
 vim ex 'call cursor(3,1)'
 vim normal Sasdf
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustNothing","setqflist".*"filename":"other\.go"'
-vim ex 'copen'
-vim ex 'w errors'
-cmp errors errors.golden.updated
+vimexprwait errors.golden.updated getqflist()
 vim expr 'getqflist({\"idx\": 0})'
 stdout '{"idx":2}'
 ! stderr .+
@@ -54,9 +45,68 @@ package main
 
 //
 -- errors.golden.orig --
-main.go|6 col 2| undeclared name: asdf
-main.go|8 col 2| undeclared name: fdas
+[
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: asdf",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 8,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: fdas",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- errors.golden.updated --
-main.go|6 col 2| undeclared name: asdf
-main.go|8 col 2| undeclared name: fdas
-other.go|3 col 1| expected declaration, found asdf
+[
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: asdf",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 8,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: fdas",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 2,
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found asdf",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

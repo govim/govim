@@ -1,14 +1,9 @@
 # Test that signs are placed when opening a file that already has diagnostics.
 
 vim ex 'e main.go'
-errlogmatch -peek 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
+vimexprwait errors.golden getqflist()
 vim ex 'e other.go'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
-errlogmatch 'sendJSONMsg: \[0,\[\d+,"call","s:batchCall",\[\["call","s:mustBeZero","sign_unplace","govim"\],\["call","s:mustNothing","sign_placelist",\[.*\{"buffer":3,"group":"govim"'
-vim -indent expr 'sign_getplaced(\"other.go\", {\"group\": \"*\"})'
-! stderr .+
-cmp stdout placed.golden
+vimexprwait placed.golden 'sign_getplaced(\"other.go\", {\"group\": \"*\"})'
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -33,10 +28,37 @@ func foo() {
     fmt.Printf("%v")
 }
 
+-- errors.golden --
+[
+  {
+    "bufnr": 1,
+    "col": 5,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of z to z",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 2,
+    "col": 5,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- placed.golden --
 [
   {
-    "bufnr": 3,
+    "bufnr": 2,
     "signs": [
       {
         "group": "govim",

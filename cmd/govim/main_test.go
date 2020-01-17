@@ -41,8 +41,9 @@ func init() {
 
 func TestMain(m *testing.M) {
 	os.Exit(testscript.RunMain(m, map[string]func() int{
-		"vim":     testdriver.Vim,
-		"execvim": execvim,
+		"vim":         testdriver.Vim,
+		"vimexprwait": testdriver.VimExprWait,
+		"execvim":     execvim,
 	}))
 }
 
@@ -104,7 +105,7 @@ func TestScripts(t *testing.T) {
 					}
 					home := filepath.Join(e.WorkDir, ".home")
 					e.Vars = append(e.Vars,
-						"DEFAULT_ERRLOGMATCH_WAIT="+testdriver.DefaultErrLogMatchWait,
+						testsetup.EnvErrLogMatchWait+"="+testdriver.DefaultErrLogMatchWait,
 						"TMPDIR="+tmp,
 						"GOPROXY="+proxy.URL,
 						"GONOSUMDB=*",

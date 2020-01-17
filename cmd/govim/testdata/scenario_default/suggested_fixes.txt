@@ -5,9 +5,8 @@
 [!vim] [!gvim] skip
 
 # Tests basic case with a single diagnostic, no fix selected
-cp main.go main.go.single
 vim ex 'e main.go'
-errlogmatch 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
+vimexprwait initial_errors.golden getqflist()
 
 vim ex 'call cursor(6,2)'
 vim ex 'GOVIMSuggestedFixes'
@@ -19,7 +18,6 @@ errlogmatch 'recvJSONMsg: .*GOVIM_internal_PopupSelection'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout no_popup.golden
 
-
 # Tests basic case with a single diagnostic, fix applied
 vim ex 'GOVIMSuggestedFixes'
 errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of x to x\"'
@@ -27,26 +25,24 @@ vim ex 'call feedkeys(\"\\<Enter>\", \"xt\")'
 vim ex 'w'
 cmp main.go main.go.single.golden
 
-
 # Tests two diagnostics with suggested edits on different lines. Suggested edit should be the
 # second one since that is the cursor position line.
 cp main.go.different_lines main.go
 vim ex 'e! main.go'
 vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
-errlogmatch 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
+vimexprwait different_lines_errors.golden getqflist()
 
 vim ex 'call cursor(7,2)'
 vim ex 'GOVIMSuggestedFixes'
 errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\":\"self-assignment of y to y\"'
 ! stderr .+
 
-
 # Test multiple diagnostics on the same line. They are expected to be sorted alphabetically with a [x/y] added to the
 # title to indicate more than one. It shall also be possible to cycle forward and backwards.
 cp main.go.same_line main.go
 vim ex 'e! main.go'
 vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
-errlogmatch 'sendJSONMsg: .*\"call\",\S+,\"sign_placelist\"'
+vimexprwait same_line_errors.golden getqflist()
 
 vim ex 'call cursor(6,2)'
 vim ex 'GOVIMSuggestedFixes'
@@ -120,4 +116,97 @@ func main() {
 	x, y, a, b = x, y, a, b
 }
 
+-- initial_errors.golden --
+[
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of x to x",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- different_lines_errors.golden --
+[
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of x to x",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of y to y",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- same_line_errors.golden --
+[
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of a to a",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of b to b",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of x to x",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of y to y",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- no_popup.golden --

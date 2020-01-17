@@ -23,6 +23,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/govim/govim"
+	"github.com/govim/govim/internal/textutil"
 	"github.com/govim/govim/testsetup"
 	"github.com/rogpeppe/go-internal/semver"
 	"github.com/rogpeppe/go-internal/testscript"
@@ -39,12 +40,12 @@ var (
 )
 
 func init() {
-	v := os.Getenv("GOVIM_ERRLOGMATCH_WAIT")
+	v := os.Getenv(testsetup.EnvErrLogMatchWait)
 	if v == "" {
 		DefaultErrLogMatchWait = "30s"
 	} else {
 		if _, err := time.ParseDuration(v); err != nil {
-			panic(fmt.Errorf("failed to parse duration %q from GOVIM_ERRLOGMATCH_WAIT: %v", v, err))
+			panic(fmt.Errorf("failed to parse duration %q from %v: %v", v, testsetup.EnvErrLogMatchWait, err))
 		}
 		DefaultErrLogMatchWait = v
 	}
@@ -147,32 +148,8 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		return nil, fmt.Errorf("need to add vimrc behaviour for flavour %v", flav)
 	}
 
-	// We use the minimal srcVimrc, augmented with some testdriver specific
-	// commands.
-	//
-	// Before a test script starts, the files from the txtar archive are
-	// extracted. Then govim (and gopls) are started. In some rare cases, gopls
-	// can end up calculating diagnostics before the testscript has started.
-	// Which means that it can be the case, because govim and Vim are already up
-	// and running, that the first buffer actually gets used for quickfix as
-	// opposed to, say, the first file we open.
-	//
-	// Instead below we copen then cclose in vimrc to reserve and establish a
-	// definite buffer number for the quickfix window. The quickfix buffer will
-	// always be buffer number 2 (vim creates a buffer when opening, copen then
-	// creates a new window and buffer, the original buffer created when opening
-	// vim gets used for the first file we open, say)
-	vimrcBytes, err := ioutil.ReadFile(srcVimrc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read from src vimrc %v: %v", srcVimrc, err)
-	}
-	vimrc := bytes.NewBuffer(vimrcBytes)
-	vimrc.WriteString("\n")
-	vimrc.WriteString("copen\n")
-	vimrc.WriteString("cclose\n")
-
-	if err := ioutil.WriteFile(dstVimrc, vimrc.Bytes(), 0666); err != nil {
-		return nil, fmt.Errorf("failed to write to dst vimrc %v: %v", dstVimrc, err)
+	if err := copyFile(dstVimrc, srcVimrc); err != nil {
+		return nil, fmt.Errorf("failed to cp %v %v: %v", srcVimrc, dstVimrc, err)
 	}
 
 	res.govimListener = gl
@@ -538,46 +515,138 @@ func (d *TestDriver) listenDriver() error {
 // Vim is a sidecar that effectively drives Vim via a simple JSON-based
 // API
 func Vim() (exitCode int) {
-	logFile := os.Getenv("GOVIMTESTDRIVER_LOG")
-	var l io.Writer
-	if logFile != "" {
-		var err error
-		l, err = os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			panic(fmt.Sprintf("Could not open log file: %+v", err))
-		}
-	} else {
-		l = ioutil.Discard
-	}
-	log := func(format string, args ...interface{}) {
-		fmt.Fprintf(l, "[vim test client] "+format, args...)
-	}
-	log("logging enabled")
-
-	defer func() {
-		r := recover()
-		if r == nil {
-			return
-		}
-		exitCode = -1
-		fmt.Fprintln(os.Stderr, r)
-		log("panic with error: %+v", r)
-	}()
-
-	ef := func(format string, args ...interface{}) {
-		log(format, args...)
-		panic(fmt.Sprintf(format, args...))
-	}
+	defer cleanUp(&exitCode)
 
 	fs := flag.NewFlagSet("vim", flag.PanicOnError)
 	bang := fs.Bool("bang", false, "expect command to fail")
 	indent := fs.Bool("indent", false, "pretty indent resulting JSON")
 	stringout := fs.Bool("stringout", false, "print resulting string rather than JSON encoded version of string")
 
-	log("starting vim driver client and parsing flags...")
+	fs.Parse(os.Args[1:])
+	resp, err := vim(fs.Args())
+	if err != nil {
+		ef("%v", err)
+	}
+	if resp.error != nil {
+		if !*bang {
+			ef("unexpected command error: %v", resp.error)
+		}
+		fmt.Fprintln(os.Stderr, resp.error)
+	}
+	if resp.value != nil {
+		v := *resp.value
+		if *bang {
+			ef("unexpected command success")
+		}
+		if *stringout {
+			switch v := v.(type) {
+			case string:
+				fmt.Print(v)
+			default:
+				ef("response type is %T, not string", v)
+			}
+		} else {
+			enc := json.NewEncoder(os.Stdout)
+			if *indent {
+				enc.SetIndent("", "  ")
+			}
+			if err := enc.Encode(v); err != nil {
+				ef("failed to format output of JSON: %v", err)
+			}
+		}
+	}
+	return 0
+}
+
+func VimExprWait() (exitCode int) {
+	defer cleanUp(&exitCode)
+
+	fs := flag.NewFlagSet("vim", flag.PanicOnError)
+	noindent := fs.Bool("noindent", false, "do not pretty indent resulting JSON")
+	stringout := fs.Bool("stringout", false, "print resulting string rather than JSON encoded version of string")
+	fWait := fs.String("wait", "", "retry (with exp backoff) until this time period has elapsed")
 
 	fs.Parse(os.Args[1:])
 	args := fs.Args()
+	if len(args) < 2 {
+		ef("invalid arguments")
+	}
+	fileName := args[0]
+	want, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		ef("failed to read %v: %v", fileName, err)
+	}
+	// Now repeatedly evaluate the provided expression
+	// with exp backoff until we match want. Abort on any errors
+	// because this might indicative of a greater problem.
+	vimCmd := append([]string{"expr"}, args[1:]...)
+	if *fWait == "" {
+		fWait = &DefaultErrLogMatchWait
+	}
+	wait, err := time.ParseDuration(*fWait)
+	if err != nil {
+		ef("failed to parse -wait duration %q: %v", *fWait, err)
+	}
+	strategy := retry.LimitTime(wait,
+		retry.Exponential{
+			Initial: 100 * time.Millisecond, // be slightly less aggressive with Vim
+			Factor:  1.5,
+		},
+	)
+	var got *bytes.Buffer
+	for a := retry.Start(strategy, nil); a.Next(); {
+		resp, err := vim(vimCmd)
+		if err != nil {
+			ef("%v", err)
+		}
+		if resp.error != nil {
+			ef("vim error: %v", resp.error)
+		}
+		if resp.value == nil {
+			ef("expected return value from Vim; didn't get one")
+		}
+		v := *resp.value
+		got = new(bytes.Buffer)
+		if *stringout {
+			switch v := v.(type) {
+			case string:
+				got.WriteString(v)
+			default:
+				ef("response type is %T, not string", v)
+			}
+		} else {
+			enc := json.NewEncoder(got)
+			if !*noindent {
+				enc.SetIndent("", "  ")
+			}
+			if err := enc.Encode(v); err != nil {
+				ef("failed to format output of JSON: %v", err)
+			}
+		}
+		if bytes.Equal(want, got.Bytes()) {
+			return 0
+		}
+	}
+	// We failed to find a match. Show diff and return an error
+	fmt.Fprint(os.Stderr, textutil.Diff(got.String(), string(want)))
+
+	return 1
+}
+
+type vimResponse struct {
+	error error
+	value *interface{}
+}
+
+// vim makes a call to Vim. args[0:2] are expected to be quoted
+// strings. args[2:] are expected to be string literals representing
+// JSON
+func vim(args []string) (resp vimResponse, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = r.(error)
+		}
+	}()
 	fn := args[0]
 	var jsonArgs []string
 	for i, a := range args {
@@ -655,46 +724,36 @@ func Vim() (exitCode int) {
 		ef("failed to send command %q to driver on: %v", jsonArgString, err)
 	}
 	dec := json.NewDecoder(conn)
-	var resp []interface{}
-	if err := dec.Decode(&resp); err != nil {
+	var protoResp []interface{}
+	if err := dec.Decode(&protoResp); err != nil {
 		ef("failed to decode response: %v", err)
 	}
-	if resp[0] != "" {
-		// this is a protocol-level error
-		ef("got error response: %v", resp[0])
+	// vimResp[0] is a string representing any protocol error
+	// vimResp[1] is a []interface such that:
+	//   vimResp[1][0] is a string representing any Vim error
+	//   vimResp[1][1] (if supplied) is the value returned by Vim
+	if v := protoResp[0].(string); v != "" {
+		ef("protocol error: %v", v)
 	}
-	// resp[1] will be a []intferface{} where the first
-	// element will be a Vim-level error
-	vimResp := resp[1].([]interface{})
-	if err := vimResp[0].(string); err != "" {
-		// this was a vim-level error
-		if !*bang {
-			ef("unexpected command error: %v", err)
-		}
-		fmt.Fprintln(os.Stderr, err)
+	vimResp := protoResp[1].([]interface{})
+	if v := vimResp[0].(string); v != "" {
+		resp.error = fmt.Errorf("vim error: %v", v)
 	}
 	if len(vimResp) == 2 {
-		if *bang {
-			ef("unexpected command success")
-		}
-		if *stringout {
-			switch vimResp[1].(type) {
-			case string:
-				fmt.Print(vimResp[1])
-			default:
-				ef("response type is %T, not string", vimResp[1])
-			}
-		} else {
-			enc := json.NewEncoder(os.Stdout)
-			if *indent {
-				enc.SetIndent("", "  ")
-			}
-			if err := enc.Encode(vimResp[1]); err != nil {
-				ef("failed to format output of JSON: %v", err)
-			}
-		}
+		resp.value = &vimResp[1]
 	}
-	return 0
+	return resp, nil
+}
+
+func cleanUp(exitCode *int) {
+	if r := recover(); r != nil {
+		*exitCode = -1
+		fmt.Fprintln(os.Stderr, r)
+	}
+}
+
+func ef(format string, args ...interface{}) {
+	panic(fmt.Errorf(format, args...))
 }
 
 // Sleep is a convenience function for those odd occasions when you
@@ -839,7 +898,7 @@ func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
 	if *fWait != "" {
 		pwait, err := time.ParseDuration(*fWait)
 		if err != nil {
-			ts.Fatalf("errlogmatch: failed to parse -maxwait duration %q: %v", *fWait, err)
+			ts.Fatalf("errlogmatch: failed to parse -wait duration %q: %v", *fWait, err)
 		}
 		wait = pwait
 	}
