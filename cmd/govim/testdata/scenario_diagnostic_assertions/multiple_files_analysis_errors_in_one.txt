@@ -1,7 +1,8 @@
-# Verify that we don't receive initial diagnostics for files that
-# have only analysis errors. Then when we open any file in the package
-# we receive diagnostics for that file and any files that have
-# analysis errors.
+# Verify that we don't receive initial diagnostics for files that have only
+# analysis errors. Then when we open any file in the package we receive
+# diagnostics for files that have analysis errors.
+#
+# Opening a file does not publish any diagnostics, all things being equal.
 
 [short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to verify we haven''t received diagnostics'
 
@@ -10,14 +11,14 @@ errlogmatch -count=0 -start 'PublishDiagnostics callback: &protocol.PublishDiagn
 errlogmatch -count=0 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
 
 vim ex 'e main.go'
-errlogmatch -peek 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
 
 vim ex 'e other.go'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
 
-errlogmatch -count=1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-errlogmatch -count=2 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
+sleep $GOVIM_ERRLOGMATCH_WAIT
+errlogmatch -count=0 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch -count=1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
 
 -- go.mod --
 module mod.com

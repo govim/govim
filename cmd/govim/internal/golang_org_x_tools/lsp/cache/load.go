@@ -8,10 +8,12 @@ import (
 	"context"
 	"fmt"
 	"go/types"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
@@ -25,6 +27,7 @@ type metadata struct {
 	name            string
 	goFiles         []span.URI
 	compiledGoFiles []span.URI
+	forTest         packagePath
 	typesSizes      types.Sizes
 	errors          []packages.Error
 	deps            []packageID
@@ -34,59 +37,68 @@ type metadata struct {
 	config *packages.Config
 }
 
-func (s *snapshot) load(ctx context.Context, scope interface{}) ([]*metadata, error) {
-	var query string
-	switch scope := scope.(type) {
-	case packageID:
-		query = string(scope)
-	case fileURI:
-		query = fmt.Sprintf("file=%s", span.URI(scope).Filename())
-	case directoryURI:
-		filename := span.URI(scope).Filename()
-		query = fmt.Sprintf("%s/...", filename)
-		// Simplify the query if it will be run in the requested directory.
-		// This ensures compatibility with Go 1.12 that doesn't allow
-		// <directory>/... in GOPATH mode.
-		if s.view.folder.Filename() == filename {
-			query = "./..."
+func (s *snapshot) load(ctx context.Context, scopes ...interface{}) ([]*metadata, error) {
+	var query []string
+	for _, scope := range scopes {
+		switch scope := scope.(type) {
+		case []packagePath:
+			for _, p := range scope {
+				query = append(query, string(p))
+			}
+		case packagePath:
+			query = append(query, string(scope))
+		case fileURI:
+			query = append(query, fmt.Sprintf("file=%s", span.URI(scope).Filename()))
+		case directoryURI:
+			filename := span.URI(scope).Filename()
+			q := fmt.Sprintf("%s/...", filename)
+			// Simplify the query if it will be run in the requested directory.
+			// This ensures compatibility with Go 1.12 that doesn't allow
+			// <directory>/... in GOPATH mode.
+			if s.view.folder.Filename() == filename {
+				q = "./..."
+			}
+			query = append(query, q)
 		}
 	}
-
 	ctx, done := trace.StartSpan(ctx, "cache.view.load", telemetry.Query.Of(query))
 	defer done()
 
 	cfg := s.view.Config(ctx)
-	pkgs, err := packages.Load(cfg, query)
+	pkgs, err := packages.Load(cfg, query...)
 
-	// If the context was canceled, return early.
-	// Otherwise, we might be type-checking an incomplete result.
-	if err == context.Canceled {
-		return nil, err
+	// If the context was canceled, return early. Otherwise, we might be
+	// type-checking an incomplete result. Check the context directly,
+	// because go/packages adds extra information to the error.
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
 	}
 
-	log.Print(ctx, "go/packages.Load", tag.Of("query", query), tag.Of("packages", len(pkgs)))
+	log.Print(ctx, "go/packages.Load", tag.Of("snapshot", s.ID()), tag.Of("query", query), tag.Of("packages", len(pkgs)))
 	if len(pkgs) == 0 {
 		if err == nil {
 			err = errors.Errorf("no packages found for query %s", query)
 		}
-	}
-	if err != nil {
 		return nil, err
 	}
-	return s.updateMetadata(ctx, scope, pkgs, cfg)
+	return s.updateMetadata(ctx, scopes, pkgs, cfg)
 }
 
 // shouldLoad reparses a file's package and import declarations to
 // determine if they have changed.
 func (c *cache) shouldLoad(ctx context.Context, s *snapshot, originalFH, currentFH source.FileHandle) bool {
+	// TODO(rstambler): go.mod files should be tracked in the snapshot.
 	if originalFH == nil {
+		return currentFH.Identity().Kind == source.Go
+	}
+	// If the file hasn't changed, there's no need to reload.
+	if originalFH.Identity().String() == currentFH.Identity().String() {
+		return false
+	}
+	// If a go.mod file's contents have changed, always invalidate metadata.
+	if kind := originalFH.Identity().Kind; kind == source.Mod {
 		return true
 	}
-	// If the file is a mod file, we should always load.
-	if originalFH.Identity().Kind == currentFH.Identity().Kind && currentFH.Identity().Kind == source.Mod {
-		return true
-	}
-
 	// Get the original and current parsed files in order to check package name and imports.
 	original, _, _, originalErr := c.ParseGoHandle(originalFH, source.ParseHeader).Parse(ctx)
 	current, _, _, currentErr := c.ParseGoHandle(currentFH, source.ParseHeader).Parse(ctx)
@@ -119,22 +131,33 @@ func (c *cache) shouldLoad(ctx context.Context, s *snapshot, originalFH, current
 	return false
 }
 
-func (s *snapshot) updateMetadata(ctx context.Context, scope interface{}, pkgs []*packages.Package, cfg *packages.Config) ([]*metadata, error) {
+func (s *snapshot) updateMetadata(ctx context.Context, scopes []interface{}, pkgs []*packages.Package, cfg *packages.Config) ([]*metadata, error) {
 	var results []*metadata
 	for _, pkg := range pkgs {
-		if _, isDir := scope.(directoryURI); !isDir || s.view.Options().VerboseOutput {
+		// Don't log output for full workspace packages.Loads.
+		var containsDir bool
+		for _, scope := range scopes {
+			if _, ok := scope.(directoryURI); ok {
+				containsDir = true
+				break
+			}
+		}
+		if !containsDir || s.view.Options().VerboseOutput {
 			log.Print(ctx, "go/packages.Load", tag.Of("package", pkg.PkgPath), tag.Of("files", pkg.CompiledGoFiles))
 		}
-		// Handle golang/go#36292 by ignoring packages with no sources and no errors.
+		// golang/go#36292: Ignore packages with no sources and no errors.
 		if len(pkg.GoFiles) == 0 && len(pkg.CompiledGoFiles) == 0 && len(pkg.Errors) == 0 {
+			continue
+		}
+		// Skip test main packages.
+		if s.view.isTestMain(ctx, pkg) {
 			continue
 		}
 		// Set the metadata for this package.
 		if err := s.updateImports(ctx, packagePath(pkg.PkgPath), pkg, cfg, map[packageID]struct{}{}); err != nil {
 			return nil, err
 		}
-		m := s.getMetadata(packageID(pkg.ID))
-		if m != nil {
+		if m := s.getMetadata(packageID(pkg.ID)); m != nil {
 			results = append(results, m)
 		}
 	}
@@ -143,7 +166,7 @@ func (s *snapshot) updateMetadata(ctx context.Context, scope interface{}, pkgs [
 	s.clearAndRebuildImportGraph()
 
 	if len(results) == 0 {
-		return nil, errors.Errorf("no metadata for %s", scope)
+		return nil, errors.Errorf("no metadata for %s", scopes)
 	}
 	return results, nil
 }
@@ -158,6 +181,7 @@ func (s *snapshot) updateImports(ctx context.Context, pkgPath packagePath, pkg *
 		id:         id,
 		pkgPath:    pkgPath,
 		name:       pkg.Name,
+		forTest:    packagePath(packagesinternal.GetForTest(pkg)),
 		typesSizes: pkg.TypesSizes,
 		errors:     pkg.Errors,
 		config:     cfg,
@@ -193,16 +217,32 @@ func (s *snapshot) updateImports(ctx context.Context, pkgPath packagePath, pkg *
 			m.missingDeps[importPkgPath] = struct{}{}
 			continue
 		}
-		dep := s.getMetadata(importID)
-		if dep == nil {
+		if s.getMetadata(importID) == nil {
 			if err := s.updateImports(ctx, importPkgPath, importPkg, cfg, copied); err != nil {
 				log.Error(ctx, "error in dependency", err)
 			}
 		}
 	}
-
 	// Add the metadata to the cache.
 	s.setMetadata(m)
-
 	return nil
+}
+
+func (v *view) isTestMain(ctx context.Context, pkg *packages.Package) bool {
+	// Test mains must have an import path that ends with ".test".
+	if !strings.HasSuffix(pkg.PkgPath, ".test") {
+		return false
+	}
+	// Test main packages are always named "main".
+	if pkg.Name != "main" {
+		return false
+	}
+	// Test mains always have exactly one GoFile that is in the build cache.
+	if len(pkg.GoFiles) > 1 {
+		return false
+	}
+	if !strings.HasPrefix(pkg.GoFiles[0], v.gocache) {
+		return false
+	}
+	return true
 }

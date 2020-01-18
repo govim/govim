@@ -47,7 +47,7 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 	// expandFuncCall mutates the completion label, detail, and snippet
 	// to that of an invocation of sig.
 	expandFuncCall := func(sig *types.Signature) {
-		params := formatParams(c.snapshot, c.pkg, sig, c.qf)
+		params := formatParams(c.ctx, c.snapshot, c.pkg, sig, c.qf)
 		snip = c.functionCallSnippet(label, params)
 		results, writeParens := formatResults(sig.Results(), c.qf)
 		detail = "func" + formatFunction(params, results, writeParens)
@@ -68,7 +68,7 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 			detail = "struct{...}" // for anonymous structs
 		} else if obj.IsField() {
 			var err error
-			detail, err = formatFieldType(c.snapshot, c.pkg, obj, c.qf)
+			detail, err = formatFieldType(c.ctx, c.snapshot, c.pkg, obj, c.qf)
 			if err != nil {
 				detail = types.TypeString(obj.Type(), c.qf)
 			}
@@ -130,30 +130,29 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 		}
 	}
 
-	// Prepend "&" operator if our candidate needs address taken.
+	// Prepend "&" or "*" operator as appropriate.
+	var prefixOp string
 	if cand.takeAddress {
-		var (
-			sel *ast.SelectorExpr
-			ok  bool
-		)
-		if sel, ok = c.path[0].(*ast.SelectorExpr); !ok && len(c.path) > 1 {
-			sel, _ = c.path[1].(*ast.SelectorExpr)
-		}
+		prefixOp = "&"
+	} else if cand.makePointer {
+		prefixOp = "*"
+	}
 
-		// If we are in a selector, add an edit to place "&" before selector node.
-		if sel != nil {
-			edits, err := referenceEdit(c.snapshot.View().Session().Cache().FileSet(), c.mapper, sel)
+	if prefixOp != "" {
+		// If we are in a selector, add an edit to place prefix before selector.
+		if sel := enclosingSelector(c.path, c.pos); sel != nil {
+			edits, err := prependEdit(c.snapshot.View().Session().Cache().FileSet(), c.mapper, sel, prefixOp)
 			if err != nil {
-				log.Error(c.ctx, "error generating reference edit", err)
+				log.Error(c.ctx, "error generating prefix edit", err)
 			} else {
 				protocolEdits = append(protocolEdits, edits...)
 			}
 		} else {
-			// If there is no selector, just stick the "&" at the start.
-			insert = "&" + insert
+			// If there is no selector, just stick the prefix at the start.
+			insert = prefixOp + insert
 		}
 
-		label = "&" + label
+		label = prefixOp + label
 	}
 
 	detail = strings.TrimPrefix(detail, "untyped ")
@@ -168,7 +167,7 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 		snippet:             snip,
 	}
 	// If the user doesn't want documentation for completion items.
-	if !c.opts.Documentation {
+	if !c.opts.documentation {
 		return item, nil
 	}
 	pos := c.snapshot.View().Session().Cache().FileSet().Position(obj.Pos())
@@ -186,11 +185,11 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 	if cand.imp != nil && cand.imp.pkg != nil {
 		searchPkg = cand.imp.pkg
 	}
-	file, pkg, err := c.snapshot.View().FindPosInPackage(searchPkg, obj.Pos())
+	file, pkg, err := findPosInPackage(c.snapshot.View(), searchPkg, obj.Pos())
 	if err != nil {
 		return item, nil
 	}
-	ident, err := findIdentifier(c.snapshot, pkg, file, obj.Pos())
+	ident, err := findIdentifier(c.ctx, c.snapshot, pkg, file, obj.Pos())
 	if err != nil {
 		return item, nil
 	}
@@ -200,7 +199,7 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 		return item, nil
 	}
 	item.Documentation = hover.Synopsis
-	if c.opts.FullDocumentation {
+	if c.opts.fullDocumentation {
 		item.Documentation = hover.FullDocumentation
 	}
 	return item, nil
@@ -245,11 +244,12 @@ func (c *completer) formatBuiltin(cand candidate) CompletionItem {
 		item.Kind = protocol.ConstantCompletion
 	case *types.Builtin:
 		item.Kind = protocol.FunctionCompletion
-		builtin := c.snapshot.View().BuiltinPackage().Lookup(obj.Name())
-		if obj == nil {
+		astObj, err := c.snapshot.View().LookupBuiltin(c.ctx, obj.Name())
+		if err != nil {
+			log.Error(c.ctx, "no builtin package", err)
 			break
 		}
-		decl, ok := builtin.Decl.(*ast.FuncDecl)
+		decl, ok := astObj.Decl.(*ast.FuncDecl)
 		if !ok {
 			break
 		}

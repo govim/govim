@@ -44,8 +44,8 @@ func RunServerOnPort(ctx context.Context, cache source.Cache, port int, h func(c
 	return RunServerOnAddress(ctx, cache, fmt.Sprintf(":%v", port), h)
 }
 
-// RunServerOnPort starts an LSP server on the given port and does not exit.
-// This function exists for debugging purposes.
+// RunServerOnAddress starts an LSP server on the given address and does not
+// exit. This function exists for debugging purposes.
 func RunServerOnAddress(ctx context.Context, cache source.Cache, addr string, h func(ctx context.Context, s *Server)) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -96,9 +96,11 @@ type Server struct {
 
 // sentDiagnostics is used to cache diagnostics that have been sent for a given file.
 type sentDiagnostics struct {
-	version    float64
-	identifier string
-	sorted     []source.Diagnostic
+	version      float64
+	identifier   string
+	sorted       []source.Diagnostic
+	withAnalysis bool
+	snapshotID   uint64
 }
 
 // General
@@ -284,6 +286,38 @@ func (s *Server) SetTraceNotification(context.Context, *protocol.SetTraceParams)
 
 func (s *Server) SelectionRange(context.Context, *protocol.SelectionRangeParams) ([]protocol.SelectionRange, error) {
 	return nil, notImplemented("SelectionRange")
+}
+
+// Nonstandard requests
+func (s *Server) NonstandardRequest(ctx context.Context, method string, params interface{}) (interface{}, error) {
+	paramMap := params.(map[string]interface{})
+	if method == "gopls/diagnoseFiles" {
+		for _, file := range paramMap["files"].([]interface{}) {
+			uri := span.URI(file.(string))
+			view, err := s.session.ViewOf(uri)
+			if err != nil {
+				return nil, err
+			}
+			fileID, diagnostics, err := source.FileDiagnostics(ctx, view.Snapshot(), uri)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.client.PublishDiagnostics(ctx, &protocol.PublishDiagnosticsParams{
+				URI:         protocol.NewURI(uri),
+				Diagnostics: toProtocolDiagnostics(diagnostics),
+				Version:     fileID.Version,
+			}); err != nil {
+				return nil, err
+			}
+		}
+		if err := s.client.PublishDiagnostics(ctx, &protocol.PublishDiagnosticsParams{
+			URI: "gopls://diagnostics-done",
+		}); err != nil {
+			return nil, err
+		}
+		return struct{}{}, nil
+	}
+	return nil, notImplemented(method)
 }
 
 func notImplemented(method string) *jsonrpc2.Error {

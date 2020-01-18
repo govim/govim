@@ -7,7 +7,6 @@ package lsp
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -24,8 +23,7 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 		return nil, err
 	}
 	snapshot := view.Snapshot()
-	options := view.Options()
-	fh, err := snapshot.GetFile(ctx, uri)
+	fh, err := snapshot.GetFile(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -33,8 +31,7 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 	var surrounding *source.Selection
 	switch fh.Identity().Kind {
 	case source.Go:
-		options.Completion.FullDocumentation = options.HoverKind == source.FullDocumentation
-		candidates, surrounding, err = source.Completion(ctx, snapshot, fh, params.Position, options.Completion)
+		candidates, surrounding, err = source.Completion(ctx, snapshot, fh, params.Position)
 	case source.Mod:
 		candidates, surrounding = nil, nil
 	}
@@ -52,23 +49,17 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 	if err != nil {
 		return nil, err
 	}
-	// Sort the candidates by score, then label, since that is not supported by LSP yet.
-	sort.SliceStable(candidates, func(i, j int) bool {
-		if candidates[i].Score != candidates[j].Score {
-			return candidates[i].Score > candidates[j].Score
-		}
-		return candidates[i].Label < candidates[j].Label
-	})
 
 	// When using deep completions/fuzzy matching, report results as incomplete so
 	// client fetches updated completions after every key stroke.
-	incompleteResults := options.Completion.Deep || options.Completion.FuzzyMatching
+	options := view.Options()
+	incompleteResults := options.DeepCompletion || options.Matcher == source.Fuzzy
 
 	items := toProtocolCompletionItems(candidates, rng, options)
 
-	if incompleteResults && len(items) > 1 {
-		for i := range items[1:] {
-			// Give all the candidaites the same filterText to trick VSCode
+	if incompleteResults {
+		for i := 1; i < len(items); i++ {
+			// Give all the candidates the same filterText to trick VSCode
 			// into not reordering our candidates. All the candidates will
 			// appear to be equally good matches, so VSCode's fuzzy
 			// matching/ranking just maintains the natural "sortText"
@@ -94,7 +85,7 @@ func toProtocolCompletionItems(candidates []source.CompletionItem, rng protocol.
 		// Limit the number of deep completions to not overwhelm the user in cases
 		// with dozens of deep completion matches.
 		if candidate.Depth > 0 {
-			if !options.Completion.Deep {
+			if !options.DeepCompletion {
 				continue
 			}
 			if numDeepCompletionsSeen >= source.MaxDeepCompletions {
@@ -128,9 +119,9 @@ func toProtocolCompletionItems(candidates []source.CompletionItem, rng protocol.
 			// https://github.com/Microsoft/language-server-protocol/issues/348.
 			SortText: fmt.Sprintf("%05d", i),
 
-			// Trim address operator (VSCode doesn't like weird characters
-			// in filterText).
-			FilterText: strings.TrimLeft(candidate.InsertText, "&"),
+			// Trim operators (VSCode doesn't like weird characters in
+			// filterText).
+			FilterText: strings.TrimLeft(candidate.InsertText, "&*"),
 
 			Preselect:     i == 0,
 			Documentation: candidate.Documentation,

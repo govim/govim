@@ -32,7 +32,7 @@ func SignatureHelp(ctx context.Context, snapshot Snapshot, fh FileHandle, pos pr
 	ctx, done := trace.StartSpan(ctx, "source.SignatureHelp")
 	defer done()
 
-	pkg, pgh, err := getParsedFile(ctx, snapshot, fh, NarrowestCheckPackageHandle)
+	pkg, pgh, err := getParsedFile(ctx, snapshot, fh, NarrowestPackageHandle)
 	if err != nil {
 		return nil, fmt.Errorf("getting file for SignatureHelp: %v", err)
 	}
@@ -101,7 +101,7 @@ FindCall:
 	}
 
 	qf := qualifier(file, pkg.GetTypes(), pkg.GetTypesInfo())
-	params := formatParams(snapshot, pkg, sig, qf)
+	params := formatParams(ctx, snapshot, pkg, sig, qf)
 	results, writeResultParens := formatResults(sig.Results(), qf)
 	activeParam := activeParameter(callExpr, sig.Params().Len(), sig.Variadic(), rng.Start)
 
@@ -136,11 +136,11 @@ FindCall:
 }
 
 func builtinSignature(ctx context.Context, v View, callExpr *ast.CallExpr, name string, pos token.Pos) (*SignatureInformation, error) {
-	obj := v.BuiltinPackage().Lookup(name)
-	if obj == nil {
-		return nil, errors.Errorf("no object for %s", name)
+	astObj, err := v.LookupBuiltin(ctx, name)
+	if err != nil {
+		return nil, err
 	}
-	decl, ok := obj.Decl.(*ast.FuncDecl)
+	decl, ok := astObj.Decl.(*ast.FuncDecl)
 	if !ok {
 		return nil, errors.Errorf("no function declaration for builtin: %s", name)
 	}

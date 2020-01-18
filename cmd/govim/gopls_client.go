@@ -13,15 +13,14 @@ import (
 )
 
 const (
-	goplsConfigNoDocsOnHover     = "noDocsOnHover"
-	goplsConfigHoverKind         = "hoverKind"
-	goplsDeepCompletion          = "deepCompletion"
-	goplsFuzzyMatching           = "fuzzyMatching"
-	goplsStaticcheck             = "staticcheck"
-	goplsCaseSensitiveCompletion = "caseSensitiveCompletion"
-	goplsCompleteUnimported      = "completeUnimported"
-	goplsGoImportsLocalPrefix    = "local"
-	goplsCompletionBudget        = "completionBudget"
+	goplsConfigNoDocsOnHover  = "noDocsOnHover"
+	goplsConfigHoverKind      = "hoverKind"
+	goplsDeepCompletion       = "deepCompletion"
+	goplsCompletionMatcher    = "matcher"
+	goplsStaticcheck          = "staticcheck"
+	goplsCompleteUnimported   = "completeUnimported"
+	goplsGoImportsLocalPrefix = "local"
+	goplsCompletionBudget     = "completionBudget"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -129,25 +128,22 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	conf := make(map[string]interface{})
 	conf[goplsConfigHoverKind] = "FullDocumentation"
 	if config.CompletionDeepCompletions != nil {
-		conf[goplsDeepCompletion] = config.CompletionDeepCompletions
+		conf[goplsDeepCompletion] = *config.CompletionDeepCompletions
 	}
-	if config.CompletionFuzzyMatching != nil {
-		conf[goplsFuzzyMatching] = config.CompletionFuzzyMatching
+	if config.CompletionMatcher != nil {
+		conf[goplsCompletionMatcher] = *config.CompletionMatcher
 	}
 	if config.Staticcheck != nil {
-		conf[goplsStaticcheck] = config.Staticcheck
-	}
-	if config.CompletionCaseSensitive != nil {
-		conf[goplsCaseSensitiveCompletion] = config.CompletionCaseSensitive
+		conf[goplsStaticcheck] = *config.Staticcheck
 	}
 	if config.CompleteUnimported != nil {
-		conf[goplsCompleteUnimported] = config.CompleteUnimported
+		conf[goplsCompleteUnimported] = *config.CompleteUnimported
 	}
 	if g.vimstate.config.GoImportsLocalPrefix != nil {
-		conf[goplsGoImportsLocalPrefix] = *g.vimstate.config.GoImportsLocalPrefix
+		conf[goplsGoImportsLocalPrefix] = *config.GoImportsLocalPrefix
 	}
 	if g.vimstate.config.CompletionBudget != nil {
-		conf[goplsCompletionBudget] = *g.vimstate.config.CompletionBudget
+		conf[goplsCompletionBudget] = *config.CompletionBudget
 	}
 	res[0] = conf
 
@@ -171,6 +167,14 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 	g.diagnosticsChangedLock.Lock()
 	uri := span.URI(params.URI)
 	curr, ok := g.rawDiagnostics[uri]
+	// TODO: add some temp logging for https://github.com/golang/go/issues/36601
+	// Note this only captures situations where a file's version is increasing.
+	// Because it's possible to receive new diagnostics for a file without its
+	// version increasing. And in that case it's impossible to know if the
+	// diagnostics we receive are old or not.
+	if ok && curr.Version > params.Version {
+		g.Logf("** Received non-new diagnostics for %v; ignoring. Currently have: \n%v\nGot: \n%v", params.URI, tabIndent(pretty.Sprint(curr)), tabIndent(pretty.Sprint(params)))
+	}
 	g.rawDiagnostics[uri] = params
 	g.diagnosticsChanged = true
 	g.diagnosticsChangedQuickfix = true
@@ -207,4 +211,8 @@ func (g *govimplugin) logGoplsClientf(format string, args ...interface{}) {
 		format = format + "\n"
 	}
 	g.Logf("gopls client start =======================\n"+format+"gopls client end =======================\n", args...)
+}
+
+func tabIndent(s string) string {
+	return "\t" + strings.ReplaceAll(s, "\n", "\n\t")
 }

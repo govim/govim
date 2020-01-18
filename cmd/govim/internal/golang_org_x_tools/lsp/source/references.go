@@ -7,13 +7,11 @@ package source
 import (
 	"context"
 	"go/ast"
+	"go/token"
 	"go/types"
 
-	"golang.org/x/tools/go/types/objectpath"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
-	errors "golang.org/x/xerrors"
 )
 
 // ReferenceInfo holds information about reference to an identifier in Go source.
@@ -28,81 +26,87 @@ type ReferenceInfo struct {
 
 // References returns a list of references for a given identifier within the packages
 // containing i.File. Declarations appear first in the result.
-func (i *IdentifierInfo) References(ctx context.Context) ([]*ReferenceInfo, error) {
+func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Position, includeDeclaration bool) ([]*ReferenceInfo, error) {
 	ctx, done := trace.StartSpan(ctx, "source.References")
 	defer done()
 
-	// If the object declaration is nil, assume it is an import spec and do not look for references.
-	if i.Declaration.obj == nil {
-		return nil, errors.Errorf("no references for an import spec")
+	qualifiedObjs, err := qualifiedObjsAtProtocolPos(ctx, s, f, pp)
+	if err != nil {
+		return nil, err
 	}
-	info := i.pkg.GetTypesInfo()
-	if info == nil {
-		return nil, errors.Errorf("package %s has no types info", i.pkg.PkgPath())
-	}
-	var searchpkgs []Package
-	if i.Declaration.obj.Exported() {
-		// Only search all packages if the identifier is exported.
-		for _, id := range i.Snapshot.GetReverseDependencies(i.pkg.ID()) {
-			ph, err := i.Snapshot.PackageHandle(ctx, id)
-			if err != nil {
-				log.Error(ctx, "References: no CheckPackageHandle", err, telemetry.Package.Of(id))
-				continue
-			}
-			pkg, err := ph.Check(ctx)
-			if err != nil {
-				log.Error(ctx, "References: no Package", err, telemetry.Package.Of(id))
-				continue
-			}
-			searchpkgs = append(searchpkgs, pkg)
-		}
-	}
-	// Add the package in which the identifier is declared.
-	searchpkgs = append(searchpkgs, i.pkg)
 
-	var references []*ReferenceInfo
-	for _, pkg := range searchpkgs {
-		for ident, obj := range pkg.GetTypesInfo().Uses {
-			if !sameObj(obj, i.Declaration.obj) {
-				continue
-			}
-			rng, err := posToMappedRange(i.Snapshot.View(), pkg, ident.Pos(), ident.End())
+	var (
+		references []*ReferenceInfo
+		seen       = make(map[token.Position]bool)
+		fset       = s.View().Session().Cache().FileSet()
+	)
+
+	// Make sure declaration is the first item in the response.
+	if includeDeclaration {
+		rng, err := objToMappedRange(s.View(), qualifiedObjs[0].pkg, qualifiedObjs[0].obj)
+		if err != nil {
+			return nil, err
+		}
+
+		ident, _ := qualifiedObjs[0].node.(*ast.Ident)
+		references = append(references, &ReferenceInfo{
+			mappedRange:   rng,
+			Name:          qualifiedObjs[0].obj.Name(),
+			ident:         ident,
+			obj:           qualifiedObjs[0].obj,
+			pkg:           qualifiedObjs[0].pkg,
+			isDeclaration: true,
+		})
+	}
+
+	for _, qo := range qualifiedObjs {
+		var searchPkgs []Package
+
+		// Only search dependents if the object is exported.
+		if qo.obj.Exported() {
+			reverseDeps, err := s.GetReverseDependencies(ctx, qo.pkg.ID())
 			if err != nil {
 				return nil, err
 			}
-			references = append(references, &ReferenceInfo{
-				Name:        ident.Name,
-				ident:       ident,
-				pkg:         i.pkg,
-				obj:         obj,
-				mappedRange: rng,
-			})
-		}
-	}
-	return references, nil
-}
 
-// sameObj returns true if obj is the same as declObj.
-// Objects are the same if either they have they have objectpaths
-// and their objectpath and package are the same; or if they don't
-// have object paths and they have the same Pos and Name.
-func sameObj(obj, declObj types.Object) bool {
-	if obj == nil || declObj == nil {
-		return false
-	}
-	// TODO(suzmue): support the case where an identifier may have two different
-	// declaration positions.
-	if obj.Pkg() == nil || declObj.Pkg() == nil {
-		if obj.Pkg() != declObj.Pkg() {
-			return false
+			for _, ph := range reverseDeps {
+				pkg, err := ph.Check(ctx)
+				if err != nil {
+					return nil, err
+				}
+				searchPkgs = append(searchPkgs, pkg)
+			}
 		}
-	} else if obj.Pkg().Path() != declObj.Pkg().Path() {
-		return false
+
+		// Add the package in which the identifier is declared.
+		searchPkgs = append(searchPkgs, qo.pkg)
+
+		for _, pkg := range searchPkgs {
+			for ident, obj := range pkg.GetTypesInfo().Uses {
+				if obj != qo.obj {
+					continue
+				}
+
+				pos := fset.Position(ident.Pos())
+				if seen[pos] {
+					continue
+				}
+				seen[pos] = true
+
+				rng, err := posToMappedRange(s.View(), pkg, ident.Pos(), ident.End())
+				if err != nil {
+					return nil, err
+				}
+				references = append(references, &ReferenceInfo{
+					Name:        ident.Name,
+					ident:       ident,
+					pkg:         pkg,
+					obj:         obj,
+					mappedRange: rng,
+				})
+			}
+		}
 	}
-	objPath, operr := objectpath.For(obj)
-	declObjPath, doperr := objectpath.For(declObj)
-	if operr != nil || doperr != nil {
-		return obj.Pos() == declObj.Pos() && obj.Name() == declObj.Name()
-	}
-	return objPath == declObjPath
+
+	return references, nil
 }

@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"go/types"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -131,9 +132,8 @@ func (ipm insensitivePrefixMatcher) Score(candidateLabel string) float32 {
 type completer struct {
 	snapshot Snapshot
 	pkg      Package
-
-	qf   types.Qualifier
-	opts CompletionOptions
+	qf       types.Qualifier
+	opts     *completionOptions
 
 	// ctx is the context associated with this completion request.
 	ctx context.Context
@@ -247,10 +247,10 @@ func (p Selection) Suffix() string {
 }
 
 func (c *completer) deepCompletionContext() (context.Context, context.CancelFunc) {
-	if c.opts.Budget == 0 {
+	if c.opts.budget == 0 {
 		return context.WithCancel(c.ctx)
 	}
-	return context.WithDeadline(c.ctx, c.startTime.Add(c.opts.Budget))
+	return context.WithDeadline(c.ctx, c.startTime.Add(c.opts.budget))
 }
 
 func (c *completer) setSurrounding(ident *ast.Ident) {
@@ -268,11 +268,12 @@ func (c *completer) setSurrounding(ident *ast.Ident) {
 		mappedRange: newMappedRange(c.snapshot.View().Session().Cache().FileSet(), c.mapper, ident.Pos(), ident.End()),
 	}
 
-	if c.opts.FuzzyMatching {
+	switch c.opts.matcher {
+	case Fuzzy:
 		c.matcher = fuzzy.NewMatcher(c.surrounding.Prefix())
-	} else if c.opts.CaseSensitive {
+	case CaseSensitive:
 		c.matcher = prefixMatcher(c.surrounding.Prefix())
-	} else {
+	default:
 		c.matcher = insensitivePrefixMatcher(strings.ToLower(c.surrounding.Prefix()))
 	}
 }
@@ -379,6 +380,9 @@ type candidate struct {
 	// addressable is true if a pointer can be taken to the candidate.
 	addressable bool
 
+	// makePointer is true if the candidate type name T should be made into *T.
+	makePointer bool
+
 	// imp is the import that needs to be added to this package in order
 	// for this candidate to be valid. nil if no import needed.
 	imp *importInfo
@@ -405,13 +409,13 @@ func (e ErrIsDefinition) Error() string {
 // The selection is computed based on the preceding identifier and can be used by
 // the client to score the quality of the completion. For instance, some clients
 // may tolerate imperfect matches as valid completion results, since users may make typos.
-func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos protocol.Position, opts CompletionOptions) ([]CompletionItem, *Selection, error) {
+func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos protocol.Position) ([]CompletionItem, *Selection, error) {
 	ctx, done := trace.StartSpan(ctx, "source.Completion")
 	defer done()
 
 	startTime := time.Now()
 
-	pkg, pgh, err := getParsedFile(ctx, snapshot, fh, NarrowestCheckPackageHandle)
+	pkg, pgh, err := getParsedFile(ctx, snapshot, fh, NarrowestPackageHandle)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting file for Completion: %v", err)
 	}
@@ -439,6 +443,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 		return nil, nil, nil
 	}
 
+	opts := snapshot.View().Options()
 	c := &completer{
 		pkg:                       pkg,
 		snapshot:                  snapshot,
@@ -451,7 +456,16 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 		seen:                      make(map[types.Object]bool),
 		enclosingFunc:             enclosingFunction(path, rng.Start, pkg.GetTypesInfo()),
 		enclosingCompositeLiteral: enclosingCompositeLiteral(path, rng.Start, pkg.GetTypesInfo()),
-		opts:                      opts,
+		opts: &completionOptions{
+			matcher:           opts.Matcher,
+			deepCompletion:    opts.DeepCompletion,
+			unimported:        opts.UnimportedCompletion,
+			documentation:     opts.CompletionDocumentation,
+			fullDocumentation: opts.HoverKind == FullDocumentation,
+			placeholders:      opts.Placeholders,
+			literal:           opts.Literal,
+			budget:            opts.CompletionBudget,
+		},
 		// default to a matcher that always matches
 		matcher:        prefixMatcher(""),
 		methodSetCache: make(map[methodSetKey]*types.MethodSet),
@@ -459,7 +473,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 		startTime:      startTime,
 	}
 
-	if opts.Deep {
+	if c.opts.deepCompletion {
 		// Initialize max search depth to unlimited.
 		c.deepState.maxDepth = -1
 	}
@@ -470,6 +484,8 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 	}
 
 	c.expectedType = expectedType(c)
+
+	defer c.sortItems()
 
 	// If we're inside a comment return comment completions
 	for _, comment := range file.Comments {
@@ -553,6 +569,19 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 	return c.items, c.getSurrounding(), nil
 }
 
+func (c *completer) sortItems() {
+	sort.SliceStable(c.items, func(i, j int) bool {
+		// Sort by score first.
+		if c.items[i].Score != c.items[j].Score {
+			return c.items[i].Score > c.items[j].Score
+		}
+
+		// Then sort by label so order stays consistent. This also has the
+		// effect of prefering shorter candidates.
+		return c.items[i].Label < c.items[j].Label
+	})
+}
+
 // populateCommentCompletions yields completions for an exported
 // variable immediately preceding comment.
 func (c *completer) populateCommentCompletions(comment *ast.CommentGroup) {
@@ -629,7 +658,7 @@ func (c *completer) selector(sel *ast.SelectorExpr) error {
 	}
 
 	// Try unimported packages.
-	if id, ok := sel.X.(*ast.Ident); ok && c.opts.Unimported && len(c.items) < unimportedTarget {
+	if id, ok := sel.X.(*ast.Ident); ok && c.opts.unimported && len(c.items) < unimportedTarget {
 		if err := c.unimportedMembers(id); err != nil {
 			return err
 		}
@@ -639,18 +668,36 @@ func (c *completer) selector(sel *ast.SelectorExpr) error {
 
 func (c *completer) unimportedMembers(id *ast.Ident) error {
 	// Try loaded packages first. They're relevant, fast, and fully typed.
-	known := c.snapshot.KnownImportPaths()
+	known, err := c.snapshot.CachedImportPaths(c.ctx)
+	if err != nil {
+		return err
+	}
+	var paths []string
 	for path, pkg := range known {
 		if pkg.GetTypes().Name() != id.Name {
 			continue
 		}
-		// We don't know what this is, so assign it the highest score.
-		score := 0.01 * imports.MaxRelevance
-		c.packageMembers(pkg.GetTypes(), score, &importInfo{
-			importPath: path,
-			name:       pkg.GetTypes().Name(),
-			pkg:        pkg,
+		paths = append(paths, path)
+	}
+	var relevances map[string]int
+	if len(paths) != 0 {
+		c.snapshot.View().RunProcessEnvFunc(c.ctx, func(opts *imports.Options) error {
+			relevances = imports.ScoreImportPaths(c.ctx, opts.Env, paths)
+			return nil
 		})
+	}
+	for path, pkg := range known {
+		if pkg.GetTypes().Name() != id.Name {
+			continue
+		}
+		imp := &importInfo{
+			importPath: path,
+			pkg:        pkg,
+		}
+		if imports.ImportPathToAssumedName(path) != pkg.GetTypes().Name() {
+			imp.name = pkg.GetTypes().Name()
+		}
+		c.packageMembers(pkg.GetTypes(), .01*float64(relevances[path]), imp)
 		if len(c.items) >= unimportedTarget {
 			return nil
 		}
@@ -859,7 +906,7 @@ func (c *completer) lexical() error {
 		}
 	}
 
-	if c.opts.Unimported && len(c.items) < unimportedTarget {
+	if c.opts.unimported && len(c.items) < unimportedTarget {
 		ctx, cancel := c.deepCompletionContext()
 		defer cancel()
 		// Suggest packages that have not been imported yet.
@@ -914,8 +961,9 @@ func (c *completer) lexical() error {
 		// if an object literal makes a good candidate. For example, if
 		// our expected type is "[]int", this will add a candidate of
 		// "[]int{}".
-		if _, named := deref(c.expectedType.objType).(*types.Named); !named {
-			c.literal(c.expectedType.objType, nil)
+		t := deref(c.expectedType.objType)
+		if _, named := t.(*types.Named); !named {
+			c.literal(t, nil)
 		}
 	}
 
@@ -1185,11 +1233,25 @@ const (
 	array                   // make an array type ("[2]" in "[2]int")
 )
 
+type objKind int
+
+const (
+	kindArray objKind = 1 << iota
+	kindSlice
+	kindChan
+	kindMap
+	kindStruct
+	kindString
+)
+
 // typeInference holds information we have inferred about a type that can be
 // used at the current position.
 type typeInference struct {
 	// objType is the desired type of an object used at the query position.
 	objType types.Type
+
+	// objKind is a mask of expected kinds of types such as "map", "slice", etc.
+	objKind objKind
 
 	// variadic is true if objType is a slice type from an initial
 	// variadic param.
@@ -1256,7 +1318,6 @@ Nodes:
 				}
 				if tv, ok := c.pkg.GetTypesInfo().Types[node.Lhs[i]]; ok {
 					inf.objType = tv.Type
-					break Nodes
 				}
 			}
 			return inf
@@ -1264,7 +1325,7 @@ Nodes:
 			if node.Type != nil && c.pos > node.Type.End() {
 				inf.objType = c.pkg.GetTypesInfo().TypeOf(node.Type)
 			}
-			break Nodes
+			return inf
 		case *ast.CallExpr:
 			// Only consider CallExpr args if position falls between parens.
 			if node.Lparen <= c.pos && c.pos <= node.Rparen {
@@ -1317,30 +1378,26 @@ Nodes:
 				}
 
 				if funIdent, ok := node.Fun.(*ast.Ident); ok {
-					switch c.pkg.GetTypesInfo().ObjectOf(funIdent) {
-					case types.Universe.Lookup("append"):
+					obj := c.pkg.GetTypesInfo().ObjectOf(funIdent)
+
+					if obj != nil && obj.Parent() == types.Universe {
+						inf.objKind |= c.builtinArgKind(obj, node)
+
+						if obj.Name() == "new" {
+							inf.typeName.wantTypeName = true
+						}
+
+						// Defer call to builtinArgType so we can provide it the
+						// inferred type from its parent node.
 						defer func() {
-							exprIdx := indexExprAtPos(c.pos, node.Args)
-
-							// Check if we are completing the variadic append()
-							// param. We defer this since we don't want to inherit
-							// variadicity from the next node.
-							inf.variadic = exprIdx == 1 && len(node.Args) <= 2
-
-							// If we are completing an individual element of the
-							// variadic param, "deslice" the expected type.
-							if !inf.variadic && exprIdx > 0 {
-								if slice, ok := inf.objType.(*types.Slice); ok {
-									inf.objType = slice.Elem()
-								}
-							}
+							inf.objType, inf.variadic = c.builtinArgType(obj, node, inf.objType)
 						}()
 
-						// The expected type of append() arguments is the expected
-						// type of the append() call itself. For example:
+						// The expected type of builtin arguments like append() is
+						// the expected type of the builtin call itself. For
+						// example:
 						//
-						// var foo []int
-						// foo = append(<>)
+						// var foo []int = append(<>)
 						//
 						// To find the expected type at <> we "skip" the append()
 						// node and get the expected type one level up, which is
@@ -1357,7 +1414,6 @@ Nodes:
 				if resultIdx := indexExprAtPos(c.pos, node.Results); resultIdx < len(node.Results) {
 					if resultIdx < sig.Results().Len() {
 						inf.objType = sig.Results().At(resultIdx).Type()
-						break Nodes
 					}
 				}
 			}
@@ -1366,7 +1422,6 @@ Nodes:
 			if swtch, ok := findSwitchStmt(c.path[i+1:], c.pos, node).(*ast.SwitchStmt); ok {
 				if tv, ok := c.pkg.GetTypesInfo().Types[swtch.Tag]; ok {
 					inf.objType = tv.Type
-					break Nodes
 				}
 			}
 			return inf
@@ -1374,7 +1429,6 @@ Nodes:
 			// Make sure position falls within the brackets (e.g. "foo[a:<>]").
 			if node.Lbrack < c.pos && c.pos <= node.Rbrack {
 				inf.objType = types.Typ[types.Int]
-				break Nodes
 			}
 			return inf
 		case *ast.IndexExpr:
@@ -1386,10 +1440,7 @@ Nodes:
 						inf.objType = t.Key()
 					case *types.Slice, *types.Array:
 						inf.objType = types.Typ[types.Int]
-					default:
-						return inf
 					}
-					break Nodes
 				}
 			}
 			return inf
@@ -1399,8 +1450,15 @@ Nodes:
 				if tv, ok := c.pkg.GetTypesInfo().Types[node.Chan]; ok {
 					if ch, ok := tv.Type.Underlying().(*types.Chan); ok {
 						inf.objType = ch.Elem()
-						break Nodes
 					}
+				}
+			}
+			return inf
+		case *ast.RangeStmt:
+			if nodeContains(node.X, c.pos) {
+				inf.objKind |= kindSlice | kindArray | kindMap | kindString
+				if node.Value == nil {
+					inf.objKind |= kindChan
 				}
 			}
 			return inf
@@ -1412,6 +1470,7 @@ Nodes:
 				inf.modifiers = append(inf.modifiers, typeModifier{mod: address})
 			case token.ARROW:
 				inf.modifiers = append(inf.modifiers, typeModifier{mod: chanRead})
+				inf.objKind |= kindChan
 			}
 		default:
 			if breaksExpectedTypeInference(node) {
@@ -1508,7 +1567,7 @@ func findSwitchStmt(path []ast.Node, pos token.Pos, c *ast.CaseClause) ast.Stmt 
 // expect a function argument, not a composite literal value.
 func breaksExpectedTypeInference(n ast.Node) bool {
 	switch n.(type) {
-	case *ast.FuncLit, *ast.CallExpr, *ast.TypeAssertExpr, *ast.IndexExpr, *ast.SliceExpr, *ast.CompositeLit:
+	case *ast.FuncLit, *ast.CallExpr, *ast.IndexExpr, *ast.SliceExpr, *ast.CompositeLit:
 		return true
 	default:
 		return false
@@ -1636,7 +1695,7 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 
 	candType := cand.obj.Type()
 	if candType == nil {
-		return true
+		return false
 	}
 
 	// Default to invoking *types.Func candidates. This is so function
@@ -1646,6 +1705,12 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 
 	typeMatches := func(expType, candType types.Type) bool {
 		if expType == nil {
+			// If we don't expect a specific type, check if we expect a particular
+			// kind of object (map, slice, etc).
+			if c.expectedType.objKind > 0 {
+				return c.expectedType.objKind&candKind(candType) > 0
+			}
+
 			return false
 		}
 
@@ -1665,10 +1730,10 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 					// This doesn't take into account the constant value, so there will be some
 					// false positives due to integer sign and overflow.
 					if candBasic.Info()&types.IsConstType == wantBasic.Info()&types.IsConstType {
-						// Lower candidate score if the types are not identical.
-						// This avoids ranking untyped integer constants above
-						// candidates with an exact type match.
-						if !types.Identical(candType, expType) {
+						// Lower candidate score if the types are not identical. This avoids
+						// ranking untyped constants above candidates with an exact type
+						// match. Don't lower score of builtin constants (e.g. "true").
+						if !types.Identical(candType, expType) && cand.obj.Parent() != types.Universe {
 							cand.score /= 2
 						}
 						return true
@@ -1725,37 +1790,76 @@ func (c *completer) matchingTypeName(cand *candidate) bool {
 		return false
 	}
 
-	// Take into account any type name modifier prefixes.
-	actual := c.expectedType.applyTypeNameModifiers(cand.obj.Type())
+	typeMatches := func(candType types.Type) bool {
+		// Take into account any type name modifier prefixes.
+		candType = c.expectedType.applyTypeNameModifiers(candType)
 
-	if c.expectedType.typeName.assertableFrom != nil {
-		// Don't suggest the starting type in type assertions. For example,
-		// if "foo" is an io.Writer, don't suggest "foo.(io.Writer)".
-		if types.Identical(c.expectedType.typeName.assertableFrom, actual) {
+		if from := c.expectedType.typeName.assertableFrom; from != nil {
+			// Don't suggest the starting type in type assertions. For example,
+			// if "foo" is an io.Writer, don't suggest "foo.(io.Writer)".
+			if types.Identical(from, candType) {
+				return false
+			}
+
+			if intf, ok := from.Underlying().(*types.Interface); ok {
+				if !types.AssertableTo(intf, candType) {
+					return false
+				}
+			}
+		}
+
+		if c.expectedType.typeName.wantComparable && !types.Comparable(candType) {
 			return false
 		}
 
-		if intf, ok := c.expectedType.typeName.assertableFrom.Underlying().(*types.Interface); ok {
-			if !types.AssertableTo(intf, actual) {
-				return false
-			}
+		// We can expect a type name and have an expected type in cases like:
+		//
+		//   var foo []int
+		//   foo = []i<>
+		//
+		// Where our expected type is "[]int", and we expect a type name.
+		if c.expectedType.objType != nil {
+			return types.AssignableTo(candType, c.expectedType.objType)
+		}
+
+		// Default to saying any type name is a match.
+		return true
+	}
+
+	if typeMatches(cand.obj.Type()) {
+		return true
+	}
+
+	if typeMatches(types.NewPointer(cand.obj.Type())) {
+		cand.makePointer = true
+		return true
+	}
+
+	return false
+}
+
+// candKind returns the objKind of candType, if any.
+func candKind(candType types.Type) objKind {
+	switch t := candType.Underlying().(type) {
+	case *types.Array:
+		return kindArray
+	case *types.Slice:
+		return kindSlice
+	case *types.Chan:
+		return kindChan
+	case *types.Map:
+		return kindMap
+	case *types.Pointer:
+		// Some builtins handle array pointers as arrays, so just report a pointer
+		// to an array as an array.
+		if _, isArray := t.Elem().Underlying().(*types.Array); isArray {
+			return kindArray
+		}
+	case *types.Basic:
+		if t.Info()&types.IsString > 0 {
+			return kindString
 		}
 	}
 
-	if c.expectedType.typeName.wantComparable && !types.Comparable(actual) {
-		return false
-	}
-
-	// We can expect a type name and have an expected type in cases like:
-	//
-	//   var foo []int
-	//   foo = []i<>
-	//
-	// Where our expected type is "[]int", and we expect a type name.
-	if c.expectedType.objType != nil {
-		return types.AssignableTo(actual, c.expectedType.objType)
-	}
-
-	// Default to saying any type name is a match.
-	return true
+	return 0
 }

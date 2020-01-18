@@ -7,6 +7,7 @@ package source
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -39,29 +40,31 @@ type RelatedInformation struct {
 	Message string
 }
 
-func Diagnostics(ctx context.Context, snapshot Snapshot, fh FileHandle, withAnalysis bool, disabledAnalyses map[string]struct{}) (map[FileIdentity][]Diagnostic, string, error) {
-	ctx, done := trace.StartSpan(ctx, "source.Diagnostics", telemetry.File.Of(fh.Identity().URI))
-	defer done()
-
-	phs, err := snapshot.PackageHandles(ctx, fh)
-	if err != nil {
-		return nil, "", err
-	}
-	ph, err := WidestCheckPackageHandle(phs)
-	if err != nil {
-		return nil, "", err
-	}
+func Diagnostics(ctx context.Context, snapshot Snapshot, ph PackageHandle, withAnalysis bool) (map[FileIdentity][]Diagnostic, string, error) {
 	// If we are missing dependencies, it may because the user's workspace is
 	// not correctly configured. Report errors, if possible.
-	var warningMsg string
+	var (
+		warn       bool
+		warningMsg string
+	)
 	if len(ph.MissingDependencies()) > 0 {
-		if warningMsg, err = checkCommonErrors(ctx, snapshot.View(), fh.Identity().URI); err != nil {
-			log.Error(ctx, "error checking common errors", err, telemetry.File.Of(fh.Identity().URI))
-		}
+		warn = true
 	}
 	pkg, err := ph.Check(ctx)
 	if err != nil {
 		return nil, "", err
+	}
+	// If we have a package with a single file and errors about "undeclared" symbols,
+	// we may have an ad-hoc package with multiple files. Show a warning message.
+	// TODO(golang/go#36416): Remove this when golang.org/cl/202277 is merged.
+	if len(pkg.CompiledGoFiles()) == 1 && hasUndeclaredErrors(pkg) {
+		warn = true
+	}
+	if warn {
+		warningMsg, err = checkCommonErrors(ctx, snapshot.View())
+		if err != nil {
+			return nil, "", err
+		}
 	}
 	// Prepare the reports we will send for the files in this package.
 	reports := make(map[FileIdentity][]Diagnostic)
@@ -74,46 +77,67 @@ func Diagnostics(ctx context.Context, snapshot Snapshot, fh FileHandle, withAnal
 		if e.Kind != ListError {
 			continue
 		}
-		// If no file is associated with the error, default to the current file.
-		if e.File.URI.Filename() == "" {
-			e.File = fh.Identity()
+		// If no file is associated with the error, pick an open file from the package.
+		if e.URI.Filename() == "" {
+			for _, ph := range pkg.CompiledGoFiles() {
+				if snapshot.View().Session().IsOpen(ph.File().Identity().URI) {
+					e.URI = ph.File().Identity().URI
+				}
+			}
 		}
-		clearReports(snapshot, reports, e.File)
+		fh, err := snapshot.GetFile(e.URI)
+		if err != nil {
+			return nil, warningMsg, err
+		}
+		clearReports(snapshot, reports, fh.Identity())
 	}
 	// Run diagnostics for the package that this URI belongs to.
-	if !diagnostics(ctx, snapshot, pkg, reports) && withAnalysis {
-		// If we don't have any list, parse, or type errors, run analyses.
-		if err := analyses(ctx, snapshot, ph, disabledAnalyses, reports); err != nil {
-			// Exit early if the context has been canceled.
-			if err == context.Canceled {
-				return nil, "", err
-			}
-			log.Error(ctx, "failed to run analyses", err, telemetry.File.Of(fh.Identity().URI))
-		}
+	hadDiagnostics, err := diagnostics(ctx, snapshot, reports, pkg)
+	if err != nil {
+		return nil, warningMsg, err
 	}
-	// Updates to the diagnostics for this package may need to be propagated.
-	for _, id := range snapshot.GetReverseDependencies(pkg.ID()) {
-		ph, err := snapshot.PackageHandle(ctx, id)
-		if err != nil {
-			return nil, warningMsg, err
+	if !hadDiagnostics && withAnalysis {
+		// If we don't have any list, parse, or type errors, run analyses.
+		if err := analyses(ctx, snapshot, reports, ph, snapshot.View().Options().DisabledAnalyses); err != nil {
+			// Exit early if the context has been canceled.
+			if ctx.Err() != nil {
+				return nil, warningMsg, ctx.Err()
+			}
+			log.Error(ctx, "failed to run analyses", err, telemetry.Package.Of(ph.ID()))
 		}
-		pkg, err := ph.Check(ctx)
-		if err != nil {
-			return nil, warningMsg, err
-		}
-		for _, fh := range pkg.CompiledGoFiles() {
-			clearReports(snapshot, reports, fh.File().Identity())
-		}
-		diagnostics(ctx, snapshot, pkg, reports)
 	}
 	return reports, warningMsg, nil
+}
+
+func FileDiagnostics(ctx context.Context, snapshot Snapshot, uri span.URI) (FileIdentity, []Diagnostic, error) {
+	fh, err := snapshot.GetFile(uri)
+	if err != nil {
+		return FileIdentity{}, nil, err
+	}
+	phs, err := snapshot.PackageHandles(ctx, fh)
+	if err != nil {
+		return FileIdentity{}, nil, err
+	}
+	ph, err := NarrowestPackageHandle(phs)
+	if err != nil {
+		return FileIdentity{}, nil, err
+	}
+	reports, _, err := Diagnostics(ctx, snapshot, ph, true)
+	if err != nil {
+		return FileIdentity{}, nil, err
+	}
+	diagnostics, ok := reports[fh.Identity()]
+	if !ok {
+		return FileIdentity{}, nil, errors.Errorf("no diagnostics for %s", uri)
+	}
+	return fh.Identity(), diagnostics, nil
 }
 
 type diagnosticSet struct {
 	listErrors, parseErrors, typeErrors []*Diagnostic
 }
 
-func diagnostics(ctx context.Context, snapshot Snapshot, pkg Package, reports map[FileIdentity][]Diagnostic) bool {
+func diagnostics(ctx context.Context, snapshot Snapshot, reports map[FileIdentity][]Diagnostic, pkg Package) (bool, error) {
 	ctx, done := trace.StartSpan(ctx, "source.diagnostics", telemetry.Package.Of(pkg.ID()))
 	_ = ctx // circumvent SA4006
 	defer done()
@@ -125,10 +149,14 @@ func diagnostics(ctx context.Context, snapshot Snapshot, pkg Package, reports ma
 			Range:    e.Range,
 			Severity: protocol.SeverityError,
 		}
-		set, ok := diagSets[e.File]
+		fh, err := snapshot.GetFile(e.URI)
+		if err != nil {
+			return false, err
+		}
+		set, ok := diagSets[fh.Identity()]
 		if !ok {
 			set = &diagnosticSet{}
-			diagSets[e.File] = set
+			diagSets[fh.Identity()] = set
 		}
 		switch e.Kind {
 		case ParseError:
@@ -154,12 +182,12 @@ func diagnostics(ctx context.Context, snapshot Snapshot, pkg Package, reports ma
 		if len(diags) > 0 {
 			nonEmptyDiagnostics = true
 		}
-		addReports(ctx, reports, snapshot, fileID, diags...)
+		addReports(ctx, snapshot, reports, fileID, diags...)
 	}
-	return nonEmptyDiagnostics
+	return nonEmptyDiagnostics, nil
 }
 
-func analyses(ctx context.Context, snapshot Snapshot, ph PackageHandle, disabledAnalyses map[string]struct{}, reports map[FileIdentity][]Diagnostic) error {
+func analyses(ctx context.Context, snapshot Snapshot, reports map[FileIdentity][]Diagnostic, ph PackageHandle, disabledAnalyses map[string]struct{}) error {
 	var analyzers []*analysis.Analyzer
 	for _, a := range snapshot.View().Options().Analyzers {
 		if _, ok := disabledAnalyses[a.Name]; ok {
@@ -182,7 +210,11 @@ func analyses(ctx context.Context, snapshot Snapshot, ph PackageHandle, disabled
 		if onlyDeletions(e.SuggestedFixes) {
 			tags = append(tags, protocol.Unnecessary)
 		}
-		addReports(ctx, reports, snapshot, e.File, &Diagnostic{
+		fh, err := snapshot.GetFile(e.URI)
+		if err != nil {
+			return err
+		}
+		addReports(ctx, snapshot, reports, fh.Identity(), &Diagnostic{
 			Range:          e.Range,
 			Message:        e.Message,
 			Source:         e.Category,
@@ -202,7 +234,7 @@ func clearReports(snapshot Snapshot, reports map[FileIdentity][]Diagnostic, file
 	reports[fileID] = []Diagnostic{}
 }
 
-func addReports(ctx context.Context, reports map[FileIdentity][]Diagnostic, snapshot Snapshot, fileID FileIdentity, diagnostics ...*Diagnostic) error {
+func addReports(ctx context.Context, snapshot Snapshot, reports map[FileIdentity][]Diagnostic, fileID FileIdentity, diagnostics ...*Diagnostic) error {
 	if snapshot.View().Ignore(fileID.URI) {
 		return nil
 	}
@@ -246,4 +278,18 @@ func onlyDeletions(fixes []SuggestedFix) bool {
 		}
 	}
 	return true
+}
+
+// hasUndeclaredErrors returns true if a package has a type error
+// about an undeclared symbol.
+func hasUndeclaredErrors(pkg Package) bool {
+	for _, err := range pkg.GetErrors() {
+		if err.Kind != TypeError {
+			continue
+		}
+		if strings.Contains(err.Message, "undeclared name:") {
+			return true
+		}
+	}
+	return false
 }

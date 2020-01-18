@@ -7,7 +7,6 @@ package cache
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"go/scanner"
 	"go/token"
 	"go/types"
@@ -105,12 +104,8 @@ func sourceError(ctx context.Context, fset *token.FileSet, pkg *pkg, e interface
 	if err != nil {
 		return nil, err
 	}
-	ph, err := pkg.File(spn.URI())
-	if err != nil {
-		return nil, fmt.Errorf("finding file for error %q: %v", msg, err)
-	}
 	return &source.Error{
-		File:           ph.File().Identity(),
+		URI:            spn.URI(),
 		Range:          rng,
 		Message:        msg,
 		Kind:           kind,
@@ -245,6 +240,27 @@ func spanToRange(ctx context.Context, pkg *pkg, spn span.Span) (protocol.Range, 
 		return protocol.Range{}, err
 	}
 	return m.Range(spn)
+}
+
+func findFileInPackage(pkg source.Package, uri span.URI) (source.ParseGoHandle, source.Package, error) {
+	queue := []source.Package{pkg}
+	seen := make(map[string]bool)
+
+	for len(queue) > 0 {
+		pkg := queue[0]
+		queue = queue[1:]
+		seen[pkg.ID()] = true
+
+		if f, err := pkg.File(uri); err == nil {
+			return f, pkg, nil
+		}
+		for _, dep := range pkg.Imports() {
+			if !seen[dep.ID()] {
+				queue = append(queue, dep)
+			}
+		}
+	}
+	return nil, nil, errors.Errorf("no file for %s in package %s", uri, pkg.ID())
 }
 
 // parseGoListError attempts to parse a standard `go list` error message

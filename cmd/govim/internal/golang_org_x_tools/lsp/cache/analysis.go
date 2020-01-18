@@ -85,10 +85,10 @@ func (s *snapshot) actionHandle(ctx context.Context, id packageID, mode source.P
 	}
 	ph := s.getPackage(id, mode)
 	if ph == nil {
-		return nil, errors.Errorf("no CheckPackageHandle for %s:%v", id, mode == source.ParseExported)
+		return nil, errors.Errorf("no PackageHandle for %s:%v", id, mode == source.ParseExported)
 	}
 	if len(ph.key) == 0 {
-		return nil, errors.Errorf("no key for CheckPackageHandle %s", id)
+		return nil, errors.Errorf("no key for PackageHandle %s", id)
 	}
 	pkg, err := ph.check(ctx)
 	if err != nil {
@@ -206,7 +206,7 @@ func runAnalysis(ctx context.Context, fset *token.FileSet, analyzer *analysis.An
 	defer func() {
 		if r := recover(); r != nil {
 			log.Print(ctx, fmt.Sprintf("analysis panicked: %s", r), telemetry.Package.Of(pkg.PkgPath))
-			data.err = errors.Errorf("analysis %s for package %s panicked: %v", analyzer.Name, pkg.PkgPath())
+			data.err = errors.Errorf("analysis %s for package %s panicked: %v", analyzer.Name, pkg.PkgPath(), r)
 		}
 	}()
 

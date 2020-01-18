@@ -16,14 +16,11 @@ func (r *Config) Apply(v *Config) {
 	if v.CompletionDeepCompletions != nil {
 		r.CompletionDeepCompletions = v.CompletionDeepCompletions
 	}
-	if v.CompletionFuzzyMatching != nil {
-		r.CompletionFuzzyMatching = v.CompletionFuzzyMatching
+	if v.CompletionMatcher != nil {
+		r.CompletionMatcher = v.CompletionMatcher
 	}
 	if v.Staticcheck != nil {
 		r.Staticcheck = v.Staticcheck
-	}
-	if v.CompletionCaseSensitive != nil {
-		r.CompletionCaseSensitive = v.CompletionCaseSensitive
 	}
 	if v.CompleteUnimported != nil {
 		r.CompleteUnimported = v.CompleteUnimported
