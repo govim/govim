@@ -5,6 +5,34 @@ source "${BASH_SOURCE%/*}/common.bash"
 # This ensures that Travis properly runs the after_failure script
 trap 'set +ev' EXIT
 
+# We run race builds/tests on Travis CI master branch. We also define that the
+# RACE_BUILD environment variable be a comma-separated list of PR numbers (just
+# the number, no '#'), and if the CI build in question is a PR build whose
+# number is present in RACE_BUILD we also run race builds/tests.
+runRace=false
+if [[ "${CI:-}" == "true" ]]
+then
+	if [[ "${TRAVIS_BRANCH:-}_${TRAVIS_PULL_REQUEST_BRANCH:-}" == "master_" ]]
+	then
+		runRace=true
+	else
+		for i in $(echo ${RACE_BUILD:-} | sed "s/,/ /g")
+		do
+			if [[ "${TRAVIS_PULL_REQUEST:-}" == "$i" ]]
+			then
+				runRace=true
+			fi
+		done
+	fi
+fi
+
+if [[ "$runRace" == "true" ]]
+then
+	echo "Will run race builds"
+else
+	echo "Will NOT run race builds"
+fi
+
 if [ "${VIM_COMMAND:-}" == "" ]
 then
 	eval "VIM_COMMAND=\"\$DEFAULT_${VIM_FLAVOR^^}_COMMAND\""
@@ -46,7 +74,7 @@ export GOVIM_RUN_INSTALL_TESTSCRIPTS=true
 go generate $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 go test $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 
-if [ "${CI:-}" == "true" ] && [ "${TRAVIS_BRANCH:-}_${TRAVIS_PULL_REQUEST_BRANCH:-}" == "master_" ]
+if [[ "$runRace" == "true" ]]
 then
 	go test -race $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 fi
