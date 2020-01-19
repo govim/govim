@@ -1,0 +1,46 @@
+# A test that ensures we have a fix for golang.org/issue/36601. Specifically
+# that transitions between various states leave diagnostics in the expect state
+# when we revert back to the original file contents.
+#
+# This test moves from error -> no error -> error, i.e.  we are making a change
+# that should remove diagnostics, then undoing that change to bring them back.
+
+# Expect the initial state
+vim ex 'e main.go'
+vimexprwait errors.golden getqflist()
+
+# Make a change that removes diagnostics
+vim call append '[4,"\tprintln(x)"]'
+vimexprwait empty.golden getqflist()
+
+# Undo that change and ensure we have the original diagnostics
+vim ex 5delete
+vimexprwait errors.golden getqflist()
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+func main() {
+	x := 123
+}
+-- errors.golden --
+[
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "x declared but not used",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- empty.golden --
+[]

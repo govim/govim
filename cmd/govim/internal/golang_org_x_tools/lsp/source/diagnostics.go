@@ -78,18 +78,14 @@ func Diagnostics(ctx context.Context, snapshot Snapshot, ph PackageHandle, withA
 			continue
 		}
 		// If no file is associated with the error, pick an open file from the package.
-		if e.URI.Filename() == "" {
+		if e.File.URI.Filename() == "" {
 			for _, ph := range pkg.CompiledGoFiles() {
 				if snapshot.View().Session().IsOpen(ph.File().Identity().URI) {
-					e.URI = ph.File().Identity().URI
+					e.File = ph.File().Identity()
 				}
 			}
 		}
-		fh, err := snapshot.GetFile(e.URI)
-		if err != nil {
-			return nil, warningMsg, err
-		}
-		clearReports(snapshot, reports, fh.Identity())
+		clearReports(snapshot, reports, e.File)
 	}
 	// Run diagnostics for the package that this URI belongs to.
 	hadDiagnostics, err := diagnostics(ctx, snapshot, reports, pkg)
@@ -149,14 +145,10 @@ func diagnostics(ctx context.Context, snapshot Snapshot, reports map[FileIdentit
 			Range:    e.Range,
 			Severity: protocol.SeverityError,
 		}
-		fh, err := snapshot.GetFile(e.URI)
-		if err != nil {
-			return false, err
-		}
-		set, ok := diagSets[fh.Identity()]
+		set, ok := diagSets[e.File]
 		if !ok {
 			set = &diagnosticSet{}
-			diagSets[fh.Identity()] = set
+			diagSets[e.File] = set
 		}
 		switch e.Kind {
 		case ParseError:
@@ -210,11 +202,7 @@ func analyses(ctx context.Context, snapshot Snapshot, reports map[FileIdentity][
 		if onlyDeletions(e.SuggestedFixes) {
 			tags = append(tags, protocol.Unnecessary)
 		}
-		fh, err := snapshot.GetFile(e.URI)
-		if err != nil {
-			return err
-		}
-		addReports(ctx, snapshot, reports, fh.Identity(), &Diagnostic{
+		addReports(ctx, snapshot, reports, e.File, &Diagnostic{
 			Range:          e.Range,
 			Message:        e.Message,
 			Source:         e.Category,

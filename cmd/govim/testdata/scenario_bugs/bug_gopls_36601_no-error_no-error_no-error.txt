@@ -1,0 +1,36 @@
+# A test that ensures we have a fix for golang.org/issue/36601. Specifically
+# that transitions between various states leave diagnostics in the expect state
+# when we revert back to the original file contents.
+#
+# This test moves from no error -> no error -> no error, i.e.  we are making a
+# change that should not alter the diagnostics, then undoing that change.
+
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+
+# Expect the initial state
+vim ex 'e main.go'
+sleep $GOVIM_ERRLOGMATCH_WAIT
+vimexprwait empty.golden getqflist()
+
+# Make a change that shouldn't alter the diagnostics
+vim call append '[4,"\t"]'
+sleep $GOVIM_ERRLOGMATCH_WAIT
+vimexprwait empty.golden getqflist()
+
+# Undo that change and ensure we still have the diagnostics
+vim ex 5delete
+sleep $GOVIM_ERRLOGMATCH_WAIT
+vimexprwait empty.golden getqflist()
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+func main() {
+	//
+}
+-- empty.golden --
+[]
