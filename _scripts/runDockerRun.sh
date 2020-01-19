@@ -8,8 +8,9 @@ cd "${BASH_SOURCE%/*}/../"
 
 # The ARTEFACTS variable set by .travis.yml cannot expand
 # variables so we do that here
-ARTEFACTS=$(echo $ARTEFACTS)
+ARTEFACTS=$(echo ${ARTEFACTS:-})
 
+artefacts=""
 proxy=""
 
 if [ "${CI:-}" != "true" ]

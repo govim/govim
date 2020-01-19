@@ -63,7 +63,13 @@ func TestScripts(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to install gopls to temp directory: %v", err)
 		}
-		defer os.RemoveAll(td)
+		// Note for pre 1.14 this is a no-op. This means that for Go versions pre
+		// 1.14 we leave test artefacts lying around in TMPDIR. This is a price
+		// worth paying given the speedup we achieve by making subtests truly
+		// parallel.
+		cleanup(t, func() {
+			os.RemoveAll(td)
+		})
 		goplsPath = filepath.Join(td, "gopls")
 	}
 	t.Logf("using gopls at %q", goplsPath)
@@ -89,6 +95,7 @@ func TestScripts(t *testing.T) {
 			os.MkdirAll(workdir, 0777)
 		}
 		t.Run(entry.Name(), func(t *testing.T) {
+			t.Parallel()
 			params := testscript.Params{
 				WorkdirRoot: workdir,
 				Dir:         filepath.Join("testdata", entry.Name()),
@@ -98,7 +105,6 @@ func TestScripts(t *testing.T) {
 				},
 				Condition: testdriver.Condition,
 				Setup: func(e *testscript.Env) error {
-					// We set a special TMPDIR so the file watcher ignores it
 					tmp := filepath.Join(e.WorkDir, "_tmp")
 					if err := os.MkdirAll(tmp, 0777); err != nil {
 						return fmt.Errorf("failed to create temp dir %v: %v", tmp, err)
@@ -131,14 +137,14 @@ func TestScripts(t *testing.T) {
 					if workdir == "" {
 						tf, err = ioutil.TempFile(tmp, "govim.log*")
 						if err != nil {
-							t.Fatalf("failed to create govim log file: %v", err)
+							return fmt.Errorf("failed to create govim log file: %v", err)
 						}
 					} else {
 						// create a "plain"-named logfile because as above we set
 						// GOVIM_LOGFILE_TMPL=%v
 						tf, err = os.OpenFile(filepath.Join(tmp, "govim.log"), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0666)
 						if err != nil {
-							t.Fatalf("failed to create non-tmp govim log file: %v", err)
+							return fmt.Errorf("failed to create non-tmp govim log file: %v", err)
 						}
 					}
 					e.Defer(func() {
@@ -151,7 +157,7 @@ func TestScripts(t *testing.T) {
 					defaultsPath := filepath.Join("testdata", entry.Name(), "default_config.json")
 					defaults, err := readConfig(defaultsPath)
 					if err != nil {
-						t.Fatalf("failed to read defaults from %v: %v", defaultsPath, err)
+						return fmt.Errorf("failed to read defaults from %v: %v", defaultsPath, err)
 					}
 					// We now ensure we have a default for at least CompletionBudget because
 					// unless we are specifically testing the behaviour of that config value
@@ -160,7 +166,7 @@ func TestScripts(t *testing.T) {
 					userPath := filepath.Join("testdata", entry.Name(), "user_config.json")
 					user, err := readConfig(userPath)
 					if err != nil {
-						t.Fatalf("failed to read user from %v: %v", userPath, err)
+						return fmt.Errorf("failed to read user from %v: %v", userPath, err)
 					}
 					if user == nil {
 						user = new(config.Config)
@@ -184,10 +190,10 @@ func TestScripts(t *testing.T) {
 					}
 					td, err := testdriver.NewTestDriver(config)
 					if err != nil {
-						t.Fatalf("failed to create new driver: %v", err)
+						return fmt.Errorf("failed to create new driver: %v", err)
 					}
 					if err := td.Run(); err != nil {
-						t.Fatalf("failed to run TestDriver: %v", err)
+						return fmt.Errorf("failed to run TestDriver: %v", err)
 					}
 					waitLock.Lock()
 					waitList = append(waitList, td.Wait)
@@ -248,16 +254,22 @@ func TestInstallScripts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to install gopls to temp directory: %v", err)
 	}
-	defer os.RemoveAll(td)
+	cleanup(t, func() {
+		os.RemoveAll(td)
+	})
+
+	gopath := strings.TrimSpace(runCmd(t, "go", "env", "GOPATH"))
+	gocache := strings.TrimSpace(runCmd(t, "go", "env", "GOCACHE"))
 
 	t.Run("scripts", func(t *testing.T) {
+		t.Parallel()
 		testscript.Run(t, testscript.Params{
 			Dir: filepath.Join("testdata", "install"),
 			Setup: func(e *testscript.Env) error {
 				e.Vars = append(e.Vars,
 					"PLUGIN_PATH="+govimPath,
-					"GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
-					"GOCACHE="+strings.TrimSpace(runCmd(t, "go", "env", "GOCACHE")),
+					"GOPATH="+gopath,
+					"GOCACHE="+gocache,
 					testsetup.EnvLoadTestAPI+"=true",
 				)
 				return nil
@@ -266,6 +278,7 @@ func TestInstallScripts(t *testing.T) {
 	})
 
 	t.Run("scripts-with-gopls-from-path", func(t *testing.T) {
+		t.Parallel()
 		testscript.Run(t, testscript.Params{
 			Dir: filepath.Join("testdata", "install"),
 			Setup: func(e *testscript.Env) error {
@@ -285,8 +298,8 @@ func TestInstallScripts(t *testing.T) {
 				e.Vars = append(e.Vars,
 					"PATH="+path,
 					"PLUGIN_PATH="+govimPath,
-					"GOPATH="+strings.TrimSpace(runCmd(t, "go", "env", "GOPATH")),
-					"GOCACHE="+strings.TrimSpace(runCmd(t, "go", "env", "GOCACHE")),
+					"GOPATH="+gopath,
+					"GOCACHE="+gocache,
 					string(config.EnvVarUseGoplsFromPath)+"=true",
 					testsetup.EnvLoadTestAPI+"=true",
 				)
