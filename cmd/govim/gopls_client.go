@@ -179,6 +179,7 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 	g.diagnosticsChanged = true
 	g.diagnosticsChangedQuickfix = true
 	g.diagnosticsChangedSigns = true
+	g.diagnosticsChangedHighlights = true
 	g.diagnosticsChangedLock.Unlock()
 	if !ok {
 		if len(params.Diagnostics) == 0 {

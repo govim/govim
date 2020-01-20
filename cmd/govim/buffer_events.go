@@ -34,7 +34,7 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 		// We shouldn't increase version in that case, but we have to redefine highlights
 		// since text properties are removed when a buffer is unloaded.
 		if bytes.Equal(nb.Contents(), cb.Contents()) {
-			if err := v.redefineHighlights(v.diagnostics()); err != nil {
+			if err := v.redefineHighlights(v.diagnostics(), true); err != nil {
 				v.Logf("failed to update highlights for buffer %d: %v", nb.Num, err)
 			}
 			return nil
@@ -61,7 +61,7 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 		v.Logf("failed to update signs for buffer %d: %v", nb.Num, err)
 	}
 
-	if err := v.redefineHighlights(v.diagnostics()); err != nil {
+	if err := v.redefineHighlights(v.diagnostics(), true); err != nil {
 		v.Logf("failed to update highlights for buffer %d: %v", nb.Num, err)
 	}
 

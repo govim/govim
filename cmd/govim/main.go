@@ -178,8 +178,8 @@ type govimplugin struct {
 	modWatcher *modWatcher
 
 	// diagnosticsChangedLock protects access to rawDiagnostics,
-	// diagnosticsChanged, diagnosticsChangedQuickfix and
-	// diagnosticsChangedSigns
+	// diagnosticsChanged, diagnosticsChangedQuickfix,
+	// diagnosticsChangedSigns and diagnosticsChangedHighlights
 	diagnosticsChangedLock sync.Mutex
 
 	// rawDiagnostics holds the current raw (LSP) diagnostics by URI
@@ -195,6 +195,10 @@ type govimplugin struct {
 	// diagnosticsChangedSigns indicates that the quickfix window needs to be updated with
 	// the latest diagnostics
 	diagnosticsChangedSigns bool
+
+	// diagnosticsChangedHighlights indicates that the text properties needs to be updated with
+	// the latest diagnostics
+	diagnosticsChangedHighlights bool
 
 	// diagnosticsCache isn't inteded to be used directly since it might
 	// contain old data. Call diagnostics() to get the latest instead.
