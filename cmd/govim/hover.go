@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
@@ -24,6 +25,34 @@ func (v *vimstate) hover(args ...json.RawMessage) (interface{}, error) {
 		"mousemoved": "any",
 	}
 	return v.showHover(posExpr, opts, v.config.ExperimentalCursorTriggeredHoverPopupOptions)
+}
+
+func (v *vimstate) hoverMsgAt(pos types.Point, tdi protocol.TextDocumentIdentifier) (string, error) {
+	params := &protocol.HoverParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: tdi,
+			Position:     pos.ToPosition(),
+		},
+	}
+	hovRes, err := v.server.Hover(context.Background(), params)
+	if err != nil {
+		return "", fmt.Errorf("failed to get hover details: %v", err)
+	}
+	if *hovRes == (protocol.Hover{}) {
+		return "", nil
+	}
+	return strings.TrimSpace(hovRes.Contents.Value), nil
+}
+
+type popupLine struct {
+	Text  string      `json:"text"`
+	Props []popupProp `json:"props"`
+}
+
+type popupProp struct {
+	Type   string `json:"type"`
+	Col    int    `json:"col"`
+	Length int    `json:"length"`
 }
 
 func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOpts *map[string]interface{}) (interface{}, error) {
@@ -51,21 +80,44 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 	if err != nil {
 		return "", fmt.Errorf("failed to determine mouse position: %v", err)
 	}
-	params := &protocol.HoverParams{
-		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
-			TextDocument: b.ToTextDocumentIdentifier(),
-			Position:     pos.ToPosition(),
-		},
+
+	// formatPopupLine applies text properties to a single diagnostic based on
+	// it's severity. The severity unique property is applied to the entire line,
+	// while the common "source highlight" is applied to the source part. Since
+	// the source highlight is combined to existing highlight (and have a higher
+	// priority than the unique), it enables a wide range of styling combinations.
+	formatPopupline := func(msg, source string, severity types.Severity) popupLine {
+		srcProp := string(config.HighlightHoverDiagSrc)
+		msgProp := string(types.SeverityHoverHighlight[severity])
+		return popupLine{Text: fmt.Sprintf("%s %s", msg, source),
+			Props: []popupProp{
+				{Type: msgProp, Col: 1, Length: len(msg) + 1 + len(source)}, // Diagnostic message
+				{Type: srcProp, Col: len(msg) + 2, Length: len(source)},     // Source
+			}}
 	}
-	hovRes, err := v.server.Hover(context.Background(), params)
+
+	var lines []popupLine
+	if *v.config.HoverDiagnostics {
+		for _, d := range v.diagnostics() {
+			if (b.Num != d.Buf) || !pos.IsWithin(d.Range) {
+				continue
+			}
+			lines = append(lines, formatPopupline(d.Text, d.Source, d.Severity))
+		}
+	}
+	msg, err := v.hoverMsgAt(pos, b.ToTextDocumentIdentifier())
 	if err != nil {
-		return "", fmt.Errorf("failed to get hover details: %v", err)
+		return "", err
 	}
-	if *hovRes == (protocol.Hover{}) {
+	if msg != "" {
+		for _, l := range strings.Split(msg, "\n") {
+			lines = append(lines, popupLine{l, []popupProp{}})
+		}
+	}
+	if len(lines) == 0 {
 		return "", nil
 	}
-	msg := strings.TrimSpace(hovRes.Contents.Value)
-	lines := strings.Split(msg, "\n")
+
 	if userOpts != nil {
 		opts = make(map[string]interface{})
 		for k, v := range *userOpts {

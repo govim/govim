@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
@@ -16,16 +17,30 @@ type propDict struct {
 
 func (v *vimstate) textpropDefine() error {
 	v.BatchStart()
+	// Note that we reuse the highlight name as text property name, even if they aren't the same thing.
 	for _, s := range []types.Severity{types.SeverityErr, types.SeverityWarn, types.SeverityInfo, types.SeverityHint} {
 		hi := types.SeverityHighlight[s]
 
-		// Note that we reuse the highlight name as text property name, even if they aren't the same thing.
+		v.BatchChannelCall("prop_type_add", hi, propDict{
+			Highlight: string(hi),
+			Combine:   true, // Combine with syntax highlight
+			Priority:  types.SeverityPriority[s],
+		})
+
+		hi = types.SeverityHoverHighlight[s]
 		v.BatchChannelCall("prop_type_add", hi, propDict{
 			Highlight: string(hi),
 			Combine:   true, // Combine with syntax highlight
 			Priority:  types.SeverityPriority[s],
 		})
 	}
+
+	v.BatchChannelCall("prop_type_add", config.HighlightHoverDiagSrc, propDict{
+		Highlight: string(config.HighlightHoverDiagSrc),
+		Combine:   true, // Combine with syntax highlight
+		Priority:  types.SeverityPriority[types.SeverityErr] + 1,
+	})
+
 	res := v.BatchEnd()
 	for i := range res {
 		if v.ParseInt(res[i]) != 0 {

@@ -60,6 +60,7 @@ func (v *vimstate) diagnostics() []types.Diagnostic {
 			}
 			diags = append(diags, types.Diagnostic{
 				Filename: fn,
+				Source:   d.Source,
 				Range:    types.Range{Start: s, End: e},
 				Text:     d.Message,
 				Buf:      buf.Num,
