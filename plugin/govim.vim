@@ -212,8 +212,10 @@ function s:define(channel, msg)
       " doautoall BufRead also triggers ftplugin stuff
       doautoall BufRead
       doautoall FileType
-      au CursorMoved,CursorMovedI *.go ++nested :call s:userBusy(1)
-      au CursorHold,CursorHoldI *.go ++nested :call s:userBusy(0)
+      if $GOVIM_DETECT_USER_BUSY != "false"
+        au CursorMoved,CursorMovedI *.go ++nested :call s:userBusy(1)
+        au CursorHold,CursorHoldI *.go ++nested :call s:userBusy(0)
+      endif
       for F in s:loadStatusCallbacks
         call call(F, [s:govim_status])
       endfor

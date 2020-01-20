@@ -13,7 +13,6 @@ vimexprwait main_go_errors.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\
 # Removing the two empty funcs, should remove those errors.
 vim ex 'call cursor(9,1)'
 vim ex 'normal 2dd'
-vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
 vimexprwait main_go_errors2.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 # Adding declaration of i and v should remove the last errors and instead add warnings for main.go (since other.go isn't loaded)

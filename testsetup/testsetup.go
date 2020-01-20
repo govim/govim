@@ -23,6 +23,7 @@ const (
 	EnvTestscriptStderr      = "GOVIM_TESTSCRIPT_STDERR"
 	EnvTestscriptWorkdirRoot = "GOVIM_TESTSCRIPT_WORKDIR_ROOT"
 	EnvErrLogMatchWait       = "GOVIM_ERRLOGMATCH_WAIT"
+	EnvDetectUserBusy        = "GOVIM_DETECT_USER_BUSY"
 )
 
 // user environment variables
