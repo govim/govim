@@ -29,7 +29,6 @@ cmp main.go main.go.single.golden
 # second one since that is the cursor position line.
 cp main.go.different_lines main.go
 vim ex 'e! main.go'
-vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
 vimexprwait different_lines_errors.golden getqflist()
 
 vim ex 'call cursor(7,2)'
@@ -41,7 +40,6 @@ errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\
 # title to indicate more than one. It shall also be possible to cycle forward and backwards.
 cp main.go.same_line main.go
 vim ex 'e! main.go'
-vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
 vimexprwait same_line_errors.golden getqflist()
 
 vim ex 'call cursor(6,2)'
