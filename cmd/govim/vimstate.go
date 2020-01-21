@@ -113,9 +113,9 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	if !vimconfig.EqualBool(v.config.HighlightDiagnostics, preConfig.HighlightDiagnostics) {
 		if v.config.HighlightDiagnostics == nil || !*v.config.HighlightDiagnostics {
 			// HighlightDiagnostics is now not on - remove existing text properties
-			v.redefineHighlights([]types.Diagnostic{})
+			v.redefineHighlights([]types.Diagnostic{}, true)
 		} else {
-			if err := v.redefineHighlights(v.diagnostics()); err != nil {
+			if err := v.redefineHighlights(v.diagnostics(), true); err != nil {
 				return nil, fmt.Errorf("failed to update diagnostic highlights: %v", err)
 			}
 		}
