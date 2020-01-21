@@ -46,6 +46,7 @@ func TestScripts(t *testing.T) {
 	var waitList []func() error
 
 	t.Run("scripts", func(t *testing.T) {
+		t.Parallel()
 		testscript.Run(t, testscript.Params{
 			WorkdirRoot: workdir,
 			Dir:         "testdata",
@@ -87,13 +88,13 @@ func TestScripts(t *testing.T) {
 
 					vimDebugLog, err := ioutil.TempFile("", "govim_test_script_vim_debug_log*")
 					if err != nil {
-						t.Fatalf("failed to create govim log file: %v", err)
+						return fmt.Errorf("failed to create govim log file: %v", err)
 					}
 					vimDebugLogPath = vimDebugLog.Name()
 					fmt.Printf("Vim debug logging enabled for %v at %v\n", filepath.Base(e.WorkDir), vimDebugLog.Name())
 					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
 					if err != nil {
-						t.Fatalf("failed to create govim log file: %v", err)
+						return fmt.Errorf("failed to create govim log file: %v", err)
 					}
 					outputs = append(outputs, tf)
 					govimDebugLogPath = tf.Name()
@@ -120,11 +121,11 @@ func TestScripts(t *testing.T) {
 
 				td, err := testdriver.NewTestDriver(config)
 				if err != nil {
-					t.Fatalf("failed to create new driver: %v", err)
+					return fmt.Errorf("failed to create new driver: %v", err)
 				}
 
 				if err := td.Run(); err != nil {
-					t.Fatalf("failed to run TestDriver: %v", err)
+					return fmt.Errorf("failed to run TestDriver: %v", err)
 				}
 				waitLock.Lock()
 				waitList = append(waitList, td.Wait)
