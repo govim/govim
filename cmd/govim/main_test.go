@@ -117,6 +117,7 @@ func TestScripts(t *testing.T) {
 						"GOPROXY="+proxy.URL,
 						"GONOSUMDB=*",
 						"HOME="+home,
+						"GOPATH="+filepath.Join(home, "gopath"),
 						"PLUGIN_PATH="+govimPath,
 					)
 					if workdir != "" {
