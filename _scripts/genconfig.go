@@ -223,7 +223,7 @@ notifications:
   email:
     recipients:
       - govim-dev+ci@googlegroups.com
-    on_success: never
+    on_success: change
     on_failure: always
 
 branches:
