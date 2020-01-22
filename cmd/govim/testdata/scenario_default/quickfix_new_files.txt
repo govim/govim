@@ -1,0 +1,123 @@
+# Test that we get diagnostics for new files that don't exist on disk.
+#
+# The scenario involves creating a package p with a simple function DoIt. p is
+# imported by a main package. p also has a test file that exercises DoIt, and
+# an external test file that does the same.
+#
+# Initially all call sites for DoIt incorrectly pass an integer argument,
+# meaning we should have error diagnostics for all call sites. Then we correct
+# the definition of DoIt to take an integer argument at which point all
+# diagnostics should disappear.
+
+skip 'Pending fix for golang.org/issues/36661'
+
+# Create all the new files
+vim ex 'e p/p.go'
+vim ex 'r p/p.go.orig | 0d_'
+vim ex 'noau w! check'
+cmp check p/p.go.orig
+vim ex 'sp main.go'
+vim ex 'r main.go.orig | 0d_'
+vim ex 'noau w! check'
+cmp check main.go.orig
+vim ex 'sp p/p_test.go'
+vim ex 'r p/p_test.go.orig | 0d_'
+vim ex 'noau w! check'
+cmp check p/p_test.go.orig
+vim ex 'sp p/x_test.go'
+vim ex 'r p/x_test.go.orig | 0d_'
+vim ex 'noau w! check'
+cmp check p/x_test.go.orig
+
+# Expect the errors
+vimexprwait errors.golden getqflist()
+
+# Change p.DoIt to accept an integer
+vim ex 'sp p/p.go'
+vim ex 'call setline(3, \"func DoIt(i int) {}\")'
+vim ex 'noau w! check'
+cmp check p/p.go.new
+
+# Expect no errors
+vimexprwait errors.empty getqflist()
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go.orig --
+package main
+
+import "mod.com/p"
+
+func main() {
+	p.DoIt(5)
+}
+-- p/p.go.orig --
+package p
+
+func DoIt(s string) {}
+-- p/p.go.new --
+package p
+
+func DoIt(i int) {}
+-- p/p_test.go.orig --
+package p
+
+import "testing"
+
+func TestDoIt(t *testing.T) {
+	DoIt(5)
+}
+-- p/x_test.go.orig --
+package p_test
+
+import (
+	"testing"
+
+	"mod.com/p"
+)
+
+func TestDoIt(t *testing.T) {
+	p.DoIt(5)
+}
+-- errors.golden --
+[
+  {
+    "bufnr": 1,
+    "col": 9,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "cannot convert 5 (untyped int constant) to string",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 2,
+    "col": 7,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "cannot convert 5 (untyped int constant) to string",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufnr": 3,
+    "col": 9,
+    "lnum": 9,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "cannot convert 5 (untyped int constant) to string",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.empty --
