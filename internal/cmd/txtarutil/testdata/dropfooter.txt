@@ -1,0 +1,44 @@
+# Test that dropfooter works
+
+# Empty archive
+txtarutil dropfooter a.txt footer.txt
+cmp a.txt a.golden
+
+# Archive comment is footer
+txtarutil dropfooter b.txt footer.txt
+cmp b.txt b.golden
+
+# Non-empty archive, no existing footer
+txtarutil dropfooter c.txt footer.txt
+cmp c.txt c.golden
+
+# Archive with files
+unquote d.txt
+unquote d.golden
+txtarutil dropfooter d.txt footer.txt
+cmp d.txt d.golden
+
+-- footer.txt --
+
+Hello, world!
+-- a.txt --
+-- a.golden --
+-- b.txt --
+
+Hello, world!
+-- b.golden --
+-- c.txt --
+Rubbish
+
+Hello, world!
+-- c.golden --
+Rubbish
+-- d.txt --
+>Rubbish
+>
+>Hello, world!
+>-- hello --
+-- d.golden --
+>Rubbish
+>
+>-- hello --
