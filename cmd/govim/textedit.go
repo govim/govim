@@ -38,6 +38,10 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 		if err != nil {
 			return fmt.Errorf("failed to derive end point from position: %v", err)
 		}
+		// Skip empty edits
+		if start == end && e.NewText == "" {
+			continue
+		}
 		// special case deleting of complete lines
 		if start.Col() == 1 && end.Col() == 1 && e.NewText == "" {
 			delstart := min(start.Line(), len(blines))

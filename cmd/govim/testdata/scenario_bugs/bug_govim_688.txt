@@ -1,0 +1,27 @@
+# Test case that verifies we have a fix for github.com/govim/govim/issues/688
+
+vim ex 'e main.go'
+vim ex 'w'
+
+-- main.go --
+package main
+
+import (
+	"log"
+	"time"
+)
+
+func main() {
+    for {
+    time.Sleep(time.Second*5)
+
+	log.Println("History:")
+	for _, h := range []string{"a","b"} {
+		log.Printf("%s",h)
+		for i := range []int{} {
+			log.Printf("%v",i)
+		}
+	}
+}
+}
+
