@@ -222,18 +222,43 @@ func (d *TestDriver) LogStripANSI(r io.Reader) {
 }
 
 func copyDir(dst, src string) error {
-	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-		switch path {
-		case filepath.Join(src, ".git"), filepath.Join(src, "cmd", "govim", ".bin"):
+	cmd := exec.Command("git", "status", "--ignored", "-uall", "--porcelain")
+	cmd.Dir = src
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		wd, _ := os.Getwd()
+		return fmt.Errorf("failed to determine ignored files in %v: %v\n%s", wd, err, out)
+	}
+	// ignored will contain ignored files relative to src
+	ignored := make(map[string]bool)
+	for _, l := range bytes.Split(out, []byte("\n")) {
+		l := string(l)
+		if !strings.HasPrefix(l, "!! ") {
+			continue
+		}
+		l = strings.TrimPrefix(l, "!! ")
+		ignored[l] = true
+	}
+	return filepath.Walk(src, func(path string, info os.FileInfo, ierr error) error {
+		if ierr != nil {
+			return ierr
+		}
+		if path == filepath.Join(src, ".git") {
 			return filepath.SkipDir
 		}
-		rel := strings.TrimPrefix(path, src)
-		if strings.HasPrefix(rel, string(os.PathSeparator)) {
-			rel = strings.TrimPrefix(rel, string(os.PathSeparator))
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return fmt.Errorf("failed to determine %v relative to %v: %v", path, src, err)
+		}
+		if ignored[rel] {
+			return nil
 		}
 		dstpath := filepath.Join(dst, rel)
 		if info.IsDir() {
 			return os.MkdirAll(dstpath, 0777)
+		}
+		if !info.Mode().IsRegular() {
+			return nil
 		}
 		return copyFile(dstpath, path)
 	})
