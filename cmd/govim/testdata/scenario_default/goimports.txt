@@ -19,7 +19,7 @@ cp file.go.bad file.go
 vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.bad
-vimexprwait errors.golden getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
 
@@ -60,7 +60,7 @@ const (
 -- errors.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "file.go",
     "col": 1,
     "lnum": 3,
     "module": "",

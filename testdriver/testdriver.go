@@ -148,8 +148,24 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		return nil, fmt.Errorf("need to add vimrc behaviour for flavour %v", flav)
 	}
 
-	if err := copyFile(dstVimrc, srcVimrc); err != nil {
-		return nil, fmt.Errorf("failed to cp %v %v: %v", srcVimrc, dstVimrc, err)
+	var dstVimrcBuf bytes.Buffer
+	// add srcVimrc
+	if contents, err := ioutil.ReadFile(srcVimrc); err != nil {
+		return nil, fmt.Errorf("failed to read %v: %v", srcVimrc, err)
+	} else {
+		dstVimrcBuf.Write(contents)
+	}
+	// add a blank line for good measure
+	dstVimrcBuf.WriteString("\n\" ======== TEST-ONLY ADDITIONS =======\n\n")
+	// add test-only VimScript
+	testFns := filepath.Join(c.GovimPath, "testdriver", "test_functions.vim")
+	if contents, err := ioutil.ReadFile(testFns); err != nil {
+		return nil, fmt.Errorf("failed to read %v: %v", testFns, err)
+	} else {
+		dstVimrcBuf.Write(contents)
+	}
+	if err := ioutil.WriteFile(dstVimrc, dstVimrcBuf.Bytes(), 0666); err != nil {
+		return nil, fmt.Errorf("failed to write %v: %v", dstVimrc, err)
 	}
 
 	res.govimListener = gl

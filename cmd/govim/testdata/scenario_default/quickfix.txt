@@ -1,7 +1,7 @@
 # Test that the quickfix window gets populated with error messages from gopls
 
 vim ex 'e main.go'
-vimexprwait errors.golden getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -24,7 +24,7 @@ func f2() string {}
 -- errors.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 36,
     "lnum": 6,
     "module": "",
@@ -36,7 +36,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 39,
     "lnum": 6,
     "module": "",
@@ -48,7 +48,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 19,
     "lnum": 9,
     "module": "",
@@ -60,7 +60,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 19,
     "lnum": 10,
     "module": "",

@@ -9,7 +9,7 @@ errlogmatch '&protocol\.DidOpenTextDocumentParams\{\n\S+:\s+TextDocument: protoc
 vim ex 'call cursor(6,16)'
 vim ex 'call feedkeys(\"iConst2\\<ESC>\", \"x\")'
 vim ex 'w'
-vimexprwait errors.empty getqflist()
+vimexprwait errors.empty GOVIMTest_getqflist()
 cmp main.go main.go.golden
 
 skip 'Temporary disabled due to https://github.com/govim/govim/issues/492'
@@ -24,7 +24,7 @@ errlogmatch '&protocol.DidOpenTextDocumentParams{\n\S+:\s+TextDocument: protocol
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/foo/foo.go
 vim ex 'w'
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-vimexprwait errors.empty getqflist()
+vimexprwait errors.empty GOVIMTest_getqflist()
 
 # No warnings or errors during the test
 # Disabled pending resolution to https://github.com/golang/go/issues/34103

@@ -2,7 +2,7 @@
 # in the edge case of an error that references the end of file.
 
 vim ex 'e main.go'
-vimexprwait errors.golden getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -18,7 +18,7 @@ var _ *
 -- errors.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 8,
     "lnum": 3,
     "module": "",

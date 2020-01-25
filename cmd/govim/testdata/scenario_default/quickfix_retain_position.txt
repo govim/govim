@@ -1,7 +1,7 @@
 # Test that the quickfix window logic around retaining its selected item
 
 vim ex 'e main.go'
-vimexprwait errors.golden.orig getqflist()
+vimexprwait errors.golden.orig GOVIMTest_getqflist()
 
 # Verify we have the first entry selected
 vim expr 'getqflist({\"idx\": 0})'
@@ -18,7 +18,7 @@ stdout '{"idx":2}'
 vim ex 'e other.go'
 vim ex 'call cursor(3,1)'
 vim normal Sasdf
-vimexprwait errors.golden.updated getqflist()
+vimexprwait errors.golden.updated GOVIMTest_getqflist()
 vim expr 'getqflist({\"idx\": 0})'
 stdout '{"idx":2}'
 ! stderr .+
@@ -47,7 +47,7 @@ package main
 -- errors.golden.orig --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 6,
     "module": "",
@@ -59,7 +59,7 @@ package main
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 8,
     "module": "",
@@ -74,7 +74,7 @@ package main
 -- errors.golden.updated --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 6,
     "module": "",
@@ -86,7 +86,7 @@ package main
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 8,
     "module": "",
@@ -98,7 +98,7 @@ package main
     "vcol": 0
   },
   {
-    "bufnr": 2,
+    "bufname": "other.go",
     "col": 1,
     "lnum": 3,
     "module": "",

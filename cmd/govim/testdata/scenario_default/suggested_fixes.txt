@@ -6,7 +6,7 @@
 
 # Tests basic case with a single diagnostic, no fix selected
 vim ex 'e main.go'
-vimexprwait initial_errors.golden getqflist()
+vimexprwait initial_errors.golden GOVIMTest_getqflist()
 
 vim ex 'call cursor(6,2)'
 vim ex 'GOVIMSuggestedFixes'
@@ -29,7 +29,7 @@ cmp main.go main.go.single.golden
 # second one since that is the cursor position line.
 cp main.go.different_lines main.go
 vim ex 'e! main.go'
-vimexprwait different_lines_errors.golden getqflist()
+vimexprwait different_lines_errors.golden GOVIMTest_getqflist()
 
 vim ex 'call cursor(7,2)'
 vim ex 'GOVIMSuggestedFixes'
@@ -40,7 +40,7 @@ errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\
 # title to indicate more than one. It shall also be possible to cycle forward and backwards.
 cp main.go.same_line main.go
 vim ex 'e! main.go'
-vimexprwait same_line_errors.golden getqflist()
+vimexprwait same_line_errors.golden GOVIMTest_getqflist()
 
 vim ex 'call cursor(6,2)'
 vim ex 'GOVIMSuggestedFixes'
@@ -117,7 +117,7 @@ func main() {
 -- initial_errors.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 6,
     "module": "",
@@ -132,7 +132,7 @@ func main() {
 -- different_lines_errors.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 6,
     "module": "",
@@ -144,7 +144,7 @@ func main() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 7,
     "module": "",
@@ -159,7 +159,7 @@ func main() {
 -- same_line_errors.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 6,
     "module": "",
@@ -171,7 +171,7 @@ func main() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 6,
     "module": "",
@@ -183,7 +183,7 @@ func main() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 6,
     "module": "",
@@ -195,7 +195,7 @@ func main() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 6,
     "module": "",

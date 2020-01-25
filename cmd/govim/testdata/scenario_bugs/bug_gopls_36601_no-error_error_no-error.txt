@@ -10,16 +10,16 @@
 # Expect the initial state
 vim ex 'e main.go'
 sleep $GOVIM_ERRLOGMATCH_WAIT
-vimexprwait empty.golden getqflist()
+vimexprwait empty.golden GOVIMTest_getqflist()
 
 # Make a change that adds diagnostics
 vim call append '[4,"\tx := 123"]'
-vimexprwait errors.golden getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Undo that change and ensure we still zero diagnostics again
 vim ex 5delete
 sleep $GOVIM_ERRLOGMATCH_WAIT
-vimexprwait empty.golden getqflist()
+vimexprwait empty.golden GOVIMTest_getqflist()
 
 -- go.mod --
 module mod.com
@@ -34,7 +34,7 @@ func main() {
 -- errors.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 5,
     "module": "",

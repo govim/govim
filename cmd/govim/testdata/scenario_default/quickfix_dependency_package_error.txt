@@ -2,7 +2,7 @@
 # where the error is in a dependency of the current file's package.
 
 vim ex 'e main.go'
-vimexprwait errors.golden getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -25,7 +25,7 @@ var x Type
 -- errors.golden --
 [
   {
-    "bufnr": 2,
+    "bufname": "p/p.go",
     "col": 7,
     "lnum": 3,
     "module": "",

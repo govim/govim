@@ -30,7 +30,7 @@ vim ex 'noau w! check'
 cmp check p/x_test.go.orig
 
 # Expect the errors
-vimexprwait errors.golden getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Change p.DoIt to accept an integer
 vim ex 'sp p/p.go'
@@ -39,7 +39,7 @@ vim ex 'noau w! check'
 cmp check p/p.go.new
 
 # Expect no errors
-vimexprwait errors.empty getqflist()
+vimexprwait errors.empty GOVIMTest_getqflist()
 
 -- go.mod --
 module mod.com
