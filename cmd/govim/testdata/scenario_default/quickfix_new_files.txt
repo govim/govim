@@ -84,7 +84,7 @@ func TestDoIt(t *testing.T) {
 -- errors.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 9,
     "lnum": 6,
     "module": "",
@@ -96,7 +96,7 @@ func TestDoIt(t *testing.T) {
     "vcol": 0
   },
   {
-    "bufnr": 2,
+    "bufname": "p/p_test.go",
     "col": 7,
     "lnum": 6,
     "module": "",
@@ -108,9 +108,9 @@ func TestDoIt(t *testing.T) {
     "vcol": 0
   },
   {
-    "bufnr": 3,
+    "bufname": "p/x_test.go",
     "col": 9,
-    "lnum": 9,
+    "lnum": 10,
     "module": "",
     "nr": 0,
     "pattern": "",
@@ -121,3 +121,4 @@ func TestDoIt(t *testing.T) {
   }
 ]
 -- errors.empty --
+[]

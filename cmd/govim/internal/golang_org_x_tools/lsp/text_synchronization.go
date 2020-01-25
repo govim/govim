@@ -12,18 +12,19 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	errors "golang.org/x/xerrors"
 )
 
 func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) error {
-	_, err := s.didModifyFile(ctx, source.FileModification{
-		URI:        span.NewURI(params.TextDocument.URI),
-		Action:     source.Open,
-		Version:    params.TextDocument.Version,
-		Text:       []byte(params.TextDocument.Text),
-		LanguageID: params.TextDocument.LanguageID,
+	_, err := s.didModifyFiles(ctx, []source.FileModification{
+		{
+			URI:        span.NewURI(params.TextDocument.URI),
+			Action:     source.Open,
+			Version:    params.TextDocument.Version,
+			Text:       []byte(params.TextDocument.Text),
+			LanguageID: params.TextDocument.LanguageID,
+		},
 	})
 	return err
 }
@@ -40,9 +41,13 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 		Version: params.TextDocument.Version,
 		Text:    text,
 	}
-	snapshot, err := s.didModifyFile(ctx, c)
+	snapshots, err := s.didModifyFiles(ctx, []source.FileModification{c})
 	if err != nil {
 		return err
+	}
+	snapshot := snapshots[uri]
+	if snapshot == nil {
+		return errors.Errorf("no snapshot for %s", uri)
 	}
 	// Ideally, we should be able to specify that a generated file should be opened as read-only.
 	// Tell the user that they should not be editing a generated file.
@@ -58,36 +63,23 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 }
 
 func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.DidChangeWatchedFilesParams) error {
-	// Keep track of each change's view and final snapshot.
-	views := make(map[source.View]source.Snapshot)
+	var modifications []source.FileModification
 	for _, change := range params.Changes {
 		uri := span.NewURI(change.URI)
-		ctx := telemetry.File.With(ctx, uri)
 
 		// Do nothing if the file is open in the editor.
 		// The editor is the source of truth.
 		if s.session.IsOpen(uri) {
 			continue
 		}
-		snapshots, err := s.session.DidModifyFile(ctx, source.FileModification{
+		modifications = append(modifications, source.FileModification{
 			URI:    uri,
 			Action: changeTypeToFileAction(change.Type),
 			OnDisk: true,
 		})
-		if err != nil {
-			return err
-		}
-		snapshot, _, err := snapshotOf(s.session, uri, snapshots)
-		if err != nil {
-			return err
-		}
-		views[snapshot.View()] = snapshot
 	}
-	// Diagnose all resulting snapshots.
-	for _, snapshot := range views {
-		go s.diagnoseSnapshot(snapshot)
-	}
-	return nil
+	_, err := s.didModifyFiles(ctx, modifications)
+	return err
 }
 
 func (s *Server) didSave(ctx context.Context, params *protocol.DidSaveTextDocumentParams) error {
@@ -99,59 +91,79 @@ func (s *Server) didSave(ctx context.Context, params *protocol.DidSaveTextDocume
 	if params.Text != nil {
 		c.Text = []byte(*params.Text)
 	}
-	_, err := s.didModifyFile(ctx, c)
+	_, err := s.didModifyFiles(ctx, []source.FileModification{c})
 	return err
 }
 
 func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocumentParams) error {
-	_, err := s.didModifyFile(ctx, source.FileModification{
-		URI:     span.NewURI(params.TextDocument.URI),
-		Action:  source.Close,
-		Version: -1,
-		Text:    nil,
+	_, err := s.didModifyFiles(ctx, []source.FileModification{
+		{
+			URI:     span.NewURI(params.TextDocument.URI),
+			Action:  source.Close,
+			Version: -1,
+			Text:    nil,
+		},
 	})
 	return err
 }
 
-func (s *Server) didModifyFile(ctx context.Context, c source.FileModification) (source.Snapshot, error) {
-	snapshots, err := s.session.DidModifyFile(ctx, c)
+func (s *Server) didModifyFiles(ctx context.Context, modifications []source.FileModification) (map[span.URI]source.Snapshot, error) {
+	snapshots, err := s.session.DidModifyFiles(ctx, modifications)
 	if err != nil {
 		return nil, err
 	}
-	snapshot, _, err := snapshotOf(s.session, c.URI, snapshots)
-	if err != nil {
-		return nil, err
+	snapshotByURI := make(map[span.URI]source.Snapshot)
+	for _, c := range modifications {
+		snapshotByURI[c.URI] = nil
 	}
-	switch c.Action {
-	case source.Save:
-		// If we're saving a go.mod file, all of the metadata has been invalidated,
-		// so we need to run diagnostics and make sure that they cannot be canceled.
-		fh, err := snapshot.GetFile(c.URI)
+	// Avoid diagnosing the same snapshot twice.
+	snapshotSet := make(map[source.Snapshot][]span.URI)
+	for uri := range snapshotByURI {
+		view, err := s.session.ViewOf(uri)
 		if err != nil {
 			return nil, err
 		}
-		if fh.Identity().Kind == source.Mod {
-			go s.diagnoseDetached(snapshot)
+		var snapshot source.Snapshot
+		for _, s := range snapshots {
+			if s.View() == view {
+				if snapshot != nil {
+					return nil, errors.Errorf("duplicate snapshots for the same view")
+				}
+				snapshot = s
+			}
 		}
-	default:
+		// If the file isn't in any known views (for example, if it's in a dependency),
+		// we may not have a snapshot to map it to. As a result, we won't try to
+		// diagnose it. TODO(rstambler): Figure out how to handle this better.
+		if snapshot == nil {
+			continue
+		}
+		snapshotByURI[uri] = snapshot
+		snapshotSet[snapshot] = append(snapshotSet[snapshot], uri)
+	}
+	for snapshot, uris := range snapshotSet {
+		for _, uri := range uris {
+			fh, err := snapshot.GetFile(uri)
+			if err != nil {
+				return nil, err
+			}
+			// If a modification comes in for a go.mod file,
+			// and the view was never properly initialized,
+			// try to recreate the associated view.
+			switch fh.Identity().Kind {
+			case source.Mod:
+				newSnapshot, err := snapshot.View().Rebuild(ctx)
+				if err != nil {
+					return nil, err
+				}
+				// Update the snapshot to the rebuilt one.
+				snapshot = newSnapshot
+				snapshotByURI[uri] = snapshot
+			}
+		}
 		go s.diagnoseSnapshot(snapshot)
 	}
-
-	return snapshot, nil
-}
-
-// snapshotOf returns the snapshot corresponding to the view for the given file URI.
-func snapshotOf(session source.Session, uri span.URI, snapshots []source.Snapshot) (source.Snapshot, source.View, error) {
-	view, err := session.ViewOf(uri)
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, s := range snapshots {
-		if s.View() == view {
-			return s, view, nil
-		}
-	}
-	return nil, nil, errors.Errorf("bestSnapshot: no snapshot for %s", uri)
+	return snapshotByURI, nil
 }
 
 func (s *Server) wasFirstChange(uri span.URI) bool {

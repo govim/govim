@@ -159,9 +159,9 @@ type completer struct {
 	// surrounding describes the identifier surrounding the position.
 	surrounding *Selection
 
-	// expectedType contains information about the type we expect the completion
-	// candidate to be. It will be the zero value if no information is available.
-	expectedType typeInference
+	// inference contains information we've inferred about ideal
+	// candidates such as the candidate's type.
+	inference candidateInference
 
 	// enclosingFunc contains information about the function enclosing
 	// the position.
@@ -383,6 +383,9 @@ type candidate struct {
 	// makePointer is true if the candidate type name T should be made into *T.
 	makePointer bool
 
+	// dereference is true if the candidate obj should be made into *obj.
+	dereference bool
+
 	// imp is the import that needs to be added to this package in order
 	// for this candidate to be valid. nil if no import needed.
 	imp *importInfo
@@ -463,7 +466,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 			documentation:     opts.CompletionDocumentation,
 			fullDocumentation: opts.HoverKind == FullDocumentation,
 			placeholders:      opts.Placeholders,
-			literal:           opts.Literal,
+			literal:           opts.InsertTextFormat == protocol.SnippetTextFormat,
 			budget:            opts.CompletionBudget,
 		},
 		// default to a matcher that always matches
@@ -483,7 +486,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 		c.setSurrounding(ident)
 	}
 
-	c.expectedType = expectedType(c)
+	c.inference = expectedCandidate(c)
 
 	defer c.sortItems()
 
@@ -635,7 +638,7 @@ func (c *completer) wantStructFieldCompletions() bool {
 }
 
 func (c *completer) wantTypeName() bool {
-	return c.expectedType.typeName.wantTypeName
+	return c.inference.typeName.wantTypeName
 }
 
 // See https://golang.org/issue/36001. Unimported completions are expensive.
@@ -876,8 +879,8 @@ func (c *completer) lexical() error {
 		}
 	}
 
-	if c.expectedType.objType != nil {
-		if named, _ := deref(c.expectedType.objType).(*types.Named); named != nil {
+	if c.inference.objType != nil {
+		if named, _ := deref(c.inference.objType).(*types.Named); named != nil {
 			// If we expected a named type, check the type's package for
 			// completion items. This is useful when the current file hasn't
 			// imported the type's package yet.
@@ -956,12 +959,12 @@ func (c *completer) lexical() error {
 		}
 	}
 
-	if c.expectedType.objType != nil {
+	if c.inference.objType != nil {
 		// If we have an expected type and it is _not_ a named type, see
 		// if an object literal makes a good candidate. For example, if
 		// our expected type is "[]int", this will add a candidate of
 		// "[]int{}".
-		t := deref(c.expectedType.objType)
+		t := deref(c.inference.objType)
 		if _, named := t.(*types.Named); !named {
 			c.literal(t, nil)
 		}
@@ -1244,9 +1247,9 @@ const (
 	kindString
 )
 
-// typeInference holds information we have inferred about a type that can be
+// candidateInference holds information we have inferred about a type that can be
 // used at the current position.
-type typeInference struct {
+type candidateInference struct {
 	// objType is the desired type of an object used at the query position.
 	objType types.Type
 
@@ -1286,9 +1289,9 @@ type typeNameInference struct {
 	wantComparable bool
 }
 
-// expectedType returns information about the expected type for an expression at
-// the query position.
-func expectedType(c *completer) (inf typeInference) {
+// expectedCandidate returns information about the expected candidate
+// for an expression at the query position.
+func expectedCandidate(c *completer) (inf candidateInference) {
 	inf.typeName = expectTypeName(c)
 
 	if c.enclosingCompositeLiteral != nil {
@@ -1484,8 +1487,8 @@ Nodes:
 
 // applyTypeModifiers applies the list of type modifiers to a type.
 // It returns nil if the modifiers could not be applied.
-func (ti typeInference) applyTypeModifiers(typ types.Type, addressable bool) types.Type {
-	for _, mod := range ti.modifiers {
+func (ci candidateInference) applyTypeModifiers(typ types.Type, addressable bool) types.Type {
+	for _, mod := range ci.modifiers {
 		switch mod.mod {
 		case star:
 			// For every "*" indirection operator, remove a pointer layer
@@ -1517,8 +1520,8 @@ func (ti typeInference) applyTypeModifiers(typ types.Type, addressable bool) typ
 }
 
 // applyTypeNameModifiers applies the list of type modifiers to a type name.
-func (ti typeInference) applyTypeNameModifiers(typ types.Type) types.Type {
-	for _, mod := range ti.typeName.modifiers {
+func (ci candidateInference) applyTypeNameModifiers(typ types.Type) types.Type {
+	for _, mod := range ci.typeName.modifiers {
 		switch mod.mod {
 		case star:
 			// For every "*" indicator, add a pointer layer to type name.
@@ -1534,8 +1537,9 @@ func (ti typeInference) applyTypeNameModifiers(typ types.Type) types.Type {
 
 // matchesVariadic returns true if we are completing a variadic
 // parameter and candType is a compatible slice type.
-func (ti typeInference) matchesVariadic(candType types.Type) bool {
-	return ti.variadic && types.AssignableTo(ti.objType, candType)
+func (ci candidateInference) matchesVariadic(candType types.Type) bool {
+	return ci.variadic && types.AssignableTo(ci.objType, candType)
+
 }
 
 // findSwitchStmt returns an *ast.CaseClause's corresponding *ast.SwitchStmt or
@@ -1707,15 +1711,15 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 		if expType == nil {
 			// If we don't expect a specific type, check if we expect a particular
 			// kind of object (map, slice, etc).
-			if c.expectedType.objKind > 0 {
-				return c.expectedType.objKind&candKind(candType) > 0
+			if c.inference.objKind > 0 {
+				return c.inference.objKind&candKind(candType) > 0
 			}
 
 			return false
 		}
 
 		// Take into account any type modifiers on the expected type.
-		candType = c.expectedType.applyTypeModifiers(candType, cand.addressable)
+		candType = c.inference.applyTypeModifiers(candType, cand.addressable)
 		if candType == nil {
 			return false
 		}
@@ -1747,7 +1751,7 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 		return types.AssignableTo(candType, expType)
 	}
 
-	if typeMatches(c.expectedType.objType, candType) {
+	if typeMatches(c.inference.objType, candType) {
 		// If obj's type matches, we don't want to expand to an invocation of obj.
 		cand.expandFuncCall = false
 		return true
@@ -1755,7 +1759,7 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 
 	// Try using a function's return type as its type.
 	if sig, ok := candType.Underlying().(*types.Signature); ok && sig.Results().Len() == 1 {
-		if typeMatches(c.expectedType.objType, sig.Results().At(0).Type()) {
+		if typeMatches(c.inference.objType, sig.Results().At(0).Type()) {
 			// If obj's return value matches the expected type, we need to invoke obj
 			// in the completion.
 			cand.expandFuncCall = true
@@ -1765,14 +1769,23 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 
 	// When completing the variadic parameter, if the expected type is
 	// []T then check candType against T.
-	if c.expectedType.variadic {
-		if slice, ok := c.expectedType.objType.(*types.Slice); ok && typeMatches(slice.Elem(), candType) {
+	if c.inference.variadic {
+		if slice, ok := c.inference.objType.(*types.Slice); ok && typeMatches(slice.Elem(), candType) {
 			return true
 		}
 	}
 
-	if c.expectedType.convertibleTo != nil && types.ConvertibleTo(candType, c.expectedType.convertibleTo) {
+	if c.inference.convertibleTo != nil && types.ConvertibleTo(candType, c.inference.convertibleTo) {
 		return true
+	}
+
+	// Check if dereferencing cand would match our type inference.
+	if ptr, ok := cand.obj.Type().Underlying().(*types.Pointer); ok {
+		if c.matchingCandidate(&candidate{obj: c.fakeObj(ptr.Elem())}) {
+			// Mark the candidate so we know to prepend "*" when formatting.
+			cand.dereference = true
+			return true
+		}
 	}
 
 	// Check if cand is addressable and a pointer to cand matches our type inference.
@@ -1792,9 +1805,9 @@ func (c *completer) matchingTypeName(cand *candidate) bool {
 
 	typeMatches := func(candType types.Type) bool {
 		// Take into account any type name modifier prefixes.
-		candType = c.expectedType.applyTypeNameModifiers(candType)
+		candType = c.inference.applyTypeNameModifiers(candType)
 
-		if from := c.expectedType.typeName.assertableFrom; from != nil {
+		if from := c.inference.typeName.assertableFrom; from != nil {
 			// Don't suggest the starting type in type assertions. For example,
 			// if "foo" is an io.Writer, don't suggest "foo.(io.Writer)".
 			if types.Identical(from, candType) {
@@ -1808,7 +1821,7 @@ func (c *completer) matchingTypeName(cand *candidate) bool {
 			}
 		}
 
-		if c.expectedType.typeName.wantComparable && !types.Comparable(candType) {
+		if c.inference.typeName.wantComparable && !types.Comparable(candType) {
 			return false
 		}
 
@@ -1818,8 +1831,8 @@ func (c *completer) matchingTypeName(cand *candidate) bool {
 		//   foo = []i<>
 		//
 		// Where our expected type is "[]int", and we expect a type name.
-		if c.expectedType.objType != nil {
-			return types.AssignableTo(candType, c.expectedType.objType)
+		if c.inference.objType != nil {
+			return types.AssignableTo(candType, c.inference.objType)
 		}
 
 		// Default to saying any type name is a match.

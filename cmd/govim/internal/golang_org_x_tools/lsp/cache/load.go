@@ -42,6 +42,9 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) ([]*metadata
 	for _, scope := range scopes {
 		switch scope := scope.(type) {
 		case []packagePath:
+			// The only time we pass package paths is when we're doing a
+			// partial workspace load. In those cases, the paths came back from
+			// go list and should already be GOPATH-vendorized when appropriate.
 			for _, p := range scope {
 				query = append(query, string(p))
 			}
@@ -59,6 +62,16 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) ([]*metadata
 				q = "./..."
 			}
 			query = append(query, q)
+		case viewLoadScope:
+			// If we are outside of GOPATH, a module, or some other known
+			// build system, don't load subdirectories.
+			if !s.view.hasValidBuildConfiguration {
+				query = append(query, "./")
+			} else {
+				query = append(query, "./...")
+			}
+		default:
+			panic(fmt.Sprintf("unknown scope type %T", scope))
 		}
 	}
 	ctx, done := trace.StartSpan(ctx, "cache.view.load", telemetry.Query.Of(query))
@@ -76,18 +89,14 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) ([]*metadata
 
 	log.Print(ctx, "go/packages.Load", tag.Of("snapshot", s.ID()), tag.Of("query", query), tag.Of("packages", len(pkgs)))
 	if len(pkgs) == 0 {
-		if err == nil {
-			err = errors.Errorf("no packages found for query %s", query)
-		}
 		return nil, err
 	}
 	return s.updateMetadata(ctx, scopes, pkgs, cfg)
 }
 
 // shouldLoad reparses a file's package and import declarations to
-// determine if they have changed.
+// determine if the file requires a metadata reload.
 func (c *cache) shouldLoad(ctx context.Context, s *snapshot, originalFH, currentFH source.FileHandle) bool {
-	// TODO(rstambler): go.mod files should be tracked in the snapshot.
 	if originalFH == nil {
 		return currentFH.Identity().Kind == source.Go
 	}
@@ -107,10 +116,8 @@ func (c *cache) shouldLoad(ctx context.Context, s *snapshot, originalFH, current
 	}
 
 	// Check if the package's metadata has changed. The cases handled are:
-	//
 	//    1. A package's name has changed
 	//    2. A file's imports have changed
-	//
 	if original.Name.Name != current.Name.Name {
 		return true
 	}
@@ -137,9 +144,9 @@ func (s *snapshot) updateMetadata(ctx context.Context, scopes []interface{}, pkg
 		// Don't log output for full workspace packages.Loads.
 		var containsDir bool
 		for _, scope := range scopes {
-			if _, ok := scope.(directoryURI); ok {
+			switch scope.(type) {
+			case directoryURI, viewLoadScope:
 				containsDir = true
-				break
 			}
 		}
 		if !containsDir || s.view.Options().VerboseOutput {
