@@ -15,25 +15,25 @@ vim -indent expr 'sign_getdefined()'
 cmp stdout defined.golden
 
 # There must be only one sign per line (per prio)
-vimexprwait placed_openfile1.golden 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait placed_openfile1.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Removing one of the two quickfix entires on one line shouldn't remove the sign
 vim ex 'call cursor(6,36)'
 vim ex 'call feedkeys(\"3x\", \"x\")' # Remove "i, " from Printf-line
-vimexprwait placed_openfile2.golden 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait placed_openfile2.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Removing lines should also remove the signs
 vim ex 'call cursor(9,1)'
 vim ex 'call feedkeys(\"2dd\", \"x\")' # Remove line 9 & 10
-vimexprwait placed_onesign.golden 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait placed_onesign.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Fixing the last quickfix entry should remove the last sign
 vim call append '[5, "\tvar v string"]'
-vimexprwait placed_nosign.golden 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait placed_nosign.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Two warnings on one line should place two warnings
 vim call append '[5, "\tvar x, y int\n\tx, y = x, y"]'
-vimexprwait placed_twowarnings.golden 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait placed_twowarnings.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -80,7 +80,7 @@ func f2() string {}
 -- placed_openfile1.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "signs": [
       {
         "group": "govim",
@@ -116,7 +116,7 @@ func f2() string {}
 -- placed_openfile2.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "signs": [
       {
         "group": "govim",
@@ -145,7 +145,7 @@ func f2() string {}
 -- placed_onesign.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "signs": [
       {
         "group": "govim",
@@ -160,14 +160,14 @@ func f2() string {}
 -- placed_nosign.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "signs": []
   }
 ]
 -- placed_twowarnings.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "signs": [
       {
         "group": "govim",

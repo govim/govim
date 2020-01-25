@@ -7,15 +7,15 @@
 
 # Expect the initial state
 vim ex 'e main.go'
-vimexprwait errors.golden getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Make a change that removes diagnostics
 vim call append '[4,"\tprintln(x)"]'
-vimexprwait empty.golden getqflist()
+vimexprwait empty.golden GOVIMTest_getqflist()
 
 # Undo that change and ensure we have the original diagnostics
 vim ex 5delete
-vimexprwait errors.golden getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 -- go.mod --
 module mod.com
@@ -30,7 +30,7 @@ func main() {
 -- errors.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 4,
     "module": "",

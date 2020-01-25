@@ -8,17 +8,17 @@ vim ex 'e main.go'
 vim ex 'call cursor(15,24)'
 vim ex 'GOVIMReferences' # note this moves the cursor to the quickfix window
 vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
-vimexprwait locations.golden getqflist()
+vimexprwait locations.golden GOVIMTest_getqflist()
 
 # Introduce an error - locations should remain
 vim ex 'call cursor(15,1)'
 vim ex 'call feedkeys(\"ofmt.Printf(\\\"%v\\\")\\<ESC>\", \"xt\")'
 sleep $GOVIM_ERRLOGMATCH_WAIT
-vimexprwait locations.golden getqflist()
+vimexprwait locations.golden GOVIMTest_getqflist()
 
 # Now use quickfix for errors
 vim ex 'GOVIMQuickfixDiagnostics'
-vimexprwait errors.golden getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -56,7 +56,7 @@ func DoIt() {
 -- locations.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 5,
     "lnum": 5,
     "module": "",
@@ -68,7 +68,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 8,
     "module": "",
@@ -80,7 +80,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 9,
     "module": "",
@@ -92,7 +92,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 10,
     "module": "",
@@ -104,7 +104,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 11,
     "module": "",
@@ -116,7 +116,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 7,
     "lnum": 11,
     "module": "",
@@ -128,7 +128,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 11,
     "lnum": 11,
     "module": "",
@@ -140,7 +140,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 15,
     "lnum": 11,
     "module": "",
@@ -152,7 +152,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 19,
     "lnum": 11,
     "module": "",
@@ -164,7 +164,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 12,
     "module": "",
@@ -176,7 +176,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 13,
     "module": "",
@@ -188,7 +188,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 14,
     "module": "",
@@ -200,7 +200,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 24,
     "lnum": 15,
     "module": "",
@@ -212,7 +212,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 2,
+    "bufname": "a.go",
     "col": 2,
     "lnum": 6,
     "module": "",
@@ -224,7 +224,7 @@ func DoIt() {
     "vcol": 0
   },
   {
-    "bufnr": 2,
+    "bufname": "a.go",
     "col": 2,
     "lnum": 7,
     "module": "",
@@ -239,7 +239,7 @@ func DoIt() {
 -- errors.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 16,
     "module": "",

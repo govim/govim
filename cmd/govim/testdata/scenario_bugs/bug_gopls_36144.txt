@@ -11,7 +11,7 @@
 # cancellation of the initial diagnostics for the package, or the diagnostics
 # that are sent when a file is opened.
 
-vimexprwait errors.golden getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 -- go.mod --
 module mod.com
@@ -23,7 +23,7 @@ blah
 -- errors.golden --
 [
   {
-    "bufnr": 2,
+    "bufname": "main.go",
     "col": 1,
     "lnum": 3,
     "module": "",

@@ -10,17 +10,17 @@
 # Expect the initial state
 vim ex 'e main.go'
 sleep $GOVIM_ERRLOGMATCH_WAIT
-vimexprwait empty.golden getqflist()
+vimexprwait empty.golden GOVIMTest_getqflist()
 
 # Make a change that shouldn't alter the diagnostics
 vim call append '[4,"\t"]'
 sleep $GOVIM_ERRLOGMATCH_WAIT
-vimexprwait empty.golden getqflist()
+vimexprwait empty.golden GOVIMTest_getqflist()
 
 # Undo that change and ensure we still have the diagnostics
 vim ex 5delete
 sleep $GOVIM_ERRLOGMATCH_WAIT
-vimexprwait empty.golden getqflist()
+vimexprwait empty.golden GOVIMTest_getqflist()
 
 -- go.mod --
 module mod.com

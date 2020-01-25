@@ -1,7 +1,7 @@
 # Check that signs are still placed despite QuickfixAutoDiagnostics being turned off
 
 vim ex 'e main.go'
-vimexprwait placed.golden 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait placed.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 -- go.mod --
 module mod.com
@@ -22,7 +22,7 @@ func f2() string {}
 -- placed.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "signs": [
       {
         "group": "govim",

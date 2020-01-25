@@ -2,35 +2,35 @@
 
 # Default behaviour is quickfix autodiagnostics & sign placment enabled
 vim ex 'e main.go'
-vimexprwait errors.golden1 getqflist()
-vimexprwait signs.golden1 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait errors.golden1 GOVIMTest_getqflist()
+vimexprwait signs.golden1 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # There must be no quickfix entries or signs when both are explicitly disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 0]'
 vim call 'govim#config#Set' '["QuickfixSigns", 0]'
 vim call append '[6,"fmt.Printf(\"Test is a test %v\\n\", i, v)"]'
-vimexprwait empty getqflist()
-vimexprwait nosigns.golden 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait empty GOVIMTest_getqflist()
+vimexprwait nosigns.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Enabling quickfix autodiagnostics should give quickfix entries but no signs
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 1]'
-vimexprwait errors.golden2 getqflist()
-vimexprwait nosigns.golden 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait errors.golden2 GOVIMTest_getqflist()
+vimexprwait nosigns.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Enabling signs should place signs again
 vim call 'govim#config#Set' '["QuickfixSigns", 1]'
-vimexprwait errors.golden2 getqflist()
-vimexprwait signs.golden2 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait errors.golden2 GOVIMTest_getqflist()
+vimexprwait signs.golden2 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Signs should be placed with quickfix autodiagnostics disabled
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 0]'
 vim call append '[6,"fmt.Printf(\"Test is a test %v\\n\", i, v)"]'
-vimexprwait empty getqflist()
-vimexprwait signs.golden3 'sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+vimexprwait empty GOVIMTest_getqflist()
+vimexprwait signs.golden3 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Calling :GOVIMQuickfixDiagnostics should force-populate the quickfix window
 vim ex 'GOVIMQuickfixDiagnostics'
-vimexprwait errors.golden3 getqflist()
+vimexprwait errors.golden3 GOVIMTest_getqflist()
 
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
@@ -53,7 +53,7 @@ func f2() string {}
 -- errors.golden1 --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 36,
     "lnum": 6,
     "module": "",
@@ -65,7 +65,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 39,
     "lnum": 6,
     "module": "",
@@ -77,7 +77,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 19,
     "lnum": 9,
     "module": "",
@@ -89,7 +89,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 19,
     "lnum": 10,
     "module": "",
@@ -104,7 +104,7 @@ func f2() string {}
 -- signs.golden1 --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "signs": [
       {
         "group": "govim",
@@ -140,7 +140,7 @@ func f2() string {}
 -- errors.golden2 --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 36,
     "lnum": 6,
     "module": "",
@@ -152,7 +152,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 39,
     "lnum": 6,
     "module": "",
@@ -164,7 +164,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 35,
     "lnum": 7,
     "module": "",
@@ -176,7 +176,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 38,
     "lnum": 7,
     "module": "",
@@ -188,7 +188,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 19,
     "lnum": 10,
     "module": "",
@@ -200,7 +200,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 19,
     "lnum": 11,
     "module": "",
@@ -215,7 +215,7 @@ func f2() string {}
 -- signs.golden2 --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "signs": [
       {
         "group": "govim",
@@ -265,7 +265,7 @@ func f2() string {}
 -- signs.golden3 --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "signs": [
       {
         "group": "govim",
@@ -329,7 +329,7 @@ func f2() string {}
 -- errors.golden3 --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 36,
     "lnum": 6,
     "module": "",
@@ -341,7 +341,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 39,
     "lnum": 6,
     "module": "",
@@ -353,7 +353,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 35,
     "lnum": 7,
     "module": "",
@@ -365,7 +365,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 38,
     "lnum": 7,
     "module": "",
@@ -377,7 +377,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 35,
     "lnum": 8,
     "module": "",
@@ -389,7 +389,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 38,
     "lnum": 8,
     "module": "",
@@ -401,7 +401,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 19,
     "lnum": 11,
     "module": "",
@@ -413,7 +413,7 @@ func f2() string {}
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 19,
     "lnum": 12,
     "module": "",
@@ -428,7 +428,7 @@ func f2() string {}
 -- nosigns.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "signs": []
   }
 ]

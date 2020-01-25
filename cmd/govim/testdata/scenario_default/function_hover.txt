@@ -14,7 +14,7 @@ cmp stdout popup.golden
 # Single warning (unreachable code) + docs as popup content
 vim call append '[5,"\treturn"]'
 vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
-vimexprwait warning.golden getqflist()
+vimexprwait warning.golden GOVIMTest_getqflist()
 vim expr 'GOVIMHover()'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout warning_popup.golden
@@ -24,7 +24,7 @@ cmp stdout warning_popup.golden
 # Two warnings (unreachable code + formatting directive %v) + docs
 vim ex '7s/Hello, world/%v/'
 vim ex 'call cursor(7,8)'
-vimexprwait warnings.golden getqflist()
+vimexprwait warnings.golden GOVIMTest_getqflist()
 vim expr 'GOVIMHover()'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout warnings_popup.golden
@@ -44,7 +44,7 @@ vim ex 'call cursor(6,1)'
 vim ex 'normal dd'
 vim ex 'call cursor(6,7)'
 vim ex 'normal x'
-vimexprwait error.golden getqflist()
+vimexprwait error.golden GOVIMTest_getqflist()
 vim expr 'GOVIMHover()'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout error_popup.golden
@@ -91,7 +91,7 @@ Pintln not declared by package fmt compiler
 -- warning.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 7,
     "module": "",
@@ -106,7 +106,7 @@ Pintln not declared by package fmt compiler
 -- warnings.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 7,
     "module": "",
@@ -118,7 +118,7 @@ Pintln not declared by package fmt compiler
     "vcol": 0
   },
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 2,
     "lnum": 7,
     "module": "",
@@ -133,7 +133,7 @@ Pintln not declared by package fmt compiler
 -- error.golden --
 [
   {
-    "bufnr": 1,
+    "bufname": "main.go",
     "col": 6,
     "lnum": 6,
     "module": "",
