@@ -1,0 +1,25 @@
+# Test that dropfooter works
+
+# Archive that contains a match
+txtarutil dropfooter -unless '^# Do nothing$' a.txt footer.txt
+cmp a.txt a.golden
+
+# Archive that does not contain a match
+txtarutil dropfooter -unless '^# Do nothing$' b.txt footer.txt
+cmp b.txt b.golden
+
+-- footer.txt --
+
+Hello, world!
+-- a.txt --
+# Do nothing
+
+Hello, world!
+-- a.golden --
+# Do nothing
+
+Hello, world!
+-- b.txt --
+
+Hello, world!
+-- b.golden --

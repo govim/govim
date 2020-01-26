@@ -8,5 +8,7 @@ errlogmatch 'ShowMessage callback: Something went wrong'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout popup.golden
 
+# noerrcheck
+
 -- popup.golden --
 Something went wrong

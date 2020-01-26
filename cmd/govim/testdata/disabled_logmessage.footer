@@ -1,20 +1,4 @@
-# Test completions for a file that does not yet exist on disk
-
-vim ex 'e main.go'
-vim ex 'r main.txt | 0d_'
-vim ex 'w main.go'
-cmp main.go main.txt
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
-
--- go.mod --
-module mod.com
-
-go 1.12
--- main.txt --
-package main
-
-func main() {
-}

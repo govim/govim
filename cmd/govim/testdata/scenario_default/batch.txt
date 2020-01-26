@@ -39,3 +39,5 @@ stdout [5,4]
 ! vim call GOVIMNonBatchCallInBatch
 ! stdout .+
 stderr 'called ChannelExprf when in batch'
+
+# noerrcheck

@@ -23,7 +23,7 @@ import (
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer -type=GenAttr,Complete,Range,Event,NArgs,Flavor -linecomment -output gen_stringers_stringer.go
-//go:generate go run _scripts/genconfig.go
+//go:generate go run github.com/govim/govim/internal/cmd/genconfig
 
 const (
 	funcHandlePref     = "function:"

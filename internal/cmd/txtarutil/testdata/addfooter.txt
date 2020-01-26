@@ -1,0 +1,50 @@
+# Test that addfooter command works
+
+# Empty archive
+txtarutil addfooter a.txt footer.txt
+cmp a.txt a.golden
+
+# Archive comment is footer
+txtarutil addfooter b.txt footer.txt
+cmp b.txt b.golden
+
+# Non-empty acrhive comment, no existing footer
+txtarutil addfooter c.txt footer.txt
+cmp c.txt c.golden
+
+# Archive with files
+unquote d.txt
+unquote d.golden
+txtarutil addfooter d.txt footer.txt
+cmp d.txt d.golden
+
+-- footer.txt --
+
+Hello, world!
+-- a.txt --
+-- a.golden --
+
+Hello, world!
+-- b.txt --
+
+Hello, world!
+-- b.golden --
+
+Hello, world!
+-- c.txt --
+Rubbish
+-- c.golden --
+Rubbish
+
+Hello, world!
+-- d.txt --
+>Rubbish
+>
+>Hello, world!
+>-- hello --
+-- d.golden --
+>Rubbish
+>
+>Hello, world!
+>
+>-- hello --

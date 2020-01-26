@@ -27,6 +27,8 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 )
 
+//go:generate go run github.com/govim/govim/internal/cmd/txtarutil -- addfooter -unless "^# noerrcheck$" ./testdata/scenario_*/*.txt testdata/disabled_logmessage.footer
+
 const (
 	EnvInstallScripts = "GOVIM_RUN_INSTALL_TESTSCRIPTS"
 )

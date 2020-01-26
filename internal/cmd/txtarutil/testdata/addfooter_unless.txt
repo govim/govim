@@ -1,0 +1,21 @@
+# Test that addfooter command works when supplied with unless
+
+# Archive that contains a match
+txtarutil addfooter -unless '^# Do nothing$' a.txt footer.txt
+cmp a.txt a.golden
+
+# Archive that does not contain a match
+txtarutil addfooter -unless '^# Do nothing$' b.txt footer.txt
+cmp b.txt b.golden
+
+-- footer.txt --
+
+Hello, world!
+-- a.txt --
+# Do nothing
+-- a.golden --
+# Do nothing
+-- b.txt --
+-- b.golden --
+
+Hello, world!
