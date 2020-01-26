@@ -1,0 +1,3 @@
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'

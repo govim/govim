@@ -270,7 +270,7 @@ env:
   GH_USER: "x-access-token"
   GH_TOKEN: ${{ github.token }}
   GOVIM_TEST_RACE_SLOWDOWN: "1.5"
-  RACE_BUILD: 786
+  RACE_BUILD: "661"
 
 name: Go
 jobs:
