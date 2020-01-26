@@ -49,6 +49,9 @@ type snapshot struct {
 	// workspacePackages contains the workspace's packages, which are loaded
 	// when the view is created.
 	workspacePackages map[packageID]packagePath
+
+	// unloadableFiles keeps track of files that we've failed to load.
+	unloadableFiles map[span.URI]struct{}
 }
 
 type packageKey struct {
@@ -63,29 +66,6 @@ type actionKey struct {
 
 func (s *snapshot) View() source.View {
 	return s.view
-}
-
-func (s *snapshot) ModFiles(ctx context.Context) (source.FileHandle, source.FileHandle, error) {
-	r, t, err := s.view.modFiles(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-	if r == "" || t == "" {
-		return nil, nil, nil
-	}
-	// Get the real mod file's content through the snapshot,
-	// as it may be open in an overlay.
-	realfh, err := s.GetFile(r)
-	if err != nil {
-		return nil, nil, err
-	}
-	// Go directly to disk to get the temporary mod file,
-	// since it is always on disk.
-	tempfh := s.view.session.cache.GetFile(t)
-	if tempfh == nil {
-		return nil, nil, errors.Errorf("temporary go.mod filehandle is nil")
-	}
-	return realfh, tempfh, nil
 }
 
 func (s *snapshot) PackageHandles(ctx context.Context, fh source.FileHandle) ([]source.PackageHandle, error) {
@@ -448,11 +428,16 @@ func (s *snapshot) addActionHandle(ah *actionHandle) {
 	s.actions[key] = ah
 }
 
-func (s *snapshot) getMetadataForURI(uri span.URI) (metadata []*metadata) {
-	// TODO(matloob): uri can be a file or directory. Should we update the mappings
-	// to map directories to their contained packages?
+func (s *snapshot) getMetadataForURI(uri span.URI) []*metadata {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	return s.getMetadataForURILocked(uri)
+}
+
+func (s *snapshot) getMetadataForURILocked(uri span.URI) (metadata []*metadata) {
+	// TODO(matloob): uri can be a file or directory. Should we update the mappings
+	// to map directories to their contained packages?
 
 	for _, id := range s.ids[uri] {
 		if m, ok := s.metadata[id]; ok {
@@ -512,13 +497,6 @@ func (s *snapshot) isWorkspacePackage(id packageID) (packagePath, bool) {
 	return scope, ok
 }
 
-func (s *snapshot) setWorkspacePackage(id packageID, pkgPath packagePath) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.workspacePackages[id] = pkgPath
-}
-
 func (s *snapshot) getFileURIs() []span.URI {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -533,7 +511,7 @@ func (s *snapshot) getFileURIs() []span.URI {
 // GetFile returns a File for the given URI. It will always succeed because it
 // adds the file to the managed set if needed.
 func (s *snapshot) GetFile(uri span.URI) (source.FileHandle, error) {
-	f, err := s.view.getFileLocked(uri)
+	f, err := s.view.getFile(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -568,112 +546,120 @@ func (s *snapshot) awaitLoaded(ctx context.Context) error {
 
 // reloadWorkspace reloads the metadata for all invalidated workspace packages.
 func (s *snapshot) reloadWorkspace(ctx context.Context) error {
-	scope := s.workspaceScope(ctx)
-	if scope == nil {
-		return nil
-	}
-	_, err := s.load(ctx, scope)
-	return err
-}
-
-func (s *snapshot) workspaceScope(ctx context.Context) interface{} {
+	// See which of the workspace packages are missing metadata.
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	var pkgPaths []packagePath
+	var pkgPaths []interface{}
 	for id, pkgPath := range s.workspacePackages {
 		if s.metadata[id] == nil {
 			pkgPaths = append(pkgPaths, pkgPath)
 		}
 	}
-	switch len(pkgPaths) {
-	case 0:
-		return nil
-	case len(s.workspacePackages):
-		return directoryURI(s.view.folder)
-	default:
-		return pkgPaths
-	}
-}
+	s.mu.Unlock()
 
-func (s *snapshot) clone(ctx context.Context, withoutURI span.URI) *snapshot {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	directIDs := map[packageID]struct{}{}
-	// Collect all of the package IDs that correspond to the given file.
-	// TODO: if the file has moved into a new package, we should invalidate that too.
-	for _, id := range s.ids[withoutURI] {
-		directIDs[id] = struct{}{}
-	}
-
-	// Get the current and original FileHandles for this URI.
-	currentFH := s.view.session.GetFile(withoutURI)
-	originalFH := s.files[withoutURI]
-
-	// Check if the file's package name or imports have changed,
-	// and if so, invalidate this file's packages' metadata.
-	invalidateMetadata := s.view.session.cache.shouldLoad(ctx, s, originalFH, currentFH)
-
-	// If a go.mod file's contents have changed, invalidate the metadata
-	// for all of the packages in the workspace.
-	if invalidateMetadata && currentFH.Identity().Kind == source.Mod {
-		for id := range s.workspacePackages {
-			directIDs[id] = struct{}{}
-		}
-	}
-
-	// If this is a file we don't yet know about,
-	// then we do not yet know what packages it should belong to.
-	// Make a rough estimate of what metadata to invalidate by finding the package IDs
-	// of all of the files in the same directory as this one.
-	// TODO(rstambler): Speed this up by mapping directories to filenames.
-	if len(directIDs) == 0 {
-		if dirStat, err := os.Stat(filepath.Dir(withoutURI.Filename())); err == nil {
-			for uri := range s.files {
-				if fdirStat, err := os.Stat(filepath.Dir(uri.Filename())); err == nil {
-					if os.SameFile(dirStat, fdirStat) {
-						for _, id := range s.ids[uri] {
-							directIDs[id] = struct{}{}
-						}
-					}
-				}
+	if len(pkgPaths) > 0 {
+		if m, err := s.load(ctx, pkgPaths...); err == nil {
+			for _, m := range m {
+				s.setWorkspacePackage(ctx, m)
 			}
 		}
 	}
 
-	// Invalidate reverse dependencies too.
-	// TODO(heschi): figure out the locking model and use transitiveReverseDeps?
-	transitiveIDs := make(map[packageID]struct{})
-	var addRevDeps func(packageID)
-	addRevDeps = func(id packageID) {
-		if _, seen := transitiveIDs[id]; seen {
-			return
+	// When we load ./... or a package path directly, we may not get packages
+	// that exist only in overlays. As a workaround, we search all of the files
+	// available in the snapshot and reload their metadata individually using a
+	// file= query if the metadata is unavailable.
+	if scopes := s.orphanedFileScopes(); len(scopes) > 0 {
+		m, err := s.load(ctx, scopes...)
+
+		// If we failed to load some files, i.e. they have no metadata,
+		// mark the failures so we don't bother retrying until the file's
+		// content changes.
+		//
+		// TODO(rstambler): This may be an overestimate if the load stopped
+		// early for an unrelated errors. Add a fallback?
+		//
+		// Check for context cancellation so that we don't incorrectly mark files
+		// as unloadable, but don't return before setting all workspace packages.
+		if ctx.Err() == nil && err != nil {
+			s.mu.Lock()
+			for _, scope := range scopes {
+				uri := span.URI(scope.(fileURI))
+				if s.getMetadataForURILocked(uri) == nil {
+					s.unloadableFiles[uri] = struct{}{}
+				}
+			}
+			s.mu.Unlock()
 		}
-		transitiveIDs[id] = struct{}{}
-		for _, rid := range s.getImportedByLocked(id) {
-			addRevDeps(rid)
+		for _, m := range m {
+			// If a package's files belong to this view, it is a workspace package
+			// and should be added to the set of workspace packages.
+			for _, uri := range m.compiledGoFiles {
+				if !contains(s.view.session.viewsOf(uri), s.view) {
+					continue
+				}
+				s.setWorkspacePackage(ctx, m)
+			}
 		}
 	}
-	for id := range directIDs {
-		addRevDeps(id)
-	}
-	// Invalidate metadata for the transitive dependencies,
-	// if they are x_tests and test variants.
-	//
-	// An example:
-	//
-	// The only way to reload the metadata for
-	// github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache [github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source.test]
-	// is by reloading github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source.
-	// That means we have to invalidate the metadata for
-	// github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source_test when invalidating metadata for
-	// github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache.
-	for id := range transitiveIDs {
-		if m := s.metadata[id]; m != nil && m.forTest != "" {
-			directIDs[id] = struct{}{}
+	// Create package handles for all of the workspace packages.
+	for _, id := range s.workspacePackageIDs() {
+		if _, err := s.packageHandle(ctx, id); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func (s *snapshot) orphanedFileScopes() []interface{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	scopeSet := make(map[span.URI]struct{})
+	for uri, fh := range s.files {
+		// Don't try to reload metadata for go.mod files.
+		if fh.Identity().Kind != source.Go {
+			continue
+		}
+		// Don't reload metadata for files we've already deemed unloadable.
+		if _, ok := s.unloadableFiles[uri]; ok {
+			continue
+		}
+		if s.getMetadataForURILocked(uri) == nil {
+			scopeSet[uri] = struct{}{}
+		}
+	}
+	var scopes []interface{}
+	for uri := range scopeSet {
+		scopes = append(scopes, fileURI(uri))
+	}
+	return scopes
+}
+
+func contains(views []*view, view *view) bool {
+	for _, v := range views {
+		if v == view {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *snapshot) setWorkspacePackage(ctx context.Context, m *metadata) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// A test variant of a package can only be loaded directly by loading
+	// the non-test variant with -test. Track the import path of the non-test variant.
+	pkgPath := m.pkgPath
+	if m.forTest != "" {
+		pkgPath = m.forTest
+	}
+	s.workspacePackages[m.id] = pkgPath
+}
+
+func (s *snapshot) clone(ctx context.Context, withoutURIs []span.URI) *snapshot {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	result := &snapshot{
 		id:                s.id + 1,
@@ -685,23 +671,99 @@ func (s *snapshot) clone(ctx context.Context, withoutURI span.URI) *snapshot {
 		actions:           make(map[actionKey]*actionHandle),
 		files:             make(map[span.URI]source.FileHandle),
 		workspacePackages: make(map[packageID]packagePath),
+		unloadableFiles:   make(map[span.URI]struct{}),
 	}
 
 	// Copy all of the FileHandles.
 	for k, v := range s.files {
 		result.files[k] = v
 	}
+	// Copy the set of unloadable files.
+	for k, v := range s.unloadableFiles {
+		result.unloadableFiles[k] = v
+	}
 
-	// Handle the invalidated file; it may have new contents or not exist.
-	if _, _, err := currentFH.Read(ctx); os.IsNotExist(err) {
-		delete(result.files, withoutURI)
-	} else {
-		result.files[withoutURI] = currentFH
+	// transitiveIDs keeps track of transitive reverse dependencies.
+	// If an ID is present in the map, invalidate its types.
+	// If an ID's value is true, invalidate its metadata too.
+	transitiveIDs := make(map[packageID]bool)
+
+	for _, withoutURI := range withoutURIs {
+		directIDs := map[packageID]struct{}{}
+
+		// Collect all of the package IDs that correspond to the given file.
+		// TODO: if the file has moved into a new package, we should invalidate that too.
+		for _, id := range s.ids[withoutURI] {
+			directIDs[id] = struct{}{}
+		}
+		// Get the current and original FileHandles for this URI.
+		currentFH := s.view.session.GetFile(withoutURI)
+		originalFH := s.files[withoutURI]
+
+		// Check if the file's package name or imports have changed,
+		// and if so, invalidate this file's packages' metadata.
+		invalidateMetadata := s.view.session.cache.shouldLoad(ctx, s, originalFH, currentFH)
+
+		// If a go.mod file's contents have changed, invalidate the metadata
+		// for all of the packages in the workspace.
+		if invalidateMetadata && currentFH.Identity().Kind == source.Mod {
+			for id := range s.workspacePackages {
+				directIDs[id] = struct{}{}
+			}
+		}
+
+		// If this is a file we don't yet know about,
+		// then we do not yet know what packages it should belong to.
+		// Make a rough estimate of what metadata to invalidate by finding the package IDs
+		// of all of the files in the same directory as this one.
+		// TODO(rstambler): Speed this up by mapping directories to filenames.
+		if len(directIDs) == 0 {
+			if dirStat, err := os.Stat(filepath.Dir(withoutURI.Filename())); err == nil {
+				for uri := range s.files {
+					if fdirStat, err := os.Stat(filepath.Dir(uri.Filename())); err == nil {
+						if os.SameFile(dirStat, fdirStat) {
+							for _, id := range s.ids[uri] {
+								directIDs[id] = struct{}{}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Invalidate reverse dependencies too.
+		// TODO(heschi): figure out the locking model and use transitiveReverseDeps?
+		var addRevDeps func(packageID)
+		addRevDeps = func(id packageID) {
+			if _, seen := transitiveIDs[id]; seen {
+				return
+			}
+			transitiveIDs[id] = invalidateMetadata
+			for _, rid := range s.getImportedByLocked(id) {
+				addRevDeps(rid)
+			}
+		}
+		for id := range directIDs {
+			addRevDeps(id)
+		}
+
+		// Handle the invalidated file; it may have new contents or not exist.
+		if _, _, err := currentFH.Read(ctx); os.IsNotExist(err) {
+			delete(result.files, withoutURI)
+		} else {
+			result.files[withoutURI] = currentFH
+		}
+		// Make sure to remove the changed file from the unloadable set.
+		delete(result.unloadableFiles, withoutURI)
 	}
 
 	// Collect the IDs for the packages associated with the excluded URIs.
 	for k, ids := range s.ids {
 		result.ids[k] = ids
+	}
+	// Copy the set of initally loaded packages.
+	for k, v := range s.workspacePackages {
+		result.workspacePackages[k] = v
 	}
 	// Copy the package type information.
 	for k, v := range s.packages {
@@ -717,21 +779,17 @@ func (s *snapshot) clone(ctx context.Context, withoutURI span.URI) *snapshot {
 		}
 		result.actions[k] = v
 	}
-	// Copy the set of initally loaded packages.
-	for k, v := range s.workspacePackages {
-		result.workspacePackages[k] = v
-	}
-
 	// Copy the package metadata. We only need to invalidate packages directly
 	// containing the affected file, and only if it changed in a relevant way.
 	for k, v := range s.metadata {
-		if _, ok := directIDs[k]; invalidateMetadata && ok {
+		if invalidateMetadata, ok := transitiveIDs[k]; invalidateMetadata && ok {
 			continue
 		}
 		result.metadata[k] = v
 	}
 	// Don't bother copying the importedBy graph,
 	// as it changes each time we update metadata.
+
 	return result
 }
 
