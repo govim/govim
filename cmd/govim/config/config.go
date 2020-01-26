@@ -103,6 +103,19 @@ type Config struct {
 	// results. Zero seconds means unlimited. Examples values: "0s", "100ms"
 	CompletionBudget *string `json:",omitempty"`
 
+	// ExperimentalTempModfile corresponds to the gopls config setting
+	// "tempModfile" which controls whether a temporary modfile is used in place
+	// of the main module's original go.mod file. When enabled, any
+	// user-initiated changes (to .go files) that would otherwise have resulted
+	// in changes to the original go.mod file, e.g. adding an import for a
+	// package whose module is not listed as a requirement, get raised as
+	// diagnostic warnings with suggested fixes which update the go.mod file.
+	// Those diagnostic warnings are not, however, yet in place: see
+	// https://go-review.googlesource.com/c/tools/+/216277.
+	//
+	// Default: false
+	ExperimentalTempModfile *bool `json:",omitempty"`
+
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
 	// over an identifier. It corresponds to the second argument to popup_create

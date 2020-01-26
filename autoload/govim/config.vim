@@ -100,6 +100,10 @@ function! s:validCompletionBudget(v)
   return s:validString(a:v)
 endfunction
 
+function! s:validExperimentalTempModfile(v)
+  return s:validBool(a:v)
+endfunction
+
 function! s:validExperimentalMouseTriggeredHoverPopupOptions(v)
   if has_key(a:v, "line")
     if type(a:v["line"]) != 0
@@ -130,6 +134,7 @@ let s:validators = {
       \ "CompleteUnimported": function("s:validCompleteUnimported"),
       \ "GoImportsLocalPrefix": function("s:validGoImportsLocalPrefix"),
       \ "CompletionBudget": function("s:validCompletionBudget"),
+      \ "ExperimentalTempModfile": function("s:validExperimentalTempModfile"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
       \ }

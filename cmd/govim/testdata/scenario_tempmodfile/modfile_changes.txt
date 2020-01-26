@@ -1,0 +1,36 @@
+# A simple test that verifies we get a diagnostic for changes
+# that need to be made to our go.mod file
+
+[!go1.14] skip '-modfile only supported in Go 1.14'
+
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+
+# Open main.go and save to ensure we are actually doing something via gopls
+vim ex 'e main.go'
+vim ex 'w'
+
+# Sleep because we don't have an event we are waiting for
+sleep $GOVIM_ERRLOGMATCH_WAIT
+
+# Verify that there have been no changes to go.mod
+cmp go.mod go.mod.golden
+
+# Verify that we have no diagnostics for any files
+vimexprwait errors.empty getqflist()
+
+-- go.mod --
+module mod.com
+
+-- go.mod.golden --
+module mod.com
+
+-- main.go --
+package main
+
+import "example.com/blah"
+
+func main() {
+	println(blah.Name)
+}
+-- errors.empty --
+[]

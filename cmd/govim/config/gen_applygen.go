@@ -34,6 +34,9 @@ func (r *Config) Apply(v *Config) {
 	if v.CompletionBudget != nil {
 		r.CompletionBudget = v.CompletionBudget
 	}
+	if v.ExperimentalTempModfile != nil {
+		r.ExperimentalTempModfile = v.ExperimentalTempModfile
+	}
 	if v.ExperimentalMouseTriggeredHoverPopupOptions != nil {
 		r.ExperimentalMouseTriggeredHoverPopupOptions = v.ExperimentalMouseTriggeredHoverPopupOptions
 	}

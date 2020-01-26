@@ -21,6 +21,7 @@ const (
 	goplsCompleteUnimported   = "completeUnimported"
 	goplsGoImportsLocalPrefix = "local"
 	goplsCompletionBudget     = "completionBudget"
+	goplsTempModfile          = "tempModfile"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -144,6 +145,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if g.vimstate.config.CompletionBudget != nil {
 		conf[goplsCompletionBudget] = *config.CompletionBudget
+	}
+	if g.vimstate.config.ExperimentalTempModfile != nil {
+		conf[goplsTempModfile] = *config.ExperimentalTempModfile
 	}
 	res[0] = conf
 
