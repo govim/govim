@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 
 	"github.com/govim/govim"
+	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/kr/pretty"
@@ -22,6 +24,7 @@ const (
 	goplsGoImportsLocalPrefix = "local"
 	goplsCompletionBudget     = "completionBudget"
 	goplsTempModfile          = "tempModfile"
+	goplsVerboseOutput        = "verboseOutput"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -115,7 +118,7 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	g.logGoplsClientf("Configuration: %v", pretty.Sprint(params))
 
 	g.vimstate.configLock.Lock()
-	config := g.vimstate.config
+	conf := g.vimstate.config
 	defer g.vimstate.configLock.Unlock()
 
 	// gopls now sends params.Items for each of the configured
@@ -126,30 +129,33 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 		return nil, fmt.Errorf("govim gopls client: expected at least one item, with the first section \"gopls\"")
 	}
 	res := make([]interface{}, len(params.Items))
-	conf := make(map[string]interface{})
-	conf[goplsConfigHoverKind] = "FullDocumentation"
-	if config.CompletionDeepCompletions != nil {
-		conf[goplsDeepCompletion] = *config.CompletionDeepCompletions
+	goplsConfig := make(map[string]interface{})
+	goplsConfig[goplsConfigHoverKind] = "FullDocumentation"
+	if conf.CompletionDeepCompletions != nil {
+		goplsConfig[goplsDeepCompletion] = *conf.CompletionDeepCompletions
 	}
-	if config.CompletionMatcher != nil {
-		conf[goplsCompletionMatcher] = *config.CompletionMatcher
+	if conf.CompletionMatcher != nil {
+		goplsConfig[goplsCompletionMatcher] = *conf.CompletionMatcher
 	}
-	if config.Staticcheck != nil {
-		conf[goplsStaticcheck] = *config.Staticcheck
+	if conf.Staticcheck != nil {
+		goplsConfig[goplsStaticcheck] = *conf.Staticcheck
 	}
-	if config.CompleteUnimported != nil {
-		conf[goplsCompleteUnimported] = *config.CompleteUnimported
+	if conf.CompleteUnimported != nil {
+		goplsConfig[goplsCompleteUnimported] = *conf.CompleteUnimported
 	}
-	if g.vimstate.config.GoImportsLocalPrefix != nil {
-		conf[goplsGoImportsLocalPrefix] = *config.GoImportsLocalPrefix
+	if conf.GoImportsLocalPrefix != nil {
+		goplsConfig[goplsGoImportsLocalPrefix] = *conf.GoImportsLocalPrefix
 	}
-	if g.vimstate.config.CompletionBudget != nil {
-		conf[goplsCompletionBudget] = *config.CompletionBudget
+	if conf.CompletionBudget != nil {
+		goplsConfig[goplsCompletionBudget] = *conf.CompletionBudget
 	}
 	if g.vimstate.config.ExperimentalTempModfile != nil {
-		conf[goplsTempModfile] = *config.ExperimentalTempModfile
+		goplsConfig[goplsTempModfile] = *conf.ExperimentalTempModfile
 	}
-	res[0] = conf
+	if os.Getenv(string(config.EnvVarGoplsVerbose)) == "true" {
+		goplsConfig[goplsVerboseOutput] = true
+	}
+	res[0] = goplsConfig
 
 	g.logGoplsClientf("Configuration response: %v", pretty.Sprint(res))
 	return res, nil

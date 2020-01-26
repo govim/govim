@@ -21,6 +21,10 @@ const (
 	// EnvVarGoplsDebug is an environment variable which, when set, will be
 	// used to pass the value as flags to gopls.
 	EnvVarGoplsFlags EnvVar = "GOVIM_GOPLS_FLAGS"
+
+	// EnvVarGoplsVerbose is an environment variable which, when set to the
+	// value "true", configures gopls' verboseOutput option.
+	EnvVarGoplsVerbose EnvVar = "GOVIM_GOPLS_VERBOSE_OUTPUT"
 )
 
 //go:generate go run github.com/govim/govim/cmd/govim/config/internal/applygen Config
