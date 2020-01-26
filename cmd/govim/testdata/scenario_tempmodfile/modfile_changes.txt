@@ -16,7 +16,7 @@ sleep $GOVIM_ERRLOGMATCH_WAIT
 cmp go.mod go.mod.golden
 
 # Verify that we have no diagnostics for any files
-vimexprwait errors.empty getqflist()
+vimexprwait errors.empty GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
