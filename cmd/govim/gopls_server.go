@@ -328,3 +328,59 @@ func (l loggingGoplsServer) NonstandardRequest(ctxt context.Context, method stri
 	l.Logf("gopls.NonstandardRequest() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
+
+func (l loggingGoplsServer) IncomingCalls(ctxt context.Context, params *protocol.CallHierarchyIncomingCallsParams) ([]protocol.CallHierarchyIncomingCall, error) {
+	l.Logf("gopls.IncomingCalls() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.IncomingCalls(ctxt, params)
+	l.Logf("gopls.IncomingCalls() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) OutgoingCalls(ctxt context.Context, params *protocol.CallHierarchyOutgoingCallsParams) ([]protocol.CallHierarchyOutgoingCall, error) {
+	l.Logf("gopls.OutgoingCalls() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.OutgoingCalls(ctxt, params)
+	l.Logf("gopls.OutgoingCalls() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) PrepareCallHierarchy(ctxt context.Context, params *protocol.CallHierarchyPrepareParams) ([]protocol.CallHierarchyItem, error) {
+	l.Logf("gopls.PrepareCallHierarchy() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.PrepareCallHierarchy(ctxt, params)
+	l.Logf("gopls.PrepareCallHierarchy() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) SemanticTokens(ctxt context.Context, params *protocol.SemanticTokensParams) (*protocol.SemanticTokens, error) {
+	l.Logf("gopls.SemanticTokens() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.SemanticTokens(ctxt, params)
+	l.Logf("gopls.SemanticTokens() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) SemanticTokensEdits(ctxt context.Context, params *protocol.SemanticTokensEditsParams) (interface{}, error) {
+	l.Logf("gopls.SemanticTokensEdits() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.SemanticTokensEdits(ctxt, params)
+	l.Logf("gopls.SemanticTokensEdits() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) SemanticTokensRange(ctxt context.Context, params *protocol.SemanticTokensRangeParams) (*protocol.SemanticTokens, error) {
+	l.Logf("gopls.SemanticTokensRange() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.SemanticTokensRange(ctxt, params)
+	l.Logf("gopls.SemanticTokensRange() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) WorkDoneProgressCancel(ctxt context.Context, params *protocol.WorkDoneProgressCancelParams) error {
+	l.Logf("gopls.WorkDoneProgressCancel() call; params:\n%v", pretty.Sprint(params))
+	err := l.u.WorkDoneProgressCancel(ctxt, params)
+	l.Logf("gopls.WorkDoneProgressCancel() return; err: %v\n", err)
+	return err
+}
+
+func (l loggingGoplsServer) WorkDoneProgressCreate(ctxt context.Context, params *protocol.WorkDoneProgressCreateParams) error {
+	l.Logf("gopls.WorkDoneProgressCreate() call; params:\n%v", pretty.Sprint(params))
+	err := l.u.WorkDoneProgressCreate(ctxt, params)
+	l.Logf("gopls.WorkDoneProgressCreate() return; err: %v\n", err)
+	return err
+}
