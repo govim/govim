@@ -113,7 +113,18 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	if !vimconfig.EqualBool(v.config.HighlightDiagnostics, preConfig.HighlightDiagnostics) {
 		if v.config.HighlightDiagnostics == nil || !*v.config.HighlightDiagnostics {
 			// HighlightDiagnostics is now not on - remove existing text properties
-			v.redefineHighlights([]types.Diagnostic{}, true)
+			v.BatchStart()
+			for bufnr, buf := range v.buffers {
+				if !buf.Loaded {
+					continue // vim removes properties when a buffer is unloaded
+				}
+				v.BatchChannelCall("prop_remove", struct {
+					ID    int `json:"id"`
+					BufNr int `json:"bufnr"`
+					All   int `json:"all"`
+				}{0, bufnr, 1})
+			}
+			v.BatchEnd()
 		} else {
 			if err := v.redefineHighlights(v.diagnostics(), true); err != nil {
 				return nil, fmt.Errorf("failed to update diagnostic highlights: %v", err)
