@@ -224,7 +224,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	}
 	if defaults == nil {
 		defaults = &config.Config{
-			FormatOnSave:            vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImports),
+			FormatOnSave:            vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImportsGoFmt),
 			QuickfixAutoDiagnostics: vimconfig.BoolVal(true),
 			QuickfixSigns:           vimconfig.BoolVal(true),
 			Staticcheck:             vimconfig.BoolVal(false),

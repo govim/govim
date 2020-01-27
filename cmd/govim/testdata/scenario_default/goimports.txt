@@ -54,10 +54,10 @@ package blah
 
 import "os"
 
-const (
-	x = 5
-	y = os.PathSeparator
-)
+const ( x = 5
+y = os.PathSeparator
+ )
+
 -- errors.golden --
 [
   {
