@@ -343,10 +343,33 @@ func installGoplsToTempDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp install directory for gopls: %v", err)
 	}
-	cmd := exec.Command("go", "install", testsetup.RaceOrNot(), "golang.org/x/tools/gopls")
-	cmd.Env = append(os.Environ(), "GOBIN="+td)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("failed to install temp version of golang.org/x/tools/gopls: %v\n%s", err, out)
+	if os.Getenv(string(config.EnvVarUseGoplsFromPath)) == "true" {
+		goplsPath, err := exec.LookPath("gopls")
+		if err != nil {
+			return "", fmt.Errorf("failed to find gopls in PATH: %v", err)
+		}
+		src, err := os.Open(goplsPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to open %v: %v", goplsPath, err)
+		}
+		defer src.Close()
+		dstPath := filepath.Join(td, "gopls")
+		dst, err := os.OpenFile(dstPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
+		if err != nil {
+			return "", fmt.Errorf("failed to create %v: %v", dstPath, err)
+		}
+		if _, err := io.Copy(dst, src); err != nil {
+			return "", fmt.Errorf("failed to copy %v to %v: %v", goplsPath, dstPath, err)
+		}
+		if err := dst.Close(); err != nil {
+			return "", fmt.Errorf("failed to close %v: %v", dstPath, err)
+		}
+	} else {
+		cmd := exec.Command("go", "install", testsetup.RaceOrNot(), "golang.org/x/tools/gopls")
+		cmd.Env = append(os.Environ(), "GOBIN="+td)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("failed to install temp version of golang.org/x/tools/gopls: %v\n%s", err, out)
+		}
 	}
 	return td, nil
 }
