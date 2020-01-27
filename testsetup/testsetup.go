@@ -41,7 +41,7 @@ const (
 	// and SafeState* functionality.
 	MinVimSafeState = "v8.1.2056"
 
-	LatestVim = "v8.2.0025"
+	LatestVim = "v8.2.0151"
 )
 
 var (
