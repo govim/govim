@@ -51,7 +51,7 @@ func (v *vimstate) textpropDefine() error {
 }
 
 func (v *vimstate) redefineHighlights(diags []types.Diagnostic, force bool) error {
-	if !force && (v.config.HighlightDiagnostics == nil || !*v.config.HighlightDiagnostics) {
+	if v.config.HighlightDiagnostics == nil || !*v.config.HighlightDiagnostics {
 		return nil
 	}
 	v.diagnosticsChangedLock.Lock()
