@@ -1,0 +1,38 @@
+# Test that ominfunc complete works for standard library definitions.
+
+vim ex 'e main.go'
+vim ex 'call cursor(9,22)'
+vim ex 'call feedkeys(\"i\\<C-X>\\<C-O>\\<ESC>\", \"xt\")'
+vim ex 'w'
+cmp main.go main.go.golden
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	fmt.Println(time.Kit)
+}
+-- main.go.golden --
+package main
+
+import (
+	"fmt"
+	"time"
+)
+
+func main() {
+	fmt.Println(time.Kitchen)
+}
