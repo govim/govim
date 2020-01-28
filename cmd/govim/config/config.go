@@ -120,6 +120,12 @@ type Config struct {
 	// Default: false
 	ExperimentalTempModfile *bool `json:",omitempty"`
 
+	// GoplsEnv configures the set of environment variables gopls is using in
+	// calls to go/packages. This is most easily understood in the context of
+	// build tags/constraints where GOOS/GOARCH could be set, or by setting set
+	// GOFLAGS=-modfile=go.local.mod in order to use an alternative go.mod file.
+	GoplsEnv *map[string]string `json:",omitempty"`
+
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
 	// over an identifier. It corresponds to the second argument to popup_create
