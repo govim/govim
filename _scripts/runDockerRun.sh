@@ -24,3 +24,5 @@ else
 fi
 
 docker run $proxy --env-file ./_scripts/.docker_env_file -e "VIM_FLAVOR=${VIM_FLAVOR:-vim}" $artefacts -v $PWD:/home/$USER/govim -w /home/$USER/govim --rm govim ./_scripts/dockerRun.sh
+
+"${BASH_SOURCE%/*}/tagDockerLatest.sh"
