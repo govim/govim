@@ -113,18 +113,7 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	if !vimconfig.EqualBool(v.config.HighlightDiagnostics, preConfig.HighlightDiagnostics) {
 		if v.config.HighlightDiagnostics == nil || !*v.config.HighlightDiagnostics {
 			// HighlightDiagnostics is now not on - remove existing text properties
-			v.BatchStart()
-			for bufnr, buf := range v.buffers {
-				if !buf.Loaded {
-					continue // vim removes properties when a buffer is unloaded
-				}
-				v.BatchChannelCall("prop_remove", struct {
-					ID    int `json:"id"`
-					BufNr int `json:"bufnr"`
-					All   int `json:"all"`
-				}{0, bufnr, 1})
-			}
-			v.BatchEnd()
+			v.removeTextProps(types.DiagnosticTextPropID)
 		} else {
 			if err := v.redefineHighlights(v.diagnostics(), true); err != nil {
 				return nil, fmt.Errorf("failed to update diagnostic highlights: %v", err)
@@ -201,6 +190,14 @@ func (v *vimstate) BatchStart() {
 		panic(fmt.Errorf("called BatchStart whilst in a batch"))
 	}
 	v.currBatch = &batch{}
+}
+
+func (v *vimstate) BatchStartIfNeeded() bool {
+	if v.currBatch != nil {
+		return false
+	}
+	v.currBatch = &batch{}
+	return true
 }
 
 type batchResult func() json.RawMessage

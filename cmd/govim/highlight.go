@@ -62,19 +62,10 @@ func (v *vimstate) redefineHighlights(diags []types.Diagnostic, force bool) erro
 		return nil
 	}
 
+	v.removeTextProps(types.DiagnosticTextPropID)
+
 	v.BatchStart()
 	defer v.BatchCancelIfNotEnded()
-	for bufnr, buf := range v.buffers {
-		if !buf.Loaded {
-			continue // vim removes properties when a buffer is unloaded
-		}
-		v.BatchChannelCall("prop_remove", struct {
-			ID    int `json:"id"`
-			BufNr int `json:"bufnr"`
-			All   int `json:"all"`
-		}{0, bufnr, 1})
-	}
-
 	for _, d := range diags {
 		// Do not add textprops to unknown buffers
 		if d.Buf < 0 {
@@ -105,4 +96,27 @@ func (v *vimstate) redefineHighlights(diags []types.Diagnostic, force bool) erro
 
 	v.BatchEnd()
 	return nil
+}
+
+func (v *vimstate) removeTextProps(id types.TextPropID) {
+	var didStart bool
+	if didStart = v.BatchStartIfNeeded(); didStart {
+		defer v.BatchCancelIfNotEnded()
+	}
+
+	for bufnr, buf := range v.buffers {
+		if !buf.Loaded {
+			continue // vim removes properties when a buffer is unloaded
+		}
+		v.BatchChannelCall("prop_remove", struct {
+			ID    int `json:"id"`
+			BufNr int `json:"bufnr"`
+			All   int `json:"all"`
+		}{int(id), bufnr, 1})
+	}
+
+	if didStart {
+		// prop_remove returns number of removed properties per call
+		v.BatchEnd()
+	}
 }

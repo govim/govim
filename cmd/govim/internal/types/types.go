@@ -290,3 +290,10 @@ var SeverityHoverHighlight = map[Severity]config.Highlight{
 	SeverityInfo: config.HighlightHoverInfo,
 	SeverityHint: config.HighlightHoverHint,
 }
+
+// TextPropID is the govim internal mapping of ID used when adding/removing text properties
+type TextPropID int
+
+const (
+	DiagnosticTextPropID = 0
+)
