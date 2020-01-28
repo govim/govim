@@ -4,5 +4,5 @@ import "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/rename/
 
 func Other() {
 	crosspkg.Bar
-	crosspkg.Foo()
+	crosspkg.Foo() //@rename("Foo", "Flamingo")
 }

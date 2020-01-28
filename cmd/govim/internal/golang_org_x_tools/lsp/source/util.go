@@ -263,22 +263,13 @@ func nodeAtPos(nodes []ast.Node, pos token.Pos) (ast.Node, int) {
 }
 
 // indexExprAtPos returns the index of the expression containing pos.
-func indexExprAtPos(pos token.Pos, args []ast.Expr) int {
+func exprAtPos(pos token.Pos, args []ast.Expr) int {
 	for i, expr := range args {
 		if expr.Pos() <= pos && pos <= expr.End() {
 			return i
 		}
 	}
 	return len(args)
-}
-
-func exprAtPos(pos token.Pos, args []ast.Expr) ast.Expr {
-	for _, expr := range args {
-		if expr.Pos() <= pos && pos <= expr.End() {
-			return expr
-		}
-	}
-	return nil
 }
 
 // fieldSelections returns the set of fields that can
@@ -617,6 +608,9 @@ func SortDiagnostics(d []Diagnostic) {
 func CompareDiagnostic(a, b Diagnostic) int {
 	if r := protocol.CompareRange(a.Range, b.Range); r != 0 {
 		return r
+	}
+	if a.Source < b.Source {
+		return -1
 	}
 	if a.Message < b.Message {
 		return -1
