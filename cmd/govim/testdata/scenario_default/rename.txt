@@ -1,14 +1,21 @@
 # Test that renaming of identifiers works
 
+# Rename within the same package
 vim ex 'e main.go'
-vim ex 'call cursor(8,7)'
+vim ex 'call cursor(12,7)'
 vim ex 'call execute(\"GOVIMRename banana\")'
 vim ex 'silent noautocmd wall'
-vim -indent call execute '["ls"]'
-#stdout '"\n  1 %a   \\"main.go\\"                      line 7\n  2 #a   \"'$WORK/other.go'\" line 0"'
-#! stderr .+
 cmp main.go main.go.banana
 cmp other.go other.go.banana
+
+skip 'Pending a fix for golang.org/issues/36743'
+
+# Rename of an identifier in another package
+vim ex 'call cursor(14,16)'
+vim ex 'call execute(\"GOVIMRename Goodbye\")'
+vim ex 'silent noautocmd wall'
+cmp main.go main.go.goodbye
+cmp p/p.go p/p.go.goodbye
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -21,24 +28,50 @@ go 1.12
 -- main.go --
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"mod.com/p"
+)
 
 var i int
 
 func main() {
 	i += i + 5
 	fmt.Printf("i: %v\n", i)
+	fmt.Println(p.Hello)
 }
 -- main.go.banana --
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"mod.com/p"
+)
 
 var banana int
 
 func main() {
 	banana += banana + 5
 	fmt.Printf("i: %v\n", banana)
+	fmt.Println(p.Hello)
+}
+-- main.go.goodbye --
+package main
+
+import (
+	"fmt"
+
+	"mod.com/p"
+)
+
+var banana int
+
+func main() {
+	banana += banana + 5
+	fmt.Printf("i: %v\n", banana)
+	fmt.Println(p.Goodbye)
 }
 -- other.go --
 package main
@@ -52,3 +85,11 @@ package main
 func DoIt() {
 	banana = 6 + banana
 }
+-- p/p.go --
+package p
+
+const Hello = "hello"
+-- p/p.go.goodbye --
+package p
+
+const Goodbye = "hello"
