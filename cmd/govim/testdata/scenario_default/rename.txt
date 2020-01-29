@@ -8,7 +8,7 @@ vim ex 'silent noautocmd wall'
 cmp main.go main.go.banana
 cmp other.go other.go.banana
 
-skip 'Pending a fix for golang.org/issues/36743'
+[golang.org/issues/36743] skip
 
 # Rename of an identifier in another package
 vim ex 'call cursor(14,16)'
