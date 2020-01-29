@@ -1,0 +1,127 @@
+# Tests that references to the identifier at the cursor is being highlighted when the user
+# goes idle. Since user idle detection is disabled in tests, GOVIM_internal_SetUserBusy()
+# is invoked directly.
+
+vim ex 'e main.go'
+
+# Placing the cursor on "foo" should highlight all other occations of foo
+vim ex 'call cursor(5,5)'
+vim ex 'call GOVIM_internal_SetUserBusy(1)'
+vim ex 'call GOVIM_internal_SetUserBusy(0)'
+vimexprwait foo_references.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+
+
+# Placing the cursor on "fmt" should highlight all other occations of fmt
+vim ex 'call cursor(9,2)'
+vim ex 'call GOVIM_internal_SetUserBusy(1)'
+vim ex 'call GOVIM_internal_SetUserBusy(0)'
+vim ex 'w'
+vimexprwait fmt_references.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+import "fmt"
+
+var foo = 1
+var bar = 2
+
+func main() {
+	fmt.Printf("This is a test %v\n", foo)
+	fmt.Printf("This is another test %v\n", foo)
+	fmt.Printf("This is also a test %v\n", foo)
+}
+
+-- foo_references.golden --
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 36,
+      "end": 1,
+      "id": 1,
+      "length": 3,
+      "start": 1,
+      "type": "GOVIMReferences"
+    }
+  ],
+  [
+    {
+      "col": 42,
+      "end": 1,
+      "id": 1,
+      "length": 3,
+      "start": 1,
+      "type": "GOVIMReferences"
+    }
+  ],
+  [
+    {
+      "col": 41,
+      "end": 1,
+      "id": 1,
+      "length": 3,
+      "start": 1,
+      "type": "GOVIMReferences"
+    }
+  ],
+  [],
+  []
+]
+-- fmt_references.golden --
+[
+  [],
+  [],
+  [
+    {
+      "col": 8,
+      "end": 1,
+      "id": 1,
+      "length": 5,
+      "start": 1,
+      "type": "GOVIMReferences"
+    }
+  ],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 1,
+      "length": 3,
+      "start": 1,
+      "type": "GOVIMReferences"
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 1,
+      "length": 3,
+      "start": 1,
+      "type": "GOVIMReferences"
+    }
+  ],
+  []
+]

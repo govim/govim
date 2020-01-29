@@ -68,6 +68,10 @@ function! s:validHighlightDiagnostics(v)
     return s:validBool(a:v)
 endfunction
 
+function! s:validHighlightReferences(v)
+    return s:validBool(a:v)
+endfunction
+
 function! s:validHoverDiagnostics(v)
     return s:validBool(a:v)
 endfunction
@@ -141,6 +145,7 @@ let s:validators = {
       \ "CompletionMatcher": function("s:validCompletionMatcher"),
       \ "QuickfixSigns": function("s:validQuickfixSigns"),
       \ "HighlightDiagnostics": function("s:validHighlightDiagnostics"),
+      \ "HighlightReferences": function("s:validHighlightReferences"),
       \ "HoverDiagnostics": function("s:validHoverDiagnostics"),
       \ "Staticcheck": function("s:validStaticcheck"),
       \ "CompleteUnimported": function("s:validCompleteUnimported"),

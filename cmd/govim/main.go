@@ -204,6 +204,17 @@ type govimplugin struct {
 	// contain old data. Call diagnostics() to get the latest instead.
 	diagnosticsCache []types.Diagnostic
 
+	// currentReferences is the range of each LSP documentHighlights under the cursor
+	// It is used to avoid updating the text property when the cursor is moved within the
+	// existing highlights.
+	currentReferences []*types.Range
+
+	// cancelDocHighlight is the function to cancel the ongoing LSP documentHighlight call. It must
+	// be called before assigning a new value (or nil) to it. It is nil when there is no ongoing
+	// call.
+	cancelDocHighlight     context.CancelFunc
+	cancelDocHighlightLock sync.Mutex
+
 	bufferUpdates chan *bufferUpdate
 
 	// TODO: See comment at top of (*govimplugin.Configuration)
@@ -229,6 +240,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			QuickfixSigns:           vimconfig.BoolVal(true),
 			Staticcheck:             vimconfig.BoolVal(false),
 			HighlightDiagnostics:    vimconfig.BoolVal(true),
+			HighlightReferences:     vimconfig.BoolVal(true),
 			HoverDiagnostics:        vimconfig.BoolVal(true),
 			TempModfile:             vimconfig.BoolVal(false),
 		}
@@ -486,6 +498,8 @@ func (g *govimplugin) defineHighlights() {
 		fmt.Sprintf("highlight default link %s %s", config.HighlightHoverHint, config.HighlightHoverInfo),
 
 		fmt.Sprintf("highlight default %s cterm=none gui=italic ctermfg=%d guifg=#8a8a8a", config.HighlightHoverDiagSrc, diagSrcColor),
+
+		fmt.Sprintf("highlight default %s term=reverse cterm=reverse gui=reverse", config.HighlightReferences),
 	} {
 		g.vimstate.BatchChannelCall("execute", hi)
 	}

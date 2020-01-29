@@ -117,6 +117,17 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 		}
 	}
 
+	if !vimconfig.EqualBool(v.config.HighlightReferences, preConfig.HighlightReferences) {
+		if v.config.HighlightReferences == nil || !*v.config.HighlightReferences {
+			// HighlightReferences is now not on - remove existing text properties
+			v.removeTextProps(types.ReferencesTextPropID)
+		} else {
+			if err := v.updateReferenceHighlight(true); err != nil {
+				return nil, fmt.Errorf("failed to update reference highlight: %v", err)
+			}
+		}
+	}
+
 	// v.server will be nil when we are Init()-ing govim. The init process
 	// triggers a "manual" call of govim#config#Set() and hence this function
 	// gets called before we have even started gopls.
@@ -160,9 +171,15 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	var isBusy int
 	v.Parse(args[0], &isBusy)
 	v.userBusy = isBusy != 0
+
+	if err := v.updateReferenceHighlight(!v.userBusy); err != nil {
+		return nil, err
+	}
+
 	if v.userBusy {
 		return nil, nil
 	}
+
 	return nil, v.handleDiagnosticsChanged()
 }
 
