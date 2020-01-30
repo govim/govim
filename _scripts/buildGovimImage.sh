@@ -34,4 +34,4 @@ fi
 
 cat Dockerfile.user \
 	| GO_VERSION=$GO_VERSION VIM_FLAVOR=$VIM_FLAVOR VIM_VERSION=$VIM_VERSION envsubst '$GO_VERSION,$VIM_FLAVOR,$VIM_VERSION' \
-	| docker build -t govim --build-arg USER=$USER --build-arg UID=$UID --build-arg GID=$(id -g $USER) -
+	| docker build --progress plain -t govim --build-arg USER=$USER --build-arg UID=$UID --build-arg GID=$(id -g $USER) -
