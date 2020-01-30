@@ -7,10 +7,10 @@ vim ex 'set splitright'
 # Definition in unopened buffer; vsplit
 vim ex 'set switchbuf=vsplit'
 vim ex 'e '$WORK/p.go
-vim ex 'call cursor(5,17)'
+vim ex 'call cursor(5,20)'
 vim ex 'GOVIMGoToDef'
-vim expr 'bufname(\"\")'
-stdout '^\Q"'$WORK'/q/q.go"\E$'
+vim expr 'expand(''%:p'')'
+stdout '^\Q"'$WORK'/.home/gopath/pkg/mod/example.com/blah@v1.0.0/main.go"\E$'
 vim expr '[winnr(), tabpagenr()]'
 stdout '^\Q[2,1]\E$'
 vim expr 'string([getcurpos()[1], getcurpos()[2]])'
@@ -27,24 +27,13 @@ module mod.com/p
 
 go 1.12
 
-replace mod.com/q => ./q
-
+require example.com/blah v1.0.0
 -- p.go --
 package p
 
-import "mod.com/q"
+import "example.com/blah"
 
-const Name1 = q.Name
+const Name1 = blah.Name
 const Name2 = SameFile
 
 const SameFile = "samefile"
-
--- q/go.mod --
-module mod.com/q
-
-go 1.12
-
--- q/q.go --
-package q
-
-const Name = "package q"

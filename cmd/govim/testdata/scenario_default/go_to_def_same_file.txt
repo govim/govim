@@ -8,7 +8,7 @@ vim ex 'set splitright'
 vim ex 'e '$WORK/p.go
 vim ex 'call cursor(6,15)'
 vim ex 'GOVIMGoToDef'
-vim expr 'bufname(\"\")'
+vim expr 'expand(''%:p'')'
 stdout '^\Q"'$WORK'/p.go"\E$'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[8,7]\E$'
@@ -33,13 +33,3 @@ const Name1 = q.Name
 const Name2 = SameFile
 
 const SameFile = "samefile"
-
--- q/go.mod --
-module mod.com/q
-
-go 1.12
-
--- q/q.go --
-package q
-
-const Name = "package q"

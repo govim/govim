@@ -8,14 +8,14 @@ vim ex 'set splitright'
 vim ex 'e '$WORK/p.go
 vim ex 'call cursor(5,18)'
 vim ex 'GOVIMGoToDef'
-vim expr 'bufname(\"\")'
+vim expr 'expand(''%:p'')'
 
 # Check that we end up somewhere in GOROOT/src/time
 stdout '^\Q"'$GOROOT'/src/time/'
 
 # Now jump back and check we are where we started
 vim ex 'GOVIMGoToPrevDef'
-vim expr 'bufname(\"\")'
+vim expr 'expand(''%:p'')'
 stdout '^\Q"'$WORK'/p.go"\E$'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
 stdout '^\Q[5,18]\E$'

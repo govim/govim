@@ -4,18 +4,21 @@
 vim ex 'set splitbelow'
 vim ex 'set splitright'
 
+# Ensure the module cache is populated
+go mod download
+
 # Definition in an open window in non-current tab
 vim ex 'set switchbuf=usetab'
-vim ex 'e '$WORK/q/q.go
+vim ex 'e '$WORK'/.home/gopath/pkg/mod/example.com/blah@v1.0.0/main.go'
 vim expr '[winnr(), tabpagenr()]'
 stdout '^\Q[1,1]\E$'
 vim ex 'tabnew '$WORK/p.go
 vim expr '[winnr(), tabpagenr()]'
 stdout '^\Q[1,2]\E$'
-vim ex 'call cursor(5,17)'
+vim ex 'call cursor(5,20)'
 vim ex 'GOVIMGoToDef'
-vim expr 'bufname(\"\")'
-stdout '^\Q"'$WORK'/q/q.go"\E$'
+vim expr 'expand(''%:p'')'
+stdout '^\Q"'$WORK'/.home/gopath/pkg/mod/example.com/blah@v1.0.0/main.go"\E$'
 vim expr '[winnr(), tabpagenr()]'
 stdout '^\Q[1,1]\E$'
 vim expr 'string([getcurpos()[1], getcurpos()[2]])'
@@ -30,24 +33,13 @@ module mod.com/p
 
 go 1.12
 
-replace mod.com/q => ./q
-
+require example.com/blah v1.0.0
 -- p.go --
 package p
 
-import "mod.com/q"
+import "example.com/blah"
 
-const Name1 = q.Name
+const Name1 = blah.Name
 const Name2 = SameFile
 
 const SameFile = "samefile"
-
--- q/go.mod --
-module mod.com/q
-
-go 1.12
-
--- q/q.go --
-package q
-
-const Name = "package q"
