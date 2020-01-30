@@ -13,7 +13,6 @@ import (
 	"go/token"
 	"io"
 	"io/ioutil"
-	stdlog "log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -30,6 +29,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 	errors "golang.org/x/xerrors"
 )
@@ -355,9 +355,9 @@ func (v *view) refreshProcessEnv() {
 	v.importsMu.Unlock()
 
 	// We don't have a context handy to use for logging, so use the stdlib for now.
-	stdlog.Printf("background imports cache refresh starting")
+	log.Print(v.baseCtx, "background imports cache refresh starting")
 	err := imports.PrimeCache(context.Background(), env)
-	stdlog.Printf("background refresh finished after %v with err: %v", time.Since(start), err)
+	log.Print(v.baseCtx, fmt.Sprintf("background refresh finished after %v", time.Since(start)), tag.Of("Error", err))
 
 	v.importsMu.Lock()
 	v.cacheRefreshDuration = time.Since(start)
@@ -402,12 +402,6 @@ func (v *view) buildProcessEnv(ctx context.Context) (*imports.ProcessEnv, error)
 		env.GOFLAGS += strings.Join(cfg.BuildFlags, " ")
 	}
 	return env, nil
-}
-
-func (v *view) fileVersion(filename string) string {
-	uri := span.FileURI(filename)
-	fh := v.session.GetFile(uri)
-	return fh.Identity().String()
 }
 
 func (v *view) mapFile(uri span.URI, f *fileBase) {
@@ -557,22 +551,13 @@ func (v *view) initialize(ctx context.Context, s *snapshot) {
 			if err != nil {
 				return err
 			}
-			// Keep track of the workspace packages.
+			// Find the builtin package in order to handle it separately.
 			for _, m := range meta {
-				// Make sure to handle the builtin package separately
-				// Don't set it as a workspace package.
 				if m.pkgPath == "builtin" {
-					if err := s.view.buildBuiltinPackage(ctx, m); err != nil {
-						return err
-					}
-					continue
-				}
-				s.setWorkspacePackage(ctx, m)
-				if _, err := s.packageHandle(ctx, m.id); err != nil {
-					return err
+					return s.view.buildBuiltinPackage(ctx, m)
 				}
 			}
-			return nil
+			return errors.Errorf("failed to load the builtin package")
 		}()
 		if err != nil {
 			log.Error(ctx, "initial workspace load failed", err)
