@@ -53,13 +53,14 @@ var (
 func init() {
 	v := os.Getenv(testsetup.EnvErrLogMatchWait)
 	if v == "" {
-		DefaultErrLogMatchWait = "30s"
-	} else {
-		if _, err := time.ParseDuration(v); err != nil {
-			panic(fmt.Errorf("failed to parse duration %q from %v: %v", v, testsetup.EnvErrLogMatchWait, err))
-		}
-		DefaultErrLogMatchWait = v
+		v = "30s"
 	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		panic(fmt.Errorf("failed to parse duration %q from %v: %v", v, testsetup.EnvErrLogMatchWait, err))
+	}
+	d = time.Duration(testsetup.RaceSlowndown(d))
+	DefaultErrLogMatchWait = fmt.Sprintf("%v", d)
 }
 
 // TODO - this code is a mess and needs to be fixed

@@ -30,6 +30,10 @@ const (
 	// GOVIM_TESTSCRIPT_ISSUES=. will cause all issue tracker conditions
 	// (e.g. [golang.org/issues/1234]) to not be satisfied.
 	EnvTestscriptIssues = "GOVIM_TESTSCRIPT_ISSUES"
+
+	// EnvTestRaceSlowdown is a floating point factor by which to adjust
+	// EnvErrLogMatchWait for race tests
+	EnvTestRaceSlowdown = "GOVIM_TEST_RACE_SLOWDOWN"
 )
 
 // user environment variables

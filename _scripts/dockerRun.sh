@@ -76,11 +76,11 @@ export GOVIM_RUN_INSTALL_TESTSCRIPTS=true
 export GOVIM_GOPLS_VERBOSE_OUTPUT=true
 
 go generate $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
-go test $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
+go run ./internal/cmd/dots go test $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 
 if [[ "$runRace" == "true" ]]
 then
-	go test -race $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
+	go run ./internal/cmd/dots go test -race -timeout 0s $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 fi
 
 go vet $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
