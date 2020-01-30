@@ -1,8 +1,6 @@
 # Test that calling govim#config#Set with a value for GoplsEnv of
 # GOFLAGS=-modfile=go.local.mod does the right thing
 
-# skip 'Pending fix for golang.org/issues/36789'
-
 [!go1.14] skip 'Use of -modfile requires Go 1.14'
 
 # Open file, save (which will trigger goimports) and verify that

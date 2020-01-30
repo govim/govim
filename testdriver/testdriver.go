@@ -37,6 +37,17 @@ const (
 
 var (
 	DefaultErrLogMatchWait string
+
+	// issuesConditions is a set of regular expressions that defines the set of
+	// conditions that can be used to declare links to issues in various issue
+	// trackers. e.g.
+	//
+	//     [golang.org/issues/1234]
+	//     [github.com/govim/govim/issues/4321]
+	issuesConditions = []*regexp.Regexp{
+		regexp.MustCompile(`^golang\.org/issues/\d+$`),
+		regexp.MustCompile(`^github\.com/govim/govim/issues/\d+$`),
+	}
 )
 
 func init() {
@@ -814,6 +825,26 @@ func Sleep(ts *testscript.TestScript, neg bool, args []string) {
 }
 
 func Condition(cond string) (bool, error) {
+	// Does this condition match any of the issue tracker regexps? If so, return
+	// true unless the GOVIM_TESTSCRIPT_ISSUES specifies a regexp that matches
+	// the condition.
+	var issuesCond *regexp.Regexp
+	if v := os.Getenv(testsetup.EnvTestscriptIssues); v != "" {
+		r, err := regexp.Compile(v)
+		if err != nil {
+			return false, fmt.Errorf("failed to compile regexp %q specified via %v: %v", v, testsetup.EnvTestscriptIssues, err)
+		}
+		issuesCond = r
+	}
+	for _, r := range issuesConditions {
+		if r.MatchString(cond) {
+			if issuesCond != nil && issuesCond.MatchString(cond) {
+				return false, nil
+			}
+			return true, nil
+		}
+	}
+	// Fallthrough to matching the Vim/Gvim conditions
 	envf, cmd, err := testsetup.EnvLookupFlavorCommand()
 	if err != nil {
 		return false, err
