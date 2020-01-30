@@ -8,10 +8,6 @@ then
 	exit
 fi
 
-# The ARTEFACTS variable set by .travis.yml cannot expand
-# variables so we do that here
-ARTEFACTS=$(echo $ARTEFACTS)
-
 cd $ARTEFACTS
 
 tidyUp .

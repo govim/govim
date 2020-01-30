@@ -29,7 +29,7 @@ then
 fi
 
 # If we are on CI, only tag if we are on the master branch
-if [[ "${CI:-}" == "true" ]] && [[ "${TRAVIS_BRANCH:-}_${TRAVIS_PULL_REQUEST_BRANCH:-}" != "master_" ]]
+if [[ "${CI:-}" == "true" ]] && [[ "${GITHUB_REF:-}" != "refs/heads/master" ]]
 then
 	echo "Skipping tagging of :latest docker image; we are not building master branch"
 	exit 0

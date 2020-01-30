@@ -2,23 +2,24 @@
 
 source "${BASH_SOURCE%/*}/common.bash"
 
-# This ensures that Travis properly runs the after_failure script
+# This ensures that GitHub Actions properly runs the after_failure script
 trap 'set +ev' EXIT
 
-# We run race builds/tests on Travis CI master branch. We also define that the
-# RACE_BUILD environment variable be a comma-separated list of PR numbers (just
-# the number, no '#'), and if the CI build in question is a PR build whose
-# number is present in RACE_BUILD we also run race builds/tests.
+# We run race builds/tests on master branch. We also define that the RACE_BUILD
+# environment variable be a comma-separated list of PR numbers (just the
+# number, no '#'), and if the CI build in question is a PR build whose number
+# is present in RACE_BUILD we also run race builds/tests.
 runRace=false
 if [[ "${CI:-}" == "true" ]]
 then
-	if [[ "${TRAVIS_BRANCH:-}_${TRAVIS_PULL_REQUEST_BRANCH:-}" == "master_" ]]
+	if [[ "${GITHUB_REF:-}" == "refs/heads/master" ]]
 	then
 		runRace=true
-	else
+	elif [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]
+	then
 		for i in $(echo ${RACE_BUILD:-} | sed "s/,/ /g")
 		do
-			if [[ "${TRAVIS_PULL_REQUEST:-}" == "$i" ]]
+			if [[ "${GITHUB_PR_NUMBER:-}" == "$i" ]]
 			then
 				runRace=true
 			fi
@@ -54,7 +55,7 @@ fi
 go version
 vim --version
 
-if [ "${TRAVIS_EVENT_TYPE:-}" == "cron" ]
+if [ "${GITHUB_EVENT_NAME:-}" == "schedule" ]
 then
 	go mod edit -dropreplace=golang.org/x/tools -dropreplace=golang.org/x/tools/gopls
 	go get golang.org/x/tools/gopls@master golang.org/x/tools@master
@@ -66,7 +67,7 @@ fi
 go install golang.org/x/tools/gopls
 
 # remove all generated files to ensure we are never stale
-rm -f $(git ls-files -- ':!:cmd/govim/internal/golang_org_x_tools' '**/gen_*.*' 'gen_*.*') .travis.yml
+rm -f $(git ls-files -- ':!:cmd/govim/internal/golang_org_x_tools' '**/gen_*.*' 'gen_*.*')
 
 # Run the install scripts
 export GOVIM_RUN_INSTALL_TESTSCRIPTS=true
@@ -85,7 +86,7 @@ fi
 go vet $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 go run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 
-if [ "${CI:-}" == "true" ] && [ "${TRAVIS_EVENT_TYPE:-}" != "cron" ]
+if [ "${CI:-}" == "true" ] && [ "${GITHUB_EVENT_NAME:-}" != "schedule" ]
 then
 	go mod tidy
 	diff <(echo -n) <(go run golang.org/x/tools/cmd/goimports -d $(git ls-files '**/*.go' '*.go' | grep -v golang_org_x_tools))
