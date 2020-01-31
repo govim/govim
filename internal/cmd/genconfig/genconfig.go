@@ -268,6 +268,7 @@ name: Go
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest]
         go_version: {{{ .GoVersions }}}
