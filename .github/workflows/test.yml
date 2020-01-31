@@ -24,6 +24,7 @@ name: Go
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest]
         go_version: ["go1.12.14", "go1.13.5", "go1.14beta1"]
