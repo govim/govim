@@ -12,10 +12,6 @@ then
 	fi
 fi
 
-# Expand ARTEFACTS as required (in CI we set it to $HOME/artefacts
-# which is not expanded becuase that's config-time)
-export ARTEFACTS=$(eval echo ${ARTEFACTS:-})
-
 function doBranchCheck {
 	if [ "${CI:-}" != "true" ]
 	then

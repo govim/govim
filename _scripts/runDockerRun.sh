@@ -15,7 +15,7 @@ then
 	modcache="$(go env GOPATH | sed -e 's/:/\n/' | head -n 1)/pkg/mod/cache/download"
 	proxy="-v $modcache:/cache -e GOPROXY=file:///cache"
 else
-	mkdir -p $ARTEFACTS
+	mkdir $ARTEFACTS
 	artefacts="-v $ARTEFACTS:/artefacts -e GOVIM_TESTSCRIPT_WORKDIR_ROOT=/artefacts"
 fi
 
