@@ -6,12 +6,12 @@ vim ex 'set splitright'
 
 # Definition in same file
 vim ex 'e '$WORK/p.go
-vim ex 'call cursor(6,15)'
+vim ex 'call cursor(3,15)'
 vim ex 'GOVIMGoToDef'
 vim expr 'expand(''%:p'')'
 stdout '^\Q"'$WORK'/p.go"\E$'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
-stdout '^\Q[8,7]\E$'
+stdout '^\Q[5,7]\E$'
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -21,15 +21,9 @@ stdout '^\Q[8,7]\E$'
 module mod.com/p
 
 go 1.12
-
-replace mod.com/q => ./q
-
 -- p.go --
 package p
 
-import "mod.com/q"
-
-const Name1 = q.Name
 const Name2 = SameFile
 
 const SameFile = "samefile"
