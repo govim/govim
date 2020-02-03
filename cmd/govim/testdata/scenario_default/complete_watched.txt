@@ -35,9 +35,7 @@ const (
 -- main.go.golden --
 package main
 
-import (
-	"fmt"
-)
+import "fmt"
 
 func main() {
 	fmt.Println(Const2)
