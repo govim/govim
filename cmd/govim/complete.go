@@ -81,6 +81,7 @@ func (v *vimstate) completeDone(args ...json.RawMessage) error {
 	for _, c := range v.lastCompleteResults.Items {
 		if c.Label == chosen.Abbr {
 			match = &c
+			break
 		}
 	}
 	if match == nil {
