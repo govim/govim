@@ -30,9 +30,13 @@ func New(gomodpath string, tomb *tomb.Tomb) (*FSWatcher, error) {
 			}
 			switch e.Op {
 			case fsnotify.Rename, fsnotify.Remove:
+				// fsnotify processes file renaming as a Rename event followed by a
+				// Create event, so we can effectively treat renaming as removal.
 				eventCh <- Event{e.Name, OpRemoved}
-			case fsnotify.Create, fsnotify.Chmod, fsnotify.Write:
+			case fsnotify.Chmod, fsnotify.Write:
 				eventCh <- Event{e.Name, OpChanged}
+			case fsnotify.Create:
+				eventCh <- Event{e.Name, OpCreated}
 			}
 		}
 		close(eventCh)

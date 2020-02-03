@@ -18,8 +18,8 @@ const (
 	// govim.
 	EnvVarUseGoplsFromPath EnvVar = "GOVIM_USE_GOPLS_FROM_PATH"
 
-	// EnvVarGoplsDebug is an environment variable which, when set, will be
-	// used to pass the value as flags to gopls.
+	// EnvVarGoplsFlags is an environment variable which, when set, will be used
+	// to pass the value as flags to gopls.
 	EnvVarGoplsFlags EnvVar = "GOVIM_GOPLS_FLAGS"
 
 	// EnvVarGoplsVerbose is an environment variable which, when set to the

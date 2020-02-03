@@ -22,10 +22,6 @@ type vimstate struct {
 	// or autocommand.
 	buffers map[int]*types.Buffer
 
-	// watchedFiles is a map of files that we are handling via file watching
-	// events, rather than via open Buffers in Vim
-	watchedFiles map[string]*types.WatchedFile
-
 	// jumpStack is akin to the Vim concept of a tagstack
 	jumpStack    []protocol.Location
 	jumpStackPos int
