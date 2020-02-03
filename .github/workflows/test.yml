@@ -37,7 +37,7 @@ jobs:
       VIM_VERSION: ${{ matrix.vim_version }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@v1
+      uses: actions/checkout@722adc63f1aa60a57ec37892e133b1d319cae598
     - name: Build docker image
       run: ./_scripts/buildGovimImage.sh
     - name: Run Docker, run!
