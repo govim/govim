@@ -297,7 +297,7 @@ jobs:
     - name: Tidy up
       run: ./_scripts/postRun.sh
     - name: Upload artefacts
-      if: success()
+      if: success() && env.CI_SKIP_JOB != 'true'
       uses: actions/upload-artifact@3446296876d12d4e3a0f3145a3c87e67bf0a16b5
       with:
         path: /home/runner/.artefacts

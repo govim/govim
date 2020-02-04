@@ -8,4 +8,6 @@ then
 	exit
 fi
 
+doBranchCheck
+
 tidyUp $ARTEFACTS
