@@ -1,5 +1,5 @@
-# A simple test that verifies we get a diagnostic for changes
-# that need to be made to our go.mod file
+# A simple test that verifies we get a diagnostic for imports
+# that are missing from our go.mod file
 
 [!go1.14] skip '-modfile only supported in Go 1.14'
 
@@ -15,8 +15,9 @@ sleep $GOVIM_ERRLOGMATCH_WAIT
 # Verify that there have been no changes to go.mod
 cmp go.mod go.mod.golden
 
-# Verify that we have no diagnostics for any files
-vimexprwait errors.empty GOVIMTest_getqflist()
+# Verify that we diagnostics for the import in main.go that can't
+# be satisfied by the go.mod on disk
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -36,5 +37,18 @@ import "example.com/blah"
 func main() {
 	println(blah.Name)
 }
--- errors.empty --
-[]
+-- errors.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 8,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "example.com/blah is not in your go.mod file.",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

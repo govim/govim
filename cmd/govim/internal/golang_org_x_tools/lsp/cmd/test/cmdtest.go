@@ -18,6 +18,7 @@ import (
 
 	"golang.org/x/tools/go/packages/packagestest"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cmd"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/tests"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -95,8 +96,8 @@ func (r *runner) RankCompletion(t *testing.T, src span.Span, test tests.Completi
 	//TODO: add command line completions tests when it works
 }
 
-func (r *runner) PrepareRename(t *testing.T, src span.Span, want *source.PrepareItem) {
-	//TODO: add command line prepare rename tests when it works
+func (r *runner) WorkspaceSymbols(*testing.T, string, []protocol.SymbolInformation, map[string]struct{}) {
+	//TODO: add command line workspace symbol tests when it works
 }
 
 func (r *runner) RunGoplsCmd(t testing.TB, args ...string) (string, string) {
