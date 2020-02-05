@@ -25,6 +25,8 @@ import (
 	errors "golang.org/x/xerrors"
 )
 
+type packageHandleKey string
+
 // packageHandle implements source.PackageHandle.
 type packageHandle struct {
 	handle *memoize.Handle
@@ -41,7 +43,7 @@ type packageHandle struct {
 	m *metadata
 
 	// key is the hashed key for the package.
-	key []byte
+	key packageHandleKey
 }
 
 func (ph *packageHandle) packageKey() packageKey {
@@ -60,14 +62,14 @@ type packageData struct {
 }
 
 // buildPackageHandle returns a source.PackageHandle for a given package and config.
-func (s *snapshot) buildPackageHandle(ctx context.Context, id packageID, mode source.ParseMode) (*packageHandle, error) {
+func (s *snapshot) buildPackageHandle(ctx context.Context, id packageID) (*packageHandle, error) {
 	// Check if we already have this PackageHandle cached.
-	if ph := s.getPackage(id, mode); ph != nil {
+	if ph := s.getPackage(id); ph != nil {
 		return ph, nil
 	}
 
 	// Build the PackageHandle for this ID and its dependencies.
-	ph, deps, err := s.buildKey(ctx, id, mode)
+	ph, deps, err := s.buildKey(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -81,12 +83,13 @@ func (s *snapshot) buildPackageHandle(ctx context.Context, id packageID, mode so
 	//
 
 	m := ph.m
+	mode := ph.mode
 	goFiles := ph.goFiles
 	compiledGoFiles := ph.compiledGoFiles
 	key := ph.key
 	fset := s.view.session.cache.fset
 
-	h := s.view.session.cache.store.Bind(string(key), func(ctx context.Context) interface{} {
+	h := s.view.session.cache.store.Bind(key, func(ctx context.Context) interface{} {
 		// Begin loading the direct dependencies, in parallel.
 		for _, dep := range deps {
 			go func(dep *packageHandle) {
@@ -106,11 +109,12 @@ func (s *snapshot) buildPackageHandle(ctx context.Context, id packageID, mode so
 }
 
 // buildKey computes the key for a given packageHandle.
-func (s *snapshot) buildKey(ctx context.Context, id packageID, mode source.ParseMode) (*packageHandle, map[packagePath]*packageHandle, error) {
+func (s *snapshot) buildKey(ctx context.Context, id packageID) (*packageHandle, map[packagePath]*packageHandle, error) {
 	m := s.getMetadata(id)
 	if m == nil {
 		return nil, nil, errors.Errorf("no metadata for %s", id)
 	}
+	mode := s.packageMode(id)
 	goFiles, err := s.parseGoHandles(ctx, m.goFiles, mode)
 	if err != nil {
 		return nil, nil, err
@@ -134,19 +138,15 @@ func (s *snapshot) buildKey(ctx context.Context, id packageID, mode source.Parse
 	deps := make(map[packagePath]*packageHandle)
 
 	// Begin computing the key by getting the depKeys for all dependencies.
-	var depKeys [][]byte
+	var depKeys []packageHandleKey
 	for _, depID := range depList {
-		mode := source.ParseExported
-		if _, ok := s.isWorkspacePackage(depID); ok {
-			mode = source.ParseFull
-		}
-		depHandle, err := s.buildPackageHandle(ctx, depID, mode)
+		depHandle, err := s.buildPackageHandle(ctx, depID)
 		if err != nil {
 			log.Error(ctx, "no dep handle", err, telemetry.Package.Of(depID))
 
 			// One bad dependency should not prevent us from checking the entire package.
 			// Add a special key to mark a bad dependency.
-			depKeys = append(depKeys, []byte(fmt.Sprintf("%s import not found", id)))
+			depKeys = append(depKeys, packageHandleKey(fmt.Sprintf("%s import not found", id)))
 			continue
 		}
 		deps[depHandle.m.pkgPath] = depHandle
@@ -156,8 +156,12 @@ func (s *snapshot) buildKey(ctx context.Context, id packageID, mode source.Parse
 	return ph, deps, nil
 }
 
-func checkPackageKey(id packageID, pghs []source.ParseGoHandle, cfg *packages.Config, deps [][]byte) []byte {
-	return []byte(hashContents([]byte(fmt.Sprintf("%s%s%s%s", id, hashParseKeys(pghs), hashConfig(cfg), hashContents(bytes.Join(deps, nil))))))
+func checkPackageKey(id packageID, pghs []source.ParseGoHandle, cfg *packages.Config, deps []packageHandleKey) packageHandleKey {
+	var depBytes []byte
+	for _, dep := range deps {
+		depBytes = append(depBytes, []byte(dep)...)
+	}
+	return packageHandleKey(hashContents([]byte(fmt.Sprintf("%s%s%s%s", id, hashParseKeys(pghs), hashConfig(cfg), hashContents(depBytes)))))
 }
 
 // hashConfig returns the hash for the *packages.Config.
@@ -256,6 +260,7 @@ func typeCheck(ctx context.Context, fset *token.FileSet, m *metadata, mode sourc
 			Selections: make(map[*ast.SelectorExpr]*types.Selection),
 			Scopes:     make(map[ast.Node]*types.Scope),
 		},
+		forTest: m.forTest,
 	}
 	var (
 		files        = make([]*ast.File, len(pkg.compiledGoFiles))
@@ -309,6 +314,10 @@ func typeCheck(ctx context.Context, fset *token.FileSet, m *metadata, mode sourc
 			rawErrors = append(rawErrors, e)
 		},
 		Importer: importerFunc(func(pkgPath string) (*types.Package, error) {
+			// If the context was cancelled, we should abort.
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			dep := deps[packagePath(pkgPath)]
 			if dep == nil {
 				// We may be in GOPATH mode, in which case we need to check vendor dirs.

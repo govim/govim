@@ -17,7 +17,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/metric"
 )
 
-var rpcTmpl = template.Must(template.Must(BaseTemplate.Clone()).Parse(`
+var rpcTmpl = template.Must(template.Must(baseTemplate.Clone()).Parse(`
 {{define "title"}}RPC Information{{end}}
 {{define "body"}}
 	<H2>Inbound</H2>

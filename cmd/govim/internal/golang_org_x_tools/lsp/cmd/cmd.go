@@ -174,6 +174,7 @@ func (app *Application) featureCommands() []tool.Application {
 		&implementation{app: app},
 		&imports{app: app},
 		&links{app: app},
+		&prepareRename{app: app},
 		&query{app: app},
 		&references{app: app},
 		&rename{app: app},
@@ -236,7 +237,7 @@ func (c *connection) initialize(ctx context.Context, options func(*source.Option
 	params.Capabilities.Workspace.Configuration = true
 
 	// Make sure to respect configured options when sending initialize request.
-	opts := source.DefaultOptions
+	opts := source.DefaultOptions()
 	if options != nil {
 		options(&opts)
 	}
@@ -368,7 +369,7 @@ func (c *cmdClient) PublishDiagnostics(ctx context.Context, p *protocol.PublishD
 	c.filesMu.Lock()
 	defer c.filesMu.Unlock()
 
-	uri := span.URI(p.URI)
+	uri := span.NewURI(p.URI)
 	file := c.getFile(ctx, uri)
 	file.diagnostics = p.Diagnostics
 	return nil
