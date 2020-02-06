@@ -67,13 +67,18 @@ func New(gomodpath string, tomb *tomb.Tomb) (*FSWatcher, error) {
 			for i := range events {
 				event := events[i]
 				path := filepath.Join(mountPoint, event.Path)
+
+				// Darwin might include both "created" and "changed" in the same event
+				// so ordering matters below. The "created" case should be checked
+				// before "changed" to get a behavior that is more consistent with other
+				// os_other.go.
 				switch {
 				case event.Flags&fRemoved > 0:
 					eventCh <- Event{path, OpRemoved}
-				case event.Flags&fChanged > 0:
-					eventCh <- Event{path, OpChanged}
 				case event.Flags&fCreated > 0:
 					eventCh <- Event{path, OpCreated}
+				case event.Flags&fChanged > 0:
+					eventCh <- Event{path, OpChanged}
 				}
 			}
 		}
