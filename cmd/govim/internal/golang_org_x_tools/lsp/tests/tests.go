@@ -36,6 +36,7 @@ const (
 	overlayFileSuffix = ".overlay"
 	goldenFileSuffix  = ".golden"
 	inFileSuffix      = ".in"
+	summaryFile       = "summary.txt.golden"
 	testModule        = "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
 )
 
@@ -64,7 +65,7 @@ type Symbols map[span.URI][]protocol.DocumentSymbol
 type SymbolsChildren map[string][]protocol.DocumentSymbol
 type SymbolInformation map[span.Span]protocol.SymbolInformation
 type WorkspaceSymbols map[string][]protocol.SymbolInformation
-type Signatures map[span.Span]*source.SignatureInformation
+type Signatures map[span.Span]*protocol.SignatureHelp
 type Links map[span.URI][]Link
 
 type Data struct {
@@ -99,7 +100,10 @@ type Data struct {
 	t         testing.TB
 	fragments map[string]string
 	dir       string
+	Folder    string
 	golden    map[string]*Golden
+
+	ModfileFlagAvailable bool
 
 	mappersMu sync.Mutex
 	mappers   map[span.URI]*protocol.ColumnMapper
@@ -126,7 +130,7 @@ type Tests interface {
 	PrepareRename(*testing.T, span.Span, *source.PrepareItem)
 	Symbols(*testing.T, span.URI, []protocol.DocumentSymbol)
 	WorkspaceSymbols(*testing.T, string, []protocol.SymbolInformation, map[string]struct{})
-	SignatureHelp(*testing.T, span.Span, *source.SignatureInformation)
+	SignatureHelp(*testing.T, span.Span, *protocol.SignatureHelp)
 	Link(*testing.T, span.URI, []Link)
 }
 
@@ -205,151 +209,200 @@ func DefaultOptions() source.Options {
 
 var haveCgo = false
 
-func Load(t testing.TB, exporter packagestest.Exporter, dir string) *Data {
+// For Load() to properly create the folder structure required when testing with modules.
+// The directory structure of a test needs to look like the example below:
+//
+// - dir
+// 	 - primarymod
+// 		 - .go files
+// 		 - packages
+// 		 - go.mod (optional)
+// 	 - modules
+//		 - repoa
+//			 - mod1
+//				 - .go files
+//				 -  packages
+//				 - go.mod (optional)
+//			 - mod2
+//		 - repob
+//			 - mod1
+//
+// All the files that are primarily being tested should be in the primarymod folder,
+// any auxillary packages should be declared in the modules folder.
+// The modules folder requires each module to have the following format: repo/module
+// Then inside each repo/module, there can be any number of packages and files that are
+// needed to test the primarymod.
+func Load(t testing.TB, exporter packagestest.Exporter, dir string) []*Data {
 	t.Helper()
 
-	data := &Data{
-		Diagnostics:              make(Diagnostics),
-		CompletionItems:          make(CompletionItems),
-		Completions:              make(Completions),
-		CompletionSnippets:       make(CompletionSnippets),
-		UnimportedCompletions:    make(UnimportedCompletions),
-		DeepCompletions:          make(DeepCompletions),
-		FuzzyCompletions:         make(FuzzyCompletions),
-		RankCompletions:          make(RankCompletions),
-		CaseSensitiveCompletions: make(CaseSensitiveCompletions),
-		Definitions:              make(Definitions),
-		Implementations:          make(Implementations),
-		Highlights:               make(Highlights),
-		References:               make(References),
-		Renames:                  make(Renames),
-		PrepareRenames:           make(PrepareRenames),
-		Symbols:                  make(Symbols),
-		symbolsChildren:          make(SymbolsChildren),
-		symbolInformation:        make(SymbolInformation),
-		WorkspaceSymbols:         make(WorkspaceSymbols),
-		Signatures:               make(Signatures),
-		Links:                    make(Links),
-
-		t:         t,
-		dir:       dir,
-		fragments: map[string]string{},
-		golden:    map[string]*Golden{},
-		mappers:   map[span.URI]*protocol.ColumnMapper{},
+	folders, err := testFolders(dir)
+	if err != nil {
+		t.Fatalf("could not get test folders for %v, %v", dir, err)
 	}
 
-	files := packagestest.MustCopyFileTree(dir)
-	overlays := map[string][]byte{}
-	for fragment, operation := range files {
-		if trimmed := strings.TrimSuffix(fragment, goldenFileSuffix); trimmed != fragment {
-			delete(files, fragment)
-			goldFile := filepath.Join(dir, fragment)
-			archive, err := txtar.ParseFile(goldFile)
-			if err != nil {
-				t.Fatalf("could not read golden file %v: %v", fragment, err)
-			}
-			data.golden[trimmed] = &Golden{
-				Filename: goldFile,
-				Archive:  archive,
-			}
-		} else if trimmed := strings.TrimSuffix(fragment, inFileSuffix); trimmed != fragment {
-			delete(files, fragment)
-			files[trimmed] = operation
-		} else if index := strings.Index(fragment, overlayFileSuffix); index >= 0 {
-			delete(files, fragment)
-			partial := fragment[:index] + fragment[index+len(overlayFileSuffix):]
-			contents, err := ioutil.ReadFile(filepath.Join(dir, fragment))
-			if err != nil {
-				t.Fatal(err)
-			}
-			overlays[partial] = contents
+	var data []*Data
+	for _, folder := range folders {
+		datum := &Data{
+			Diagnostics:              make(Diagnostics),
+			CompletionItems:          make(CompletionItems),
+			Completions:              make(Completions),
+			CompletionSnippets:       make(CompletionSnippets),
+			UnimportedCompletions:    make(UnimportedCompletions),
+			DeepCompletions:          make(DeepCompletions),
+			FuzzyCompletions:         make(FuzzyCompletions),
+			RankCompletions:          make(RankCompletions),
+			CaseSensitiveCompletions: make(CaseSensitiveCompletions),
+			Definitions:              make(Definitions),
+			Implementations:          make(Implementations),
+			Highlights:               make(Highlights),
+			References:               make(References),
+			Renames:                  make(Renames),
+			PrepareRenames:           make(PrepareRenames),
+			Symbols:                  make(Symbols),
+			symbolsChildren:          make(SymbolsChildren),
+			symbolInformation:        make(SymbolInformation),
+			WorkspaceSymbols:         make(WorkspaceSymbols),
+			Signatures:               make(Signatures),
+			Links:                    make(Links),
+
+			t:         t,
+			dir:       folder,
+			Folder:    folder,
+			fragments: map[string]string{},
+			golden:    map[string]*Golden{},
+			mappers:   map[span.URI]*protocol.ColumnMapper{},
 		}
-	}
-	modules := []packagestest.Module{
-		{
-			Name:    testModule,
-			Files:   files,
-			Overlay: overlays,
-		},
-		{
-			Name: "example.com/extramodule",
-			Files: map[string]interface{}{
-				"pkg/x.go": "package pkg\n",
+
+		summary := filepath.Join(filepath.FromSlash(folder), summaryFile)
+		if _, err := os.Stat(summary); os.IsNotExist(err) {
+			t.Fatalf("could not find golden file summary.txt in %#v", folder)
+		}
+		archive, err := txtar.ParseFile(summary)
+		if err != nil {
+			t.Fatalf("could not read golden file %v/%v: %v", folder, summary, err)
+		}
+		datum.golden["summary.txt"] = &Golden{
+			Filename: summary,
+			Archive:  archive,
+		}
+
+		modules, _ := packagestest.GroupFilesByModules(folder)
+		for i, m := range modules {
+			for fragment, operation := range m.Files {
+				if trimmed := strings.TrimSuffix(fragment, goldenFileSuffix); trimmed != fragment {
+					delete(m.Files, fragment)
+					goldFile := filepath.Join(m.Name, fragment)
+					if i == 0 {
+						goldFile = filepath.Join(m.Name, "primarymod", fragment)
+					}
+					archive, err := txtar.ParseFile(goldFile)
+					if err != nil {
+						t.Fatalf("could not read golden file %v: %v", fragment, err)
+					}
+					datum.golden[trimmed] = &Golden{
+						Filename: goldFile,
+						Archive:  archive,
+					}
+				} else if trimmed := strings.TrimSuffix(fragment, inFileSuffix); trimmed != fragment {
+					delete(m.Files, fragment)
+					m.Files[trimmed] = operation
+				} else if index := strings.Index(fragment, overlayFileSuffix); index >= 0 {
+					delete(m.Files, fragment)
+					partial := fragment[:index] + fragment[index+len(overlayFileSuffix):]
+					overlayFile := filepath.Join(m.Name, fragment)
+					if i == 0 {
+						overlayFile = filepath.Join(m.Name, "primarymod", fragment)
+					}
+					contents, err := ioutil.ReadFile(overlayFile)
+					if err != nil {
+						t.Fatal(err)
+					}
+					m.Overlay[partial] = contents
+				}
+			}
+		}
+		if len(modules) > 0 {
+			// For certain LSP related tests to run, make sure that the primary
+			// module for the passed in directory is testModule.
+			modules[0].Name = testModule
+		}
+		// Add exampleModule to provide tests with another pkg.
+		datum.Exported = packagestest.Export(t, exporter, modules)
+		for _, m := range modules {
+			for fragment := range m.Files {
+				filename := datum.Exported.File(m.Name, fragment)
+				datum.fragments[filename] = fragment
+			}
+		}
+
+		// Turn off go/packages debug logging.
+		datum.Exported.Config.Logf = nil
+		datum.Config.Logf = nil
+
+		// Merge the exported.Config with the view.Config.
+		datum.Config = *datum.Exported.Config
+		datum.Config.Fset = token.NewFileSet()
+		datum.Config.Context = Context(nil)
+		datum.Config.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
+			panic("ParseFile should not be called")
+		}
+
+		// Do a first pass to collect special markers for completion and workspace symbols.
+		if err := datum.Exported.Expect(map[string]interface{}{
+			"item": func(name string, r packagestest.Range, _ []string) {
+				datum.Exported.Mark(name, r)
 			},
-		},
-	}
-	data.Exported = packagestest.Export(t, exporter, modules)
-	for fragment := range files {
-		filename := data.Exported.File(testModule, fragment)
-		data.fragments[filename] = fragment
-	}
-
-	// Turn off go/packages debug logging.
-	data.Exported.Config.Logf = nil
-	data.Config.Logf = nil
-
-	// Merge the exported.Config with the view.Config.
-	data.Config = *data.Exported.Config
-	data.Config.Fset = token.NewFileSet()
-	data.Config.Context = Context(nil)
-	data.Config.ParseFile = func(fset *token.FileSet, filename string, src []byte) (*ast.File, error) {
-		panic("ParseFile should not be called")
-	}
-
-	// Do a first pass to collect special markers for completion and workspace symbols.
-	if err := data.Exported.Expect(map[string]interface{}{
-		"item": func(name string, r packagestest.Range, _ []string) {
-			data.Exported.Mark(name, r)
-		},
-		"symbol": func(name string, r packagestest.Range, _ []string) {
-			data.Exported.Mark(name, r)
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	// Collect any data that needs to be used by subsequent tests.
-	if err := data.Exported.Expect(map[string]interface{}{
-		"diag":            data.collectDiagnostics,
-		"item":            data.collectCompletionItems,
-		"complete":        data.collectCompletions(CompletionDefault),
-		"unimported":      data.collectCompletions(CompletionUnimported),
-		"deep":            data.collectCompletions(CompletionDeep),
-		"fuzzy":           data.collectCompletions(CompletionFuzzy),
-		"casesensitive":   data.collectCompletions(CompletionCaseSensitive),
-		"rank":            data.collectCompletions(CompletionRank),
-		"snippet":         data.collectCompletionSnippets,
-		"fold":            data.collectFoldingRanges,
-		"format":          data.collectFormats,
-		"import":          data.collectImports,
-		"godef":           data.collectDefinitions,
-		"implementations": data.collectImplementations,
-		"typdef":          data.collectTypeDefinitions,
-		"hover":           data.collectHoverDefinitions,
-		"highlight":       data.collectHighlights,
-		"refs":            data.collectReferences,
-		"rename":          data.collectRenames,
-		"prepare":         data.collectPrepareRenames,
-		"symbol":          data.collectSymbols,
-		"signature":       data.collectSignatures,
-		"link":            data.collectLinks,
-		"suggestedfix":    data.collectSuggestedFixes,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	for _, symbols := range data.Symbols {
-		for i := range symbols {
-			children := data.symbolsChildren[symbols[i].Name]
-			symbols[i].Children = children
+			"symbol": func(name string, r packagestest.Range, _ []string) {
+				datum.Exported.Mark(name, r)
+			},
+		}); err != nil {
+			t.Fatal(err)
 		}
-	}
-	// Collect names for the entries that require golden files.
-	if err := data.Exported.Expect(map[string]interface{}{
-		"godef":           data.collectDefinitionNames,
-		"hover":           data.collectDefinitionNames,
-		"workspacesymbol": data.collectWorkspaceSymbols,
-	}); err != nil {
-		t.Fatal(err)
+
+		// Collect any data that needs to be used by subsequent tests.
+		if err := datum.Exported.Expect(map[string]interface{}{
+			"diag":            datum.collectDiagnostics,
+			"item":            datum.collectCompletionItems,
+			"complete":        datum.collectCompletions(CompletionDefault),
+			"unimported":      datum.collectCompletions(CompletionUnimported),
+			"deep":            datum.collectCompletions(CompletionDeep),
+			"fuzzy":           datum.collectCompletions(CompletionFuzzy),
+			"casesensitive":   datum.collectCompletions(CompletionCaseSensitive),
+			"rank":            datum.collectCompletions(CompletionRank),
+			"snippet":         datum.collectCompletionSnippets,
+			"fold":            datum.collectFoldingRanges,
+			"format":          datum.collectFormats,
+			"import":          datum.collectImports,
+			"godef":           datum.collectDefinitions,
+			"implementations": datum.collectImplementations,
+			"typdef":          datum.collectTypeDefinitions,
+			"hover":           datum.collectHoverDefinitions,
+			"highlight":       datum.collectHighlights,
+			"refs":            datum.collectReferences,
+			"rename":          datum.collectRenames,
+			"prepare":         datum.collectPrepareRenames,
+			"symbol":          datum.collectSymbols,
+			"signature":       datum.collectSignatures,
+			"link":            datum.collectLinks,
+			"suggestedfix":    datum.collectSuggestedFixes,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		for _, symbols := range datum.Symbols {
+			for i := range symbols {
+				children := datum.symbolsChildren[symbols[i].Name]
+				symbols[i].Children = children
+			}
+		}
+		// Collect names for the entries that require golden files.
+		if err := datum.Exported.Expect(map[string]interface{}{
+			"godef":           datum.collectDefinitionNames,
+			"hover":           datum.collectDefinitionNames,
+			"workspacesymbol": datum.collectWorkspaceSymbols,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		data = append(data, datum)
 	}
 	return data
 }
@@ -363,7 +416,7 @@ func Run(t *testing.T, tests Tests, data *Data) {
 
 		for src, exp := range cases {
 			for i, e := range exp {
-				t.Run(spanName(src)+"_"+strconv.Itoa(i), func(t *testing.T) {
+				t.Run(SpanName(src)+"_"+strconv.Itoa(i), func(t *testing.T) {
 					t.Helper()
 					if (!haveCgo || runtime.GOOS == "android") && strings.Contains(t.Name(), "cgo") {
 						t.Skip("test requires cgo, not supported")
@@ -385,7 +438,7 @@ func Run(t *testing.T, tests Tests, data *Data) {
 		for _, placeholders := range []bool{true, false} {
 			for src, expecteds := range data.CompletionSnippets {
 				for i, expected := range expecteds {
-					name := spanName(src) + "_" + strconv.Itoa(i+1)
+					name := SpanName(src) + "_" + strconv.Itoa(i+1)
 					if placeholders {
 						name += "_placeholders"
 					}
@@ -427,6 +480,10 @@ func Run(t *testing.T, tests Tests, data *Data) {
 	t.Run("Diagnostics", func(t *testing.T) {
 		t.Helper()
 		for uri, want := range data.Diagnostics {
+			// Check if we should skip this URI if the -modfile flag is not available.
+			if shouldSkip(data, uri) {
+				continue
+			}
 			t.Run(uriName(uri), func(t *testing.T) {
 				t.Helper()
 				tests.Diagnostics(t, uri, want)
@@ -467,7 +524,11 @@ func Run(t *testing.T, tests Tests, data *Data) {
 	t.Run("SuggestedFix", func(t *testing.T) {
 		t.Helper()
 		for _, spn := range data.SuggestedFixes {
-			t.Run(spanName(spn), func(t *testing.T) {
+			// Check if we should skip this spn if the -modfile flag is not available.
+			if shouldSkip(data, spn.URI()) {
+				continue
+			}
+			t.Run(SpanName(spn), func(t *testing.T) {
 				t.Helper()
 				tests.SuggestedFix(t, spn)
 			})
@@ -477,7 +538,7 @@ func Run(t *testing.T, tests Tests, data *Data) {
 	t.Run("Definition", func(t *testing.T) {
 		t.Helper()
 		for spn, d := range data.Definitions {
-			t.Run(spanName(spn), func(t *testing.T) {
+			t.Run(SpanName(spn), func(t *testing.T) {
 				t.Helper()
 				if (!haveCgo || runtime.GOOS == "android") && strings.Contains(t.Name(), "cgo") {
 					t.Skip("test requires cgo, not supported")
@@ -490,7 +551,7 @@ func Run(t *testing.T, tests Tests, data *Data) {
 	t.Run("Implementation", func(t *testing.T) {
 		t.Helper()
 		for spn, m := range data.Implementations {
-			t.Run(spanName(spn), func(t *testing.T) {
+			t.Run(SpanName(spn), func(t *testing.T) {
 				t.Helper()
 				tests.Implementation(t, spn, m)
 			})
@@ -500,7 +561,7 @@ func Run(t *testing.T, tests Tests, data *Data) {
 	t.Run("Highlight", func(t *testing.T) {
 		t.Helper()
 		for pos, locations := range data.Highlights {
-			t.Run(spanName(pos), func(t *testing.T) {
+			t.Run(SpanName(pos), func(t *testing.T) {
 				t.Helper()
 				tests.Highlight(t, pos, locations)
 			})
@@ -510,7 +571,7 @@ func Run(t *testing.T, tests Tests, data *Data) {
 	t.Run("References", func(t *testing.T) {
 		t.Helper()
 		for src, itemList := range data.References {
-			t.Run(spanName(src), func(t *testing.T) {
+			t.Run(SpanName(src), func(t *testing.T) {
 				t.Helper()
 				tests.References(t, src, itemList)
 			})
@@ -530,7 +591,7 @@ func Run(t *testing.T, tests Tests, data *Data) {
 	t.Run("PrepareRenames", func(t *testing.T) {
 		t.Helper()
 		for src, want := range data.PrepareRenames {
-			t.Run(spanName(src), func(t *testing.T) {
+			t.Run(SpanName(src), func(t *testing.T) {
 				t.Helper()
 				tests.PrepareRename(t, src, want)
 			})
@@ -571,7 +632,7 @@ func Run(t *testing.T, tests Tests, data *Data) {
 	t.Run("SignatureHelp", func(t *testing.T) {
 		t.Helper()
 		for spn, expectedSignature := range data.Signatures {
-			t.Run(spanName(spn), func(t *testing.T) {
+			t.Run(SpanName(spn), func(t *testing.T) {
 				t.Helper()
 				tests.SignatureHelp(t, spn, expectedSignature)
 			})
@@ -944,9 +1005,13 @@ func (data *Data) collectWorkspaceSymbols(query string, targets []span.Span) {
 }
 
 func (data *Data) collectSignatures(spn span.Span, signature string, activeParam int64) {
-	data.Signatures[spn] = &source.SignatureInformation{
-		Label:           signature,
-		ActiveParameter: int(activeParam),
+	data.Signatures[spn] = &protocol.SignatureHelp{
+		Signatures: []protocol.SignatureInformation{
+			{
+				Label: signature,
+			},
+		},
+		ActiveParameter: float64(activeParam),
 	}
 	// Hardcode special case to test the lack of a signature.
 	if signature == "" && activeParam == 0 {
@@ -976,7 +1041,7 @@ func uriName(uri span.URI) string {
 	return filepath.Base(strings.TrimSuffix(uri.Filename(), ".go"))
 }
 
-func spanName(spn span.Span) string {
+func SpanName(spn span.Span) string {
 	return fmt.Sprintf("%v_%v_%v", uriName(spn.URI()), spn.Start().Line(), spn.Start().Column())
 }
 
@@ -1010,4 +1075,41 @@ func CopyFolderToTempDir(folder string) (string, error) {
 		}
 	}
 	return dst, nil
+}
+
+func testFolders(root string) ([]string, error) {
+	// Check if this only has one test directory.
+	if _, err := os.Stat(filepath.Join(filepath.FromSlash(root), "primarymod")); !os.IsNotExist(err) {
+		return []string{root}, nil
+	}
+	folders := []string{}
+	root = filepath.FromSlash(root)
+	// Get all test directories that are one level deeper than root.
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			return nil
+		}
+		if filepath.Dir(path) == root {
+			folders = append(folders, filepath.ToSlash(path))
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return folders, nil
+}
+
+func shouldSkip(data *Data, uri span.URI) bool {
+	if data.ModfileFlagAvailable {
+		return false
+	}
+	// If the -modfile flag is not available, then we do not want to run
+	// any tests on the go.mod file.
+	if strings.Contains(uri.Filename(), ".mod") {
+		return true
+	}
+	// If the -modfile flag is not available, then we do not want to test any
+	// uri that contains "go mod tidy".
+	m, err := data.Mapper(uri)
+	return err == nil && strings.Contains(string(m.Content), ", \"go mod tidy\",")
 }
