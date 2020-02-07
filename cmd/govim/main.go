@@ -365,7 +365,12 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 
 	stream := jsonrpc2.NewHeaderStream(stdout, stdin)
 	ctxt, cancel := context.WithCancel(context.Background())
-	ctxt, conn, server := protocol.NewClient(ctxt, stream, g)
+	conn := jsonrpc2.NewConn(stream)
+	server := protocol.ServerDispatcher(conn)
+	conn.AddHandler(protocol.ClientHandler(g))
+	conn.AddHandler(protocol.Canceller{})
+	ctxt = protocol.WithClient(ctxt, g)
+
 	g.tomb.Go(func() error {
 		return conn.Run(ctxt)
 	})
