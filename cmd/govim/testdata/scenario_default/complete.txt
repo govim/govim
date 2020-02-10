@@ -33,7 +33,7 @@ func main() {
 }
 -- main.go.golden --
 package main
-
+// I'm broken..
 import "fmt"
 
 const (
