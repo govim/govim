@@ -17,8 +17,14 @@ then
 else
 	mkdir $ARTEFACTS
 	artefacts="-v $ARTEFACTS:/artefacts -e GOVIM_TESTSCRIPT_WORKDIR_ROOT=/artefacts"
+	echo "::add-matcher::.github/workflows/go-test-problem-matcher.json"
 fi
 
 docker run $proxy --env-file ./_scripts/.docker_env_file -e "VIM_FLAVOR=${VIM_FLAVOR:-vim}" $artefacts -v $PWD:/home/$USER/govim -w /home/$USER/govim --rm govim ./_scripts/dockerRun.sh
+
+if [ "${CI:-}" != "true" ]
+then
+    echo "::remove-matcher owner=go-test::"
+fi
 
 "${BASH_SOURCE%/*}/tagDockerLatest.sh"

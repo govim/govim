@@ -1,0 +1,11 @@
+{
+    "owner": "go-test",
+    "pattern": [
+        {
+            "regexp": "FAIL:\\s+(\\S+\\.(go|txt)):(\\d+):\\s*(.+)",
+            "file": 1,
+            "line": 3,
+            "message": 4
+        }
+    ]
+}
