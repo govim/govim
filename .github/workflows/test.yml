@@ -51,10 +51,11 @@ jobs:
       if: success()
       run: ./_scripts/runDockerRun.sh
     - name: Tidy up
+      if: success() || failure()
       run: ./_scripts/postRun.sh
     - name: Upload artefacts
-      if: success() && env.CI_SKIP_JOB != 'true'
+      if: (success() || failure()) && env.CI_UPLOAD_ARTIFACTS == 'true'
       uses: actions/upload-artifact@3446296876d12d4e3a0f3145a3c87e67bf0a16b5
       with:
         path: /home/runner/.artefacts
-        name: artefacts
+        name: ${{ matrix.os }}_${{ matrix.go_version }}_${{ matrix.vim_flavor }}_${{ matrix.vim_version }}
