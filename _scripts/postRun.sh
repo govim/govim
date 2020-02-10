@@ -11,3 +11,9 @@ fi
 doBranchCheck
 
 tidyUp $ARTEFACTS
+
+# This is a way to make sure that the upload artifact
+# step in CI only runs after tidyUp, since it isn't
+# possible (at least currently) to check the status
+# of this job step alone.
+echo "::set-env name=CI_UPLOAD_ARTIFACTS::true"
