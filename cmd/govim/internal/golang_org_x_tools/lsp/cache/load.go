@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/packages"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -80,7 +81,7 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 	ctx, done := trace.StartSpan(ctx, "cache.view.load", telemetry.Query.Of(query))
 	defer done()
 
-	cfg := s.view.Config(ctx)
+	cfg := s.Config(ctx)
 	pkgs, err := s.view.loadPackages(cfg, query...)
 
 	// If the context was canceled, return early. Otherwise, we might be
@@ -119,7 +120,7 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 		if err != nil {
 			return err
 		}
-		if _, err := s.buildPackageHandle(ctx, m.id); err != nil {
+		if _, err := s.buildPackageHandle(ctx, m.id, source.ParseFull); err != nil {
 			return err
 		}
 	}
