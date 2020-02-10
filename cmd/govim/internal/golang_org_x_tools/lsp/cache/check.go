@@ -13,6 +13,7 @@ import (
 	"go/types"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 
 	"golang.org/x/tools/go/packages"
@@ -62,13 +63,13 @@ type packageData struct {
 }
 
 // buildPackageHandle returns a source.PackageHandle for a given package and config.
-func (s *snapshot) buildPackageHandle(ctx context.Context, id packageID) (*packageHandle, error) {
-	if ph := s.getPackage(id); ph != nil {
+func (s *snapshot) buildPackageHandle(ctx context.Context, id packageID, mode source.ParseMode) (*packageHandle, error) {
+	if ph := s.getPackage(id, mode); ph != nil {
 		return ph, nil
 	}
 
 	// Build the PackageHandle for this ID and its dependencies.
-	ph, deps, err := s.buildKey(ctx, id)
+	ph, deps, err := s.buildKey(ctx, id, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +83,6 @@ func (s *snapshot) buildPackageHandle(ctx context.Context, id packageID) (*packa
 	//
 
 	m := ph.m
-	mode := ph.mode
 	goFiles := ph.goFiles
 	compiledGoFiles := ph.compiledGoFiles
 	key := ph.key
@@ -108,12 +108,11 @@ func (s *snapshot) buildPackageHandle(ctx context.Context, id packageID) (*packa
 }
 
 // buildKey computes the key for a given packageHandle.
-func (s *snapshot) buildKey(ctx context.Context, id packageID) (*packageHandle, map[packagePath]*packageHandle, error) {
+func (s *snapshot) buildKey(ctx context.Context, id packageID, mode source.ParseMode) (*packageHandle, map[packagePath]*packageHandle, error) {
 	m := s.getMetadata(id)
 	if m == nil {
 		return nil, nil, errors.Errorf("no metadata for %s", id)
 	}
-	mode := s.packageMode(id)
 	goFiles, err := s.parseGoHandles(ctx, m.goFiles, mode)
 	if err != nil {
 		return nil, nil, err
@@ -139,7 +138,11 @@ func (s *snapshot) buildKey(ctx context.Context, id packageID) (*packageHandle, 
 	// Begin computing the key by getting the depKeys for all dependencies.
 	var depKeys []packageHandleKey
 	for _, depID := range depList {
-		depHandle, err := s.buildPackageHandle(ctx, depID)
+		mode := source.ParseExported
+		if _, ok := s.isWorkspacePackage(depID); ok {
+			mode = source.ParseFull
+		}
+		depHandle, err := s.buildPackageHandle(ctx, depID, mode)
 		if err != nil {
 			log.Error(ctx, "no dep handle", err, telemetry.Package.Of(depID))
 
@@ -207,6 +210,28 @@ func (ph *packageHandle) MissingDependencies() []string {
 		md = append(md, string(i))
 	}
 	return md
+}
+
+func hashImports(ctx context.Context, wsPackages []source.PackageHandle) (string, error) {
+	results := make(map[string]bool)
+	var imports []string
+	for _, ph := range wsPackages {
+		// Check package since we do not always invalidate the metadata.
+		pkg, err := ph.Check(ctx)
+		if err != nil {
+			return "", err
+		}
+		for _, path := range pkg.Imports() {
+			imp := path.PkgPath()
+			if _, ok := results[imp]; !ok {
+				results[imp] = true
+				imports = append(imports, imp)
+			}
+		}
+	}
+	sort.Strings(imports)
+	hashed := strings.Join(imports, ",")
+	return hashContents([]byte(hashed)), nil
 }
 
 func (ph *packageHandle) Cached() (source.Package, error) {
@@ -302,6 +327,9 @@ func typeCheck(ctx context.Context, fset *token.FileSet, m *metadata, mode sourc
 	// Use the default type information for the unsafe package.
 	if pkg.pkgPath == "unsafe" {
 		pkg.types = types.Unsafe
+		// Don't type check Unsafe: it's unnecessary, and doing so exposes a data
+		// race to Unsafe.completed.
+		return pkg, nil
 	} else if len(files) == 0 { // not the unsafe package, no parsed files
 		return nil, errors.Errorf("no parsed files for package %s, expected: %s, errors: %v, list errors: %v", pkg.pkgPath, pkg.compiledGoFiles, actualErrors, rawErrors)
 	} else {

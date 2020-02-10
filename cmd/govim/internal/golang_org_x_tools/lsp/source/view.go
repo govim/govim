@@ -26,9 +26,16 @@ type Snapshot interface {
 	// View returns the View associated with this snapshot.
 	View() View
 
+	// Config returns the configuration for the view.
+	Config(ctx context.Context) *packages.Config
+
 	// GetFile returns the file object for a given URI, initializing it
 	// if it is not already part of the view.
 	GetFile(uri span.URI) (FileHandle, error)
+
+	// IsOpen returns whether the editor currently has a file open,
+	// and if its contents are saved on disk or not.
+	IsOpen(uri span.URI) bool
 
 	// Analyze runs the analyses for the given package at this snapshot.
 	Analyze(ctx context.Context, id string, analyzers []*analysis.Analyzer) ([]*Error, error)
@@ -39,7 +46,7 @@ type Snapshot interface {
 
 	// ModTidyHandle returns a ModTidyHandle for the given go.mod file handle.
 	// This function can have no data or error if there is no modfile detected.
-	ModTidyHandle(ctx context.Context, fh FileHandle) ModTidyHandle
+	ModTidyHandle(ctx context.Context, fh FileHandle) (ModTidyHandle, error)
 
 	// PackageHandles returns the PackageHandles for the packages that this file
 	// belongs to.
@@ -54,6 +61,8 @@ type Snapshot interface {
 	CachedImportPaths(ctx context.Context) (map[string]Package, error)
 
 	// KnownPackages returns all the packages loaded in this snapshot.
+	// Workspace packages may be parsed in ParseFull mode, whereas transitive
+	// dependencies will be in ParseExported mode.
 	KnownPackages(ctx context.Context) ([]PackageHandle, error)
 
 	// WorkspacePackages returns the PackageHandles for the snapshot's
@@ -109,10 +118,7 @@ type View interface {
 	// Ignore returns true if this file should be ignored by this view.
 	Ignore(span.URI) bool
 
-	// Config returns the configuration for the view.
-	Config(ctx context.Context) *packages.Config
-
-	// RunProcessEnvFunc runs fn with the process env for this view.
+	// RunProcessEnvFunc runs fn with the process env for this snapshot's view.
 	// Note: the process env contains cached module and filesystem state.
 	RunProcessEnvFunc(ctx context.Context, fn func(*imports.Options) error) error
 
@@ -163,10 +169,6 @@ type Session interface {
 	// A FileSystem prefers the contents from overlays, and falls back to the
 	// content from the underlying cache if no overlay is present.
 	FileSystem
-
-	// IsOpen returns whether the editor currently has a file open,
-	// and if its contents are saved on disk or not.
-	IsOpen(uri span.URI) bool
 
 	// DidModifyFile reports a file modification to the session.
 	// It returns the resulting snapshots, a guaranteed one per view.
