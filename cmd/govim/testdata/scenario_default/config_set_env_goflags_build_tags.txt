@@ -1,0 +1,51 @@
+# Test that calling govim#config#Set with a value for GoplsEnv of GOFLAGS
+# does the right thing.
+
+[golang.org/issues/29202] skip
+
+# Before setting GOFLAGS with -tags=other
+vim ex 'e main.go'
+vimexprwait pre.golden getqflist()
+
+# After setting GOFLAGS with -tags=other
+vim ex 'call govim#config#Set(\"GoplsEnv\", {\"GOFLAGS\": \"-tags=other\"})'
+vimexprwait post.golden getqflist()
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go1.12
+-- main.go --
+package main
+
+func main() {
+	DoIt()
+}
+-- other.go --
+// +build other
+
+package main
+
+func DoIt() {
+}
+-- pre.golden --
+[
+  {
+    "bufnr": 1,
+    "col": 2,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: DoIt",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- post.golden --
+[]
