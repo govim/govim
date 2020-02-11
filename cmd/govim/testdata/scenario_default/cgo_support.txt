@@ -1,0 +1,66 @@
+# Test that things generally work for packages/files that import "C"
+
+[golang.org/issues/35721] skip
+
+# Check that everything builds
+go test
+
+# Check that we can do stuff in the file that does not import "C"
+vim ex 'e '$WORK/p_noimportc.go
+vim ex 'call cursor(3,15)'
+vim ex 'GOVIMGoToDef'
+vim expr 'bufname(\"\")'
+stdout '^\Q"'$WORK'/p_noimportc.go"\E$'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '^\Q[5,7]\E$'
+
+# Check that we can do stuff in the file that DOES import "C"
+vim ex 'e '$WORK/p_importc.go
+vim ex 'call cursor(17,15)'
+vim ex 'GOVIMGoToDef'
+vim expr 'bufname(\"\")'
+stdout '^\Q"'$WORK'/p_importc.go"\E$'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '^\Q[5,7]\E$'
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com/p
+
+go1.12
+-- p_importc.go --
+package p
+
+/*
+#include <stdio.h>
+#include <stdlib.h>
+
+void myprint(char* s) {
+	printf("%s\n", s);
+}
+*/
+import "C"
+
+import "fmt"
+
+import "unsafe"
+
+const Name1 = SameFile1
+
+const SameFile1 = "samefile"
+
+func Example() {
+fmt.Println()
+	cs := C.CString("Hello from stdio\n")
+	C.myprint(cs)
+	C.free(unsafe.Pointer(cs))
+}
+-- p_noimportc.go --
+package p
+
+const Name2 = SameFile2
+
+const SameFile2 = "samefile"
