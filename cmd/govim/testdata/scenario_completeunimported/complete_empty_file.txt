@@ -1,0 +1,41 @@
+# Test that completing of unimported std library packages works for where
+# files on disk are initially empty
+
+# Setup new buffer and verify contents are as expected
+vim ex 'e main.go'
+vim ex 'r main.go.orig | 0d_'
+vim ex 'noau w! check'
+cmp check main.go.orig
+
+# Unimported completion
+vim ex 'call cursor(4,1)'
+vim normal Sfmt.Pr
+vim ex 'execute \"normal A\\<C-X>\\<C-O>\\<C-N>\\<C-N>(\\\"Hello\\\")\"'
+
+# Check import has been added
+vim ex 'noau w'
+cmp main.go main.go1.golden
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+-- main.go.orig --
+package main
+
+func main() {
+
+}
+-- main.go1.golden --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello")
+}

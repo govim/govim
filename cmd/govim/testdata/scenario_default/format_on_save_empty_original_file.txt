@@ -1,4 +1,4 @@
-# Test format on save for a file that does not initially exist on disk
+# Test format on save for a file that is initially empty
 
 vim ex 'e main.go'
 vim ex 'r main.txt | 0d_'
@@ -13,6 +13,7 @@ cmp main.go main.txt
 module mod.com
 
 go 1.12
+-- main.go --
 -- main.txt --
 package main
 
