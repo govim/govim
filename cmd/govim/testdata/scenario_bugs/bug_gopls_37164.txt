@@ -1,0 +1,60 @@
+# Test the racing of gopls' usages of go/packages which result in racey usages of
+# cmd/go modifying go.mod. More detail in:
+#
+#   https://github.com/golang/go/issues/36772#issuecomment-578933218
+#
+# and preceding comments. The test below is an exact copy of the setup that triggered
+# this failure. The go.mod is intentially "dirty" such that any calls to cmd/go
+# will cause the require directive to be added. One such call happens in the initial
+# workspace load, the other is triggered by GOVIMGoToDef if the initial call has not
+# yet completed. Hence the two race to update go.mod
+
+[golang.org/issues/37164] skip
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+
+vim ex 'e '$WORK/p.go
+vim ex 'call cursor(5,17)'
+vim ex 'GOVIMGoToDef'
+sleep $GOVIM_ERRLOGMATCH_WAIT
+
+# Ensure go.mod has changed as we expect
+cmp go.mod go.mod.golden
+
+# Use our own custom error check
+# noerrcheck
+errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com/p
+
+go 1.12
+
+replace mod.com/q => ./q
+
+-- go.mod.golden --
+module mod.com/p
+
+go 1.12
+
+replace mod.com/q => ./q
+
+require mod.com/q v0.0.0-00010101000000-000000000000
+-- p.go --
+package p
+
+import "mod.com/q"
+
+const Name1 = q.Name
+const Name2 = SameFile
+
+const SameFile = "samefile"
+
+-- q/go.mod --
+module mod.com/q
+
+go 1.12
+
+-- q/q.go --
+package q
+
+const Name = "package q"
