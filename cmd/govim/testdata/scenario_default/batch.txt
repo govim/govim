@@ -18,7 +18,7 @@ stdout [5,4]
 # Now call a function where there is an exception in the batch
 ! vim call GOVIMBadBatch
 ! stdout .+
-stderr 'failed to call GOVIMBadBatch\(\[\]\) in Vim: Caught ''got error whilst handling GOVIMBadBatch: driver error: ChannelCall\("s:batchCall"\) failed: failed to call s:batchCall\(\[\[\[call s:mustNothing execute throw "failed"\]\]\]\) in Vim: Caught ''''failed'''''
+stderr 'failed to call GOVIMBadBatch\(\[\]\) in Vim: Caught ''got error whilst handling GOVIMBadBatch: driver error: ChannelCall\("s:batchCall"\) failed: failed to call s:batchCall\(\[\[\[call \[s:mustNoError \[\]\] execute throw "failed"\]\]\]\) in Vim: Caught ''''failed to call execute'
 
 # Ensure that we can still call a working batch function
 vim call GOVIMSimpleBatch
@@ -28,7 +28,7 @@ stdout [5,4]
 # Now call a function where a batch assertion fails
 ! vim call GOVIMAssertFailedBatch
 ! stdout .+
-stderr 'failed to call GOVIMAssertFailedBatch\(\[\]\) in Vim: Caught ''got error whilst handling GOVIMAssertFailedBatch: driver error: ChannelCall\("s:batchCall"\) failed: failed to call s:batchCall\(\[\[\[expr s:mustBeZero 1\]\]\]\) in Vim: Caught ''''failed to eval 1: got non-zero return value'
+stderr 'failed to call GOVIMAssertFailedBatch\(\[\]\) in Vim: Caught ''got error whilst handling GOVIMAssertFailedBatch: driver error: ChannelCall\("s:batchCall"\) failed: failed to call s:batchCall\(\[\[\[expr \[s:mustBeZero \[\]\] 1\]\]\]\) in Vim: Caught ''''failed to eval 1: got non-zero return value'
 
 # Ensure that we can still call a working batch function
 vim call GOVIMSimpleBatch
@@ -39,5 +39,15 @@ stdout [5,4]
 ! vim call GOVIMNonBatchCallInBatch
 ! stdout .+
 stderr 'called ChannelExprf when in batch'
+
+# Test that ignoring a specific error succeeds when the error is thrown
+vim call GOVIMIgnoreErrorInBatch '[true]'
+stdout '\[null\]'
+! stderr .+
+
+# Test that ignoring a specific error succeeds when no error is thrown
+vim call GOVIMIgnoreErrorInBatch '[false]'
+stdout '\[5\]'
+! stderr .+
 
 # noerrcheck

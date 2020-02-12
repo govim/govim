@@ -198,30 +198,51 @@ func (v *vimstate) BatchStartIfNeeded() bool {
 
 type batchResult func() json.RawMessage
 
-type AssertExpr string
-
-const (
-	AssertNothing AssertExpr = "s:mustNothing"
-	AssertIsZero  AssertExpr = "s:mustBeZero"
-)
-
-func (v *vimstate) BatchChannelExprf(format string, args ...interface{}) batchResult {
-	return v.BatchAssertChannelExprf(AssertNothing, format, args...)
+type AssertExpr struct {
+	Fn   string
+	Args []interface{}
 }
 
-func (v *vimstate) BatchAssertChannelExprf(m AssertExpr, format string, args ...interface{}) batchResult {
+func AssertNoError() AssertExpr {
+	return AssertExpr{
+		Fn: "s:mustNoError",
+	}
+}
+
+func AssertIsZero() AssertExpr {
+	return AssertExpr{
+		Fn: "s:mustBeZero",
+	}
+}
+
+func AssertIsErrorOrNil(patterns ...string) AssertExpr {
+	args := make([]interface{}, 0, len(patterns))
+	for _, v := range patterns {
+		args = append(args, v)
+	}
+	return AssertExpr{
+		Fn:   "s:mustBeErrorOrNil",
+		Args: args,
+	}
+}
+
+func (v *vimstate) BatchChannelExprf(format string, args ...interface{}) batchResult {
+	return v.BatchAssertChannelExprf(AssertNoError(), format, args...)
+}
+
+func (v *vimstate) BatchAssertChannelExprf(a AssertExpr, format string, args ...interface{}) batchResult {
 	if v.currBatch == nil {
 		panic(fmt.Errorf("cannot call BatchChannelExprf: not in batch"))
 	}
 	v.currBatch.calls = append(v.currBatch.calls, []interface{}{
 		"expr",
-		m,
+		[2]interface{}{a.Fn, a.Args},
 		fmt.Sprintf(format, args...),
 	})
 	return v.currBatch.result()
 }
 func (v *vimstate) BatchChannelCall(name string, args ...interface{}) batchResult {
-	return v.BatchAssertChannelCall(AssertNothing, name, args...)
+	return v.BatchAssertChannelCall(AssertNoError(), name, args...)
 }
 
 func (v *vimstate) BatchAssertChannelCall(a AssertExpr, name string, args ...interface{}) batchResult {
@@ -230,7 +251,7 @@ func (v *vimstate) BatchAssertChannelCall(a AssertExpr, name string, args ...int
 	}
 	callargs := []interface{}{
 		"call",
-		a,
+		[2]interface{}{a.Fn, a.Args},
 		name,
 	}
 	callargs = append(callargs, args...)
@@ -242,7 +263,16 @@ func (v *vimstate) BatchCancelIfNotEnded() {
 	v.currBatch = nil
 }
 
-func (v *vimstate) BatchEnd() (res []json.RawMessage) {
+func (v *vimstate) BatchEnd() ([]json.RawMessage, error) {
+	return v.batchEndImpl(false)
+}
+
+func (v *vimstate) MustBatchEnd() (res []json.RawMessage) {
+	res, _ = v.batchEndImpl(true)
+	return
+}
+
+func (v *vimstate) batchEndImpl(must bool) (res []json.RawMessage, err error) {
 	if v.currBatch == nil {
 		panic(fmt.Errorf("called BatchEnd but not in a batch"))
 	}
@@ -251,7 +281,15 @@ func (v *vimstate) BatchEnd() (res []json.RawMessage) {
 	if len(b.calls) == 0 {
 		return
 	}
-	vs := v.ChannelCall("s:batchCall", b.calls)
+	var vs json.RawMessage
+	if must {
+		vs = v.ChannelCall("s:batchCall", b.calls)
+	} else {
+		vs, err = v.Driver.Govim.ChannelCall("s:batchCall", b.calls)
+		if err != nil {
+			return
+		}
+	}
 	v.Parse(vs, &res)
 	b.results = res
 	return

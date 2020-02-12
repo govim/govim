@@ -489,7 +489,7 @@ func (g *govimplugin) defineHighlights() {
 	} {
 		g.vimstate.BatchChannelCall("execute", hi)
 	}
-	g.vimstate.BatchEnd()
+	g.vimstate.MustBatchEnd()
 }
 
 func getEnvVal(env []string, varname string) string {

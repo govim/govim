@@ -130,18 +130,18 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 	for _, e := range changes {
 		switch e.call {
 		case "setbufline":
-			v.BatchAssertChannelCall(AssertIsZero, e.call, b.Num, e.start, e.lines[0])
+			v.BatchAssertChannelCall(AssertIsZero(), e.call, b.Num, e.start, e.lines[0])
 		case "deletebufline":
-			v.BatchAssertChannelCall(AssertIsZero, e.call, b.Num, e.start, e.end)
+			v.BatchAssertChannelCall(AssertIsZero(), e.call, b.Num, e.start, e.end)
 		case "appendbufline":
-			v.BatchAssertChannelCall(AssertIsZero, e.call, b.Num, e.start, e.lines)
+			v.BatchAssertChannelCall(AssertIsZero(), e.call, b.Num, e.start, e.lines)
 		default:
 			panic(fmt.Errorf("unknown change type: %v", e.call))
 		}
 	}
-	v.BatchAssertChannelCall(AssertIsZero, "listener_flush", b.Num)
+	v.BatchAssertChannelCall(AssertIsZero(), "listener_flush", b.Num)
 	newContentsRes := v.BatchChannelExprf(`join(getbufline(%v, 0, "$"), "\n")."\n"`, b.Num)
-	v.BatchEnd()
+	v.MustBatchEnd()
 
 	var newContents string
 	v.Parse(newContentsRes(), &newContents)
