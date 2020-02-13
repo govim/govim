@@ -230,6 +230,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			Staticcheck:             vimconfig.BoolVal(false),
 			HighlightDiagnostics:    vimconfig.BoolVal(true),
 			HoverDiagnostics:        vimconfig.BoolVal(true),
+			TempModfile:             vimconfig.BoolVal(false),
 		}
 	}
 	// Overlay the initial user values on the defaults
