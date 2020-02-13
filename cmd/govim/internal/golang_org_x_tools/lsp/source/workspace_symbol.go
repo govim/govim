@@ -11,6 +11,7 @@ import (
 	"go/types"
 	"strings"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/fuzzy"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
@@ -20,11 +21,6 @@ func WorkspaceSymbols(ctx context.Context, views []View, query string) ([]protoc
 	ctx, done := trace.StartSpan(ctx, "source.WorkspaceSymbols")
 	defer done()
 
-	q := strings.ToLower(query)
-	matcher := func(s string) bool {
-		return strings.Contains(strings.ToLower(s), q)
-	}
-
 	seen := make(map[string]struct{})
 	var symbols []protocol.SymbolInformation
 	for _, view := range views {
@@ -32,6 +28,7 @@ func WorkspaceSymbols(ctx context.Context, views []View, query string) ([]protoc
 		if err != nil {
 			return nil, err
 		}
+		matcher := makeMatcher(view.Options().Matcher, query)
 		for _, ph := range knownPkgs {
 			pkg, err := ph.Check(ctx)
 			if err != nil {
@@ -42,7 +39,7 @@ func WorkspaceSymbols(ctx context.Context, views []View, query string) ([]protoc
 			}
 			seen[pkg.PkgPath()] = struct{}{}
 			for _, fh := range pkg.CompiledGoFiles() {
-				file, _, _, err := fh.Cached()
+				file, _, _, _, err := fh.Cached()
 				if err != nil {
 					return nil, err
 				}
@@ -74,6 +71,25 @@ type symbolInformation struct {
 }
 
 type matcherFunc func(string) bool
+
+func makeMatcher(m Matcher, query string) matcherFunc {
+	switch m {
+	case Fuzzy:
+		fm := fuzzy.NewMatcher(query)
+		return func(s string) bool {
+			return fm.Score(s) > 0
+		}
+	case CaseSensitive:
+		return func(s string) bool {
+			return strings.Contains(s, query)
+		}
+	default:
+		q := strings.ToLower(query)
+		return func(s string) bool {
+			return strings.Contains(strings.ToLower(s), q)
+		}
+	}
+}
 
 func findSymbol(decls []ast.Decl, info *types.Info, matcher matcherFunc) []symbolInformation {
 	var result []symbolInformation

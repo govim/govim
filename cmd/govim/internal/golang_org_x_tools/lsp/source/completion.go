@@ -324,6 +324,15 @@ func (c *completer) found(cand candidate) {
 		return
 	}
 
+	// If we know we want a type name, don't offer non-type name
+	// candidates. However, do offer package names since they can
+	// contain type names, and do offer any candidate without a type
+	// since we aren't sure if it is a type name or not (i.e. unimported
+	// candidate).
+	if c.wantTypeName() && obj.Type() != nil && !isTypeName(obj) && !isPkgName(obj) {
+		return
+	}
+
 	if c.matchingCandidate(&cand, nil) {
 		cand.score *= highScore
 	} else if isTypeName(obj) {
@@ -384,8 +393,9 @@ type candidate struct {
 	// makePointer is true if the candidate type name T should be made into *T.
 	makePointer bool
 
-	// dereference is true if the candidate obj should be made into *obj.
-	dereference bool
+	// dereference is a count of how many times to dereference the candidate obj.
+	// For example, dereference=2 turns "foo" into "**foo" when formatting.
+	dereference int
 
 	// imp is the import that needs to be added to this package in order
 	// for this candidate to be valid. nil if no import needed.
@@ -423,7 +433,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting file for Completion: %v", err)
 	}
-	file, m, _, err := pgh.Cached()
+	file, src, m, _, err := pgh.Cached()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -490,11 +500,9 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 		// Otherwise, manually extract the prefix if our containing token
 		// is a keyword. This improves completion after an "accidental
 		// keyword", e.g. completing to "variance" in "someFunc(var<>)".
-		if contents, _, err := pgh.File().Read(ctx); err == nil {
-			id := scanKeyword(c.pos, c.snapshot.View().Session().Cache().FileSet().File(c.pos), contents)
-			if id != nil {
-				c.setSurrounding(id)
-			}
+		id := scanKeyword(c.pos, c.snapshot.View().Session().Cache().FileSet().File(c.pos), src)
+		if id != nil {
+			c.setSurrounding(id)
 		}
 	}
 
@@ -663,14 +671,17 @@ func (c *completer) wantTypeName() bool {
 }
 
 // See https://golang.org/issue/36001. Unimported completions are expensive.
-const unimportedTarget = 100
+const (
+	maxUnimportedPackageNames = 5
+	unimportedMemberTarget    = 100
+)
 
 // selector finds completions for the specified selector expression.
 func (c *completer) selector(sel *ast.SelectorExpr) error {
 	// Is sel a qualified identifier?
 	if id, ok := sel.X.(*ast.Ident); ok {
-		if pkgname, ok := c.pkg.GetTypesInfo().Uses[id].(*types.PkgName); ok {
-			c.packageMembers(pkgname.Imported(), stdScore, nil)
+		if pkgName, ok := c.pkg.GetTypesInfo().Uses[id].(*types.PkgName); ok {
+			c.packageMembers(pkgName.Imported(), stdScore, nil)
 			return nil
 		}
 	}
@@ -682,7 +693,7 @@ func (c *completer) selector(sel *ast.SelectorExpr) error {
 	}
 
 	// Try unimported packages.
-	if id, ok := sel.X.(*ast.Ident); ok && c.opts.unimported && len(c.items) < unimportedTarget {
+	if id, ok := sel.X.(*ast.Ident); ok && c.opts.unimported {
 		if err := c.unimportedMembers(id); err != nil {
 			return err
 		}
@@ -696,6 +707,7 @@ func (c *completer) unimportedMembers(id *ast.Ident) error {
 	if err != nil {
 		return err
 	}
+
 	var paths []string
 	for path, pkg := range known {
 		if pkg.GetTypes().Name() != id.Name {
@@ -703,6 +715,7 @@ func (c *completer) unimportedMembers(id *ast.Ident) error {
 		}
 		paths = append(paths, path)
 	}
+
 	var relevances map[string]int
 	if len(paths) != 0 {
 		c.snapshot.View().RunProcessEnvFunc(c.ctx, func(opts *imports.Options) error {
@@ -710,6 +723,7 @@ func (c *completer) unimportedMembers(id *ast.Ident) error {
 			return nil
 		})
 	}
+
 	for path, pkg := range known {
 		if pkg.GetTypes().Name() != id.Name {
 			continue
@@ -721,8 +735,8 @@ func (c *completer) unimportedMembers(id *ast.Ident) error {
 		if imports.ImportPathToAssumedName(path) != pkg.GetTypes().Name() {
 			imp.name = pkg.GetTypes().Name()
 		}
-		c.packageMembers(pkg.GetTypes(), .01*float64(relevances[path]), imp)
-		if len(c.items) >= unimportedTarget {
+		c.packageMembers(pkg.GetTypes(), stdScore+.01*float64(relevances[path]), imp)
+		if len(c.items) >= unimportedMemberTarget {
 			return nil
 		}
 	}
@@ -740,7 +754,7 @@ func (c *completer) unimportedMembers(id *ast.Ident) error {
 		// Continue with untyped proposals.
 		pkg := types.NewPackage(pkgExport.Fix.StmtInfo.ImportPath, pkgExport.Fix.IdentName)
 		for _, export := range pkgExport.Exports {
-			score := 0.01 * float64(pkgExport.Fix.Relevance)
+			score := stdScore + 0.01*float64(pkgExport.Fix.Relevance)
 			c.found(candidate{
 				obj:   types.NewVar(0, pkg, export, nil),
 				score: score,
@@ -750,7 +764,7 @@ func (c *completer) unimportedMembers(id *ast.Ident) error {
 				},
 			})
 		}
-		if len(c.items) >= unimportedTarget {
+		if len(c.items) >= unimportedMemberTarget {
 			cancel()
 		}
 	}
@@ -849,7 +863,7 @@ func (c *completer) lexical() error {
 
 			// If obj's type is invalid, find the AST node that defines the lexical block
 			// containing the declaration of obj. Don't resolve types for packages.
-			if _, ok := obj.(*types.PkgName); !ok && !typeIsValid(obj.Type()) {
+			if !isPkgName(obj) && !typeIsValid(obj.Type()) {
 				// Match the scope to its ast.Node. If the scope is the package scope,
 				// use the *ast.File as the starting node.
 				var node ast.Node
@@ -930,7 +944,7 @@ func (c *completer) lexical() error {
 		}
 	}
 
-	if c.opts.unimported && len(c.items) < unimportedTarget {
+	if c.opts.unimported {
 		ctx, cancel := c.deepCompletionContext()
 		defer cancel()
 		// Suggest packages that have not been imported yet.
@@ -938,13 +952,22 @@ func (c *completer) lexical() error {
 		if c.surrounding != nil {
 			prefix = c.surrounding.Prefix()
 		}
-		var mu sync.Mutex
+		var (
+			mu               sync.Mutex
+			initialItemCount = len(c.items)
+		)
 		add := func(pkg imports.ImportFix) {
 			mu.Lock()
 			defer mu.Unlock()
 			if _, ok := seen[pkg.IdentName]; ok {
 				return
 			}
+
+			if len(c.items)-initialItemCount >= maxUnimportedPackageNames {
+				cancel()
+				return
+			}
+
 			// Rank unimported packages significantly lower than other results.
 			score := 0.01 * float64(pkg.Relevance)
 
@@ -952,18 +975,6 @@ func (c *completer) lexical() error {
 			// multiple packages of the same name as completion suggestions, since
 			// only one will be chosen.
 			obj := types.NewPkgName(0, nil, pkg.IdentName, types.NewPackage(pkg.StmtInfo.ImportPath, pkg.IdentName))
-			c.found(candidate{
-				obj:   obj,
-				score: score,
-				imp: &importInfo{
-					importPath: pkg.StmtInfo.ImportPath,
-					name:       pkg.StmtInfo.Name,
-				},
-			})
-
-			if len(c.items) >= unimportedTarget {
-				cancel()
-			}
 			c.found(candidate{
 				obj:   obj,
 				score: score,
@@ -1326,7 +1337,6 @@ func expectedCandidate(c *completer) (inf candidateInference) {
 
 	if c.enclosingCompositeLiteral != nil {
 		inf.objType = c.expectedCompositeLiteralType()
-		return inf
 	}
 
 Nodes:
@@ -1412,7 +1422,9 @@ Nodes:
 							// param w/ further expressions, we expect a single
 							// variadic item.
 							if beyondLastParam || isLastParam && len(node.Args) > numParams {
-								inf.objType = sig.Params().At(numParams - 1).Type().(*types.Slice).Elem()
+								if slice, ok := sig.Params().At(numParams - 1).Type().(*types.Slice); ok {
+									inf.objType = slice.Elem()
+								}
 								break Nodes
 							}
 
@@ -1717,6 +1729,11 @@ Nodes:
 				wantComparable = c.pos == n.Pos()+token.Pos(len("map["))
 			}
 			break Nodes
+		case *ast.ValueSpec:
+			if n.Type != nil && n.Type.Pos() <= c.pos && c.pos <= n.Type.End() {
+				wantTypeName = true
+			}
+			break Nodes
 		default:
 			if breaksExpectedTypeInference(p) {
 				return typeNameInference{}
@@ -1802,9 +1819,10 @@ func (c *completer) matchingCandidate(cand *candidate, seen map[types.Type]struc
 			seen[cand.obj.Type()] = struct{}{}
 		}
 
-		if !saw && c.matchingCandidate(&candidate{obj: c.fakeObj(ptr.Elem())}, seen) {
+		fakeCandidate := candidate{obj: c.fakeObj(ptr.Elem())}
+		if !saw && c.matchingCandidate(&fakeCandidate, seen) {
 			// Mark the candidate so we know to prepend "*" when formatting.
-			cand.dereference = true
+			cand.dereference = 1 + fakeCandidate.dereference
 			return true
 		}
 	}
