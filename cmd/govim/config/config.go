@@ -291,6 +291,10 @@ const (
 
 	// FunctionMotion moves the cursor according to the arguments provided.
 	FunctionMotion Function = "Motion"
+
+	// FunctionWorkspaceSymbol exposes the LSP workspace/symbol method. Its
+	// signature is identical to the LSP method.
+	FunctionWorkspaceSymbol = "WorkspaceSymbol"
 )
 
 // FormatOnSave typed constants define the set of valid values that

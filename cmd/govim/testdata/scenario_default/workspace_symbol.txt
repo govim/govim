@@ -1,0 +1,39 @@
+# Test that GOVIMWorkspaceSymbol works as expected
+
+vim -indent expr 'GOVIMWorkspaceSymbol({\"query\": \"main\"})'
+cmpenv stdout symbols.golden
+! stderr .+
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+func main() {
+}
+-- symbols.golden --
+[
+  {
+    "kind": 12,
+    "location": {
+      "range": {
+        "end": {
+          "character": 9,
+          "line": 2
+        },
+        "start": {
+          "character": 5,
+          "line": 2
+        }
+      },
+      "uri": "file://$WORK/main.go"
+    },
+    "name": "main"
+  }
+]
