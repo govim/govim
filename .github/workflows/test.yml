@@ -29,37 +29,6 @@ env:
 
 name: Go
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
-        go_version: ["go1.12.16", "go1.13.7", "go1.14rc1"]
-        vim_flavor: ["vim", "gvim"]
-        vim_version: ["v8.1.1711", "v8.1.2056", "v8.2.0213"]
-    runs-on: ${{ matrix.os }}
-    env:
-      GO_VERSION: ${{ matrix.go_version }}
-      VIM_FLAVOR: ${{ matrix.vim_flavor }}
-      VIM_VERSION: ${{ matrix.vim_version }}
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@722adc63f1aa60a57ec37892e133b1d319cae598
-    - name: Build docker image
-      run: ./_scripts/buildGovimImage.sh
-    - name: Run Docker, run!
-      if: success()
-      run: ./_scripts/runDockerRun.sh
-    - name: Tidy up
-      if: success() || failure()
-      run: ./_scripts/postRun.sh
-    - name: Upload artefacts
-      if: (success() || failure()) && env.CI_UPLOAD_ARTIFACTS == 'true'
-      uses: actions/upload-artifact@3446296876d12d4e3a0f3145a3c87e67bf0a16b5
-      with:
-        path: /home/runner/.artefacts
-        name: ${{ matrix.os }}_${{ matrix.go_version }}_${{ matrix.vim_flavor }}_${{ matrix.vim_version }}
-
   test-macos:
     strategy:
       fail-fast: false
@@ -86,4 +55,4 @@ jobs:
     - name: Go version
       run: go version
     - name: Run tests
-      run: go run ./internal/cmd/dots go test -timeout 0s ./...
+      run: go run ./internal/cmd/dots go test -timeout 20m ./...
