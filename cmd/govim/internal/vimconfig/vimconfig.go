@@ -18,7 +18,7 @@ type VimConfig struct {
 	CompleteUnimported                           *int
 	GoImportsLocalPrefix                         *string
 	CompletionBudget                             *string
-	ExperimentalTempModfile                      *int
+	TempModfile                                  *int
 	GoplsEnv                                     *map[string]string
 	ExperimentalMouseTriggeredHoverPopupOptions  *map[string]interface{}
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
@@ -37,7 +37,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		CompleteUnimported:        boolVal(c.CompleteUnimported, d.CompleteUnimported),
 		GoImportsLocalPrefix:      stringVal(c.GoImportsLocalPrefix, d.GoImportsLocalPrefix),
 		CompletionBudget:          stringVal(c.CompletionBudget, d.CompletionBudget),
-		ExperimentalTempModfile:   boolVal(c.ExperimentalTempModfile, d.ExperimentalTempModfile),
+		TempModfile:               boolVal(c.TempModfile, d.TempModfile),
 		GoplsEnv:                  copyStringValMap(c.GoplsEnv, d.GoplsEnv),
 		ExperimentalMouseTriggeredHoverPopupOptions:  copyMap(c.ExperimentalMouseTriggeredHoverPopupOptions, d.ExperimentalMouseTriggeredHoverPopupOptions),
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),

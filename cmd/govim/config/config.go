@@ -107,7 +107,7 @@ type Config struct {
 	// results. Zero seconds means unlimited. Examples values: "0s", "100ms"
 	CompletionBudget *string `json:",omitempty"`
 
-	// ExperimentalTempModfile corresponds to the gopls config setting
+	// TempModfile corresponds to the gopls config setting
 	// "tempModfile" which controls whether a temporary modfile is used in place
 	// of the main module's original go.mod file. When enabled, any
 	// user-initiated changes (to .go files) that would otherwise have resulted
@@ -118,7 +118,7 @@ type Config struct {
 	// https://go-review.googlesource.com/c/tools/+/216277.
 	//
 	// Default: false
-	ExperimentalTempModfile *bool `json:",omitempty"`
+	TempModfile *bool `json:",omitempty"`
 
 	// GoplsEnv configures the set of environment variables gopls is using in
 	// calls to go/packages. This is most easily understood in the context of

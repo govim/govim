@@ -34,8 +34,8 @@ func (r *Config) Apply(v *Config) {
 	if v.CompletionBudget != nil {
 		r.CompletionBudget = v.CompletionBudget
 	}
-	if v.ExperimentalTempModfile != nil {
-		r.ExperimentalTempModfile = v.ExperimentalTempModfile
+	if v.TempModfile != nil {
+		r.TempModfile = v.TempModfile
 	}
 	if v.GoplsEnv != nil {
 		r.GoplsEnv = v.GoplsEnv

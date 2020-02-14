@@ -100,7 +100,7 @@ function! s:validCompletionBudget(v)
   return s:validString(a:v)
 endfunction
 
-function! s:validExperimentalTempModfile(v)
+function! s:validTempModfile(v)
   return s:validBool(a:v)
 endfunction
 
@@ -146,7 +146,7 @@ let s:validators = {
       \ "CompleteUnimported": function("s:validCompleteUnimported"),
       \ "GoImportsLocalPrefix": function("s:validGoImportsLocalPrefix"),
       \ "CompletionBudget": function("s:validCompletionBudget"),
-      \ "ExperimentalTempModfile": function("s:validExperimentalTempModfile"),
+      \ "TempModfile": function("s:validTempModfile"),
       \ "GoplsEnv": function("s:validGoplsEnv"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),

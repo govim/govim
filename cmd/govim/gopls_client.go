@@ -150,8 +150,8 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	if conf.CompletionBudget != nil {
 		goplsConfig[goplsCompletionBudget] = *conf.CompletionBudget
 	}
-	if g.vimstate.config.ExperimentalTempModfile != nil {
-		goplsConfig[goplsTempModfile] = *conf.ExperimentalTempModfile
+	if g.vimstate.config.TempModfile != nil {
+		goplsConfig[goplsTempModfile] = *conf.TempModfile
 	}
 	if os.Getenv(string(config.EnvVarGoplsVerbose)) == "true" {
 		goplsConfig[goplsVerboseOutput] = true
