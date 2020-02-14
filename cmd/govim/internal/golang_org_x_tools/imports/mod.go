@@ -14,9 +14,9 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/mod/module"
+	"golang.org/x/mod/semver"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gopathwalk"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/module"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/semver"
 )
 
 // ModuleResolver implements resolver for modules using the go command as little
@@ -579,7 +579,7 @@ func (r *ModuleResolver) scanDirForPackage(root gopathwalk.Root, dir string) dir
 				err:    fmt.Errorf("invalid module cache path: %v", subdir),
 			}
 		}
-		modPath, err := module.DecodePath(filepath.ToSlash(matches[1]))
+		modPath, err := module.UnescapePath(filepath.ToSlash(matches[1]))
 		if err != nil {
 			if r.env.Debug {
 				r.env.Logf("decoding module cache path %q: %v", subdir, err)

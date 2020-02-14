@@ -245,7 +245,7 @@ func (v *view) buildBuiltinPackage(ctx context.Context, goFiles []string) error 
 	fset := v.session.cache.fset
 	h := v.session.cache.store.Bind(pgh.File().Identity(), func(ctx context.Context) interface{} {
 		data := &builtinPackageData{}
-		file, _, _, err := pgh.Parse(ctx)
+		file, _, _, _, err := pgh.Parse(ctx)
 		if err != nil {
 			data.err = err
 			return data
@@ -333,6 +333,7 @@ func (v *view) buildProcessEnv(ctx context.Context) (*imports.ProcessEnv, error)
 	env, buildFlags := v.env()
 	processEnv := &imports.ProcessEnv{
 		WorkingDir: v.folder.Filename(),
+		BuildFlags: buildFlags,
 		Logf: func(format string, args ...interface{}) {
 			log.Print(ctx, fmt.Sprintf(format, args...))
 		},
@@ -358,12 +359,6 @@ func (v *view) buildProcessEnv(ctx context.Context) (*imports.ProcessEnv, error)
 		case "GOSUMDB":
 			processEnv.GOSUMDB = split[1]
 		}
-	}
-	if len(buildFlags) > 0 {
-		if processEnv.GOFLAGS != "" {
-			processEnv.GOFLAGS += " "
-		}
-		processEnv.GOFLAGS += strings.Join(buildFlags, " ")
 	}
 	return processEnv, nil
 }
@@ -396,7 +391,19 @@ func basename(filename string) string {
 	return strings.ToLower(filepath.Base(filename))
 }
 
-// knownFile returns true if the given URI is already a part of the view.
+func (v *view) relevantChange(c source.FileModification) bool {
+	// If the file is known to the view, the change is relevant.
+	known := v.knownFile(c.URI)
+
+	// If the file is not known to the view, and the change is only on-disk,
+	// we should not invalidate the snapshot. This is necessary because Emacs
+	// sends didChangeWatchedFiles events for temp files.
+	if !known && c.OnDisk && (c.Action == source.Change || c.Action == source.Delete) {
+		return false
+	}
+	return v.contains(c.URI) || known
+}
+
 func (v *view) knownFile(uri span.URI) bool {
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -584,8 +591,8 @@ func (v *view) setBuildInformation(ctx context.Context, folder span.URI, env []s
 	// check if the view has a valid build configuration.
 	v.hasValidBuildConfiguration = checkBuildConfiguration(v.goCommand, v.realMod, v.folder, v.gopath)
 
-	// The user has disabled the use of the -modfile flag.
-	if !modfileFlagEnabled {
+	// The user has disabled the use of the -modfile flag or has no go.mod file.
+	if !modfileFlagEnabled || v.realMod == "" {
 		return nil
 	}
 	if modfileFlag, err := v.modfileFlagExists(ctx, v.Options().Env); err != nil {

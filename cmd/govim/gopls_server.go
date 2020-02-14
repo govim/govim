@@ -294,7 +294,7 @@ func (l loggingGoplsServer) LogTraceNotification(ctxt context.Context, params *p
 	return err
 }
 
-func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.PrepareRenameParams) (interface{}, error) {
+func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.PrepareRenameParams) (*protocol.Range, error) {
 	l.Logf("gopls.PrepareRename() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.PrepareRename(ctxt, params)
 	l.Logf("gopls.PrepareRename() return; err: %v; res\n%v", err, pretty.Sprint(res))

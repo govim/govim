@@ -1,8 +1,10 @@
 package unimported
 
 import (
+	_ "context"
+
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/baz"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/signature" // provide type information for unimported completions in the other file
+	_ "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/signature" // provide type information for unimported completions in the other file
 )
 
 func _() {
