@@ -27,6 +27,7 @@ const (
 	FunctionBadBatch            config.Function = "BadBatch"
 	FunctionAssertFailedBatch   config.Function = "AssertFailedBatch"
 	FunctionNonBatchCallInBatch config.Function = "NonBatchCallInBatch"
+	FunctionIgnoreErrorInBatch  config.Function = "IgnoreErrorInBatch"
 	FunctionShowMessagePopup    config.Function = config.InternalFunctionPrefix + "ShowMessagePopup"
 )
 
@@ -44,6 +45,7 @@ func (g *govimplugin) InitTestAPI() {
 	g.DefineFunction(string(FunctionBadBatch), []string{}, g.vimstate.badBatch)
 	g.DefineFunction(string(FunctionAssertFailedBatch), []string{}, g.vimstate.assertFailedBatch)
 	g.DefineFunction(string(FunctionNonBatchCallInBatch), []string{}, g.vimstate.nonBatchCallInBatch)
+	g.DefineFunction(string(FunctionIgnoreErrorInBatch), []string{"fail"}, g.vimstate.ignoreErrorInBatch)
 }
 
 func (v *vimstate) hello(args ...json.RawMessage) (interface{}, error) {
@@ -93,7 +95,7 @@ func (v *vimstate) simpleBatch(args ...json.RawMessage) (interface{}, error) {
 	defer v.BatchCancelIfNotEnded()
 	v.BatchChannelCall("eval", "5")
 	v.BatchChannelExprf("4")
-	res := v.BatchEnd()
+	res := v.MustBatchEnd()
 	return res, nil
 }
 
@@ -107,15 +109,15 @@ func (v *vimstate) badBatch(args ...json.RawMessage) (interface{}, error) {
 	v.BatchStart()
 	defer v.BatchCancelIfNotEnded()
 	v.BatchChannelCall("execute", "throw \"failed\"")
-	res := v.BatchEnd()
+	res := v.MustBatchEnd()
 	return res, nil
 }
 
 func (v *vimstate) assertFailedBatch(args ...json.RawMessage) (interface{}, error) {
 	v.BatchStart()
 	defer v.BatchCancelIfNotEnded()
-	v.BatchAssertChannelExprf(AssertIsZero, "1")
-	res := v.BatchEnd()
+	v.BatchAssertChannelExprf(AssertIsZero(), "1")
+	res := v.MustBatchEnd()
 	return res, nil
 }
 
@@ -126,6 +128,28 @@ func (v *vimstate) nonBatchCallInBatch(args ...json.RawMessage) (res interface{}
 		v.BatchCancelIfNotEnded()
 	}()
 	v.ChannelExprf("1")
-	v.BatchEnd()
+	v.MustBatchEnd()
 	return res, err
+}
+
+func (v *vimstate) ignoreErrorInBatch(args ...json.RawMessage) (interface{}, error) {
+	var fail bool
+	v.Parse(args[0], &fail)
+	v.BatchStart()
+	defer v.BatchCancelIfNotEnded()
+	assert := AssertIsErrorOrNil("E971: Property type number does not exist")
+	if fail {
+		var props = struct {
+			Length int    `json:"length"`
+			Type   string `json:"type"`
+		}{
+			Length: 101,
+			Type:   "number",
+		}
+		v.BatchAssertChannelCall(assert, "prop_add", 100, 101, props)
+	} else {
+		v.BatchAssertChannelExprf(assert, "5")
+	}
+	res := v.MustBatchEnd()
+	return res, nil
 }

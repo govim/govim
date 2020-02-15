@@ -41,7 +41,7 @@ func (v *vimstate) textpropDefine() error {
 		Priority:  types.SeverityPriority[types.SeverityErr] + 1,
 	})
 
-	res := v.BatchEnd()
+	res := v.MustBatchEnd()
 	for i := range res {
 		if v.ParseInt(res[i]) != 0 {
 			return fmt.Errorf("call to prop_type_add() failed")
@@ -94,7 +94,7 @@ func (v *vimstate) redefineHighlights(diags []types.Diagnostic, force bool) erro
 			}{string(hi), d.Range.End.Line(), d.Range.End.Col(), d.Buf})
 	}
 
-	v.BatchEnd()
+	v.MustBatchEnd()
 	return nil
 }
 
@@ -117,6 +117,6 @@ func (v *vimstate) removeTextProps(id types.TextPropID) {
 
 	if didStart {
 		// prop_remove returns number of removed properties per call
-		v.BatchEnd()
+		v.MustBatchEnd()
 	}
 }

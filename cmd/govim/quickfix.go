@@ -71,7 +71,7 @@ func (v *vimstate) updateQuickfix(diags []types.Diagnostic, force bool) error {
 	if newIdx > 0 {
 		v.BatchChannelCall("setqflist", []quickfixEntry{}, "r", qflistWant{Idx: newIdx})
 	}
-	v.BatchEnd()
+	v.MustBatchEnd()
 
 	return nil
 }

@@ -41,7 +41,7 @@ func (v *vimstate) signDefine() error {
 	for _, hi := range signnames {
 		v.BatchChannelCall("sign_getdefined", string(hi))
 	}
-	for i, res := range v.BatchEnd() {
+	for i, res := range v.MustBatchEnd() {
 		var d []defineDict
 		v.Parse(res, &d)
 		if len(d) == 0 {
@@ -59,7 +59,7 @@ func (v *vimstate) signDefine() error {
 
 		v.BatchChannelCall("sign_define", hi, arg)
 	}
-	for _, res := range v.BatchEnd() {
+	for _, res := range v.MustBatchEnd() {
 		if v.ParseInt(res) != 0 {
 			return fmt.Errorf("sign_define failed")
 		}
@@ -117,7 +117,7 @@ func (v *vimstate) updateSigns(fixes []types.Diagnostic, force bool) error {
 
 	v.BatchStart()
 	defer v.BatchCancelIfNotEnded()
-	v.BatchAssertChannelCall(AssertIsZero, "sign_unplace", signGroup)
+	v.BatchAssertChannelCall(AssertIsZero(), "sign_unplace", signGroup)
 	var placeList []placeDict
 	for _, f := range fixes {
 		if f.Buf == -1 {
@@ -143,7 +143,7 @@ func (v *vimstate) updateSigns(fixes []types.Diagnostic, force bool) error {
 	if len(placeList) > 0 {
 		v.BatchChannelCall("sign_placelist", placeList)
 	}
-	v.BatchEnd()
+	v.MustBatchEnd()
 
 	return nil
 }

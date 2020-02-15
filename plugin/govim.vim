@@ -423,20 +423,37 @@ function s:batchCall(calls)
   let l:results = []
   for l:call in a:calls
     let l:type = l:call[0]
-    let Must = function(l:call[1])
+    let l:mustName = l:call[1][0]
+    let l:mustArgs = l:call[1][1]
+    if type(l:mustArgs) == type(v:none)
+      let l:mustArgs = []
+    endif
+    let Must = call(l:mustName, l:mustArgs)
     if l:type == "call"
       let l:fn = l:call[2]
       let l:args = l:call[3:-1]
       let F = function(l:fn, l:args)
-      let l:res = F()
-      let l:check = Must(l:res)
+      let l:res = v:none
+      let l:err = v:none
+      try
+        let l:res = F()
+      catch
+        let l:err = v:exception
+      endtry
+      let l:check = Must(l:res, l:err)
       if !l:check[0]
         throw "failed to call ".l:fn."(".string(l:args)."): ".l:check[1]
       endif
     elseif l:type == "expr"
       let l:expr = l:call[2]
-      let l:res = eval(l:expr)
-      let l:check = Must(l:res)
+      let l:res = v:none
+      let l:err = v:none
+      try
+        let l:res = eval(l:expr)
+      catch
+        let l:err = v:exception
+      endtry
+      let l:check = Must(l:res, l:err)
       if !l:check[0]
         throw "failed to eval ".l:expr.": ".l:check[1]
       endif
@@ -448,15 +465,46 @@ function s:batchCall(calls)
   return l:results
 endfunction
 
-function s:mustNothing(v)
-  return [v:true, ""]
+function s:mustNoError()
+  let l:args = {}
+  function l:args.f(v, err)
+    if a:err != v:none
+      return [v:false, a:err]
+    endif
+    return [v:true, ""]
+  endfunction
+  return l:args.f
 endfunction
 
-function s:mustBeZero(v)
-  if a:v != 0
-    return [v:false, "got non-zero return value"]
-  endif
-  return [v:true, ""]
+function s:mustBeZero()
+  let l:args = {}
+  function l:args.f(v, err)
+    if a:err != v:none
+      return [v:false, a:err]
+    endif
+    if a:v != 0
+      return [v:false, "got non-zero return value"]
+    endif
+    return [v:true, ""]
+  endfunction
+  return l:args.f
+endfunction
+
+function s:mustBeErrorOrNil(...)
+  let l:args = {'patterns': a:000}
+  function l:args.f(v, err)
+    if a:err == v:none
+      return [v:true, ""]
+    endif
+    for l:v in self.patterns
+      if match(a:err, l:v) >= 0
+        call ch_log("Ignoring batch error: ".string(a:err))
+        return [v:true, ""]
+      endif
+    endfor
+    return [v:false, a:err]
+  endfunction
+  return l:args.f
 endfunction
 
 function GOVIM_internal_SuggestedFixesFilter(id, key)
