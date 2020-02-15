@@ -25,6 +25,10 @@ const (
 	EnvErrLogMatchWait       = "GOVIM_ERRLOGMATCH_WAIT"
 	EnvDetectUserBusy        = "GOVIM_DETECT_USER_BUSY"
 
+	// EnvStrictVimBufferLifecycle can be set to true to enforce strict
+	// (but correct) expectations on Vim's buffer lifecycle events.
+	EnvStrictVimBufferLifecycle = "GOVIM_VIM_STRICT_BUFFER_LIFECYCLE"
+
 	// EnvTestscriptIssues can be set to a regular expression which
 	// causes issue tracker conditions not to be satisfied. e.g.
 	// GOVIM_TESTSCRIPT_ISSUES=. will cause all issue tracker conditions

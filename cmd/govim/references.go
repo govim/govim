@@ -45,7 +45,7 @@ func (v *vimstate) references(flags govim.CommandFlags, args ...string) error {
 	for _, ref := range refs {
 		var buf *types.Buffer
 		for _, b := range v.buffers {
-			if b.URI() == span.URI(ref.URI) {
+			if b.Loaded && b.URI() == span.URI(ref.URI) {
 				buf = b
 			}
 		}

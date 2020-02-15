@@ -14,11 +14,14 @@ vim ex 'e main.go'
 
 errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
 
+# Opening other.go in this way first closes main.go
+# which has the effect of zero-ing the analysis
+# diagnostics for this package
 vim ex 'e other.go'
 
 sleep $GOVIM_ERRLOGMATCH_WAIT
 errlogmatch -count=0 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-errlogmatch -count=1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
+errlogmatch -count=3 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103

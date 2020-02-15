@@ -22,6 +22,9 @@ type Buffer struct {
 	Name     string
 	contents []byte
 	Version  int
+
+	// Listener is the ID of the listener for the buffer. Listeners number from
+	// 1 so the zero value indicates this buffer does not have a listener.
 	Listener int
 
 	// Loaded reflects vim's "loaded" buffer state. See :help bufloaded() for details.
