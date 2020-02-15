@@ -237,7 +237,7 @@ func (app *Application) connectRemote(ctx context.Context, remote string) (*conn
 
 func (c *connection) initialize(ctx context.Context, options func(*source.Options)) error {
 	params := &protocol.ParamInitialize{}
-	params.RootURI = string(span.FileURI(c.Client.app.wd))
+	params.RootURI = protocol.URIFromPath(c.Client.app.wd)
 	params.Capabilities.Workspace.Configuration = true
 
 	// Make sure to respect configured options when sending initialize request.
@@ -291,6 +291,15 @@ func newConnection(app *Application) *connection {
 			files: make(map[span.URI]*cmdFile),
 		},
 	}
+}
+
+// fileURI converts a DocumentURI to a file:// span.URI, panicking if it's not a file.
+func fileURI(uri protocol.DocumentURI) span.URI {
+	sURI := uri.SpanURI()
+	if !sURI.IsFile() {
+		panic(fmt.Sprintf("%q is not a file URI", uri))
+	}
+	return sURI
 }
 
 func (c *cmdClient) ShowMessage(ctx context.Context, p *protocol.ShowMessageParams) error { return nil }
@@ -373,8 +382,7 @@ func (c *cmdClient) PublishDiagnostics(ctx context.Context, p *protocol.PublishD
 	c.filesMu.Lock()
 	defer c.filesMu.Unlock()
 
-	uri := span.NewURI(p.URI)
-	file := c.getFile(ctx, uri)
+	file := c.getFile(ctx, fileURI(p.URI))
 	file.diagnostics = p.Diagnostics
 	return nil
 }
@@ -424,7 +432,7 @@ func (c *connection) AddFile(ctx context.Context, uri span.URI) *cmdFile {
 	file.added = true
 	p := &protocol.DidOpenTextDocumentParams{
 		TextDocument: protocol.TextDocumentItem{
-			URI:        protocol.NewURI(uri),
+			URI:        protocol.URIFromSpanURI(uri),
 			LanguageID: source.DetectLanguage("", file.uri.Filename()).String(),
 			Version:    1,
 			Text:       string(file.mapper.Content),

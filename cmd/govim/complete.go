@@ -22,7 +22,7 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 		params := &protocol.CompletionParams{
 			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
 				TextDocument: protocol.TextDocumentIdentifier{
-					URI: string(b.URI()),
+					URI: protocol.DocumentURI(b.URI()),
 				},
 				Position: pos.ToPosition(),
 			},

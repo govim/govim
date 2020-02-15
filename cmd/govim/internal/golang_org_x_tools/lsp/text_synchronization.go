@@ -17,9 +17,14 @@ import (
 )
 
 func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocumentParams) error {
+	uri := params.TextDocument.URI.SpanURI()
+	if !uri.IsFile() {
+		return nil
+	}
+
 	_, err := s.didModifyFiles(ctx, []source.FileModification{
 		{
-			URI:        span.NewURI(params.TextDocument.URI),
+			URI:        uri,
 			Action:     source.Open,
 			Version:    params.TextDocument.Version,
 			Text:       []byte(params.TextDocument.Text),
@@ -30,7 +35,11 @@ func (s *Server) didOpen(ctx context.Context, params *protocol.DidOpenTextDocume
 }
 
 func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDocumentParams) error {
-	uri := span.NewURI(params.TextDocument.URI)
+	uri := params.TextDocument.URI.SpanURI()
+	if !uri.IsFile() {
+		return nil
+	}
+
 	text, err := s.changedText(ctx, uri, params.ContentChanges)
 	if err != nil {
 		return err
@@ -65,8 +74,12 @@ func (s *Server) didChange(ctx context.Context, params *protocol.DidChangeTextDo
 func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.DidChangeWatchedFilesParams) error {
 	var modifications []source.FileModification
 	for _, change := range params.Changes {
+		uri := change.URI.SpanURI()
+		if !uri.IsFile() {
+			continue
+		}
 		modifications = append(modifications, source.FileModification{
-			URI:    span.NewURI(change.URI),
+			URI:    uri,
 			Action: changeTypeToFileAction(change.Type),
 			OnDisk: true,
 		})
@@ -76,8 +89,13 @@ func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.Did
 }
 
 func (s *Server) didSave(ctx context.Context, params *protocol.DidSaveTextDocumentParams) error {
+	uri := params.TextDocument.URI.SpanURI()
+	if !uri.IsFile() {
+		return nil
+	}
+
 	c := source.FileModification{
-		URI:     span.NewURI(params.TextDocument.URI),
+		URI:     uri,
 		Action:  source.Save,
 		Version: params.TextDocument.Version,
 	}
@@ -89,9 +107,14 @@ func (s *Server) didSave(ctx context.Context, params *protocol.DidSaveTextDocume
 }
 
 func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocumentParams) error {
+	uri := params.TextDocument.URI.SpanURI()
+	if !uri.IsFile() {
+		return nil
+	}
+
 	_, err := s.didModifyFiles(ctx, []source.FileModification{
 		{
-			URI:     span.NewURI(params.TextDocument.URI),
+			URI:     uri,
 			Action:  source.Close,
 			Version: -1,
 			Text:    nil,

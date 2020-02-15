@@ -42,8 +42,8 @@ func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitializ
 	if len(s.pendingFolders) == 0 {
 		if params.RootURI != "" {
 			s.pendingFolders = []protocol.WorkspaceFolder{{
-				URI:  params.RootURI,
-				Name: path.Base(params.RootURI),
+				URI:  string(params.RootURI),
+				Name: path.Base(params.RootURI.SpanURI().Filename()),
 			}}
 		} else {
 			// No folders and no root--we are in single file mode.
@@ -165,8 +165,8 @@ func (s *Server) addFolders(ctx context.Context, folders []protocol.WorkspaceFol
 	viewErrors := make(map[span.URI]error)
 
 	for _, folder := range folders {
-		uri := span.NewURI(folder.URI)
-		_, snapshot, err := s.addView(ctx, folder.Name, span.NewURI(folder.URI))
+		uri := span.URIFromURI(folder.URI)
+		_, snapshot, err := s.addView(ctx, folder.Name, uri)
 		if err != nil {
 			viewErrors[uri] = err
 			continue
@@ -192,10 +192,10 @@ func (s *Server) fetchConfig(ctx context.Context, name string, folder span.URI, 
 	v := protocol.ParamConfiguration{
 		ConfigurationParams: protocol.ConfigurationParams{
 			Items: []protocol.ConfigurationItem{{
-				ScopeURI: protocol.NewURI(folder),
+				ScopeURI: string(folder),
 				Section:  "gopls",
 			}, {
-				ScopeURI: protocol.NewURI(folder),
+				ScopeURI: string(folder),
 				Section:  fmt.Sprintf("gopls-%s", name),
 			}},
 		},
@@ -232,6 +232,32 @@ func (s *Server) fetchConfig(ctx context.Context, name string, folder span.URI, 
 		}
 	}
 	return nil
+}
+
+// beginFileRequest checks preconditions for a file-oriented request and routes
+// it to a snapshot.
+// We don't want to return errors for benign conditions like wrong file type,
+// so callers should do if !ok { return err } rather than if err != nil.
+func (s *Server) beginFileRequest(pURI protocol.DocumentURI, expectKind source.FileKind) (source.Snapshot, source.FileHandle, bool, error) {
+	uri := pURI.SpanURI()
+	if !uri.IsFile() {
+		// Not a file URI. Stop processing the request, but don't return an error.
+		return nil, nil, false, nil
+	}
+	view, err := s.session.ViewOf(uri)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	snapshot := view.Snapshot()
+	fh, err := snapshot.GetFile(uri)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if expectKind != source.UnknownKind && fh.Identity().Kind != expectKind {
+		// Wrong kind of file. Nothing to do.
+		return nil, nil, false, nil
+	}
+	return snapshot, fh, true, nil
 }
 
 func (s *Server) shutdown(ctx context.Context) error {

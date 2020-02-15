@@ -70,13 +70,15 @@ func (s *Server) cancelRequest(ctx context.Context, params *protocol.CancelParam
 }
 
 func (s *Server) codeLens(ctx context.Context, params *protocol.CodeLensParams) ([]protocol.CodeLens, error) {
-	uri := span.NewURI(params.TextDocument.URI)
+	uri := params.TextDocument.URI.SpanURI()
 	view, err := s.session.ViewOf(uri)
 	if err != nil {
 		return nil, err
 	}
-	snapshot := view.Snapshot()
-	fh, err := snapshot.GetFile(uri)
+	if !view.Snapshot().IsSaved(uri) {
+		return nil, nil
+	}
+	fh, err := view.Snapshot().GetFile(uri)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +86,7 @@ func (s *Server) codeLens(ctx context.Context, params *protocol.CodeLensParams) 
 	case source.Go:
 		return nil, nil
 	case source.Mod:
-		return mod.CodeLens(ctx, snapshot, uri)
+		return mod.CodeLens(ctx, view.Snapshot(), uri)
 	}
 	return nil, nil
 }
@@ -93,17 +95,17 @@ func (s *Server) nonstandardRequest(ctx context.Context, method string, params i
 	paramMap := params.(map[string]interface{})
 	if method == "gopls/diagnoseFiles" {
 		for _, file := range paramMap["files"].([]interface{}) {
-			uri := span.NewURI(file.(string))
-			view, err := s.session.ViewOf(uri)
-			if err != nil {
+			snapshot, fh, ok, err := s.beginFileRequest(protocol.DocumentURI(file.(string)), source.UnknownKind)
+			if !ok {
 				return nil, err
 			}
-			fileID, diagnostics, err := source.FileDiagnostics(ctx, view.Snapshot(), uri)
+
+			fileID, diagnostics, err := source.FileDiagnostics(ctx, snapshot, fh.Identity().URI)
 			if err != nil {
 				return nil, err
 			}
 			if err := s.client.PublishDiagnostics(ctx, &protocol.PublishDiagnosticsParams{
-				URI:         protocol.NewURI(uri),
+				URI:         protocol.URIFromSpanURI(fh.Identity().URI),
 				Diagnostics: toProtocolDiagnostics(diagnostics),
 				Version:     fileID.Version,
 			}); err != nil {
