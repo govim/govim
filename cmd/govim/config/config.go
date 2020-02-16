@@ -62,6 +62,17 @@ type Config struct {
 	// Default: true
 	HighlightDiagnostics *bool `json:",omitempty"`
 
+	// HighlightReferences is a boolean (0 or 1 in VimScript) that controls
+	// whether references to what is currently under the cursor should be
+	// highlighted. When enabled, govim waits for updatetime (help updatetime)
+	// before adding text properties covering each reference.
+	//
+	// Override the vim highlight group GOVIMReferences to alter the text
+	// property style.
+	//
+	// Default: true
+	HighlightReferences *bool `json:",omitempty"`
+
 	// HoverDiagnostics is a boolean (0 or 1 in VimScript) that controls
 	// whether diagnostics should be shown in the hover popup. When enabled
 	// each diagnostic that covers the cursor/mouse position will be added
@@ -341,4 +352,7 @@ const (
 
 	// HighlightHoverDiagSrc is the group used to format the source part of a hover diagnostic
 	HighlightHoverDiagSrc Highlight = "GOVIMHoverDiagSrc"
+
+	// HighlightReferences is the group used to add text properties to references
+	HighlightReferences Highlight = "GOVIMReferences"
 )

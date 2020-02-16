@@ -13,6 +13,9 @@ func (r *Config) Apply(v *Config) {
 	if v.HighlightDiagnostics != nil {
 		r.HighlightDiagnostics = v.HighlightDiagnostics
 	}
+	if v.HighlightReferences != nil {
+		r.HighlightReferences = v.HighlightReferences
+	}
 	if v.HoverDiagnostics != nil {
 		r.HoverDiagnostics = v.HoverDiagnostics
 	}

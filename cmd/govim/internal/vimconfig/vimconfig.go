@@ -11,6 +11,7 @@ type VimConfig struct {
 	QuickfixAutoDiagnostics                      *int
 	QuickfixSigns                                *int
 	HighlightDiagnostics                         *int
+	HighlightReferences                          *int
 	HoverDiagnostics                             *int
 	CompletionDeepCompletions                    *int
 	CompletionMatcher                            *config.CompletionMatcher
@@ -30,6 +31,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		QuickfixSigns:             boolVal(c.QuickfixSigns, d.QuickfixSigns),
 		QuickfixAutoDiagnostics:   boolVal(c.QuickfixAutoDiagnostics, d.QuickfixAutoDiagnostics),
 		HighlightDiagnostics:      boolVal(c.HighlightDiagnostics, d.HighlightDiagnostics),
+		HighlightReferences:       boolVal(c.HighlightReferences, d.HighlightReferences),
 		HoverDiagnostics:          boolVal(c.HoverDiagnostics, d.HoverDiagnostics),
 		CompletionDeepCompletions: boolVal(c.CompletionDeepCompletions, d.CompletionDeepCompletions),
 		CompletionMatcher:         c.CompletionMatcher,

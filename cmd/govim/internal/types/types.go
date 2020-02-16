@@ -296,4 +296,5 @@ type TextPropID int
 
 const (
 	DiagnosticTextPropID = 0
+	ReferencesTextPropID = 1
 )
