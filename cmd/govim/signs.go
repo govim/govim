@@ -141,7 +141,10 @@ func (v *vimstate) updateSigns(fixes []types.Diagnostic, force bool) error {
 			Name:     string(name)})
 	}
 	if len(placeList) > 0 {
-		v.BatchChannelCall("sign_placelist", placeList)
+		// Suppress E158 "Invalid buffer name" when placing signs since we might, in a rare race
+		// case, try to place signs into a buffer that was just closed. Note that vim already accept
+		// sign_placelist() calls with line numbers outside the buffer without throwing any error.
+		v.BatchAssertChannelCall(AssertIsErrorOrNil("^Vim(let):E158:"), "sign_placelist", placeList)
 	}
 	v.MustBatchEnd()
 
