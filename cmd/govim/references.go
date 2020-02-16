@@ -26,7 +26,7 @@ func (v *vimstate) references(flags govim.CommandFlags, args ...string) error {
 		},
 		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
 			TextDocument: protocol.TextDocumentIdentifier{
-				URI: string(b.URI()),
+				URI: protocol.DocumentURI(b.URI()),
 			},
 			Position: pos.ToPosition(),
 		},

@@ -9,24 +9,14 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
 )
 
 func (s *Server) signatureHelp(ctx context.Context, params *protocol.SignatureHelpParams) (*protocol.SignatureHelp, error) {
-	uri := span.NewURI(params.TextDocument.URI)
-	view, err := s.session.ViewOf(uri)
-	if err != nil {
+	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.Go)
+	if !ok {
 		return nil, err
-	}
-	snapshot := view.Snapshot()
-	fh, err := snapshot.GetFile(uri)
-	if err != nil {
-		return nil, err
-	}
-	if fh.Identity().Kind != source.Go {
-		return nil, nil
 	}
 	info, activeParameter, err := source.SignatureHelp(ctx, snapshot, fh, params.Position)
 	if err != nil {

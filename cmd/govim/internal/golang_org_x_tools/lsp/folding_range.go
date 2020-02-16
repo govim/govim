@@ -5,28 +5,15 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 func (s *Server) foldingRange(ctx context.Context, params *protocol.FoldingRangeParams) ([]protocol.FoldingRange, error) {
-	uri := span.NewURI(params.TextDocument.URI)
-	view, err := s.session.ViewOf(uri)
-	if err != nil {
+	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.Go)
+	if !ok {
 		return nil, err
-	}
-	snapshot := view.Snapshot()
-	fh, err := snapshot.GetFile(uri)
-	if err != nil {
-		return nil, err
-	}
-	var ranges []*source.FoldingRangeInfo
-	switch fh.Identity().Kind {
-	case source.Go:
-		ranges, err = source.FoldingRange(ctx, snapshot, fh, view.Options().LineFoldingOnly)
-	case source.Mod:
-		ranges = nil
 	}
 
+	ranges, err := source.FoldingRange(ctx, snapshot, fh, snapshot.View().Options().LineFoldingOnly)
 	if err != nil {
 		return nil, err
 	}

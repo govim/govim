@@ -9,22 +9,12 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*protocol.Hover, error) {
-	uri := span.NewURI(params.TextDocument.URI)
-	view, err := s.session.ViewOf(uri)
-	if err != nil {
+	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.Go)
+	if !ok {
 		return nil, err
-	}
-	snapshot := view.Snapshot()
-	fh, err := snapshot.GetFile(uri)
-	if err != nil {
-		return nil, err
-	}
-	if fh.Identity().Kind != source.Go {
-		return nil, nil
 	}
 	ident, err := source.Identifier(ctx, snapshot, fh, params.Position)
 	if err != nil {
@@ -38,13 +28,13 @@ func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*prot
 	if err != nil {
 		return nil, err
 	}
-	hover, err := source.FormatHover(h, view.Options())
+	hover, err := source.FormatHover(h, snapshot.View().Options())
 	if err != nil {
 		return nil, err
 	}
 	return &protocol.Hover{
 		Contents: protocol.MarkupContent{
-			Kind:  view.Options().PreferredContentFormat,
+			Kind:  snapshot.View().Options().PreferredContentFormat,
 			Value: hover,
 		},
 		Range: rng,

@@ -193,7 +193,7 @@ func (v *vimstate) handleEvent(event fswatcher.Event) error {
 	}
 	params := &protocol.DidChangeWatchedFilesParams{
 		Changes: []protocol.FileEvent{
-			{URI: string(span.FileURI(event.Path)), Type: changeType},
+			{URI: protocol.DocumentURI(span.URIFromPath(event.Path)), Type: changeType},
 		},
 	}
 	err := v.server.DidChangeWatchedFiles(context.Background(), params)

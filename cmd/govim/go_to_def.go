@@ -38,7 +38,7 @@ func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
 
 	loc := locs[0]
 	v.jumpStack = append(v.jumpStack[:v.jumpStackPos], protocol.Location{
-		URI: string(cb.URI()),
+		URI: protocol.DocumentURI(cb.URI()),
 		Range: protocol.Range{
 			Start: pos.ToPosition(),
 			End:   pos.ToPosition(),
@@ -95,7 +95,7 @@ func (v *vimstate) loadLocation(mods govim.CommModList, loc protocol.Location, a
 	v.ChannelEx("normal! m'")
 
 	vp := v.Viewport()
-	tf := strings.TrimPrefix(loc.URI, "file://")
+	tf := strings.TrimPrefix(string(loc.URI), "file://")
 
 	bn := v.ParseInt(v.ChannelCall("bufnr", tf))
 	if bn != -1 {

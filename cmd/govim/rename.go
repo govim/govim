@@ -25,7 +25,7 @@ func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
 	}
 	params := &protocol.RenameParams{
 		TextDocument: protocol.TextDocumentIdentifier{
-			URI: string(b.URI()),
+			URI: protocol.DocumentURI(b.URI()),
 		},
 		Position: pos.ToPosition(),
 		NewName:  renameTo,
@@ -54,7 +54,7 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 	vp := v.Viewport()
 	bufNrs := make(map[string]int)
 	var fps []string
-	uriMap := make(map[string]protocol.TextDocumentEdit)
+	uriMap := make(map[protocol.DocumentURI]protocol.TextDocumentEdit)
 	for _, c := range allChanges {
 		uriMap[c.TextDocument.TextDocumentIdentifier.URI] = c
 		fps = append(fps, string(c.TextDocument.TextDocumentIdentifier.URI))
@@ -86,7 +86,7 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 	v.ChannelCall("win_gotoid", vp.Current.WinID)
 
 	for _, filepath := range fps {
-		changes := uriMap[filepath]
+		changes := uriMap[protocol.DocumentURI(filepath)]
 		if len(changes.Edits) == 0 {
 			continue
 		}

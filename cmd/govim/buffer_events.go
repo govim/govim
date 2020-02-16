@@ -141,7 +141,7 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
 				LanguageID: "go",
-				URI:        string(b.URI()),
+				URI:        protocol.DocumentURI(b.URI()),
 				Version:    float64(b.Version),
 				Text:       string(b.Contents()),
 			},

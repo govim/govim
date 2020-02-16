@@ -385,7 +385,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	}
 
 	initParams := &protocol.ParamInitialize{}
-	initParams.RootURI = string(span.FileURI(g.vimstate.workingDirectory))
+	initParams.RootURI = protocol.DocumentURI(span.URIFromPath(g.vimstate.workingDirectory))
 	initParams.Capabilities.TextDocument.Hover = protocol.HoverClientCapabilities{
 		ContentFormat: []protocol.MarkupKind{protocol.PlainText},
 	}
