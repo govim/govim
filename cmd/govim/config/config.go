@@ -231,6 +231,10 @@ const (
 
 	// CommandSuggestedFixes
 	CommandSuggestedFixes Command = "SuggestedFixes"
+
+	// CommandHighlightReferences highlights references to the identifier under
+	// the cursor.
+	CommandHighlightReferences Command = "HighlightReferences"
 )
 
 type Function string

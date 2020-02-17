@@ -300,6 +300,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandRename), g.vimstate.rename, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandStringFn), g.vimstate.stringfns, govim.RangeLine, govim.CompleteCustomList(PluginPrefix+config.FunctionStringFnComplete), govim.NArgsOneOrMore)
 	g.DefineFunction(string(config.FunctionStringFnComplete), []string{"ArgLead", "CmdLine", "CursorPos"}, g.vimstate.stringfncomplete)
+	g.DefineCommand(string(config.CommandHighlightReferences), g.vimstate.referenceHighlight)
 	g.DefineAutoCommand("", govim.Events{govim.EventCompleteDone}, govim.Patterns{"*.go"}, false, g.vimstate.completeDone, "eval(expand('<abuf>'))", "v:completed_item")
 	g.defineHighlights()
 	if err := g.vimstate.signDefine(); err != nil {

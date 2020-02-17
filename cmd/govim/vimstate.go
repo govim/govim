@@ -172,12 +172,12 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	v.Parse(args[0], &isBusy)
 	v.userBusy = isBusy != 0
 
-	if err := v.updateReferenceHighlight(!v.userBusy); err != nil {
-		return nil, err
+	if v.userBusy {
+		return nil, v.removeReferenceHighlight()
 	}
 
-	if v.userBusy {
-		return nil, nil
+	if err := v.updateReferenceHighlight(false); err != nil {
+		return nil, err
 	}
 
 	return nil, v.handleDiagnosticsChanged()
