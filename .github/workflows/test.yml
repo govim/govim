@@ -65,7 +65,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest]
-        go_version: ['1.14.x']
+        go_version: ['1.13.x', '1.14.x']
         vim_version: ["master"]
     runs-on: ${{ matrix.os }}
     env:
