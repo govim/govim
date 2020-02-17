@@ -120,28 +120,39 @@ func (v *vimstate) redefineHighlights(diags []types.Diagnostic, force bool) erro
 	return nil
 }
 
-func (v *vimstate) updateReferenceHighlight(refresh bool) error {
-	if v.config.HighlightReferences == nil || !*v.config.HighlightReferences {
+func (v *vimstate) referenceHighlight(flags govim.CommandFlags, args ...string) error {
+	return v.updateReferenceHighlight(true)
+}
+
+// removeReferenceHighlight is used to only remove existing reference highlights if the
+// cursor has moved outside of the range(s) of existing highlights, to avoid flickering
+func (v *vimstate) removeReferenceHighlight() error {
+	if len(v.currentReferences) == 0 {
 		return nil
 	}
-	b, pos, err := v.cursorPos()
+
+	_, pos, err := v.cursorPos()
 	if err != nil {
 		return fmt.Errorf("failed to get current position: %v", err)
 	}
 
-	// refresh indicates if govim should call DocumentHighlight to refresh
-	// ranges from gopls since we want to refresh when the user goes idle,
-	// and remove highlights as soon as the user is busy. To prevent
-	// flickering we keep track of the current highlight ranges and avoid
-	// removing text properties if the cursor is still within all ranges.
-	if !refresh {
-		for i := range v.currentReferences {
-			if !pos.IsWithin(*v.currentReferences[i]) {
-				v.removeTextProps(types.ReferencesTextPropID)
-				return nil
-			}
+	for i := range v.currentReferences {
+		if !pos.IsWithin(*v.currentReferences[i]) {
+			v.removeTextProps(types.ReferencesTextPropID)
+			return nil
 		}
+	}
+	return nil
+}
+
+func (v *vimstate) updateReferenceHighlight(force bool) error {
+	if !force && (v.config.HighlightReferences == nil || !*v.config.HighlightReferences) {
 		return nil
+	}
+
+	b, pos, err := v.cursorPos()
+	if err != nil {
+		return fmt.Errorf("failed to get current position: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -192,12 +203,6 @@ func (g *govimplugin) redefineReferenceHighlight(ctx context.Context, b *types.B
 		case <-ctx.Done():
 			return nil
 		default:
-		}
-
-		// Same thing about user busy. If the user start moving the cursor (typing or removing text
-		// for example), the results here are no longer relevant.
-		if g.vimstate.userBusy {
-			return nil
 		}
 
 		return g.vimstate.handleDocumentHighlight(b, cursorPos, res)
