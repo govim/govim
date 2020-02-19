@@ -160,9 +160,16 @@ func TestScripts(t *testing.T) {
 					})
 					outputs = append(outputs, tf)
 
+					// Vim config (if present) is per-test
+					vimConfigPath := filepath.Join(e.WorkDir, "vim_config.json")
+					var vimConfig *testdriver.VimConfig
+					if err := readConfig(vimConfigPath, &vimConfig); err != nil {
+						return fmt.Errorf("failed to read Vim config from %v: %v", vimConfigPath, err)
+					}
+
 					defaultsPath := filepath.Join("testdata", entry.Name(), "default_config.json")
-					defaults, err := readConfig(defaultsPath)
-					if err != nil {
+					var user, defaults *config.Config
+					if err = readConfig(defaultsPath, &defaults); err != nil {
 						return fmt.Errorf("failed to read defaults from %v: %v", defaultsPath, err)
 					}
 					// We now ensure we have a default for at least CompletionBudget because
@@ -170,8 +177,7 @@ func TestScripts(t *testing.T) {
 					// (which would be unusual because it's really only intended for integration
 					// tests) we definitely want to set the value to "0ms"
 					userPath := filepath.Join("testdata", entry.Name(), "user_config.json")
-					user, err := readConfig(userPath)
-					if err != nil {
+					if err := readConfig(userPath, &user); err != nil {
 						return fmt.Errorf("failed to read user from %v: %v", userPath, err)
 					}
 					if user == nil {
@@ -193,6 +199,7 @@ func TestScripts(t *testing.T) {
 						TestPluginPath: testPluginPath,
 						Env:            e,
 						Plugin:         d,
+						Vim:            vimConfig,
 					}
 					td, err := testdriver.NewTestDriver(config)
 					if err != nil {
@@ -376,44 +383,43 @@ func installGoplsToTempDir() (string, error) {
 	return td, nil
 }
 
-func readConfig(path string) (*config.Config, error) {
+func readConfig(path string, res interface{}) error {
 	// check whether we have a default config to apply
 	fi, err := os.Stat(path)
 	if err != nil || !fi.Mode().IsRegular() {
-		return nil, nil
+		return nil
 	}
 	configByts, err := ioutil.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read %v: %v", path, err)
+		return fmt.Errorf("failed to read %v: %v", path, err)
 	}
-	var res *config.Config
 	if err := json.Unmarshal(configByts, &res); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON config in %v: %v\n%s", path, err, configByts)
+		return fmt.Errorf("failed to unmarshal JSON config in %v: %v\n%s", path, err, configByts)
 	}
 	// Now verify that we haven't supplied superfluous JSON
 	var i interface{}
 	if err := json.Unmarshal(configByts, &i); err != nil {
-		return nil, fmt.Errorf("failed to re-parse JSON config in %v: %v\n%s", path, err, configByts)
+		return fmt.Errorf("failed to re-parse JSON config in %v: %v\n%s", path, err, configByts)
 	}
 	var resCheck []byte
 	first, err := json.MarshalIndent(res, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to remarshal res: %v", err)
+		return fmt.Errorf("failed to remarshal res: %v", err)
 	}
 	var j interface{}
 	if err := json.Unmarshal(first, &j); err != nil {
-		return nil, fmt.Errorf("failed to re-re-parse JSON config in %v: %v\n%s", path, err, configByts)
+		return fmt.Errorf("failed to re-re-parse JSON config in %v: %v\n%s", path, err, configByts)
 	}
 	resCheck, err = json.MarshalIndent(j, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to remarshal res: %v", err)
+		return fmt.Errorf("failed to remarshal res: %v", err)
 	}
 	iCheck, err := json.MarshalIndent(i, "", "  ")
 	if err != nil {
-		return nil, fmt.Errorf("failed to remarshal re-parsed JSON: %v", err)
+		return fmt.Errorf("failed to remarshal re-parsed JSON: %v", err)
 	}
 	if !bytes.Equal(resCheck, iCheck) {
-		return nil, fmt.Errorf("%v contains superfluous JSON:\n\n%s\n\n vs parsed res:\n\n%s\n", path, iCheck, resCheck)
+		return fmt.Errorf("%v contains superfluous JSON:\n\n%s\n\n vs parsed res:\n\n%s\n", path, iCheck, resCheck)
 	}
-	return res, nil
+	return nil
 }

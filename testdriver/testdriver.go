@@ -95,12 +95,20 @@ type TestDriver struct {
 }
 
 type Config struct {
-	Name, GovimPath, TestHomePath, TestPluginPath string
+	Name           string
+	GovimPath      string
+	TestHomePath   string
+	TestPluginPath string
+	Vim            *VimConfig
 	Debug
 	ReadLog *LockingBuffer
 	Log     io.Writer
 	*testscript.Env
 	Plugin govim.Plugin
+}
+
+type VimConfig struct {
+	InitialFile string
 }
 
 type Debug struct {
@@ -196,6 +204,12 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 	if c.Debug.Enabled {
 		res.debug = c.Debug
 		vimCmd = append(vimCmd, fmt.Sprintf("-V%d%s", c.Debug.VimLogLevel, c.VimLogPath))
+	}
+
+	if c.Vim != nil {
+		if c.Vim.InitialFile != "" {
+			vimCmd = append(vimCmd, c.Vim.InitialFile)
+		}
 	}
 
 	res.cmd = exec.Command(vimCmd[0], vimCmd[1:]...)
