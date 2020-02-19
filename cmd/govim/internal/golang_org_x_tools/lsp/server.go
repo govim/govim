@@ -16,13 +16,16 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
+const concurrentAnalyses = 1
+
 // NewServer creates an LSP server and binds it to handle incoming client
 // messages on on the supplied stream.
 func NewServer(session source.Session, client protocol.Client) *Server {
 	return &Server{
-		delivered: make(map[span.URI]sentDiagnostics),
-		session:   session,
-		client:    client,
+		delivered:       make(map[span.URI]sentDiagnostics),
+		session:         session,
+		client:          client,
+		diagnosticsSema: make(chan struct{}, concurrentAnalyses),
 	}
 }
 
@@ -54,6 +57,9 @@ type Server struct {
 	// delivered is a cache of the diagnostics that the server has sent.
 	deliveredMu sync.Mutex
 	delivered   map[span.URI]sentDiagnostics
+
+	// diagnosticsSema limits the concurrency of diagnostics runs, which can be expensive.
+	diagnosticsSema chan struct{}
 }
 
 // sentDiagnostics is used to cache diagnostics that have been sent for a given file.
@@ -70,25 +76,14 @@ func (s *Server) cancelRequest(ctx context.Context, params *protocol.CancelParam
 }
 
 func (s *Server) codeLens(ctx context.Context, params *protocol.CodeLensParams) ([]protocol.CodeLens, error) {
-	uri := params.TextDocument.URI.SpanURI()
-	view, err := s.session.ViewOf(uri)
-	if err != nil {
+	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.Mod)
+	if !ok {
 		return nil, err
 	}
-	if !view.Snapshot().IsSaved(uri) {
+	if !snapshot.IsSaved(fh.Identity().URI) {
 		return nil, nil
 	}
-	fh, err := view.Snapshot().GetFile(uri)
-	if err != nil {
-		return nil, err
-	}
-	switch fh.Identity().Kind {
-	case source.Go:
-		return nil, nil
-	case source.Mod:
-		return mod.CodeLens(ctx, view.Snapshot(), uri)
-	}
-	return nil, nil
+	return mod.CodeLens(ctx, snapshot, fh.Identity().URI)
 }
 
 func (s *Server) nonstandardRequest(ctx context.Context, method string, params interface{}) (interface{}, error) {

@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -36,7 +37,7 @@ const (
 	overlayFileSuffix = ".overlay"
 	goldenFileSuffix  = ".golden"
 	inFileSuffix      = ".in"
-	summaryFile       = "summary.txt.golden"
+	summaryFile       = "summary.txt"
 	testModule        = "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
 )
 
@@ -296,17 +297,19 @@ func Load(t testing.TB, exporter packagestest.Exporter, dir string) []*Data {
 			mappers:   map[span.URI]*protocol.ColumnMapper{},
 		}
 
-		summary := filepath.Join(filepath.FromSlash(folder), summaryFile)
-		if _, err := os.Stat(summary); os.IsNotExist(err) {
-			t.Fatalf("could not find golden file summary.txt in %#v", folder)
-		}
-		archive, err := txtar.ParseFile(summary)
-		if err != nil {
-			t.Fatalf("could not read golden file %v/%v: %v", folder, summary, err)
-		}
-		datum.golden["summary.txt"] = &Golden{
-			Filename: summary,
-			Archive:  archive,
+		if !*UpdateGolden {
+			summary := filepath.Join(filepath.FromSlash(folder), summaryFile+goldenFileSuffix)
+			if _, err := os.Stat(summary); os.IsNotExist(err) {
+				t.Fatalf("could not find golden file summary.txt in %#v", folder)
+			}
+			archive, err := txtar.ParseFile(summary)
+			if err != nil {
+				t.Fatalf("could not read golden file %v/%v: %v", folder, summary, err)
+			}
+			datum.golden[summaryFile] = &Golden{
+				Filename: summary,
+				Archive:  archive,
+			}
 		}
 
 		modules, _ := packagestest.GroupFilesByModules(folder)
@@ -698,6 +701,14 @@ func Run(t *testing.T, tests Tests, data *Data) {
 	t.Run("Link", func(t *testing.T) {
 		t.Helper()
 		for uri, wantLinks := range data.Links {
+			// If we are testing GOPATH, then we do not want links with
+			// the versions attached (pkg.go.dev/repoa/moda@v1.1.0/pkg).
+			if data.Exported.Exporter == packagestest.GOPATH {
+				re := regexp.MustCompile(`@v\d+\.\d+\.[\w-]+`)
+				for i, link := range wantLinks {
+					wantLinks[i].Target = re.ReplaceAllString(link.Target, "")
+				}
+			}
 			t.Run(uriName(uri), func(t *testing.T) {
 				t.Helper()
 				tests.Link(t, uri, wantLinks)
@@ -786,7 +797,7 @@ func checkData(t *testing.T, data *Data) {
 	fmt.Fprintf(buf, "LinksCount = %v\n", linksCount)
 	fmt.Fprintf(buf, "ImplementationsCount = %v\n", len(data.Implementations))
 
-	want := string(data.Golden("summary", "summary.txt", func() ([]byte, error) {
+	want := string(data.Golden("summary", summaryFile, func() ([]byte, error) {
 		return buf.Bytes(), nil
 	}))
 	got := buf.String()
@@ -828,8 +839,12 @@ func (data *Data) Golden(tag string, target string, update func() ([]byte, error
 		if !*UpdateGolden {
 			data.t.Fatalf("could not find golden file %v: %v", fragment, tag)
 		}
+		var subdir string
+		if fragment != summaryFile {
+			subdir = "primarymod"
+		}
 		golden = &Golden{
-			Filename: filepath.Join(data.dir, fragment+goldenFileSuffix),
+			Filename: filepath.Join(data.dir, subdir, fragment+goldenFileSuffix),
 			Archive:  &txtar.Archive{},
 			Modified: true,
 		}
