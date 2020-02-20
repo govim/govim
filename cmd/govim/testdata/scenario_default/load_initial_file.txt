@@ -1,0 +1,35 @@
+# Test to ensure that we can load an initial file where there is a
+# vim_config.json file in the archive
+
+vim expr 'bufname(\"\")'
+stdout '^"main.go"$'
+! stderr .+
+vimexprwait errors.golden GOVIMTest_getqflist()
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- main.go --
+package main
+
+asdf
+-- errors.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found asdf",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- vim_config.json --
+{
+	"InitialFile": "main.go"
+}
