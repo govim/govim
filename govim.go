@@ -150,6 +150,10 @@ type govimImpl struct {
 	out *json.Encoder
 	log io.Writer
 
+	// outLock synchronises access to out to ensure we have non-overlapping
+	// sending of messages
+	outLock sync.Mutex
+
 	funcHandlers     map[string]handler
 	funcHandlersLock sync.Mutex
 
@@ -899,6 +903,8 @@ func (g *govimImpl) sendJSONMsg(p1, p2 interface{}, ps ...interface{}) {
 		g.errProto("failed to create log message: %v", err)
 	}
 	g.logVimEventf("sendJSONMsg: %s\n", logMsg)
+	g.outLock.Lock()
+	defer g.outLock.Unlock()
 	if err := g.out.Encode(msg); err != nil {
 		panic(ErrShuttingDown)
 	}
