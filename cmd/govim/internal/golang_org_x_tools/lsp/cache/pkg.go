@@ -11,6 +11,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	errors "golang.org/x/xerrors"
 )
@@ -26,6 +27,7 @@ type pkg struct {
 	compiledGoFiles []source.ParseGoHandle
 	errors          []*source.Error
 	imports         map[packagePath]*pkg
+	module          *packagesinternal.Module
 	types           *types.Package
 	typesInfo       *types.Info
 	typesSizes      types.Sizes
@@ -117,6 +119,10 @@ func (p *pkg) Imports() []source.Package {
 		result = append(result, imp)
 	}
 	return result
+}
+
+func (p *pkg) Module() *packagesinternal.Module {
+	return p.module
 }
 
 func (s *snapshot) FindAnalysisError(ctx context.Context, pkgID, analyzerName, msg string, rng protocol.Range) (*source.Error, error) {

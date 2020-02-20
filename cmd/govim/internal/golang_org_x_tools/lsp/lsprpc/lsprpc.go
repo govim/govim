@@ -9,13 +9,16 @@ package lsprpc
 import (
 	"context"
 	"fmt"
+	"log"
 	"net"
+	"os"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 )
 
 // The StreamServer type is a jsonrpc2.StreamServer that handles incoming
@@ -30,7 +33,7 @@ type StreamServer struct {
 // NewStreamServer creates a StreamServer using the shared cache. If
 // withTelemetry is true, each session is instrumented with telemetry that
 // records RPC statistics.
-func NewStreamServer(cache source.Cache, withTelemetry bool) *StreamServer {
+func NewStreamServer(cache *cache.Cache, withTelemetry bool) *StreamServer {
 	s := &StreamServer{
 		withTelemetry: withTelemetry,
 	}
@@ -62,16 +65,24 @@ func (s *StreamServer) ServeStream(ctx context.Context, stream jsonrpc2.Stream) 
 // be instrumented with telemetry, and want to be able to in some cases hijack
 // the jsonrpc2 connection with the daemon.
 type Forwarder struct {
-	remote        string
+	network, addr string
+
+	// Configuration. Right now, not all of this may be customizable, but in the
+	// future it probably will be.
 	withTelemetry bool
+	dialTimeout   time.Duration
+	retries       int
 }
 
 // NewForwarder creates a new Forwarder, ready to forward connections to the
-// given remote.
-func NewForwarder(remote string, withTelemetry bool) *Forwarder {
+// remote server specified by network and addr.
+func NewForwarder(network, addr string, withTelemetry bool) *Forwarder {
 	return &Forwarder{
-		remote:        remote,
+		network:       network,
+		addr:          addr,
 		withTelemetry: withTelemetry,
+		dialTimeout:   1 * time.Second,
+		retries:       5,
 	}
 }
 
@@ -81,7 +92,26 @@ func (f *Forwarder) ServeStream(ctx context.Context, stream jsonrpc2.Stream) err
 	clientConn := jsonrpc2.NewConn(stream)
 	client := protocol.ClientDispatcher(clientConn)
 
-	netConn, err := net.Dial("tcp", f.remote)
+	var (
+		netConn net.Conn
+		err     error
+	)
+	// Sometimes the forwarder will be started immediately after the server is
+	// started. To account for these cases, add in some simple retrying.
+	// Note that the number of total attempts is f.retries + 1.
+	for attempt := 0; attempt <= f.retries; attempt++ {
+		startDial := time.Now()
+		netConn, err = net.DialTimeout(f.network, f.addr, f.dialTimeout)
+		if err == nil {
+			break
+		}
+		log.Printf("failed an attempt to connect to remote: %v\n", err)
+		// In case our failure was a fast-failure, ensure we wait at least
+		// f.dialTimeout before trying again.
+		if attempt != f.retries {
+			time.Sleep(f.dialTimeout - time.Since(startDial))
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("forwarder: dialing remote: %v", err)
 	}
@@ -93,6 +123,7 @@ func (f *Forwarder) ServeStream(ctx context.Context, stream jsonrpc2.Stream) err
 	serverConn.AddHandler(protocol.Canceller{})
 	clientConn.AddHandler(protocol.ServerHandler(server))
 	clientConn.AddHandler(protocol.Canceller{})
+	clientConn.AddHandler(forwarderHandler{})
 	if f.withTelemetry {
 		clientConn.AddHandler(telemetryHandler{})
 	}
@@ -105,4 +136,28 @@ func (f *Forwarder) ServeStream(ctx context.Context, stream jsonrpc2.Stream) err
 		return clientConn.Run(ctx)
 	})
 	return g.Wait()
+}
+
+// ForwarderExitFunc is used to exit the forwarder process. It is mutable for
+// testing purposes.
+var ForwarderExitFunc = os.Exit
+
+// forwarderHandler intercepts 'exit' messages to prevent the shared gopls
+// instance from exiting. In the future it may also intercept 'shutdown' to
+// provide more graceful shutdown of the client connection.
+type forwarderHandler struct {
+	jsonrpc2.EmptyHandler
+}
+
+func (forwarderHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, delivered bool) bool {
+	// TODO(golang.org/issues/34111): we should more gracefully disconnect here,
+	// once that process exists.
+	if r.Method == "exit" {
+		ForwarderExitFunc(0)
+		// Still return true here to prevent the message from being delivered: in
+		// tests, ForwarderExitFunc may be overridden to something that doesn't
+		// exit the process.
+		return true
+	}
+	return false
 }

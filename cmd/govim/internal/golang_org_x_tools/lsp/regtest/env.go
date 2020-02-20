@@ -6,8 +6,13 @@
 package regtest
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -25,14 +30,17 @@ import (
 type EnvMode int
 
 const (
-	// Singleton mode uses a separate cache for each test
+	// Singleton mode uses a separate cache for each test.
 	Singleton EnvMode = 1 << iota
-	// Shared mode uses a Shared cache
+	// Shared mode uses a Shared cache.
 	Shared
-	// Forwarded forwards connections
+	// Forwarded forwards connections to an in-process gopls instance.
 	Forwarded
-	// AllModes runs tests in all modes
-	AllModes = Singleton | Shared | Forwarded
+	// SeparateProcess runs a separate gopls process, and forwards connections to
+	// it.
+	SeparateProcess
+	// NormalModes runs tests in all modes.
+	NormalModes = Singleton | Shared | Forwarded
 )
 
 // A Runner runs tests in gopls execution environments, as specified by its
@@ -40,47 +48,117 @@ const (
 // remote), any tests that execute on the same Runner will share the same
 // state.
 type Runner struct {
-	ts      *servertest.Server
-	modes   EnvMode
-	timeout time.Duration
+	defaultModes EnvMode
+	timeout      time.Duration
+	goplsPath    string
+
+	mu        sync.Mutex
+	ts        *servertest.TCPServer
+	socketDir string
 }
 
 // NewTestRunner creates a Runner with its shared state initialized, ready to
 // run tests.
-func NewTestRunner(modes EnvMode, testTimeout time.Duration) *Runner {
-	ss := lsprpc.NewStreamServer(cache.New(nil), false)
-	ts := servertest.NewServer(context.Background(), ss)
+func NewTestRunner(modes EnvMode, testTimeout time.Duration, goplsPath string) *Runner {
 	return &Runner{
-		ts:      ts,
-		modes:   modes,
-		timeout: testTimeout,
+		defaultModes: modes,
+		timeout:      testTimeout,
+		goplsPath:    goplsPath,
 	}
+}
+
+// Modes returns the bitmask of environment modes this runner is configured to
+// test.
+func (r *Runner) Modes() EnvMode {
+	return r.defaultModes
+}
+
+// getTestServer gets the test server instance to connect to, or creates one if
+// it doesn't exist.
+func (r *Runner) getTestServer() *servertest.TCPServer {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ts == nil {
+		ss := lsprpc.NewStreamServer(cache.New(nil), false)
+		r.ts = servertest.NewTCPServer(context.Background(), ss)
+	}
+	return r.ts
+}
+
+// runTestAsGoplsEnvvar triggers TestMain to run gopls instead of running
+// tests. It's a trick to allow tests to find a binary to use to start a gopls
+// subprocess.
+const runTestAsGoplsEnvvar = "_GOPLS_TEST_BINARY_RUN_AS_GOPLS"
+
+func (r *Runner) getRemoteSocket(t *testing.T) string {
+	t.Helper()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	const daemonFile = "gopls-test-daemon"
+	if r.socketDir != "" {
+		return filepath.Join(r.socketDir, daemonFile)
+	}
+
+	if r.goplsPath == "" {
+		t.Fatal("cannot run tests with a separate process unless a path to a gopls binary is configured")
+	}
+	var err error
+	r.socketDir, err = ioutil.TempDir("", "gopls-regtests")
+	if err != nil {
+		t.Fatalf("creating tempdir: %v", err)
+	}
+	socket := filepath.Join(r.socketDir, daemonFile)
+	args := []string{"serve", "-listen", "unix;" + socket}
+	cmd := exec.Command(r.goplsPath, args...)
+	cmd.Env = append(os.Environ(), runTestAsGoplsEnvvar+"=true")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	go func() {
+		if err := cmd.Run(); err != nil {
+			panic(fmt.Sprintf("error running external gopls: %v\nstderr:\n%s", err, stderr.String()))
+		}
+	}()
+	return socket
 }
 
 // Close cleans up resource that have been allocated to this workspace.
 func (r *Runner) Close() error {
-	return r.ts.Close()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.ts != nil {
+		r.ts.Close()
+	}
+	if r.socketDir != "" {
+		os.RemoveAll(r.socketDir)
+	}
+	return nil
 }
 
-// Run executes the test function in in all configured gopls execution modes.
-// For each a test run, a new workspace is created containing the un-txtared
-// files specified by filedata.
+// Run executes the test function in the default configured gopls execution
+// modes. For each a test run, a new workspace is created containing the
+// un-txtared files specified by filedata.
 func (r *Runner) Run(t *testing.T, filedata string, test func(context.Context, *testing.T, *Env)) {
 	t.Helper()
+	r.RunInMode(r.defaultModes, t, filedata, test)
+}
 
+// RunInMode runs the test in the execution modes specified by the modes bitmask.
+func (r *Runner) RunInMode(modes EnvMode, t *testing.T, filedata string, test func(ctx context.Context, t *testing.T, e *Env)) {
+	t.Helper()
 	tests := []struct {
-		name       string
-		mode       EnvMode
-		makeServer func(context.Context, *testing.T) (*servertest.Server, func())
+		name         string
+		mode         EnvMode
+		getConnector func(context.Context, *testing.T) (servertest.Connector, func())
 	}{
 		{"singleton", Singleton, r.singletonEnv},
 		{"shared", Shared, r.sharedEnv},
 		{"forwarded", Forwarded, r.forwardedEnv},
+		{"separate_process", SeparateProcess, r.separateProcessEnv},
 	}
 
 	for _, tc := range tests {
 		tc := tc
-		if r.modes&tc.mode == 0 {
+		if modes&tc.mode == 0 {
 			continue
 		}
 		t.Run(tc.name, func(t *testing.T) {
@@ -92,30 +170,46 @@ func (r *Runner) Run(t *testing.T, filedata string, test func(context.Context, *
 				t.Fatal(err)
 			}
 			defer ws.Close()
-			ts, cleanup := tc.makeServer(ctx, t)
+			ts, cleanup := tc.getConnector(ctx, t)
 			defer cleanup()
 			env := NewEnv(ctx, t, ws, ts)
+			defer func() {
+				if err := env.E.Shutdown(ctx); err != nil {
+					panic(err)
+				}
+			}()
 			test(ctx, t, env)
 		})
 	}
 }
 
-func (r *Runner) singletonEnv(ctx context.Context, t *testing.T) (*servertest.Server, func()) {
+func (r *Runner) singletonEnv(ctx context.Context, t *testing.T) (servertest.Connector, func()) {
 	ss := lsprpc.NewStreamServer(cache.New(nil), false)
-	ts := servertest.NewServer(ctx, ss)
+	ts := servertest.NewPipeServer(ctx, ss)
 	cleanup := func() {
 		ts.Close()
 	}
 	return ts, cleanup
 }
 
-func (r *Runner) sharedEnv(ctx context.Context, t *testing.T) (*servertest.Server, func()) {
-	return r.ts, func() {}
+func (r *Runner) sharedEnv(ctx context.Context, t *testing.T) (servertest.Connector, func()) {
+	return r.getTestServer(), func() {}
 }
 
-func (r *Runner) forwardedEnv(ctx context.Context, t *testing.T) (*servertest.Server, func()) {
-	forwarder := lsprpc.NewForwarder(r.ts.Addr, false)
-	ts2 := servertest.NewServer(ctx, forwarder)
+func (r *Runner) forwardedEnv(ctx context.Context, t *testing.T) (servertest.Connector, func()) {
+	ts := r.getTestServer()
+	forwarder := lsprpc.NewForwarder("tcp", ts.Addr, false)
+	ts2 := servertest.NewPipeServer(ctx, forwarder)
+	cleanup := func() {
+		ts2.Close()
+	}
+	return ts2, cleanup
+}
+
+func (r *Runner) separateProcessEnv(ctx context.Context, t *testing.T) (servertest.Connector, func()) {
+	socket := r.getRemoteSocket(t)
+	forwarder := lsprpc.NewForwarder("unix", socket, false)
+	ts2 := servertest.NewPipeServer(ctx, forwarder)
 	cleanup := func() {
 		ts2.Close()
 	}
@@ -134,7 +228,7 @@ type Env struct {
 	// but they are available if needed.
 	W      *fake.Workspace
 	E      *fake.Editor
-	Server *servertest.Server
+	Server servertest.Connector
 
 	// mu guards the fields below, for the purpose of checking conditions on
 	// every change to diagnostics.
@@ -154,7 +248,7 @@ type diagnosticCondition struct {
 
 // NewEnv creates a new test environment using the given workspace and gopls
 // server.
-func NewEnv(ctx context.Context, t *testing.T, ws *fake.Workspace, ts *servertest.Server) *Env {
+func NewEnv(ctx context.Context, t *testing.T, ws *fake.Workspace, ts servertest.Connector) *Env {
 	t.Helper()
 	conn := ts.Connect(ctx)
 	editor, err := fake.NewConnectedEditor(ctx, ws, conn)
@@ -231,8 +325,18 @@ func (e *Env) onDiagnostics(_ context.Context, d *protocol.PublishDiagnosticsPar
 			close(condition.met)
 		}
 	}
-
 	return nil
+}
+
+// CloseEditor shuts down the editor, calling t.Fatal on any error.
+func (e *Env) CloseEditor() {
+	e.t.Helper()
+	if err := e.E.Shutdown(e.ctx); err != nil {
+		e.t.Fatal(err)
+	}
+	if err := e.E.Exit(e.ctx); err != nil {
+		e.t.Fatal(err)
+	}
 }
 
 func meetsCondition(m map[string]*protocol.PublishDiagnosticsParams, expectations []DiagnosticExpectation) bool {

@@ -16,6 +16,7 @@ import (
 	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -228,9 +229,6 @@ type Cache interface {
 	// A FileSystem that reads file contents from external storage.
 	FileSystem
 
-	// NewSession creates a new Session manager and returns it.
-	NewSession() Session
-
 	// FileSet returns the shared fileset used by all files in the system.
 	FileSet() *token.FileSet
 
@@ -362,6 +360,7 @@ type Package interface {
 	ForTest() string
 	GetImport(pkgPath string) (Package, error)
 	Imports() []Package
+	Module() *packagesinternal.Module
 }
 
 type Error struct {

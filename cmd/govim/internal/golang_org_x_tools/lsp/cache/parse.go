@@ -47,7 +47,7 @@ type parseGoData struct {
 	err        error
 }
 
-func (c *cache) ParseGoHandle(fh source.FileHandle, mode source.ParseMode) source.ParseGoHandle {
+func (c *Cache) ParseGoHandle(fh source.FileHandle, mode source.ParseMode) source.ParseGoHandle {
 	key := parseKey{
 		file: fh.Identity(),
 		mode: mode,
@@ -430,42 +430,6 @@ func fixDanglingSelector(f *ast.File, s *ast.SelectorExpr, parent ast.Node, tok 
 	buf.WriteByte('_')
 	buf.Write(src[insertOffset:])
 	return buf.Bytes()
-}
-
-// fixAccidentalDecl tries to fix "accidental" declarations. For example:
-//
-// func typeOf() {}
-// type<> // want to call typeOf(), not declare a type
-//
-// If we find an *ast.DeclStmt with only a single phantom "_" spec, we
-// replace the decl statement with an expression statement containing
-// only the keyword. This allows completion to work to some degree.
-func fixAccidentalDecl(decl *ast.DeclStmt, parent ast.Node, tok *token.File, src []byte) {
-	genDecl, _ := decl.Decl.(*ast.GenDecl)
-	if genDecl == nil || len(genDecl.Specs) != 1 {
-		return
-	}
-
-	switch spec := genDecl.Specs[0].(type) {
-	case *ast.TypeSpec:
-		// If the name isn't a phantom "_" identifier inserted by the
-		// parser then the decl is likely legitimate and we shouldn't mess
-		// with it.
-		if !isPhantomUnderscore(spec.Name, tok, src) {
-			return
-		}
-	case *ast.ValueSpec:
-		if len(spec.Names) != 1 || !isPhantomUnderscore(spec.Names[0], tok, src) {
-			return
-		}
-	}
-
-	replaceNode(parent, decl, &ast.ExprStmt{
-		X: &ast.Ident{
-			Name:    genDecl.Tok.String(),
-			NamePos: decl.Pos(),
-		},
-	})
 }
 
 // fixPhantomSelector tries to fix selector expressions with phantom
@@ -886,7 +850,7 @@ func offsetPositions(n ast.Node, offset token.Pos) {
 }
 
 // replaceNode updates parent's child oldChild to be newChild. It
-// retuns whether it replaced successfully.
+// returns whether it replaced successfully.
 func replaceNode(parent, oldChild, newChild ast.Node) bool {
 	if parent == nil || oldChild == nil || newChild == nil {
 		return false
