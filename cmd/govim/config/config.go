@@ -109,11 +109,15 @@ type Config struct {
 	CompletionMatcher *CompletionMatcher `json:",omitempty"`
 
 	// Staticcheck enables staticcheck analyses in gopls
+	//
+	// Default: false
 	Staticcheck *bool `json:",omitempty"`
 
 	// CompleteUnimported configures gopls to attempt completions for unimported
 	// standard library packages. e.g. when a user completes rand.<>, propose
 	// rand.Seed (from math/rand) and rand.Prime (from crypto/rand), etc.
+	//
+	// Default: true
 	CompleteUnimported *bool `json:",omitempty"`
 
 	// GoImportsLocalPrefix is used to specify goimports's -local behavior. When
