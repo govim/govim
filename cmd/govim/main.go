@@ -217,10 +217,6 @@ type govimplugin struct {
 
 	bufferUpdates chan *bufferUpdate
 
-	// TODO: See comment at top of (*govimplugin.Configuration)
-	initalConfigurationCalled     chan struct{}
-	initalConfigurationCalledLock sync.Mutex
-
 	// inShutdown is closed when govim is told to Shutdown
 	inShutdown chan struct{}
 }
@@ -251,13 +247,12 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	}
 	d := plugin.NewDriver(PluginPrefix)
 	res := &govimplugin{
-		tmpDir:                    tmpDir,
-		rawDiagnostics:            make(map[span.URI]*protocol.PublishDiagnosticsParams),
-		goplsEnv:                  goplsEnv,
-		goplspath:                 goplspath,
-		Driver:                    d,
-		initalConfigurationCalled: make(chan struct{}),
-		inShutdown:                make(chan struct{}),
+		tmpDir:         tmpDir,
+		rawDiagnostics: make(map[span.URI]*protocol.PublishDiagnosticsParams),
+		goplsEnv:       goplsEnv,
+		goplspath:      goplspath,
+		Driver:         d,
+		inShutdown:     make(chan struct{}),
 		vimstate: &vimstate{
 			Driver:                d,
 			buffers:               make(map[int]*types.Buffer),
@@ -419,9 +414,6 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	if err := g.server.Initialized(context.Background(), &protocol.InitializedParams{}); err != nil {
 		return fmt.Errorf("failed to call gopls.Initialized: %v", err)
 	}
-
-	// TODO: See comment at top of (*govimplugin.Configuration)
-	<-g.initalConfigurationCalled
 
 	// Temporary fix for the fact that gopls does not yet support watching (via
 	// the client) changed files: https://github.com/golang/go/issues/31553
