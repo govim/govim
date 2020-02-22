@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -157,6 +159,9 @@ type govimplugin struct {
 	plugin.Driver
 	vimstate *vimstate
 
+	// errCh is the channel passed from govim on Init
+	errCh chan error
+
 	// tmpDir is the temp directory within which log files will be created
 	tmpDir string
 
@@ -267,6 +272,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 }
 
 func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
+	g.errCh = errCh
 	g.Driver.Govim = gg
 	g.vimstate.Driver.Govim = gg.Scheduled()
 	g.ChannelEx(`augroup govim`)
@@ -312,6 +318,30 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 
 	g.isGui = g.ParseInt(g.ChannelExpr(`has("gui_running")`)) == 1
 
+	if err := g.startGopls(); err != nil {
+		return err
+	}
+
+	// Temporary fix for the fact that gopls does not yet support watching (via
+	// the client) changed files: https://github.com/golang/go/issues/31553
+	gomodpath, err := goModPath(g.vimstate.workingDirectory)
+	if err != nil {
+		return fmt.Errorf("failed to derive go.mod path: %v", err)
+	}
+
+	if gomodpath != "" {
+		// i.e. we are in a module
+		mw, err := newModWatcher(g, gomodpath)
+		if err != nil {
+			return fmt.Errorf("failed to create modWatcher for %v: %v", gomodpath, err)
+		}
+		g.modWatcher = mw
+	}
+
+	return nil
+}
+
+func (g *govimplugin) startGopls() error {
 	logfile, err := g.createLogFile("gopls")
 	if err != nil {
 		return err
@@ -330,6 +360,29 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 
 	gopls := exec.Command(g.goplspath, goplsArgs...)
 	gopls.Env = g.goplsEnv
+	if ev, ok := os.LookupEnv(string(config.EnvVarGoplsGOMAXPROCSMinusN)); ok {
+		v := strings.TrimSpace(ev)
+		var gmp int
+		if strings.HasSuffix(v, "%") {
+			v = strings.TrimSuffix(v, "%")
+			p, err := strconv.ParseFloat(v, 10)
+			if err != nil {
+				return fmt.Errorf("failed to parse percentage from %v value %q: %v", config.EnvVarGoplsGOMAXPROCSMinusN, ev, err)
+			}
+			gmp = int(math.Floor(float64(runtime.NumCPU()) * (1 - p/100)))
+		} else {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				return fmt.Errorf("failed to parse integer from %v value %q: %v", config.EnvVarGoplsGOMAXPROCSMinusN, ev, err)
+			}
+			gmp = runtime.NumCPU() - n
+		}
+		if gmp < 0 || gmp > runtime.NumCPU() {
+			return fmt.Errorf("%v value %q results in GOMAXPROCS value %v which is invalid", config.EnvVarGoplsGOMAXPROCSMinusN, ev, gmp)
+		}
+		g.Logf("Starting gopls with GOMAXPROCS=%v", gmp)
+		gopls.Env = append(gopls.Env, "GOMAXPROCS="+strconv.Itoa(gmp))
+	}
 	g.Logf("Running gopls: %v", strings.Join(gopls.Args, " "))
 	stderr, err := gopls.StderrPipe()
 	if err != nil {
@@ -366,7 +419,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 			return nil
 		default:
 			if err != nil {
-				errCh <- err
+				g.errCh <- err
 			}
 			return
 		}
