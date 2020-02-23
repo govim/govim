@@ -4,6 +4,9 @@ if exists("g:govimpluginloaded")
 endif
 let g:govimpluginloaded=1
 
+augroup govim
+augroup END
+
 let s:minVimSafeState = has("patch-8.1.2056")
 
 " TODO we should source a code-generated, auto-loaded
@@ -134,7 +137,7 @@ function s:callbackCommand(name, flags, ...)
   return s:ch_evalexpr(l:args)
 endfunction
 
-function s:callbackAutoCommand(name, exprs)
+function s:callbackAutoCommand(name, def, exprs)
   " When govim is the process of loading, i.e. its Init(Govim) method is
   " called, we make a number of calls to Vim to register functions, commands
   " autocommands etc. In parallel to this, Vim is busily loading itself.
@@ -151,7 +154,7 @@ function s:callbackAutoCommand(name, exprs)
   for e in a:exprs
     call add(l:exprVals, eval(e))
   endfor
-  let l:args = ["function", a:name, l:exprVals]
+  let l:args = ["function", a:name, a:def, l:exprVals]
   return s:ch_evalexpr(l:args)
 endfunction
 
@@ -196,6 +199,8 @@ function s:userBusy(busy)
   endif
 endfunction
 
+au User PostInitComplete let x = 42
+
 function s:define(channel, msg)
   " format is [type, ...]
   " type is function, command or autocmd
@@ -209,12 +214,20 @@ function s:define(channel, msg)
       endfor
     elseif a:msg[1] == "initcomplete"
       let s:govim_status = "initcomplete"
-      " doautoall BufRead also triggers ftplugin stuff
-      doautoall BufRead
+      " Because the startup of govim is async, events for all buffers in Vim
+      " will already have fired by this point. Therefore govim will not know
+      " anything about any of the buffers. Therefore, fire the events that
+      " roughly correspond to what would have happened.  The exception here is
+      " BufRead - for unnamed buffers and new files this is not the right
+      " event to fire. However, our handling on the govim side makes the
+      " distinction irrelevant: it is a means of synching govim to the current
+      " buffer state (following BufNew and BufCreate).
+      " Note: doautoall BufRead also triggers ftplugin stuff
+      doautocmd User PostInitComplete
       doautoall FileType
       if $GOVIM_DETECT_USER_BUSY != "false"
-        au CursorMoved,CursorMovedI *.go ++nested :call s:userBusy(1)
-        au CursorHold,CursorHoldI *.go ++nested :call s:userBusy(0)
+        au govim CursorMoved,CursorMovedI * ++nested :call s:userBusy(1)
+        au govim CursorHold,CursorHoldI * ++nested :call s:userBusy(0)
       endif
       for F in s:loadStatusCallbacks
         call call(F, [s:govim_status])
@@ -270,7 +283,7 @@ func s:defineAutoCommand(name, def, exprs)
   for e in a:exprs
     call add(l:exprStrings, '"'.escape(e, '"').'"')
   endfor
-  execute "autocmd " . a:def . " call s:callbackAutoCommand(\"" . a:name . "\", [".join(l:exprStrings, ",")."])"
+  execute "autocmd " . a:def . " call s:callbackAutoCommand(\"" . a:name . "\", \"".escape(a:def, '"')."\", [".join(l:exprStrings, ",")."])"
 endfunction
 
 func s:defineCommand(name, attrs)

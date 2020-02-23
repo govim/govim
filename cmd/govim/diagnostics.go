@@ -13,7 +13,7 @@ import (
 // diagnostics returns the last received LSP diagnostics from gopls
 // and acts as a lazy conversion mechanism. The purpose is to avoid converting
 // lsp diagnostics unless they are needed by govim.
-func (v *vimstate) diagnostics() []types.Diagnostic {
+func (v *vimstate) diagnostics() *[]types.Diagnostic {
 	v.diagnosticsChangedLock.Lock()
 	if !v.diagnosticsChanged {
 		v.diagnosticsChangedLock.Unlock()
@@ -34,7 +34,7 @@ func (v *vimstate) diagnostics() []types.Diagnostic {
 		fn := uri.Filename()
 		var buf *types.Buffer
 		for _, b := range v.buffers {
-			if b.URI() == uri {
+			if b.Loaded && b.URI() == uri {
 				buf = b
 			}
 		}
@@ -81,21 +81,20 @@ func (v *vimstate) diagnostics() []types.Diagnostic {
 		return cmp < 0
 	})
 
-	v.diagnosticsCache = diags
+	v.diagnosticsCache = &diags
 	return v.diagnosticsCache
 }
 
 func (v *vimstate) handleDiagnosticsChanged() error {
-	diags := v.diagnostics()
-	if err := v.updateQuickfix(diags, false); err != nil {
+	if err := v.updateQuickfix(false); err != nil {
 		return err
 	}
 
-	if err := v.updateSigns(diags, false); err != nil {
+	if err := v.updateSigns(false); err != nil {
 		v.Logf("redefineDiagnostics: failed to place/remove signs: %v", err)
 	}
 
-	if err := v.redefineHighlights(diags, false); err != nil {
+	if err := v.redefineHighlights(false); err != nil {
 		v.Logf("redefineDiagnostics: failed to apply highlights: %v", err)
 	}
 	return nil

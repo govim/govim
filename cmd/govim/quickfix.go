@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 
 	"github.com/govim/govim"
-	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
 type quickfixEntry struct {
@@ -15,22 +14,30 @@ type quickfixEntry struct {
 	Buf      int    `json:"buf"`
 }
 
-func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string) error {
-	v.quickfixIsDiagnostics = true
-	return v.updateQuickfix(v.diagnostics(), true)
+func (q quickfixEntry) equalModuloBuffer(q2 quickfixEntry) bool {
+	lhs := q
+	lhs.Buf = 0
+	rhs := q2
+	rhs.Buf = 0
+	return lhs == rhs
 }
 
-func (v *vimstate) updateQuickfix(diags []types.Diagnostic, force bool) error {
+func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string) error {
+	v.quickfixIsDiagnostics = true
+	return v.updateQuickfix(true)
+}
+
+func (v *vimstate) updateQuickfix(force bool) error {
 	if !force && (v.config.QuickfixAutoDiagnostics == nil || !*v.config.QuickfixAutoDiagnostics) {
 		return nil
 	}
-	v.diagnosticsChangedLock.Lock()
-	work := v.diagnosticsChangedQuickfix
-	v.diagnosticsChangedQuickfix = false
-	v.diagnosticsChangedLock.Unlock()
+	diagsRef := v.diagnostics()
+	work := v.lastDiagnosticsQuickfix != diagsRef
+	v.lastDiagnosticsQuickfix = diagsRef
 	if (!force && !work) || !v.quickfixIsDiagnostics {
 		return nil
 	}
+	diags := *diagsRef
 
 	// must be non-nil
 	fixes := []quickfixEntry{}
@@ -59,7 +66,7 @@ func (v *vimstate) updateQuickfix(diags []types.Diagnostic, force bool) error {
 		v.Parse(v.ChannelExpr(`getqflist({"idx":0})`), &want)
 		currFix := v.lastQuickFixDiagnostics[want.Idx-1]
 		for i, f := range fixes {
-			if currFix == f {
+			if currFix.equalModuloBuffer(f) {
 				newIdx = i + 1
 				break
 			}

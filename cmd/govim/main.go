@@ -4,6 +4,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -193,21 +194,21 @@ type govimplugin struct {
 	// diagnosticsChanged indicates that the new diagnostics are available
 	diagnosticsChanged bool
 
-	// diagnosticsChangedQuickfix indicates that the quickfix window needs to be updated with
-	// the latest diagnostics
-	diagnosticsChangedQuickfix bool
+	// lastDiagnosticsQuickfix records the last diagnostics that were used
+	// when updating the quickfix window
+	lastDiagnosticsQuickfix *[]types.Diagnostic
 
-	// diagnosticsChangedSigns indicates that the quickfix window needs to be updated with
-	// the latest diagnostics
-	diagnosticsChangedSigns bool
+	// lastDiagnosticsSigns records the last diagnostics that were used when
+	// updating signs
+	lastDiagnosticsSigns *[]types.Diagnostic
 
-	// diagnosticsChangedHighlights indicates that the text properties needs to be updated with
-	// the latest diagnostics
-	diagnosticsChangedHighlights bool
+	// lastDiagnosticsHighlights records the last diagnostics that were used
+	// when updating highlights
+	lastDiagnosticsHighlights *[]types.Diagnostic
 
 	// diagnosticsCache isn't inteded to be used directly since it might
 	// contain old data. Call diagnostics() to get the latest instead.
-	diagnosticsCache []types.Diagnostic
+	diagnosticsCache *[]types.Diagnostic
 
 	// currentReferences is the range of each LSP documentHighlights under the cursor
 	// It is used to avoid updating the text property when the cursor is moved within the
@@ -251,13 +252,15 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 		defaults.Apply(user)
 	}
 	d := plugin.NewDriver(PluginPrefix)
+	var emptyDiags []types.Diagnostic
 	res := &govimplugin{
-		tmpDir:         tmpDir,
-		rawDiagnostics: make(map[span.URI]*protocol.PublishDiagnosticsParams),
-		goplsEnv:       goplsEnv,
-		goplspath:      goplspath,
-		Driver:         d,
-		inShutdown:     make(chan struct{}),
+		tmpDir:           tmpDir,
+		rawDiagnostics:   make(map[span.URI]*protocol.PublishDiagnosticsParams),
+		goplsEnv:         goplsEnv,
+		goplspath:        goplspath,
+		Driver:           d,
+		inShutdown:       make(chan struct{}),
+		diagnosticsCache: &emptyDiags,
 		vimstate: &vimstate{
 			Driver:                d,
 			buffers:               make(map[int]*types.Buffer),
@@ -275,20 +278,20 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.errCh = errCh
 	g.Driver.Govim = gg
 	g.vimstate.Driver.Govim = gg.Scheduled()
-	g.ChannelEx(`augroup govim`)
-	g.ChannelEx(`augroup END`)
 	g.vimstate.workingDirectory = g.ParseString(g.ChannelCall("getcwd", -1))
 	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.vimstate.balloonExpr)
-	g.DefineAutoCommand("", govim.Events{govim.EventBufUnload}, govim.Patterns{"*.go"}, false, g.vimstate.bufUnload, "eval(expand('<abuf>'))")
-	g.DefineAutoCommand("", govim.Events{govim.EventBufRead, govim.EventBufNewFile}, govim.Patterns{"*.go"}, false, g.vimstate.bufReadPost, exprAutocmdCurrBufInfo)
-	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go"}, false, g.vimstate.formatCurrentBuffer, "eval(expand('<abuf>'))")
-	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePost}, govim.Patterns{"*.go"}, false, g.vimstate.bufWritePost, "eval(expand('<abuf>'))")
+	g.DefineAutoCommand("", govim.Events{govim.EventBufNew}, govim.Patterns{"*"}, false, g.vimstate.bufNew, exprBufNew)
+	g.DefineAutoCommand("", govim.Events{govim.EventBufWinEnter}, govim.Patterns{"*"}, false, g.vimstate.bufWinEnter, exprBufWinEnter)
+	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*"}, false, g.vimstate.bufWritePre, "eval(expand('<abuf>'))")
+	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePost}, govim.Patterns{"*"}, false, g.vimstate.bufWritePost, "eval(expand('<abuf>'))")
+	g.DefineAutoCommand("", govim.Events{govim.EventBufUnload}, govim.Patterns{"*"}, false, g.vimstate.bufUnload, "eval(expand('<abuf>'))")
+	g.DefineAutoCommand("", govim.Events{govim.EventBufDelete}, govim.Patterns{"*"}, false, g.vimstate.bufDelete, "eval(expand('<abuf>'))")
+	g.DefineAutoCommand("", govim.Events{govim.EventBufWipeout}, govim.Patterns{"*"}, false, g.vimstate.bufWipeout, "eval(expand('<abuf>'))")
 	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.vimstate.complete)
 	g.DefineCommand(string(config.CommandGoToDef), g.vimstate.gotoDef, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandSuggestedFixes), g.vimstate.suggestFixes, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandGoToPrevDef), g.vimstate.gotoPrevDef, govim.NArgsZeroOrOne, govim.CountN(1))
 	g.DefineFunction(string(config.FunctionHover), []string{}, g.vimstate.hover)
-	g.DefineAutoCommand("", govim.Events{govim.EventBufDelete}, govim.Patterns{"*.go"}, false, g.vimstate.deleteCurrentBuffer, "eval(expand('<abuf>'))")
 	g.DefineCommand(string(config.CommandGoFmt), g.vimstate.gofmtCurrentBufferRange)
 	g.DefineCommand(string(config.CommandGoImports), g.vimstate.goimportsCurrentBufferRange)
 	g.DefineCommand(string(config.CommandQuickfixDiagnostics), g.vimstate.quickfixDiagnostics)
@@ -302,7 +305,8 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandStringFn), g.vimstate.stringfns, govim.RangeLine, govim.CompleteCustomList(PluginPrefix+config.FunctionStringFnComplete), govim.NArgsOneOrMore)
 	g.DefineFunction(string(config.FunctionStringFnComplete), []string{"ArgLead", "CmdLine", "CursorPos"}, g.vimstate.stringfncomplete)
 	g.DefineCommand(string(config.CommandHighlightReferences), g.vimstate.referenceHighlight)
-	g.DefineAutoCommand("", govim.Events{govim.EventCompleteDone}, govim.Patterns{"*.go"}, false, g.vimstate.completeDone, "eval(expand('<abuf>'))", "v:completed_item")
+	g.DefineAutoCommand("", govim.Events{govim.EventCompleteDone}, govim.Patterns{"*"}, false, g.vimstate.completeDone, "eval(expand('<abuf>'))", "v:completed_item")
+	g.DefineAutoCommand("", govim.Events{govim.EventUser}, govim.Patterns{"PostInitComplete"}, true, g.vimstate.postInitComplete, postInitCompleteExpr)
 	g.defineHighlights()
 	if err := g.vimstate.signDefine(); err != nil {
 		return fmt.Errorf("failed to define signs: %v", err)
@@ -485,6 +489,31 @@ func (g *govimplugin) startGopls() error {
 	}
 
 	return nil
+}
+
+const postInitCompleteExpr = `map(getbufinfo(), {_, v -> {'Num': v.bufnr, 'Name': v.name != "" ? fnamemodify(v.name, ':p') : "", 'Contents': join(getbufline(v.bufnr, 0, "$"), "\n")."\n", 'Loaded': bufloaded(v.bufnr) }})`
+
+// postInitComplete is a manually triggered User autocommand that signals
+// Vim's acknowledgement that govim has finished initialising.
+func (v *vimstate) postInitComplete(args ...json.RawMessage) error {
+	var bufInfos []bufWinEnterDetails
+	v.Parse(args[0], &bufInfos)
+	for _, b := range bufInfos {
+		v.bufNewImpl(bufNewDetails{
+			Num:  b.Num,
+			Name: b.Name,
+		})
+	}
+	for _, b := range bufInfos {
+		if b.Loaded == 1 {
+			v.bufWinEnterImpl(b)
+		}
+	}
+	return nil
+}
+
+func (v *vimstate) strictVimBufferLifecycle() bool {
+	return os.Getenv(testsetup.EnvStrictVimBufferLifecycle) == "true"
 }
 
 func goModPath(wd string) (string, error) {

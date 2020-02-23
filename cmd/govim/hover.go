@@ -72,9 +72,9 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 	}
 	expr := v.ChannelExpr(posExpr)
 	v.Parse(expr, &vpos)
-	b, ok := v.buffers[vpos.BufNum]
-	if !ok {
-		return nil, fmt.Errorf("unable to resolve buffer %v", vpos.BufNum)
+	b, err := v.getLoadedBuffer(vpos.BufNum)
+	if err != nil {
+		return nil, err
 	}
 	pos, err := types.PointFromVim(b, vpos.Line, vpos.Col)
 	if err != nil {
@@ -98,7 +98,7 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 
 	var lines []popupLine
 	if *v.config.HoverDiagnostics {
-		for _, d := range v.diagnostics() {
+		for _, d := range *v.diagnostics() {
 			if (b.Num != d.Buf) || !pos.IsWithin(d.Range) {
 				continue
 			}

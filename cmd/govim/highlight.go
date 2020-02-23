@@ -76,17 +76,17 @@ func (v *vimstate) textpropDefine() error {
 	return nil
 }
 
-func (v *vimstate) redefineHighlights(diags []types.Diagnostic, force bool) error {
+func (v *vimstate) redefineHighlights(force bool) error {
 	if v.config.HighlightDiagnostics == nil || !*v.config.HighlightDiagnostics {
 		return nil
 	}
-	v.diagnosticsChangedLock.Lock()
-	work := v.diagnosticsChangedHighlights
-	v.diagnosticsChangedHighlights = false
-	v.diagnosticsChangedLock.Unlock()
+	diagsRef := v.diagnostics()
+	work := v.lastDiagnosticsHighlights != diagsRef
+	v.lastDiagnosticsHighlights = diagsRef
 	if !force && !work {
 		return nil
 	}
+	diags := *diagsRef
 
 	v.removeTextProps(types.DiagnosticTextPropID)
 
@@ -100,7 +100,7 @@ func (v *vimstate) redefineHighlights(diags []types.Diagnostic, force bool) erro
 
 		// prop_add() can only be called for Loaded buffers, otherwise
 		// it will throw an "unknown line" error.
-		if buf, ok := v.buffers[d.Buf]; ok && !buf.Loaded {
+		if _, err := v.getLoadedBuffer(d.Buf); err != nil {
 			continue
 		}
 
@@ -130,12 +130,13 @@ func (v *vimstate) removeReferenceHighlight() error {
 	if len(v.currentReferences) == 0 {
 		return nil
 	}
-
-	_, pos, err := v.cursorPos()
+	b, pos, err := v.cursorPos()
 	if err != nil {
 		return fmt.Errorf("failed to get current position: %v", err)
 	}
-
+	if !bufferOfInterestToGopls(b) {
+		return nil
+	}
 	for i := range v.currentReferences {
 		if !pos.IsWithin(*v.currentReferences[i]) {
 			v.removeTextProps(types.ReferencesTextPropID)
