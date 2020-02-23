@@ -25,6 +25,16 @@ const (
 	// EnvVarGoplsVerbose is an environment variable which, when set to the
 	// value "true", configures gopls' verboseOutput option.
 	EnvVarGoplsVerbose EnvVar = "GOVIM_GOPLS_VERBOSE_OUTPUT"
+
+	// EnvVarGoplsGOMAXPROCSMinusN is an environment variable which limits the
+	// amount of CPU gopls can use. If an integer value n is supplied such that:
+	// 0 < n < runtime.NumCPU(), gopls is run in an environment where
+	// GOMAXPROCS=runtime.NumCPU() - n. If a percentage value p is supplied,
+	// e.g. 20%, gopls is run in an environment where
+	// GOMAXPROCS=math.Floor(runtime.NumCPUs() * (1-p)). govim will panic if supplied
+	// with a value of n or p that would result in 0 >= GOMAXPROCS or
+	// GOMAXPROCS > runtime.NumCPU()
+	EnvVarGoplsGOMAXPROCSMinusN EnvVar = "GOVIM_GOPLS_GOMAXPROCS_MINUS_N"
 )
 
 //go:generate go run github.com/govim/govim/cmd/govim/config/internal/applygen Config

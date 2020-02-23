@@ -283,6 +283,7 @@ func (g *govimImpl) goHandleShutdown(f func() error) {
 			}
 		}()
 		if err := f(); err != nil && err != ErrShuttingDown {
+			g.Logf("** Tomb returned error: %v", err)
 			return err
 		}
 		return nil
