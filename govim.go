@@ -373,10 +373,6 @@ type handler interface {
 	isHandler()
 }
 
-type internalFunction func(args ...json.RawMessage) (interface{}, error)
-
-func (i internalFunction) isHandler() {}
-
 // VimFunction is the signature of a callback from a defined function
 type VimFunction func(g Govim, args ...json.RawMessage) (interface{}, error)
 
@@ -484,11 +480,6 @@ func (g *govimImpl) run() error {
 			var call func() (interface{}, error)
 
 			switch f := f.(type) {
-			case internalFunction:
-				fargs = g.parseJSONArgSlice(fargs[0])
-				call = func() (interface{}, error) {
-					return f(fargs...)
-				}
 			case VimRangeFunction:
 				line1 = g.parseInt(fargs[0])
 				line2 = g.parseInt(fargs[1])
