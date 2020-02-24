@@ -1,0 +1,41 @@
+# Test that completing of unimported std library packages is disabled
+# when CompleteUnimported=0
+
+vim ex 'e main.go'
+
+# Attempt unimported completion; we should get zero results.
+# If we did get results (from fmt) then attempting completion
+# would expand from fmt.Pr to fmt.Print, i.e. the longest match
+# of the returned candidates
+vim ex 'call cursor(4,1)'
+vim normal Sfmt.Pr
+vim ex 'execute \"normal A\\<C-X>\\<C-O>(\\\"Hello\\\")\"'
+
+vim ex 'noau w'
+exec cat main.go
+vim ex message
+
+# Check import has not been added
+vim ex 'noau w'
+cmp main.go main.go1.golden
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+func main() {
+	fmt.Pr
+}
+-- main.go1.golden --
+package main
+
+func main() {
+	fmt.Pr("Hello")
+}
