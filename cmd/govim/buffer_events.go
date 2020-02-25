@@ -79,7 +79,19 @@ func (v *vimstate) bufWinEnterImpl(nbinfo bufWinEnterDetails) error {
 	nb := types.NewBuffer(nbinfo.Num, nbinfo.Name, []byte(nbinfo.Contents), nbinfo.Loaded == 1)
 	b, ok := v.buffers[nb.Num]
 	if !ok {
-		return fmt.Errorf("BufWinEnter fired for buffer %v; but we don't know about it", nb.Num)
+		// Because of https://github.com/vim/vim/issues/5694 we can find ourselves
+		// in a situation where we get a BufWinEnter for a buffer we know nothing
+		// about. Hence we need to force create that buffer.
+		if v.strictVimBufferLifecycle() {
+			return fmt.Errorf("BufWinEnter fired for buffer %v; but we don't know about it", nb.Num)
+		}
+		v.bufNewImpl(bufNewDetails{
+			Num:  nb.Num,
+			Name: nb.Name,
+		})
+		if b, ok = v.buffers[nb.Num]; !ok {
+			return fmt.Errorf("workaround for BufWinEnter bug failed for buffer %v?", nb.Num)
+		}
 	}
 	if b.Loaded {
 		// This happens when the buffer is already loaded in another window
@@ -232,7 +244,15 @@ func (v *vimstate) bufDelete(args ...json.RawMessage) error {
 	currBufNr := v.ParseInt(args[0])
 	cb, ok := v.buffers[currBufNr]
 	if !ok {
-		return fmt.Errorf("tried to remove buffer %v; but we have no record of it", currBufNr)
+		// Because of https://github.com/vim/vim/issues/5694 we can find ourselves
+		// in a situation where we get a BufDelete for a buffer we know nothing
+		// about. Hence log and ignore that event
+		msg := fmt.Sprintf("tried to remove buffer %v; but we have no record of it", currBufNr)
+		if v.strictVimBufferLifecycle() {
+			return fmt.Errorf(msg)
+		}
+		v.Logf(msg)
+		return nil
 	}
 
 	// Becuase of https://github.com/vim/vim/issues/5655 we might see a buffer
