@@ -211,10 +211,11 @@ func (v *vimstate) bufUnloadImpl(bufnr int) error {
 	}
 
 	v.ChannelCall("listener_remove", b.Listener)
+	b.Listener = 0
+
 	if !bufferOfInterestToGopls(b) {
 		return nil
 	}
-	b.Listener = 0
 	params := &protocol.DidCloseTextDocumentParams{
 		TextDocument: b.ToTextDocumentIdentifier(),
 	}
