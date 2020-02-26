@@ -41,10 +41,9 @@ func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {
 			return fmt.Errorf("cannot use %v in visual block mode", config.CommandStringFn)
 		}
 
-		var ok bool
-		b, ok = v.buffers[pos.BuffNr]
-		if !ok {
-			return fmt.Errorf("failed to derive buffer")
+		b, err = v.getLoadedBuffer(pos.BuffNr)
+		if err != nil {
+			return err
 		}
 
 		start, err = types.PointFromVim(b, pos.Start[1], pos.Start[2])

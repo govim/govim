@@ -177,6 +177,8 @@ function s:userBusy(busy)
   endif
 endfunction
 
+au User PostInitComplete let x = 42
+
 function s:define(channel, msg)
   " format is [type, ...]
   " type is function, command or autocmd
@@ -190,8 +192,17 @@ function s:define(channel, msg)
       endfor
     elseif a:msg[1] == "initcomplete"
       let s:govim_status = "initcomplete"
-      " doautoall BufRead also triggers ftplugin stuff
-      doautoall BufRead
+      " Because the startup of govim is async, events for all buffers in Vim
+      " will already have fired by this point. Therefore govim will not know
+      " anything about any of the buffers. Therefore, fire the events that
+      " roughly correspond to what would have happened.  The exception here is
+      " BufRead - for unnamed buffers and new files this is not the right
+      " event to fire. However, our handling on the govim side makes the
+      " distinction irrelevant: it is a means of synching govim to the current
+      " buffer state (following BufNew and BufCreate).
+      " Note: doautoall BufRead also triggers ftplugin stuff
+      doautocmd User PostInitComplete
+      doautocmd User BufferStateChange
       doautoall FileType
       if $GOVIM_DISABLE_USER_BUSY != "true"
         au govim CursorMoved,CursorMovedI * ++nested :call s:userBusy(1)
@@ -489,15 +500,14 @@ function s:mustBeErrorOrNil(...)
 endfunction
 
 function GOVIM_internal_SuggestedFixesFilter(id, key)
-    if a:key == "\<c-n>"
-        GOVIMSuggestedFixes next
-        return 1
-    elseif a:key == "\<c-p>"
-        GOVIMSuggestedFixes prev
-        return 1
-    endif
-
-    return popup_filter_menu(a:id, a:key)
+  if a:key == "\<c-n>"
+    GOVIMSuggestedFixes next
+    return 1
+  elseif a:key == "\<c-p>"
+    GOVIMSuggestedFixes prev
+    return 1
+  endif
+  return popup_filter_menu(a:id, a:key)
 endfunc
 
 " In case we are running in test mode
@@ -506,3 +516,56 @@ if $GOVIM_DISABLE_USER_BUSY == "true"
     return s:userBusy(a:busy)
   endfunction
 endif
+
+" A dummy handler for BufferStateChange
+au User BufferStateChange let x = 42
+
+" s:bufferState keeps track of the last known state of Vim's buffers
+" The last known state also represents the last version notified
+" to govim.
+let s:bufferState = {}
+
+function s:bufferStateCheck(event)
+  let newState = {}
+  let currBuf = bufnr()
+  let aBuf = expand('<abuf>')
+  for v in getbufinfo()
+    " Because BufWipeout is called _before_ the buffer is removed
+    if a:event == "BufWipeout" && aBuf == v.bufnr
+      continue
+    endif
+    let newV = {'bufnr': v.bufnr, 'name': v.name, 'loaded': v.loaded}
+    if v.bufnr == currBuf && (a:event == "BufRead" || a:event == "BufNewFile" || a:event == "BufWrite") || newV.loaded && has_key(s:bufferState, v.bufnr) && has_key(s:bufferState[v.bufnr], 'fileready') && s:bufferState[v.bufnr].fileready
+      let newV.fileready = 1
+    endif
+    let newState[v.bufnr] = newV
+  endfor
+  if s:bufferState != newState
+    let s:bufferState = newState
+    if s:govim_status == "initcomplete"
+      doautocmd User BufferStateChange
+    endif
+  endif
+endfunction
+
+autocmd BufNewFile * call s:bufferStateCheck("BufNewFile")
+autocmd BufReadPre * call s:bufferStateCheck("BufReadPre")
+autocmd BufRead * call s:bufferStateCheck("BufRead")
+autocmd BufReadPost * call s:bufferStateCheck("BufReadPost")
+autocmd BufWrite * call s:bufferStateCheck("BufWrite")
+autocmd BufWritePre * call s:bufferStateCheck("BufWritePre")
+autocmd BufWritePost * call s:bufferStateCheck("BufWritePost")
+autocmd BufAdd * call s:bufferStateCheck("BufAdd")
+autocmd BufCreate * call s:bufferStateCheck("BufCreate")
+autocmd BufDelete * call s:bufferStateCheck("BufDelete")
+autocmd BufWipeout * call s:bufferStateCheck("BufWipeout")
+autocmd BufFilePre * call s:bufferStateCheck("BufFilePre")
+autocmd BufFilePost * call s:bufferStateCheck("BufFilePost")
+autocmd BufEnter * call s:bufferStateCheck("BufEnter")
+autocmd BufLeave * call s:bufferStateCheck("BufLeave")
+autocmd BufWinEnter * call s:bufferStateCheck("BufWinEnter")
+autocmd BufWinLeave * call s:bufferStateCheck("BufWinLeave")
+autocmd BufUnload * call s:bufferStateCheck("BufUnload")
+autocmd BufHidden * call s:bufferStateCheck("BufHidden")
+autocmd BufNew * call s:bufferStateCheck("BufNew")
+autocmd VimEnter * call s:bufferStateCheck("VimEnter")

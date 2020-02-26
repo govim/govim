@@ -57,7 +57,7 @@ func (v *vimstate) references(flags govim.CommandFlags, args ...string) error {
 				continue
 			}
 			// create a temp buffer
-			buf = types.NewBuffer(-1, fn, byts, false)
+			buf = types.NewBuffer(-1, fn, byts, false, false)
 		}
 		// make fn relative for reporting purposes
 		fn, err := filepath.Rel(v.workingDirectory, fn)

@@ -45,7 +45,7 @@ func (v *vimstate) diagnostics() *[]types.Diagnostic {
 				continue
 			}
 			// create a temp buffer
-			buf = types.NewBuffer(-1, fn, byts, false)
+			buf = types.NewBuffer(-1, fn, byts, false, false)
 		}
 		for _, d := range lspDiags {
 			s, err := types.VisualPointFromPosition(buf, d.Range.Start)

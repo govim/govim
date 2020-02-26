@@ -99,8 +99,10 @@ func (v *vimstate) redefineHighlights(force bool) error {
 		}
 
 		// prop_add() can only be called for Loaded buffers, otherwise
-		// it will throw an "unknown line" error.
-		if buf, ok := v.buffers[d.Buf]; ok && !buf.Loaded {
+		// it will throw an "unknown line" error. We are also only
+		// interested in doing this for gopls buffers
+		b, err := v.getLoadedBuffer(d.Buf)
+		if err != nil || !b.IsOfGoplsInterest() {
 			continue
 		}
 
@@ -131,16 +133,15 @@ func (v *vimstate) removeReferenceHighlight(cursorPos cursorPosition) error {
 		return nil
 	}
 
-	var pos *types.Point
-	if b, ok := v.buffers[cursorPos.BufNr]; ok {
-		point, err := types.PointFromVim(b, cursorPos.Line, cursorPos.Col)
-		if err == nil {
-			pos = &point
-		}
+	b, pos, err := v.cursorPos()
+	if err != nil {
+		return fmt.Errorf("failed to get current position: %v", err)
 	}
-
+	if !b.IsOfGoplsInterest() {
+		return nil
+	}
 	for i := range v.currentReferences {
-		if pos == nil || !pos.IsWithin(*v.currentReferences[i]) {
+		if !pos.IsWithin(*v.currentReferences[i]) {
 			v.removeTextProps(types.ReferencesTextPropID)
 			return nil
 		}
@@ -167,6 +168,10 @@ func (v *vimstate) updateReferenceHighlight(force bool, cursorPos *cursorPositio
 	pos, err := types.PointFromVim(b, cursorPos.Line, cursorPos.Col)
 	if err != nil {
 		return fmt.Errorf("failed to calculate cursor position in buffer %v from line %v and col %v: %v", b.Num, cursorPos.Line, cursorPos.Col, err)
+	}
+
+	if !b.IsOfGoplsInterest() {
+		return nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -266,7 +271,7 @@ func (v *vimstate) removeTextProps(id types.TextPropID) {
 	}
 
 	for bufnr, buf := range v.buffers {
-		if !buf.Loaded {
+		if !buf.IsOfGoplsInterest() {
 			continue // vim removes properties when a buffer is unloaded
 		}
 		v.BatchChannelCall("prop_remove", struct {

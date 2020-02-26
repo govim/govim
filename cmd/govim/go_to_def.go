@@ -145,9 +145,9 @@ MovedToTargetWin:
 	if bn == -1 {
 		return fmt.Errorf("should have a valid buffer number by this point; we don't")
 	}
-	nb, ok := v.buffers[bn]
-	if !ok {
-		return fmt.Errorf("should have resolved a buffer; we didn't")
+	nb, err := v.getLoadedBuffer(bn)
+	if err != nil {
+		return err
 	}
 	newPos, err := types.PointFromPosition(nb, loc.Range.Start)
 	if err != nil {

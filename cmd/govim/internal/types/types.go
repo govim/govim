@@ -2,10 +2,13 @@ package types
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"math"
+	"path/filepath"
+	"strings"
 
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -15,20 +18,69 @@ import (
 // TODO: we need to reflect somehow whether a buffer is file-based or not. A
 // preview window is not, for example.
 
+// BufferState holds the buffer life-cycle state information
+type BufferState struct {
+	Num  int
+	Name string
+
+	// Loaded reflects vim's "loaded" buffer state. See :help bufloaded() for details.
+	Loaded bool
+
+	FileReady bool
+}
+
+func (b *BufferState) UnmarshalJSON(data []byte) error {
+	var tb struct {
+		Num       int    `json:"bufnr"`
+		Name      string `json:"name"`
+		Loaded    int    `json:"loaded"`
+		FileReady int    `json:"fileready"`
+	}
+	if err := json.Unmarshal(data, &tb); err != nil {
+		return err
+	}
+	b.Num = tb.Num
+	b.Name = tb.Name
+	b.Loaded = tb.Loaded != 0
+	b.FileReady = tb.FileReady != 0
+	return nil
+}
+
+func (bs *BufferState) ToBuffer() *Buffer {
+	return NewBuffer(bs.Num, bs.Name, []byte("\n"), bs.Loaded, bs.FileReady)
+}
+
+func (bs *BufferState) IsLoaded() bool {
+	return bs != nil && bs.Loaded
+}
+
+func (bs *BufferState) IsFileReady() bool {
+	return bs.IsLoaded() && bs.FileReady
+}
+
+func (bs *BufferState) IsOfGoASTInterest() bool {
+	return bs.IsFileReady() && strings.HasSuffix(bs.Name, ".go")
+}
+
+func (bs *BufferState) IsOfGoplsInterest() bool {
+	return bs.IsFileReady() && BufferNameOfInterestToGopls(bs.Name)
+}
+
+func BufferNameOfInterestToGopls(name string) bool {
+	return strings.HasSuffix(name, ".go") || filepath.Base(name) == "go.mod"
+}
+
 // A Buffer is govim's representation of the current state of a buffer in Vim
 // i.e. it is versioned.
 type Buffer struct {
-	Num      int
-	Name     string
+	BufferState
+
 	contents []byte
 	Version  int
 
 	// Listener is the ID of the listener for the buffer. Listeners number from
 	// 1 so the zero value indicates this buffer does not have a listener.
 	Listener int
-
-	// Loaded reflects vim's "loaded" buffer state. See :help bufloaded() for details.
-	Loaded bool
 
 	// AST is the parsed result of the Buffer. Buffer events (i.e. changes to
 	// the buffer contents) trigger an asynchronous re-parse of the buffer.
@@ -54,12 +106,15 @@ type Buffer struct {
 	cc *span.TokenConverter
 }
 
-func NewBuffer(num int, name string, contents []byte, loaded bool) *Buffer {
+func NewBuffer(num int, name string, contents []byte, loaded bool, fileReady bool) *Buffer {
 	return &Buffer{
-		Num:      num,
-		Name:     name,
+		BufferState: BufferState{
+			Num:       num,
+			Name:      name,
+			Loaded:    loaded,
+			FileReady: fileReady,
+		},
 		contents: contents,
-		Loaded:   loaded,
 	}
 }
 

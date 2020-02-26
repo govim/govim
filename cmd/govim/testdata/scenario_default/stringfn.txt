@@ -7,6 +7,12 @@ vim ex 'call cursor(12,1) | GOVIMStringFn regexp.QuoteMeta'
 vim ex 'w'
 cmp main.go main.go.golden
 
+# No range in a .txt file
+vim ex 'e other.txt'
+vim ex 'call cursor(1,1) | GOVIMStringFn regexp.QuoteMeta'
+vim ex 'w'
+cmp other.txt other.txt.golden
+
 # With a visual selection
 
 skip 'Pending work to fix up Vim commands in test'
@@ -47,3 +53,7 @@ func main() {
 }
 
 // Here is an \(end-of-file\) line
+-- other.txt --
+This.(is a [test])
+-- other.txt.golden --
+This\.\(is a \[test\]\)

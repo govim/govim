@@ -92,9 +92,9 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 		}
 		tf := strings.TrimPrefix(filepath, "file://")
 		bufnr := bufNrs[filepath]
-		b, ok := v.buffers[bufnr]
-		if !ok {
-			return fmt.Errorf("expected to have a buffer for %v; did not", tf)
+		b, err := v.getLoadedBuffer(bufnr)
+		if err != nil {
+			return err
 		}
 		// We previously verified the filepath above by doing the reverse
 		// lookup from filepath -> buffer, so just verify the version
