@@ -100,9 +100,14 @@ func (v *vimstate) bufWinEnterImpl(nbinfo bufWinEnterDetails) error {
 		}
 	}
 
-	if b.Name != nb.Name {
-		return fmt.Errorf("BufWinEnter fired for buffer %v; but its name appears to have changed from %q to %q?", b.Num, b.Name, nb.Name)
-	}
+	// The buffer name can change as a result of BufReadCmd.  Some plugins use
+	// BufReadCmd to handle special reads of files. For example,
+	// github.com/plan9-for-vimspaceplan9-for-vimspace adds an address handler
+	// to BufReadCmd to handle an attempt to open /path/to/file.go:5:6, i.e. at
+	// a specific address (line:col). Most such handlers then fire a BufRead and
+	// BufWinEnter to complete the buffer life-cycle events, at which point we
+	// can correct the name of the buffer.
+	b.Name = nb.Name
 
 	b.SetContents(nb.Contents())
 	b.Version++
