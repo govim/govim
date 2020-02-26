@@ -99,8 +99,10 @@ func (v *vimstate) redefineHighlights(force bool) error {
 		}
 
 		// prop_add() can only be called for Loaded buffers, otherwise
-		// it will throw an "unknown line" error.
-		if _, err := v.getLoadedBuffer(d.Buf); err != nil {
+		// it will throw an "unknown line" error. We are also only
+		// interested in doing this for gopls buffers
+		b, err := v.getLoadedBuffer(d.Buf)
+		if err != nil || !b.IsOfGoplsInterest() {
 			continue
 		}
 
@@ -134,7 +136,7 @@ func (v *vimstate) removeReferenceHighlight() error {
 	if err != nil {
 		return fmt.Errorf("failed to get current position: %v", err)
 	}
-	if !bufferOfInterestToGopls(b) {
+	if !b.IsOfGoplsInterest() {
 		return nil
 	}
 	for i := range v.currentReferences {
@@ -154,6 +156,10 @@ func (v *vimstate) updateReferenceHighlight(force bool) error {
 	b, pos, err := v.cursorPos()
 	if err != nil {
 		return fmt.Errorf("failed to get current position: %v", err)
+	}
+
+	if !b.IsOfGoplsInterest() {
+		return nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -253,7 +259,7 @@ func (v *vimstate) removeTextProps(id types.TextPropID) {
 	}
 
 	for bufnr, buf := range v.buffers {
-		if !buf.Loaded {
+		if !buf.IsOfGoplsInterest() {
 			continue // vim removes properties when a buffer is unloaded
 		}
 		v.BatchChannelCall("prop_remove", struct {

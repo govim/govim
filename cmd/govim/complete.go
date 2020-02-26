@@ -68,7 +68,7 @@ func (v *vimstate) completeDone(args ...json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	if !bufferOfInterestToGopls(b) {
+	if !b.IsOfGoplsInterest() {
 		return nil
 	}
 	var chosen govim.CompleteItem

@@ -14,7 +14,7 @@ import (
 )
 
 func (v *vimstate) formatCurrentBuffer(b *types.Buffer) (err error) {
-	if !bufferOfInterestToGopls(b) {
+	if !b.IsOfGoplsInterest() {
 		return nil
 	}
 	tool := v.config.FormatOnSave

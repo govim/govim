@@ -1,0 +1,6 @@
+# Test case that verifies we have a fix for github.com/govim/govim/issues/801
+
+vim ex 'call GOVIM_test_SetUserBusy(1)'
+vim ex 'Explore .'
+vim ex 'call GOVIM_test_SetUserBusy(0)'
+

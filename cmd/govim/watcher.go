@@ -33,7 +33,7 @@ type modWatcher struct {
 	files map[string]int
 }
 
-func (mw *modWatcher) close() error { return mw.watcher.Close() }
+func (m *modWatcher) close() error { return m.watcher.Close() }
 
 // newWatcher returns a new watcher that will "watch" on the Go files in the
 // module identified by gomodpath

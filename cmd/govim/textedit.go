@@ -147,7 +147,7 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 	v.Parse(newContentsRes(), &newContents)
 	b.SetContents([]byte(newContents))
 	b.Version++
-	if !bufferOfInterestToGopls(b) {
+	if !b.IsOfGoplsInterest() {
 		return nil
 	}
 	params := &protocol.DidChangeTextDocumentParams{

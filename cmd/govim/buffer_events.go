@@ -7,163 +7,104 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
-	"path/filepath"
 	"strings"
 	"sync"
 
-	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
+	"github.com/kr/pretty"
 )
 
-const (
-	exprBufNew = `{"Num": eval(expand('<abuf>')), "Name": expand('<afile>') != "" ? fnamemodify(expand('<afile>'),':p') : ""}`
-)
-
-type bufNewDetails struct {
-	Num  int
-	Name string
-}
-
-// bufNew corresponds to the BufNew autocommand in Vim for all buffers.
-// BufWipeout is the corresponding lifecycle event when a buffer is wiped out.
-// We therefore use the existence of an entry in (*vimstate).buffers to
-// correspond to the lifetime of a buffer. Subsequent lifecycle methods augment
-// that buffer value.
-//
-// BufNew fires exactly when you would expect a new buffer to be created but
-// also in a couple of surprising situations:
-//
-// 1. when saving an unnamed buffer with ':w file'; BufNew is fired for the new
-// buffer (file), followed by BufWipeout of the old unnamed buffer, followed by
-// BufWipeout of the new buffer (file), followed by another BufNew for the new
-// buffer (file). It's unclear why this dance happens...
-// 2. when setting a quickfix list that includes a file that does not have a
-// corresponding buffer, a new buffer is created via BufNew named with the
-// filename
-func (v *vimstate) bufNew(args ...json.RawMessage) error {
-	var nb bufNewDetails
-	v.Parse(args[0], &nb)
-	return v.bufNewImpl(nb)
-}
-
-func (v *vimstate) bufNewImpl(nb bufNewDetails) error {
-	if _, ok := v.buffers[nb.Num]; ok {
-		return fmt.Errorf("we already know about buffer %v; how is that possible?", nb.Num)
+// bufferStateChange fires in response to any change in Vim buffer state.  We
+// only track a subset of buffer details and this is defined in
+// types.BufferState
+func (v *vimstate) bufferStateChange(args ...json.RawMessage) error {
+	var updates []*types.BufferState
+	changes := newBufferStateChanges(v)
+	v.Parse(args[0], &updates)
+	reverseLookup := make(map[int]*types.BufferState)
+	for _, post := range updates {
+		reverseLookup[post.Num] = post
+		var pre *types.BufferState
+		b, exists := v.buffers[post.Num]
+		if !exists {
+			b = post.ToBuffer()
+			v.buffers[b.Num] = b
+		} else {
+			// Snapshot the current state and update the buffer state
+			pre = snapState(b.BufferState)
+			if *pre == *post {
+				continue
+			}
+			b.BufferState = *post
+		}
+		changes.add(b, pre, post)
 	}
-	v.buffers[nb.Num] = &types.Buffer{Num: nb.Num, Name: nb.Name}
+	for _, b := range v.buffers {
+		pre := snapState(b.BufferState)
+		post, exists := reverseLookup[b.Num]
+		if !exists {
+			b.Loaded = false
+			delete(v.buffers, b.Num)
+		} else {
+			if *pre == *post {
+				continue
+			}
+			b.BufferState = *post
+		}
+		changes.add(b, pre, post)
+	}
+	for _, ch := range changes.order {
+		changes.bufferStateChange(ch.buffer, ch.pre, ch.post)
+	}
 	return nil
 }
 
-const (
-	exprBufWinEnter = `{"Num": eval(expand('<abuf>')), "Name": expand('<afile>') != "" ? fnamemodify(expand('<afile>'),':p') : "", "Contents": join(getbufline(eval(expand('<abuf>')), 0, "$"), "\n")."\n", "Loaded": bufloaded(eval(expand('<abuf>')))}`
-)
-
-type bufWinEnterDetails struct {
-	Num      int
-	Name     string
-	Contents string
-	Loaded   int
-}
-
-// bufWinEnter corresponds to the BufWinEnter autocommand in Vim for all buffers.
-// It fires when a buffer is first loaded in a window, and therefore corresponds to
-// a buffer being loaded. The corresponding end of lifecycle event is BufUnload
-func (v *vimstate) bufWinEnter(args ...json.RawMessage) error {
-	var nbinfo bufWinEnterDetails
-	v.Parse(args[0], &nbinfo)
-	return v.bufWinEnterImpl(nbinfo)
-}
-
-func (v *vimstate) bufWinEnterImpl(nbinfo bufWinEnterDetails) error {
-	nb := types.NewBuffer(nbinfo.Num, nbinfo.Name, []byte(nbinfo.Contents), nbinfo.Loaded == 1)
-	b, ok := v.buffers[nb.Num]
-	if !ok {
-		// Because of https://github.com/vim/vim/issues/5694 we can find ourselves
-		// in a situation where we get a BufWinEnter for a buffer we know nothing
-		// about. Hence we need to force create that buffer.
-		if v.strictVimBufferLifecycle() {
-			return fmt.Errorf("BufWinEnter fired for buffer %v; but we don't know about it", nb.Num)
-		}
-		v.bufNewImpl(bufNewDetails{
-			Num:  nb.Num,
-			Name: nb.Name,
-		})
-		if b, ok = v.buffers[nb.Num]; !ok {
-			return fmt.Errorf("workaround for BufWinEnter bug failed for buffer %v?", nb.Num)
-		}
+// bufRead corresponds to the BufRead autocommand in Vim for all buffers.
+//
+// TODO there is an inefficiency when it comes to loading a buffer from a file
+// for the first time, e.g. vim main.go. Firstly we get a BufferStateChange
+// event that indicates the buffer is in a fileready state off the back of a
+// BufRead event.  Then (and by definition it occurs after because the BufRead
+// autocommand that triggers a BufferStateChange event is registered first) we
+// get a callback into bufRead, also as a result of the BufRead event. In both
+// situations we ensure the govim copy of the buffer is current. The
+// inefficiency comes about because when the file is being loaded in a buffer
+// for the first time, the call to bufRead actually does nothing - the govim
+// copy of the buffer contents is already current because of the buffer having
+// just become fileready. Once the buffer life-cycle changes stabilise we can
+// look to optimise this.
+func (v *vimstate) bufRead(args ...json.RawMessage) error {
+	bufnr := v.ParseInt(args[0])
+	b, err := v.getLoadedBuffer(bufnr)
+	if err != nil {
+		return err
 	}
-	if b.Loaded {
-		// This happens when the buffer is already loaded in another window
+	contents := v.ParseString(v.ChannelExprf(`join(getbufline(%v, 0, "$"), "\n")."\n"`, b.Num))
+	contentBytes := []byte(contents)
+	if bytes.Equal(contentBytes, b.Contents()) {
 		return nil
 	}
-	b.Loaded = true
-	if b.Listener != 0 {
-		return fmt.Errorf("we already have a listener for buffer %v; how is that possible?", b.Num)
-	}
-	b.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), b.Num))
-
-	// If we load a buffer that already had diagnostics reported by gopls, the buffer number must be
-	// updated to ensure that sign placement etc. works.
-	diags := *v.diagnosticsCache
-	for i, d := range diags {
-		if d.Buf == -1 && d.Filename == nb.URI().Filename() {
-			diags[i].Buf = b.Num
-		}
-	}
-
-	// The buffer name can change as a result of BufReadCmd.  Some plugins use
-	// BufReadCmd to handle special reads of files. For example,
-	// github.com/plan9-for-vimspaceplan9-for-vimspace adds an address handler
-	// to BufReadCmd to handle an attempt to open /path/to/file.go:5:6, i.e. at
-	// a specific address (line:col). Most such handlers then fire a BufRead and
-	// BufWinEnter to complete the buffer life-cycle events, at which point we
-	// can correct the name of the buffer.
-	b.Name = nb.Name
-
-	b.SetContents(nb.Contents())
+	b.SetContents(contentBytes)
 	b.Version++
-	v.triggerBufferASTUpdate(b)
-	if !bufferOfInterestToGopls(b) {
-		return nil
-	}
-	if err := v.updateSigns(true); err != nil {
-		v.Logf("failed to update signs for buffer %d: %v", nb.Num, err)
-	}
-	if err := v.redefineHighlights(true); err != nil {
-		v.Logf("failed to update highlights for buffer %d: %v", nb.Num, err)
-	}
-	params := &protocol.DidOpenTextDocumentParams{
-		TextDocument: protocol.TextDocumentItem{
-			URI:     protocol.DocumentURI(b.URI()),
-			Version: float64(b.Version),
-			Text:    string(b.Contents()),
+	params := &protocol.DidChangeTextDocumentParams{
+		TextDocument: protocol.VersionedTextDocumentIdentifier{
+			TextDocumentIdentifier: b.ToTextDocumentIdentifier(),
+			Version:                float64(b.Version),
+		},
+		ContentChanges: []protocol.TextDocumentContentChangeEvent{
+			{
+				Text: string(contents),
+			},
 		},
 	}
-	err := v.server.DidOpen(context.Background(), params)
-	return err
+	return v.server.DidChange(context.Background(), params)
 }
 
 // bufWritePre corresponds to the BufWritePre autocommand in Vim for all buffers.
 func (v *vimstate) bufWritePre(args ...json.RawMessage) error {
 	bufnr := v.ParseInt(args[0])
-	b, ok := v.buffers[bufnr]
-	if !ok {
-		return fmt.Errorf("failed to resolve buffer %v", bufnr)
-	}
-	if !b.Loaded {
-		// Because of https://github.com/vim/vim/issues/5655 we see a BufWrite
-		// event for a buffer for which we have not seen a BufWinEnter when we
-		// are writing an unnamed buffer to a file. So from govim's perspective
-		// the buffer is not loaded. Hence we force load the buffer
-		if v.strictVimBufferLifecycle() {
-			return fmt.Errorf("saw BufWritePre event for buffer %v; but buffer was not loaded", bufnr)
-		}
-		var nbinfo bufWinEnterDetails
-		v.Parse(v.ChannelExpr(exprBufWinEnter), &nbinfo)
-		v.bufWinEnterImpl(nbinfo)
-	}
-	b, err := v.getLoadedBuffer(v.ParseInt(args[0]))
+	b, err := v.getLoadedBuffer(bufnr)
 	if err != nil {
 		return err
 	}
@@ -172,119 +113,23 @@ func (v *vimstate) bufWritePre(args ...json.RawMessage) error {
 
 // bufWritePost corresponds to the BufWritePost autocommand in Vim for all buffers.
 func (v *vimstate) bufWritePost(args ...json.RawMessage) error {
-	currBufNr := v.ParseInt(args[0])
-	cb, ok := v.buffers[currBufNr]
-	if !ok {
-		return fmt.Errorf("tried to handle BufWritePost for buffer %v; but we have no record of it", currBufNr)
+	bufnr := v.ParseInt(args[0])
+	b, err := v.getLoadedBuffer(bufnr)
+	if err != nil {
+		return err
 	}
-	if !bufferOfInterestToGopls(cb) {
+	if !b.IsOfGoplsInterest() {
 		return nil
 	}
 	params := &protocol.DidSaveTextDocumentParams{
 		TextDocument: protocol.VersionedTextDocumentIdentifier{
-			TextDocumentIdentifier: cb.ToTextDocumentIdentifier(),
-			Version:                float64(cb.Version),
+			TextDocumentIdentifier: b.ToTextDocumentIdentifier(),
+			Version:                float64(b.Version),
 		},
 	}
 	if err := v.server.DidSave(context.Background(), params); err != nil {
-		return fmt.Errorf("failed to call gopls.DidSave on %v: %v", cb.Name, err)
+		return fmt.Errorf("failed to call gopls.DidSave on %v: %v", b.Name, err)
 	}
-	return nil
-}
-
-// bufUnload corresponds to the BufUnload autocommand in Vim for all buffers.
-// It fires when a buffer is unloaded. Its corresponding lifecycle event is
-// BufWinEnter.
-func (v *vimstate) bufUnload(args ...json.RawMessage) error {
-	bufnr := v.ParseInt(args[0])
-	return v.bufUnloadImpl(bufnr)
-}
-
-func (v *vimstate) bufUnloadImpl(bufnr int) error {
-	b, ok := v.buffers[bufnr]
-	if !ok {
-		// Becuase of https://github.com/vim/vim/issues/5655 we might see a buffer
-		// unload for a buffer that has already been wiped out. Just log and ignore
-		// this case
-		msg := fmt.Sprintf("BufUnload fired for buffer %v; but we don't know about it; ignoring", bufnr)
-		if v.strictVimBufferLifecycle() {
-			return fmt.Errorf(msg)
-		}
-		v.Logf(msg)
-		return nil
-	}
-	b.Loaded = false
-
-	// The diagnosticsCache is updated with -1 (unknown buffer) as bufnr.  We
-	// don't want to remove the entries completely here since we want to show
-	// them in the quickfix window. We don't need to remove existing text
-	// properties or signs here since they are removed by vim automatically when
-	// a buffer is unloaded and deleted respectively.
-	diags := *v.diagnosticsCache
-	for i := range diags {
-		if diags[i].Buf == bufnr {
-			diags[i].Buf = -1
-		}
-	}
-
-	v.ChannelCall("listener_remove", b.Listener)
-	b.Listener = 0
-
-	if !bufferOfInterestToGopls(b) {
-		return nil
-	}
-	params := &protocol.DidCloseTextDocumentParams{
-		TextDocument: b.ToTextDocumentIdentifier(),
-	}
-	if err := v.server.DidClose(context.Background(), params); err != nil {
-		return fmt.Errorf("failed to call gopls.DidClose on %v: %v", b.Name, err)
-	}
-	return nil
-}
-
-// bufDelete corresponds to the BufDelete autocommand in Vim for all buffers.
-// BufDelete's corresponding lifecycle event is BufCreate. We use bufDelete
-// to work around some Vim issues documented in the method body.
-func (v *vimstate) bufDelete(args ...json.RawMessage) error {
-	currBufNr := v.ParseInt(args[0])
-	cb, ok := v.buffers[currBufNr]
-	if !ok {
-		// Because of https://github.com/vim/vim/issues/5694 we can find ourselves
-		// in a situation where we get a BufDelete for a buffer we know nothing
-		// about. Hence log and ignore that event
-		msg := fmt.Sprintf("tried to remove buffer %v; but we have no record of it", currBufNr)
-		if v.strictVimBufferLifecycle() {
-			return fmt.Errorf(msg)
-		}
-		v.Logf(msg)
-		return nil
-	}
-
-	// Becuase of https://github.com/vim/vim/issues/5655 we might see a buffer
-	// that is still loaded. Unload that buffer first
-	if cb.Loaded && !v.strictVimBufferLifecycle() {
-		return v.bufUnloadImpl(currBufNr)
-	}
-	return nil
-}
-
-// bufWipeout corresponds to the BufWipeout autocommand in Vim for all buffers.
-// Its corresponding lifecycle event is BufNew. See the bufNew method for more
-// details.
-func (v *vimstate) bufWipeout(args ...json.RawMessage) error {
-	currBufNr := v.ParseInt(args[0])
-	cb, ok := v.buffers[currBufNr]
-	if !ok {
-		// Because of https://github.com/vim/vim/issues/5656 we sometimes see a wipeout
-		// that doesn't have a corresponding BufNew. Log and ignore
-		msg := fmt.Sprintf("tried to wipeout buffer %v; but we have no record of it", currBufNr)
-		if v.strictVimBufferLifecycle() {
-			return fmt.Errorf(msg)
-		}
-		v.Logf(msg)
-		return nil
-	}
-	delete(v.buffers, cb.Num)
 	return nil
 }
 
@@ -324,6 +169,7 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 		},
 	}
 	for _, c := range changes {
+		v.Logf(">> processing %v", pretty.Sprint(c))
 		var newcontents [][]byte
 		change := protocol.TextDocumentContentChangeEvent{
 			Range: &protocol.Range{
@@ -351,7 +197,7 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 	// add back trailing newline
 	b.SetContents(append(bytes.Join(contents, []byte("\n")), '\n'))
 	v.triggerBufferASTUpdate(b)
-	if !bufferOfInterestToGopls(b) {
+	if !b.IsOfGoplsInterest() {
 		return nil, nil
 	}
 	return nil, v.server.DidChange(context.Background(), params)
@@ -401,9 +247,6 @@ func (g *govimplugin) startProcessBufferUpdates() {
 }
 
 func (v *vimstate) triggerBufferASTUpdate(b *types.Buffer) {
-	if !strings.HasSuffix(b.Name, ".go") {
-		return
-	}
 	b.ASTWait = make(chan bool)
 	v.bufferUpdates <- &bufferUpdate{
 		buffer:   b,
@@ -412,6 +255,12 @@ func (v *vimstate) triggerBufferASTUpdate(b *types.Buffer) {
 		version:  b.Version,
 		contents: b.Contents(),
 	}
+}
+
+func (v *vimstate) clearBufferAST(b *types.Buffer) {
+	b.ASTWait = nil
+	b.AST = nil
+	b.Fset = nil
 }
 
 // getLoadedBuffer returns the loaded buffer identified by the buffer number
@@ -426,8 +275,4 @@ func (v *vimstate) getLoadedBuffer(bufnr int) (*types.Buffer, error) {
 		return nil, fmt.Errorf("buffer %v is not loaded", bufnr)
 	}
 	return b, nil
-}
-
-func bufferOfInterestToGopls(b *types.Buffer) bool {
-	return strings.HasSuffix(b.Name, ".go") || filepath.Base(b.Name) == "go.mod"
 }
