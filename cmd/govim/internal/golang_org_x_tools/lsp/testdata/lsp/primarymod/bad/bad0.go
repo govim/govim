@@ -2,6 +2,8 @@
 
 package bad
 
+import _ "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/assign/internal/secret" //@diag("\"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/assign/internal/secret\"", "compiler", "could not import github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/assign/internal/secret (invalid use of internal package github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/assign/internal/secret)", "error")
+
 func stuff() { //@item(stuff, "stuff", "func()", "func")
 	x := "heeeeyyyy"
 	random2(x) //@diag("x", "compiler", "cannot use x (variable of type string) as int value in argument to random2", "error")

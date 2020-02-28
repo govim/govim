@@ -20,6 +20,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2/servertest"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/fake"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/lsprpc"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -40,7 +41,7 @@ const (
 	// it.
 	SeparateProcess
 	// NormalModes runs tests in all modes.
-	NormalModes = Singleton | Shared | Forwarded
+	NormalModes = Singleton | Forwarded
 )
 
 // A Runner runs tests in gopls execution environments, as specified by its
@@ -79,7 +80,8 @@ func (r *Runner) getTestServer() *servertest.TCPServer {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.ts == nil {
-		ss := lsprpc.NewStreamServer(cache.New(nil), false)
+		di := debug.NewInstance("", "")
+		ss := lsprpc.NewStreamServer(cache.New(nil, di.State), false, di)
 		r.ts = servertest.NewTCPServer(context.Background(), ss)
 	}
 	return r.ts
@@ -108,7 +110,7 @@ func (r *Runner) getRemoteSocket(t *testing.T) string {
 		t.Fatalf("creating tempdir: %v", err)
 	}
 	socket := filepath.Join(r.socketDir, daemonFile)
-	args := []string{"serve", "-listen", "unix;" + socket}
+	args := []string{"serve", "-listen", "unix;" + socket, "-listen.timeout", "10s"}
 	cmd := exec.Command(r.goplsPath, args...)
 	cmd.Env = append(os.Environ(), runTestAsGoplsEnvvar+"=true")
 	var stderr bytes.Buffer
@@ -184,7 +186,8 @@ func (r *Runner) RunInMode(modes EnvMode, t *testing.T, filedata string, test fu
 }
 
 func (r *Runner) singletonEnv(ctx context.Context, t *testing.T) (servertest.Connector, func()) {
-	ss := lsprpc.NewStreamServer(cache.New(nil), false)
+	di := debug.NewInstance("", "")
+	ss := lsprpc.NewStreamServer(cache.New(nil, di.State), false, di)
 	ts := servertest.NewPipeServer(ctx, ss)
 	cleanup := func() {
 		ts.Close()
@@ -198,7 +201,7 @@ func (r *Runner) sharedEnv(ctx context.Context, t *testing.T) (servertest.Connec
 
 func (r *Runner) forwardedEnv(ctx context.Context, t *testing.T) (servertest.Connector, func()) {
 	ts := r.getTestServer()
-	forwarder := lsprpc.NewForwarder("tcp", ts.Addr, false)
+	forwarder := lsprpc.NewForwarder("tcp", ts.Addr, false, debug.NewInstance("", ""))
 	ts2 := servertest.NewPipeServer(ctx, forwarder)
 	cleanup := func() {
 		ts2.Close()
@@ -208,7 +211,9 @@ func (r *Runner) forwardedEnv(ctx context.Context, t *testing.T) (servertest.Con
 
 func (r *Runner) separateProcessEnv(ctx context.Context, t *testing.T) (servertest.Connector, func()) {
 	socket := r.getRemoteSocket(t)
-	forwarder := lsprpc.NewForwarder("unix", socket, false)
+	// TODO(rfindley): can we use the autostart behavior here, instead of
+	// pre-starting the remote?
+	forwarder := lsprpc.NewForwarder("unix", socket, false, debug.NewInstance("", ""))
 	ts2 := servertest.NewPipeServer(ctx, forwarder)
 	cleanup := func() {
 		ts2.Close()
@@ -289,6 +294,14 @@ func (e *Env) OpenFile(name string) {
 func (e *Env) CreateBuffer(name string, content string) {
 	e.t.Helper()
 	if err := e.E.CreateBuffer(e.ctx, name, content); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// CloseBuffer closes an editor buffer, calling t.Fatal on any error.
+func (e *Env) CloseBuffer(name string) {
+	e.t.Helper()
+	if err := e.E.CloseBuffer(e.ctx, name); err != nil {
 		e.t.Fatal(err)
 	}
 }
