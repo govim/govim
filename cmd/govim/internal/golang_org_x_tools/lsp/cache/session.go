@@ -11,7 +11,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
@@ -78,7 +77,7 @@ func (s *Session) Shutdown(ctx context.Context) {
 	}
 	s.views = nil
 	s.viewMap = nil
-	debug.DropSession(debugSession{s})
+	s.cache.debug.DropSession(DebugSession{s})
 }
 
 func (s *Session) Cache() source.Cache {
@@ -126,6 +125,7 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 			actions:           make(map[actionKey]*actionHandle),
 			workspacePackages: make(map[packageID]packagePath),
 			unloadableFiles:   make(map[span.URI]struct{}),
+			modHandles:        make(map[span.URI]*modHandle),
 		},
 		ignoredURIs: make(map[span.URI]struct{}),
 	}
@@ -142,7 +142,7 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 	// Initialize the view without blocking.
 	go v.initialize(xcontext.Detach(ctx), v.snapshot)
 
-	debug.AddView(debugView{v})
+	v.session.cache.debug.AddView(debugView{v})
 	return v, v.snapshot, nil
 }
 

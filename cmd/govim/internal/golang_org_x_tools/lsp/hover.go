@@ -7,36 +7,21 @@ package lsp
 import (
 	"context"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 )
 
 func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*protocol.Hover, error) {
-	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.Go)
+	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.UnknownKind)
 	if !ok {
 		return nil, err
 	}
-	ident, err := source.Identifier(ctx, snapshot, fh, params.Position)
-	if err != nil {
-		return nil, nil
+	switch fh.Identity().Kind {
+	case source.Mod:
+		return mod.Hover(ctx, snapshot, fh, params.Position)
+	case source.Go:
+		return source.Hover(ctx, snapshot, fh, params.Position)
 	}
-	h, err := ident.Hover(ctx)
-	if err != nil {
-		return nil, err
-	}
-	rng, err := ident.Range()
-	if err != nil {
-		return nil, err
-	}
-	hover, err := source.FormatHover(h, snapshot.View().Options())
-	if err != nil {
-		return nil, err
-	}
-	return &protocol.Hover{
-		Contents: protocol.MarkupContent{
-			Kind:  snapshot.View().Options().PreferredContentFormat,
-			Value: hover,
-		},
-		Range: rng,
-	}, nil
+	return nil, nil
 }
