@@ -203,7 +203,7 @@ function s:define(channel, msg)
       " Note: doautoall BufRead also triggers ftplugin stuff
       doautocmd User PostInitComplete
       doautoall FileType
-      if $GOVIM_DETECT_USER_BUSY != "false"
+      if $GOVIM_DISABLE_USER_BUSY != "true"
         au govim CursorMoved,CursorMovedI * ++nested :call s:userBusy(1)
         au govim CursorHold,CursorHoldI * ++nested :call s:userBusy(0)
       endif
@@ -509,3 +509,10 @@ function GOVIM_internal_SuggestedFixesFilter(id, key)
 
     return popup_filter_menu(a:id, a:key)
 endfunc
+
+" In case we are running in test mode
+if $GOVIM_DISABLE_USER_BUSY == "true"
+  function GOVIM_test_SetUserBusy(busy)
+    return s:userBusy(a:busy)
+  endfunction
+endif
