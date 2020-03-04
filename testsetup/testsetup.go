@@ -23,7 +23,14 @@ const (
 	EnvTestscriptStderr      = "GOVIM_TESTSCRIPT_STDERR"
 	EnvTestscriptWorkdirRoot = "GOVIM_TESTSCRIPT_WORKDIR_ROOT"
 	EnvErrLogMatchWait       = "GOVIM_ERRLOGMATCH_WAIT"
-	EnvDetectUserBusy        = "GOVIM_DETECT_USER_BUSY"
+
+	// EnvDisableUserBusy is used in a test environment to disable the the
+	// normal timeout-based shifting from user busy <-> user not busy.  This is
+	// largely safe on the basis that we block/wait in tests as required.
+	// Setting this variable to "true" (which should only be done in tests) also
+	// causes a function to be declared in Vim that allows the manual switching
+	// from user busy <-> user not busy.
+	EnvDisableUserBusy = "GOVIM_DISABLE_USER_BUSY"
 
 	// EnvTestscriptIssues can be set to a regular expression which
 	// causes issue tracker conditions not to be satisfied. e.g.
