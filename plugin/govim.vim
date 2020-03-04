@@ -7,11 +7,9 @@ let g:govimpluginloaded=1
 augroup govim
 augroup END
 
-let s:minVimSafeState = has("patch-8.1.2056")
-
 " TODO we should source a code-generated, auto-loaded
 " vim file or similar to source this minimum version
-if !has("patch-8.1.1711")
+if !has("patch-8.1.2056")
   echoerr "Need at least version v8.1.1711 of Vim; govim will not be loaded"
   finish
 endif
@@ -59,21 +57,10 @@ let s:activeGovimCalls = 0
 augroup govimScheduler
 
 function s:ch_evalexpr(args)
-  if s:minVimSafeState
-    let l:resp = ch_evalexpr(s:channel, a:args)
-    if l:resp[0] != ""
-      throw l:resp[0]
-    endif
-    return l:resp[1]
-  endif
-
-  let s:activeGovimCalls += 1
   let l:resp = ch_evalexpr(s:channel, a:args)
-  let s:activeGovimCalls -= 1
   if l:resp[0] != ""
     throw l:resp[0]
   endif
-  call s:drainScheduleBacklog(v:false)
   return l:resp[1]
 endfunction
 
@@ -88,30 +75,21 @@ function s:schedule(id)
   "
   " https://groups.google.com/forum/#!topic/vim_dev/op_PKiE9iog
   "
-  if s:minVimSafeState
-    if state('cwx') != 'c'
-      call ch_log("minVimSafeState: enqueuing work because state is ".string(state()))
-      if !s:waitingToDrain
-        au govimScheduler SafeState,SafeStateAgain * ++nested call s:drainScheduleBacklog(v:true)
-        let s:waitingToDrain = 1
-      endif
-      return
+  if state('cwx') != 'c'
+    call ch_log("enqueuing work because state is ".string(state()))
+    if !s:waitingToDrain
+      au govimScheduler SafeState,SafeStateAgain * ++nested call s:drainScheduleBacklog(v:true)
+      let s:waitingToDrain = 1
     endif
-    call ch_log("minVimSafeState: running work immediately because state is ".string(state()))
+    return
   endif
+  call ch_log("running work immediately because state is ".string(state()))
   call s:drainScheduleBacklog(v:false)
 endfunction
 
 function s:drainScheduleBacklog(drop)
-  if s:minVimSafeState
-    if a:drop
-      au! govimScheduler SafeState,SafeStateAgain
-    endif
-  elseif s:activeGovimCalls != 0
-    call ch_log("old safe state: cannot drain schedule backlog with pending calls")
-    return
-  else
-    call ch_log("old safe state: will drain schedule backlog; no pending calls")
+  if a:drop
+    au! govimScheduler SafeState,SafeStateAgain
   endif
   while len(s:scheduleBacklog) > 0
     let l:args = ["schedule", s:scheduleBacklog[0]]
