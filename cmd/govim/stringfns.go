@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -78,30 +79,24 @@ func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {
 		}
 		start, err = types.PointFromVim(b, *flags.Line1, 1)
 		if err != nil {
-			return fmt.Errorf("failed to get start position of range: %v", err)
+			return fmt.Errorf("failed to derive start position from cursor position on line %v: %v", *flags.Line1, err)
 		}
-		end, err = types.PointFromVim(b, *flags.Line1+1, 1)
+		lines := bytes.Split(b.Contents(), []byte("\n"))
+		end, err = types.PointFromVim(b, *flags.Line1, len(lines[*flags.Line1-1])+1)
 		if err != nil {
-			return fmt.Errorf("failed to get end position of range: %v", err)
+			return fmt.Errorf("failed to derive end position from cursor position on line %v: %v", *flags.Line1, err)
 		}
 	default:
 		return fmt.Errorf("unknown range indicator %v", *flags.Range)
 	}
 
-	endOffset := end.Offset()
-	if *flags.Range == 0 {
-		endOffset--
-	}
-	newText := string(b.Contents()[start.Offset():endOffset])
+	newText := string(b.Contents()[start.Offset():end.Offset()])
 	for _, fp := range transFns {
 		fn := stringfns.Functions[fp]
 		newText, err = fn(string(newText))
 		if err != nil {
 			return fmt.Errorf("failed to apply ")
 		}
-	}
-	if *flags.Range == 0 {
-		newText += "\n"
 	}
 
 	edit := protocol.TextEdit{

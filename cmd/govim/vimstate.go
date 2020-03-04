@@ -88,7 +88,7 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 			}
 		} else {
 			// QuickfixAutoDiagnostics is now on
-			if err := v.updateQuickfix(v.diagnostics(), true); err != nil {
+			if err := v.updateQuickfix(true); err != nil {
 				return nil, fmt.Errorf("failed to update diagnostics: %v", err)
 			}
 		}
@@ -100,7 +100,7 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 			v.ChannelCall("sign_unplace", signGroup)
 		} else {
 			// QuickfixSigns is now on
-			if err := v.updateSigns(v.diagnostics(), true); err != nil {
+			if err := v.updateSigns(true); err != nil {
 				return nil, fmt.Errorf("failed to update placed signs: %v", err)
 			}
 		}
@@ -111,7 +111,7 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 			// HighlightDiagnostics is now not on - remove existing text properties
 			v.removeTextProps(types.DiagnosticTextPropID)
 		} else {
-			if err := v.redefineHighlights(v.diagnostics(), true); err != nil {
+			if err := v.redefineHighlights(true); err != nil {
 				return nil, fmt.Errorf("failed to update diagnostic highlights: %v", err)
 			}
 		}

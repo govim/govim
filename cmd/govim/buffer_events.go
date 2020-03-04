@@ -20,9 +20,10 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 
 	// If we load a buffer that already had diagnostics reported by gopls, the buffer number must be
 	// updated to ensure that sign placement etc. works.
-	for i, d := range v.diagnosticsCache {
+	diags := *v.diagnosticsCache
+	for i, d := range diags {
 		if d.Buf == -1 && d.Filename == nb.URI().Filename() {
-			v.diagnosticsCache[i].Buf = nb.Num
+			diags[i].Buf = nb.Num
 		}
 	}
 
@@ -30,11 +31,15 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 		// reload of buffer, e.v. e!
 		cb.Loaded = nb.Loaded
 
-		// If the contents are the same we probably just re-loaded a currently unloaded buffer.
-		// We shouldn't increase version in that case, but we have to redefine highlights
-		// since text properties are removed when a buffer is unloaded.
+		// If the contents are the same we probably just re-loaded a currently
+		// unloaded buffer.  We shouldn't increase version in that case, but we
+		// have to re-place signs and redefine highlights since text properties
+		// are removed when a buffer is unloaded.
 		if bytes.Equal(nb.Contents(), cb.Contents()) {
-			if err := v.redefineHighlights(v.diagnostics(), true); err != nil {
+			if err := v.updateSigns(true); err != nil {
+				v.Logf("failed to update signs for buffer %d: %v", nb.Num, err)
+			}
+			if err := v.redefineHighlights(true); err != nil {
 				v.Logf("failed to update highlights for buffer %d: %v", nb.Num, err)
 			}
 			return nil
@@ -48,11 +53,11 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	nb.Version = 1
 	nb.Listener = v.ParseInt(v.ChannelCall("listener_add", v.Prefix()+string(config.FunctionEnrichDelta), nb.Num))
 
-	if err := v.updateSigns(v.diagnostics(), true); err != nil {
+	if err := v.updateSigns(true); err != nil {
 		v.Logf("failed to update signs for buffer %d: %v", nb.Num, err)
 	}
 
-	if err := v.redefineHighlights(v.diagnostics(), true); err != nil {
+	if err := v.redefineHighlights(true); err != nil {
 		v.Logf("failed to update highlights for buffer %d: %v", nb.Num, err)
 	}
 
@@ -176,9 +181,10 @@ func (v *vimstate) deleteCurrentBuffer(args ...json.RawMessage) error {
 	// We don't want to remove the entries completely here since we want to show them in
 	// the quickfix window. And we don't need to remove existing signs or text properties
 	// either here since they are removed by vim automatically when a buffer is deleted.
-	for i := range v.diagnosticsCache {
-		if v.diagnosticsCache[i].Buf == currBufNr {
-			v.diagnosticsCache[i].Buf = -1
+	diags := *v.diagnosticsCache
+	for i, d := range diags {
+		if d.Buf == currBufNr {
+			diags[i].Buf = -1
 		}
 	}
 

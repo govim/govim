@@ -76,17 +76,17 @@ func (v *vimstate) textpropDefine() error {
 	return nil
 }
 
-func (v *vimstate) redefineHighlights(diags []types.Diagnostic, force bool) error {
+func (v *vimstate) redefineHighlights(force bool) error {
 	if v.config.HighlightDiagnostics == nil || !*v.config.HighlightDiagnostics {
 		return nil
 	}
-	v.diagnosticsChangedLock.Lock()
-	work := v.diagnosticsChangedHighlights
-	v.diagnosticsChangedHighlights = false
-	v.diagnosticsChangedLock.Unlock()
+	diagsRef := v.diagnostics()
+	work := v.lastDiagnosticsHighlights != diagsRef
+	v.lastDiagnosticsHighlights = diagsRef
 	if !force && !work {
 		return nil
 	}
+	diags := *diagsRef
 
 	v.removeTextProps(types.DiagnosticTextPropID)
 
