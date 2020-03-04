@@ -1,9 +1,0 @@
-# Test saving an empty file as a non .go file works
-
-vim ex 'w nongo.txt'
-! stdout .+
-! stderr .+
-
-# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
-# Disabled pending resolution to https://github.com/golang/go/issues/34103
-# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'

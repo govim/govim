@@ -64,7 +64,6 @@ func TestScripts(t *testing.T) {
 				}
 				home := filepath.Join(e.WorkDir, ".home")
 				e.Vars = append(e.Vars,
-					testsetup.EnvDetectUserBusy+"=false",
 					"HOME="+home,
 					"TMPDIR="+tmp,
 				)

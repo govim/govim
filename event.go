@@ -107,5 +107,4 @@ const (
 	EventSessionLoadPost                   // SessionLoadPost
 	EventMenuPopup                         // MenuPopup
 	EventCompleteDone                      // CompleteDone
-	EventUser                              // User
 )

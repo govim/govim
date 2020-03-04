@@ -163,8 +163,19 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 	g.diagnosticsChangedLock.Lock()
 	uri := span.URI(params.URI)
 	curr, ok := g.rawDiagnostics[uri]
+	// TODO: add some temp logging for https://github.com/golang/go/issues/36601
+	// Note this only captures situations where a file's version is increasing.
+	// Because it's possible to receive new diagnostics for a file without its
+	// version increasing. And in that case it's impossible to know if the
+	// diagnostics we receive are old or not.
+	if ok && curr.Version > params.Version {
+		g.Logf("** Received non-new diagnostics for %v; ignoring. Currently have: \n%v\nGot: \n%v", params.URI, tabIndent(pretty.Sprint(curr)), tabIndent(pretty.Sprint(params)))
+	}
 	g.rawDiagnostics[uri] = params
 	g.diagnosticsChanged = true
+	g.diagnosticsChangedQuickfix = true
+	g.diagnosticsChangedSigns = true
+	g.diagnosticsChangedHighlights = true
 	g.diagnosticsChangedLock.Unlock()
 	if !ok {
 		if len(params.Diagnostics) == 0 {
@@ -197,4 +208,8 @@ func (g *govimplugin) logGoplsClientf(format string, args ...interface{}) {
 		format = format + "\n"
 	}
 	g.Logf("gopls client start =======================\n"+format+"gopls client end =======================\n", args...)
+}
+
+func tabIndent(s string) string {
+	return "\t" + strings.ReplaceAll(s, "\n", "\n\t")
 }

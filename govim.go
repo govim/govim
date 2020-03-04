@@ -513,8 +513,7 @@ func (g *govimImpl) run() error {
 					return nil, err
 				}
 			case VimAutoCommandFunction:
-				// fargs[0] is the echo-ed (augroup) and events of the autogroup
-				fargs = g.parseJSONArgSlice(fargs[1])
+				fargs = g.parseJSONArgSlice(fargs[0])
 				call = func() (interface{}, error) {
 					err := f(g, fargs...)
 					return nil, err
