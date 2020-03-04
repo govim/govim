@@ -47,13 +47,12 @@ const (
 
 // vim versions
 const (
-	// MinVimGovim represents the bare minimum version of Vim required to
-	// use govim
-	MinVimGovim = "v8.1.1711"
-
-	// MinVimSafeState is the minimum version required to use Vim's state()
+	// MinVimGovim represents the bare minimum version of Vim required to use
+	// govim.
+	//
+	// This also represents the minimum version required to use Vim's state()
 	// and SafeState* functionality.
-	MinVimSafeState = "v8.1.2056"
+	MinVimGovim = "v8.1.2056"
 
 	LatestVim = "v8.2.0318"
 )
@@ -84,8 +83,6 @@ var (
 		NeovimVersion("v0.3.5"),
 		VimVersion(MinVimGovim),
 		GvimVersion(MinVimGovim),
-		VimVersion(MinVimSafeState),
-		GvimVersion(MinVimSafeState),
 		VimVersion(LatestVim),
 		GvimVersion(LatestVim),
 	}
