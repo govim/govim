@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2/servertest"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
@@ -80,8 +81,9 @@ func (r *Runner) getTestServer() *servertest.TCPServer {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.ts == nil {
-		di := debug.NewInstance("", "")
-		ss := lsprpc.NewStreamServer(cache.New(nil, di.State), false, di)
+		ctx := context.Background()
+		ctx = debug.WithInstance(ctx, "", "")
+		ss := lsprpc.NewStreamServer(cache.New(ctx, nil), false)
 		r.ts = servertest.NewTCPServer(context.Background(), ss)
 	}
 	return r.ts
@@ -186,8 +188,8 @@ func (r *Runner) RunInMode(modes EnvMode, t *testing.T, filedata string, test fu
 }
 
 func (r *Runner) singletonEnv(ctx context.Context, t *testing.T) (servertest.Connector, func()) {
-	di := debug.NewInstance("", "")
-	ss := lsprpc.NewStreamServer(cache.New(nil, di.State), false, di)
+	ctx = debug.WithInstance(ctx, "", "")
+	ss := lsprpc.NewStreamServer(cache.New(ctx, nil), false)
 	ts := servertest.NewPipeServer(ctx, ss)
 	cleanup := func() {
 		ts.Close()
@@ -200,8 +202,9 @@ func (r *Runner) sharedEnv(ctx context.Context, t *testing.T) (servertest.Connec
 }
 
 func (r *Runner) forwardedEnv(ctx context.Context, t *testing.T) (servertest.Connector, func()) {
+	ctx = debug.WithInstance(ctx, "", "")
 	ts := r.getTestServer()
-	forwarder := lsprpc.NewForwarder("tcp", ts.Addr, false, debug.NewInstance("", ""))
+	forwarder := lsprpc.NewForwarder("tcp", ts.Addr, false)
 	ts2 := servertest.NewPipeServer(ctx, forwarder)
 	cleanup := func() {
 		ts2.Close()
@@ -210,10 +213,11 @@ func (r *Runner) forwardedEnv(ctx context.Context, t *testing.T) (servertest.Con
 }
 
 func (r *Runner) separateProcessEnv(ctx context.Context, t *testing.T) (servertest.Connector, func()) {
+	ctx = debug.WithInstance(ctx, "", "")
 	socket := r.getRemoteSocket(t)
 	// TODO(rfindley): can we use the autostart behavior here, instead of
 	// pre-starting the remote?
-	forwarder := lsprpc.NewForwarder("unix", socket, false, debug.NewInstance("", ""))
+	forwarder := lsprpc.NewForwarder("unix", socket, false)
 	ts2 := servertest.NewPipeServer(ctx, forwarder)
 	cleanup := func() {
 		ts2.Close()
@@ -229,11 +233,12 @@ type Env struct {
 	t   *testing.T
 	ctx context.Context
 
-	// Most tests should not need to access the workspace or editor, or server,
-	// but they are available if needed.
+	// Most tests should not need to access the workspace, editor, server, or
+	// connection, but they are available if needed.
 	W      *fake.Workspace
 	E      *fake.Editor
 	Server servertest.Connector
+	Conn   *jsonrpc2.Conn
 
 	// mu guards the fields below, for the purpose of checking conditions on
 	// every change to diagnostics.
@@ -266,63 +271,12 @@ func NewEnv(ctx context.Context, t *testing.T, ws *fake.Workspace, ts servertest
 		W:               ws,
 		E:               editor,
 		Server:          ts,
+		Conn:            conn,
 		lastDiagnostics: make(map[string]*protocol.PublishDiagnosticsParams),
 		waiters:         make(map[int]*diagnosticCondition),
 	}
 	env.E.Client().OnDiagnostics(env.onDiagnostics)
 	return env
-}
-
-// RemoveFileFromWorkspace deletes a file on disk but does nothing in the
-// editor. It calls t.Fatal on any error.
-func (e *Env) RemoveFileFromWorkspace(name string) {
-	e.t.Helper()
-	if err := e.W.RemoveFile(e.ctx, name); err != nil {
-		e.t.Fatal(err)
-	}
-}
-
-// OpenFile opens a file in the editor, calling t.Fatal on any error.
-func (e *Env) OpenFile(name string) {
-	e.t.Helper()
-	if err := e.E.OpenFile(e.ctx, name); err != nil {
-		e.t.Fatal(err)
-	}
-}
-
-// CreateBuffer creates a buffer in the editor, calling t.Fatal on any error.
-func (e *Env) CreateBuffer(name string, content string) {
-	e.t.Helper()
-	if err := e.E.CreateBuffer(e.ctx, name, content); err != nil {
-		e.t.Fatal(err)
-	}
-}
-
-// CloseBuffer closes an editor buffer, calling t.Fatal on any error.
-func (e *Env) CloseBuffer(name string) {
-	e.t.Helper()
-	if err := e.E.CloseBuffer(e.ctx, name); err != nil {
-		e.t.Fatal(err)
-	}
-}
-
-// EditBuffer applies edits to an editor buffer, calling t.Fatal on any error.
-func (e *Env) EditBuffer(name string, edits ...fake.Edit) {
-	e.t.Helper()
-	if err := e.E.EditBuffer(e.ctx, name, edits); err != nil {
-		e.t.Fatal(err)
-	}
-}
-
-// GoToDefinition goes to definition in the editor, calling t.Fatal on any
-// error.
-func (e *Env) GoToDefinition(name string, pos fake.Pos) (string, fake.Pos) {
-	e.t.Helper()
-	n, p, err := e.E.GoToDefinition(e.ctx, name, pos)
-	if err != nil {
-		e.t.Fatal(err)
-	}
-	return n, p
 }
 
 func (e *Env) onDiagnostics(_ context.Context, d *protocol.PublishDiagnosticsParams) error {
@@ -339,17 +293,6 @@ func (e *Env) onDiagnostics(_ context.Context, d *protocol.PublishDiagnosticsPar
 		}
 	}
 	return nil
-}
-
-// CloseEditor shuts down the editor, calling t.Fatal on any error.
-func (e *Env) CloseEditor() {
-	e.t.Helper()
-	if err := e.E.Shutdown(e.ctx); err != nil {
-		e.t.Fatal(err)
-	}
-	if err := e.E.Exit(e.ctx); err != nil {
-		e.t.Fatal(err)
-	}
 }
 
 func meetsCondition(m map[string]*protocol.PublishDiagnosticsParams, expectations []DiagnosticExpectation) bool {

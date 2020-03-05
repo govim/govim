@@ -10,98 +10,50 @@ package export
 import (
 	"context"
 	"os"
-	"sync"
-	"time"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
 )
 
 type Exporter interface {
-	StartSpan(context.Context, *telemetry.Span)
-	FinishSpan(context.Context, *telemetry.Span)
-
-	// Log is a function that handles logging events.
-	// Observers may use information in the context to decide what to do with a
-	// given log event.
-	Log(context.Context, telemetry.Event)
+	// ProcessEvent is a function that handles all events.
+	// Exporters may use information in the context to decide what to do with a
+	// given event.
+	ProcessEvent(context.Context, telemetry.Event) context.Context
 
 	Metric(context.Context, telemetry.MetricData)
 }
 
 var (
-	exporterMu sync.Mutex
-	exporter   = LogWriter(os.Stderr, true)
+	exporter unsafe.Pointer
 )
 
+func init() {
+	SetExporter(LogWriter(os.Stderr, true))
+}
+
 func SetExporter(e Exporter) {
-	exporterMu.Lock()
-	defer exporterMu.Unlock()
-	exporter = e
+	p := unsafe.Pointer(&e)
+	if e == nil {
+		p = nil
+	}
+	atomic.StorePointer(&exporter, p)
 }
 
-func StartSpan(ctx context.Context, span *telemetry.Span, at time.Time) {
-	exporterMu.Lock()
-	defer exporterMu.Unlock()
-	if exporter == nil {
-		return
+func ProcessEvent(ctx context.Context, event telemetry.Event) context.Context {
+	exporterPtr := (*Exporter)(atomic.LoadPointer(&exporter))
+	if exporterPtr == nil {
+		return ctx
 	}
-	span.Start = at
-	exporter.StartSpan(ctx, span)
-}
-
-func FinishSpan(ctx context.Context, span *telemetry.Span, at time.Time) {
-	exporterMu.Lock()
-	defer exporterMu.Unlock()
-	if exporter == nil {
-		return
-	}
-	span.Finish = at
-	exporter.FinishSpan(ctx, span)
-}
-
-func Tag(ctx context.Context, at time.Time, tags telemetry.TagList) {
-	exporterMu.Lock()
-	defer exporterMu.Unlock()
-	if exporter == nil {
-		return
-	}
-	// If context has a span we need to add the tags to it
-	span := telemetry.GetSpan(ctx)
-	if span == nil {
-		return
-	}
-	if span.Start.IsZero() {
-		// span still being created, tag it directly
-		span.Tags = append(span.Tags, tags...)
-		return
-	}
-	// span in progress, add an event to the span
-	span.Events = append(span.Events, telemetry.Event{
-		At:   at,
-		Tags: tags,
-	})
-}
-
-func Log(ctx context.Context, event telemetry.Event) {
-	exporterMu.Lock()
-	defer exporterMu.Unlock()
-	if exporter == nil {
-		return
-	}
-	// If context has a span we need to add the event to it
-	span := telemetry.GetSpan(ctx)
-	if span != nil {
-		span.Events = append(span.Events, event)
-	}
-	// and now also hand the event of to the current observer
-	exporter.Log(ctx, event)
+	// and now also hand the event of to the current exporter
+	return (*exporterPtr).ProcessEvent(ctx, event)
 }
 
 func Metric(ctx context.Context, data telemetry.MetricData) {
-	exporterMu.Lock()
-	defer exporterMu.Unlock()
-	if exporter == nil {
+	exporterPtr := (*Exporter)(atomic.LoadPointer(&exporter))
+	if exporterPtr == nil {
 		return
 	}
-	exporter.Metric(ctx, data)
+	(*exporterPtr).Metric(ctx, data)
 }

@@ -13,7 +13,6 @@ import (
 	stdlog "log"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -35,7 +34,6 @@ const AutoNetwork = "auto"
 // streams as a new LSP session, using a shared cache.
 type StreamServer struct {
 	withTelemetry bool
-	debug         *debug.Instance
 	cache         *cache.Cache
 
 	// serverForTest may be set to a test fake for testing.
@@ -47,10 +45,9 @@ var clientIndex, serverIndex int64
 // NewStreamServer creates a StreamServer using the shared cache. If
 // withTelemetry is true, each session is instrumented with telemetry that
 // records RPC statistics.
-func NewStreamServer(cache *cache.Cache, withTelemetry bool, debugInstance *debug.Instance) *StreamServer {
+func NewStreamServer(cache *cache.Cache, withTelemetry bool) *StreamServer {
 	s := &StreamServer{
 		withTelemetry: withTelemetry,
-		debug:         debugInstance,
 		cache:         cache,
 	}
 	return s
@@ -118,16 +115,17 @@ func (s *StreamServer) ServeStream(ctx context.Context, stream jsonrpc2.Stream) 
 
 	conn := jsonrpc2.NewConn(stream)
 	client := protocol.ClientDispatcher(conn)
-	session := s.cache.NewSession()
+	session := s.cache.NewSession(ctx)
 	dc := &debugClient{
 		debugInstance: debugInstance{
 			id: strconv.FormatInt(index, 10),
 		},
 		session: session,
 	}
-	s.debug.State.AddClient(dc)
-	defer s.debug.State.DropClient(dc)
-
+	if di := debug.GetInstance(ctx); di != nil {
+		di.State.AddClient(dc)
+		defer di.State.DropClient(dc)
+	}
 	server := s.serverForTest
 	if server == nil {
 		server = lsp.NewServer(session, client)
@@ -148,7 +146,6 @@ func (s *StreamServer) ServeStream(ctx context.Context, stream jsonrpc2.Stream) 
 	}
 	conn.AddHandler(&handshaker{
 		client:    dc,
-		debug:     s.debug,
 		goplsPath: executable,
 	})
 	return conn.Run(protocol.WithClient(ctx, client))
@@ -168,13 +165,12 @@ type Forwarder struct {
 	withTelemetry bool
 	dialTimeout   time.Duration
 	retries       int
-	debug         *debug.Instance
 	goplsPath     string
 }
 
 // NewForwarder creates a new Forwarder, ready to forward connections to the
 // remote server specified by network and addr.
-func NewForwarder(network, addr string, withTelemetry bool, debugInstance *debug.Instance) *Forwarder {
+func NewForwarder(network, addr string, withTelemetry bool) *Forwarder {
 	gp, err := os.Executable()
 	if err != nil {
 		stdlog.Printf("error getting gopls path for forwarder: %v", err)
@@ -187,7 +183,6 @@ func NewForwarder(network, addr string, withTelemetry bool, debugInstance *debug
 		withTelemetry: withTelemetry,
 		dialTimeout:   1 * time.Second,
 		retries:       5,
-		debug:         debugInstance,
 		goplsPath:     gp,
 	}
 }
@@ -224,30 +219,35 @@ func (f *Forwarder) ServeStream(ctx context.Context, stream jsonrpc2.Stream) err
 	// Do a handshake with the server instance to exchange debug information.
 	index := atomic.AddInt64(&serverIndex, 1)
 	serverID := strconv.FormatInt(index, 10)
+	di := debug.GetInstance(ctx)
 	var (
 		hreq = handshakeRequest{
 			ServerID:  serverID,
-			Logfile:   f.debug.Logfile,
-			DebugAddr: f.debug.ListenedDebugAddress,
 			GoplsPath: f.goplsPath,
 		}
 		hresp handshakeResponse
 	)
+	if di != nil {
+		hreq.Logfile = di.Logfile
+		hreq.DebugAddr = di.ListenedDebugAddress
+	}
 	if err := serverConn.Call(ctx, handshakeMethod, hreq, &hresp); err != nil {
 		log.Error(ctx, "forwarder: gopls handshake failed", err)
 	}
 	if hresp.GoplsPath != f.goplsPath {
 		log.Error(ctx, "", fmt.Errorf("forwarder: gopls path mismatch: forwarder is %q, remote is %q", f.goplsPath, hresp.GoplsPath))
 	}
-	f.debug.State.AddServer(debugServer{
-		debugInstance: debugInstance{
-			id:           serverID,
-			logfile:      hresp.Logfile,
-			debugAddress: hresp.DebugAddr,
-			goplsPath:    hresp.GoplsPath,
-		},
-		clientID: hresp.ClientID,
-	})
+	if di != nil {
+		di.State.AddServer(debugServer{
+			debugInstance: debugInstance{
+				id:           serverID,
+				logfile:      hresp.Logfile,
+				debugAddress: hresp.DebugAddr,
+				goplsPath:    hresp.GoplsPath,
+			},
+			clientID: hresp.ClientID,
+		})
+	}
 	g.Go(func() error {
 		return clientConn.Run(ctx)
 	})
@@ -291,8 +291,14 @@ func (f *Forwarder) connectToRemote(ctx context.Context) (net.Conn, error) {
 				}
 			}
 		}
-		if err := startRemote(f.goplsPath, network, address); err != nil {
-			return nil, fmt.Errorf("startRemote(%q, %q): %v", network, address, err)
+		args := []string{"serve",
+			"-listen", fmt.Sprintf(`%s;%s`, network, address),
+			"-listen.timeout", "1m",
+			"-debug", "localhost:0",
+			"-logfile", "auto",
+		}
+		if err := startRemote(f.goplsPath, args...); err != nil {
+			return nil, fmt.Errorf("startRemote(%q, %v): %v", f.goplsPath, args, err)
 		}
 	}
 
@@ -312,20 +318,6 @@ func (f *Forwarder) connectToRemote(ctx context.Context) (net.Conn, error) {
 		}
 	}
 	return nil, fmt.Errorf("dialing remote: %v", err)
-}
-
-func startRemote(goplsPath, network, address string) error {
-	args := []string{"serve",
-		"-listen", fmt.Sprintf(`%s;%s`, network, address),
-		"-listen.timeout", "1m",
-		"-debug", "localhost:0",
-		"-logfile", "auto",
-	}
-	cmd := exec.Command(goplsPath, args...)
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("starting remote gopls: %v", err)
-	}
-	return nil
 }
 
 // ForwarderExitFunc is used to exit the forwarder process. It is mutable for
@@ -375,7 +367,6 @@ func (forwarderHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, delive
 type handshaker struct {
 	jsonrpc2.EmptyHandler
 	client    *debugClient
-	debug     *debug.Instance
 	goplsPath string
 }
 
@@ -410,10 +401,13 @@ func (h *handshaker) Deliver(ctx context.Context, r *jsonrpc2.Request, delivered
 		resp := handshakeResponse{
 			ClientID:  h.client.id,
 			SessionID: cache.DebugSession{Session: h.client.session}.ID(),
-			Logfile:   h.debug.Logfile,
-			DebugAddr: h.debug.ListenedDebugAddress,
 			GoplsPath: h.goplsPath,
 		}
+		if di := debug.GetInstance(ctx); di != nil {
+			resp.Logfile = di.Logfile
+			resp.DebugAddr = di.ListenedDebugAddress
+		}
+
 		if err := r.Reply(ctx, resp, nil); err != nil {
 			log.Error(ctx, "replying to handshake", err)
 		}

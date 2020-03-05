@@ -189,7 +189,7 @@ func (l loggingGoplsServer) DocumentHighlight(ctxt context.Context, params *prot
 	return res, err
 }
 
-func (l loggingGoplsServer) DocumentSymbol(ctxt context.Context, params *protocol.DocumentSymbolParams) ([]protocol.DocumentSymbol, error) {
+func (l loggingGoplsServer) DocumentSymbol(ctxt context.Context, params *protocol.DocumentSymbolParams) ([]interface{}, error) {
 	l.Logf("gopls.DocumentSymbol() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.DocumentSymbol(ctxt, params)
 	l.Logf("gopls.DocumentSymbol() return; err: %v; res:\n%v", err, pretty.Sprint(res))

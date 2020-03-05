@@ -37,6 +37,14 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
 )
 
+type exporter struct {
+	stderr io.Writer
+}
+
+type instanceKeyType int
+
+const instanceKey = instanceKeyType(0)
+
 // An Instance holds all debug information associated with a gopls instance.
 type Instance struct {
 	Logfile              string
@@ -276,11 +284,15 @@ func (i *Instance) getCache(r *http.Request) interface{} {
 	i.State.mu.Lock()
 	defer i.State.mu.Unlock()
 	id := path.Base(r.URL.Path)
+	c, ok := i.State.caches.find(id).(Cache)
+	if !ok {
+		return nil
+	}
 	result := struct {
 		Cache
 		Sessions []Session
 	}{
-		Cache: i.State.caches.find(id).(Cache),
+		Cache: c,
 	}
 
 	// now find all the views that belong to this session
@@ -297,11 +309,15 @@ func (i *Instance) getSession(r *http.Request) interface{} {
 	i.State.mu.Lock()
 	defer i.State.mu.Unlock()
 	id := path.Base(r.URL.Path)
+	s, ok := i.State.sessions.find(id).(Session)
+	if !ok {
+		return nil
+	}
 	result := struct {
 		Session
 		Views []View
 	}{
-		Session: i.State.sessions.find(id).(Session),
+		Session: s,
 	}
 	// now find all the views that belong to this session
 	for _, vd := range i.State.views.objs {
@@ -317,21 +333,33 @@ func (i Instance) getClient(r *http.Request) interface{} {
 	i.State.mu.Lock()
 	defer i.State.mu.Unlock()
 	id := path.Base(r.URL.Path)
-	return i.State.clients.find(id).(Client)
+	c, ok := i.State.clients.find(id).(Client)
+	if !ok {
+		return nil
+	}
+	return c
 }
 
 func (i Instance) getServer(r *http.Request) interface{} {
 	i.State.mu.Lock()
 	defer i.State.mu.Unlock()
 	id := path.Base(r.URL.Path)
-	return i.State.servers.find(id).(Server)
+	s, ok := i.State.servers.find(id).(Server)
+	if !ok {
+		return nil
+	}
+	return s
 }
 
 func (i Instance) getView(r *http.Request) interface{} {
 	i.State.mu.Lock()
 	defer i.State.mu.Unlock()
 	id := path.Base(r.URL.Path)
-	return i.State.views.find(id).(View)
+	v, ok := i.State.views.find(id).(View)
+	if !ok {
+		return nil
+	}
+	return v
 }
 
 func (i *Instance) getFile(r *http.Request) interface{} {
@@ -339,7 +367,11 @@ func (i *Instance) getFile(r *http.Request) interface{} {
 	defer i.State.mu.Unlock()
 	hash := path.Base(r.URL.Path)
 	sid := path.Base(path.Dir(r.URL.Path))
-	return i.State.sessions.find(sid).(Session).File(hash)
+	s, ok := i.State.sessions.find(sid).(Session)
+	if !ok {
+		return nil
+	}
+	return s.File(hash)
 }
 
 func (i *Instance) getInfo(r *http.Request) interface{} {
@@ -354,8 +386,26 @@ func getMemory(r *http.Request) interface{} {
 	return m
 }
 
-// NewInstance creates debug instance ready for use using the supplied configuration.
-func NewInstance(workdir, agent string) *Instance {
+func init() {
+	export.SetExporter(&exporter{
+		stderr: os.Stderr,
+	})
+}
+
+func GetInstance(ctx context.Context) *Instance {
+	if ctx == nil {
+		return nil
+	}
+	v := ctx.Value(instanceKey)
+	if v == nil {
+		return nil
+	}
+	return v.(*Instance)
+}
+
+// WithInstance creates debug instance ready for use using the supplied
+// configuration and stores it in the returned context.
+func WithInstance(ctx context.Context, workdir, agent string) context.Context {
 	i := &Instance{
 		StartTime:     time.Now(),
 		Workdir:       workdir,
@@ -370,8 +420,7 @@ func NewInstance(workdir, agent string) *Instance {
 	i.rpcs = &rpcs{}
 	i.traces = &traces{}
 	i.State = &State{}
-	export.SetExporter(i)
-	return i
+	return context.WithValue(ctx, instanceKey, i)
 }
 
 // SetLogFile sets the logfile for use with this instance.
@@ -495,40 +544,31 @@ func (i *Instance) writeMemoryDebug(threshold uint64) error {
 	return nil
 }
 
-func (i *Instance) StartSpan(ctx context.Context, spn *telemetry.Span) {
+func (e *exporter) ProcessEvent(ctx context.Context, event telemetry.Event) context.Context {
+	ctx = export.ContextSpan(ctx, event)
+	i := GetInstance(ctx)
+	if event.Type == telemetry.EventLog && (event.Error != nil || i == nil) {
+		fmt.Fprintf(e.stderr, "%v\n", event)
+	}
+	ctx = protocol.LogEvent(ctx, event)
+	if i == nil {
+		return ctx
+	}
+	ctx = export.Tag(ctx, event)
 	if i.ocagent != nil {
-		i.ocagent.StartSpan(ctx, spn)
+		ctx = i.ocagent.ProcessEvent(ctx, event)
 	}
 	if i.traces != nil {
-		i.traces.StartSpan(ctx, spn)
+		ctx = i.traces.ProcessEvent(ctx, event)
 	}
+	return ctx
 }
 
-func (i *Instance) FinishSpan(ctx context.Context, spn *telemetry.Span) {
-	if i.ocagent != nil {
-		i.ocagent.FinishSpan(ctx, spn)
+func (e *exporter) Metric(ctx context.Context, data telemetry.MetricData) {
+	i := GetInstance(ctx)
+	if i == nil {
+		return
 	}
-	if i.traces != nil {
-		i.traces.FinishSpan(ctx, spn)
-	}
-}
-
-//TODO: remove this hack
-// capture stderr at startup because it gets modified in a way that this
-// logger should not respect
-var stderr = os.Stderr
-
-func (i *Instance) Log(ctx context.Context, event telemetry.Event) {
-	if event.Error != nil {
-		fmt.Fprintf(stderr, "%v\n", event)
-	}
-	protocol.LogEvent(ctx, event)
-	if i.ocagent != nil {
-		i.ocagent.Log(ctx, event)
-	}
-}
-
-func (i *Instance) Metric(ctx context.Context, data telemetry.MetricData) {
 	if i.ocagent != nil {
 		i.ocagent.Metric(ctx, data)
 	}
@@ -710,7 +750,7 @@ var clientTmpl = template.Must(template.Must(baseTemplate.Clone()).Parse(`
 {{define "title"}}Client {{.ID}}{{end}}
 {{define "body"}}
 Using session: <b>{{template "sessionlink" .Session.ID}}</b><br>
-Debug this client at: <a href="http://{{localAddress .DebugAddress}}">{{localAddress .DebugAddress}}</a><br>
+{{if .DebugAddress}}Debug this client at: <a href="http://{{localAddress .DebugAddress}}">{{localAddress .DebugAddress}}</a><br>{{end}}
 Logfile: {{.Logfile}}<br>
 Gopls Path: {{.GoplsPath}}<br>
 {{end}}
@@ -719,7 +759,7 @@ Gopls Path: {{.GoplsPath}}<br>
 var serverTmpl = template.Must(template.Must(baseTemplate.Clone()).Parse(`
 {{define "title"}}Server {{.ID}}{{end}}
 {{define "body"}}
-Debug this server at: <a href="http://{{localAddress .DebugAddress}}">{{localAddress .DebugAddress}}</a><br>
+{{if .DebugAddress}}Debug this server at: <a href="http://{{localAddress .DebugAddress}}">{{localAddress .DebugAddress}}</a><br>{{end}}
 Logfile: {{.Logfile}}<br>
 Gopls Path: {{.GoplsPath}}<br>
 {{end}}
