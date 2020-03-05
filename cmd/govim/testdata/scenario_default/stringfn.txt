@@ -1,18 +1,24 @@
-# Test that GOVIMStringFn works in all buffers
+# Test that GOVIMStringFn works
 
-# No range in .go file
+# No range
 vim ex 'e main.go'
 vim ex 'call cursor(7,1) | GOVIMStringFn crypto/sha256.Sum256 encoding/hex.EncodeToString'
 vim ex 'w'
-cmp main.go main.go.golden
+cmp main.go main.go.golden1
 
-# No range in a .txt file
-vim ex 'e other.txt'
-vim ex 'call cursor(1,1) | GOVIMStringFn regexp.QuoteMeta'
+# With a visual selection
+
+skip 'Pending work to fix up Vim commands in test'
+
+vim ex 'call cursor(6,15)'
+#vim ex ':execute \"normal ve\" | ''<,''>GOVIMStringFn crypto/sha256.Sum256 encoding/hex.EncodeToString'
+#vim ex 'call cursor(6,15) | execute \"normal ve\" | :''<,''>GOVIMStringFn crypto/sha256.Sum256 encoding/hex.EncodeToString'
+vim ex 'call cursor(6,15)'
+vim ex 'execute \"normal ve\"'
+vim ex '''<,''>GOVIMStringFn crypto/sha256.Sum256 encoding/hex.EncodeToString'
+#vim ex 'call feedkeys(\"ve:GOVIMStringFn crypto/sha256.Sum256 encoding/hex.EncodeToString\", \"xt\")'
 vim ex 'w'
-cmp other.txt other.txt.golden
-
-# TODO add a test based on a visual selection
+cmp main.go main.go.golden
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -33,7 +39,7 @@ test
 `)
 	fmt.Println("test")
 }
--- main.go.golden --
+-- main.go.golden1 --
 package main
 
 import "fmt"
@@ -44,7 +50,3 @@ func main() {
 `)
 	fmt.Println("test")
 }
--- other.txt --
-This.(is a [test])
--- other.txt.golden --
-This\.\(is a \[test\]\)

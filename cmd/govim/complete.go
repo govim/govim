@@ -64,12 +64,10 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 }
 
 func (v *vimstate) completeDone(args ...json.RawMessage) error {
-	b, err := v.getLoadedBuffer(v.ParseInt(args[0]))
-	if err != nil {
-		return err
-	}
-	if !bufferOfInterestToGopls(b) {
-		return nil
+	currBufNr := v.ParseInt(args[0])
+	b, ok := v.buffers[currBufNr]
+	if !ok {
+		return fmt.Errorf("failed to resolve buffer %v", currBufNr)
 	}
 	var chosen govim.CompleteItem
 	v.Parse(args[1], &chosen)

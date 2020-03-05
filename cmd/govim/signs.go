@@ -79,17 +79,17 @@ type placeDict struct {
 
 // updateSigns ensures that Vim is updated with signs corresponding to the
 // diagnostics fixes.
-func (v *vimstate) updateSigns(force bool) error {
+func (v *vimstate) updateSigns(fixes []types.Diagnostic, force bool) error {
 	if v.config.QuickfixSigns == nil || !*v.config.QuickfixSigns {
 		return nil
 	}
-	diagsRef := v.diagnostics()
-	work := v.lastDiagnosticsSigns != diagsRef
-	v.lastDiagnosticsSigns = diagsRef
+	v.diagnosticsChangedLock.Lock()
+	work := v.diagnosticsChangedSigns
+	v.diagnosticsChangedSigns = false
+	v.diagnosticsChangedLock.Unlock()
 	if !force && !work {
 		return nil
 	}
-	diags := *diagsRef
 
 	// We do this by batching a removal of all govim signs then a placing of all
 	// signs.
@@ -119,7 +119,7 @@ func (v *vimstate) updateSigns(force bool) error {
 	defer v.BatchCancelIfNotEnded()
 	v.BatchAssertChannelCall(AssertIsZero(), "sign_unplace", signGroup)
 	var placeList []placeDict
-	for _, f := range diags {
+	for _, f := range fixes {
 		if f.Buf == -1 {
 			// The diagnostic is for a file that we do not have open,
 			// i.e. there is no buffer. Do no try and place a sign
