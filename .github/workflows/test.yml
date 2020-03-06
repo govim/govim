@@ -60,31 +60,3 @@ jobs:
       with:
         path: /home/runner/.artefacts
         name: ${{ matrix.os }}_${{ matrix.go_version }}_${{ matrix.vim_flavor }}_${{ matrix.vim_version }}
-
-  test-macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest]
-        go_version: ['1.14.x']
-        vim_version: ["master"]
-    runs-on: ${{ matrix.os }}
-    env:
-      VIM_FLAVOR: vim
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@722adc63f1aa60a57ec37892e133b1d319cae598
-    - name: Install Vim
-      uses: ./github/actions/setupvim
-      with:
-        version: ${{ matrix.vim_version }}
-    - name: Install Go
-      uses: actions/setup-go@9fbc767707c286e568c92927bbf57d76b73e0892
-      with:
-        go-version: ${{ matrix.go_version }}
-    - name: Vim version
-      run: vim --version
-    - name: Go version
-      run: go version
-    - name: Run tests
-      run: go run ./internal/cmd/dots go test -timeout 30m ./...
