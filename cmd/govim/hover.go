@@ -38,7 +38,7 @@ func (v *vimstate) hoverMsgAt(pos types.Point, tdi protocol.TextDocumentIdentifi
 	if err != nil {
 		return "", fmt.Errorf("failed to get hover details: %v", err)
 	}
-	if *hovRes == (protocol.Hover{}) {
+	if hovRes == nil || *hovRes == (protocol.Hover{}) {
 		return "", nil
 	}
 	return strings.TrimSpace(hovRes.Contents.Value), nil
