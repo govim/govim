@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cmd"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -27,7 +28,7 @@ func (r *runner) PrepareRename(t *testing.T, src span.Span, want *source.Prepare
 	)
 
 	if want.Text == "" {
-		if stdErr != "" {
+		if stdErr != "" && stdErr != cmd.ErrInvalidRenamePosition.Error() {
 			t.Errorf("prepare_rename failed for %s,\nexpected:\n`%v`\ngot:\n`%v`", target, expect, stdErr)
 		}
 		return

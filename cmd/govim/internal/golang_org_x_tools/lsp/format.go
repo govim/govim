@@ -7,18 +7,21 @@ package lsp
 import (
 	"context"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 )
 
 func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormattingParams) ([]protocol.TextEdit, error) {
-	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.Go)
+	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.UnknownKind)
 	if !ok {
 		return nil, err
 	}
-	edits, err := source.Format(ctx, snapshot, fh)
-	if err != nil {
-		return nil, err
+	switch fh.Identity().Kind {
+	case source.Mod:
+		return mod.Format(ctx, snapshot, fh)
+	case source.Go:
+		return source.Format(ctx, snapshot, fh)
 	}
-	return edits, nil
+	return nil, nil
 }

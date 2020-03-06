@@ -32,16 +32,19 @@ const (
 )
 
 type modKey struct {
-	cfg   string
-	gomod string
-	view  string
+	sessionID string
+	cfg       string
+	gomod     string
+	view      string
 }
 
 type modTidyKey struct {
-	cfg     string
-	gomod   string
-	imports string
-	view    string
+	sessionID       string
+	cfg             string
+	gomod           string
+	imports         string
+	unsavedOverlays string
+	view            string
 }
 
 type modHandle struct {
@@ -136,9 +139,10 @@ func (s *snapshot) ModHandle(ctx context.Context, fh source.FileHandle) source.M
 	cfg := s.Config(ctx)
 
 	key := modKey{
-		cfg:   hashConfig(cfg),
-		gomod: fh.Identity().String(),
-		view:  folder,
+		sessionID: s.view.session.id,
+		cfg:       hashConfig(cfg),
+		gomod:     fh.Identity().String(),
+		view:      folder,
 	}
 	h := s.view.session.cache.store.Bind(key, func(ctx context.Context) interface{} {
 		ctx, done := trace.StartSpan(ctx, "cache.ModHandle", telemetry.File.Of(uri))
@@ -274,6 +278,10 @@ func (mh *modHandle) Tidy(ctx context.Context) (*modfile.File, *protocol.ColumnM
 }
 
 func (s *snapshot) ModTidyHandle(ctx context.Context, realfh source.FileHandle) (source.ModTidyHandle, error) {
+	if handle := s.getModTidyHandle(); handle != nil {
+		return handle, nil
+	}
+
 	realURI, tempURI := s.view.ModFiles()
 	cfg := s.Config(ctx)
 	options := s.View().Options()
@@ -290,11 +298,16 @@ func (s *snapshot) ModTidyHandle(ctx context.Context, realfh source.FileHandle) 
 	if err != nil {
 		return nil, err
 	}
+	s.mu.Lock()
+	overlayHash := hashUnsavedOverlays(s.files)
+	s.mu.Unlock()
 	key := modTidyKey{
-		view:    folder,
-		imports: imports,
-		gomod:   realfh.Identity().Identifier,
-		cfg:     hashConfig(cfg),
+		sessionID:       s.view.session.id,
+		view:            folder,
+		imports:         imports,
+		unsavedOverlays: overlayHash,
+		gomod:           realfh.Identity().Identifier,
+		cfg:             hashConfig(cfg),
 	}
 	h := s.view.session.cache.store.Bind(key, func(ctx context.Context) interface{} {
 		data := &modData{}
@@ -391,11 +404,14 @@ func (s *snapshot) ModTidyHandle(ctx context.Context, realfh source.FileHandle) 
 		}
 		return data
 	})
-	return &modHandle{
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.modTidyHandle = &modHandle{
 		handle: h,
 		file:   realfh,
 		cfg:    cfg,
-	}, nil
+	}
+	return s.modTidyHandle, nil
 }
 
 // extractModParseErrors processes the raw errors returned by modfile.Parse,

@@ -43,7 +43,7 @@ const (
 
 var UpdateGolden = flag.Bool("golden", false, "Update golden files")
 
-type CodeLens map[span.Span][]protocol.CodeLens
+type CodeLens map[span.URI][]protocol.CodeLens
 type Diagnostics map[span.URI][]source.Diagnostic
 type CompletionItems map[token.Pos]*source.CompletionItem
 type Completions map[span.Span][]Completion
@@ -56,7 +56,7 @@ type RankCompletions map[span.Span][]Completion
 type FoldingRanges []span.Span
 type Formats []span.Span
 type Imports []span.Span
-type SuggestedFixes []span.Span
+type SuggestedFixes map[span.Span][]string
 type Definitions map[span.Span]Definition
 type Implementations map[span.Span][]span.Span
 type Highlights map[span.Span][]span.Span
@@ -115,7 +115,7 @@ type Data struct {
 }
 
 type Tests interface {
-	CodeLens(*testing.T, span.Span, []protocol.CodeLens)
+	CodeLens(*testing.T, span.URI, []protocol.CodeLens)
 	Diagnostics(*testing.T, span.URI, []source.Diagnostic)
 	Completion(*testing.T, span.Span, Completion, CompletionItems)
 	CompletionSnippet(*testing.T, span.Span, CompletionSnippet, bool, CompletionItems)
@@ -127,7 +127,7 @@ type Tests interface {
 	FoldingRanges(*testing.T, span.Span)
 	Format(*testing.T, span.Span)
 	Import(*testing.T, span.Span)
-	SuggestedFix(*testing.T, span.Span)
+	SuggestedFix(*testing.T, span.Span, []string)
 	Definition(*testing.T, span.Span, Definition)
 	Implementation(*testing.T, span.Span, []span.Span)
 	Highlight(*testing.T, span.Span, []span.Span)
@@ -225,6 +225,7 @@ func DefaultOptions() source.Options {
 	o.HoverKind = source.SynopsisDocumentation
 	o.InsertTextFormat = protocol.SnippetTextFormat
 	o.CompletionBudget = time.Minute
+	o.HierarchicalDocumentSymbolSupport = true
 	return o
 }
 
@@ -280,6 +281,7 @@ func Load(t testing.TB, exporter packagestest.Exporter, dir string) []*Data {
 			References:                    make(References),
 			Renames:                       make(Renames),
 			PrepareRenames:                make(PrepareRenames),
+			SuggestedFixes:                make(SuggestedFixes),
 			Symbols:                       make(Symbols),
 			symbolsChildren:               make(SymbolsChildren),
 			symbolInformation:             make(SymbolInformation),
@@ -530,14 +532,14 @@ func Run(t *testing.T, tests Tests, data *Data) {
 
 	t.Run("CodeLens", func(t *testing.T) {
 		t.Helper()
-		for spn, want := range data.CodeLens {
+		for uri, want := range data.CodeLens {
 			// Check if we should skip this URI if the -modfile flag is not available.
-			if shouldSkip(data, spn.URI()) {
+			if shouldSkip(data, uri) {
 				continue
 			}
-			t.Run(SpanName(spn), func(t *testing.T) {
+			t.Run(uriName(uri), func(t *testing.T) {
 				t.Helper()
-				tests.CodeLens(t, spn, want)
+				tests.CodeLens(t, uri, want)
 			})
 		}
 	})
@@ -588,14 +590,14 @@ func Run(t *testing.T, tests Tests, data *Data) {
 
 	t.Run("SuggestedFix", func(t *testing.T) {
 		t.Helper()
-		for _, spn := range data.SuggestedFixes {
+		for spn, actionKinds := range data.SuggestedFixes {
 			// Check if we should skip this spn if the -modfile flag is not available.
 			if shouldSkip(data, spn.URI()) {
 				continue
 			}
 			t.Run(SpanName(spn), func(t *testing.T) {
 				t.Helper()
-				tests.SuggestedFix(t, spn)
+				tests.SuggestedFix(t, spn, actionKinds)
 			})
 		}
 	})
@@ -767,7 +769,7 @@ func checkData(t *testing.T, data *Data) {
 		return count
 	}
 
-	countCodeLens := func(c map[span.Span][]protocol.CodeLens) (count int) {
+	countCodeLens := func(c map[span.URI][]protocol.CodeLens) (count int) {
 		for _, want := range c {
 			count += len(want)
 		}
@@ -883,8 +885,8 @@ func (data *Data) Golden(tag string, target string, update func() ([]byte, error
 }
 
 func (data *Data) collectCodeLens(spn span.Span, title, cmd string) {
-	if _, ok := data.CodeLens[spn]; !ok {
-		data.CodeLens[spn] = []protocol.CodeLens{}
+	if _, ok := data.CodeLens[spn.URI()]; !ok {
+		data.CodeLens[spn.URI()] = []protocol.CodeLens{}
 	}
 	m, err := data.Mapper(spn.URI())
 	if err != nil {
@@ -894,7 +896,7 @@ func (data *Data) collectCodeLens(spn span.Span, title, cmd string) {
 	if err != nil {
 		return
 	}
-	data.CodeLens[spn] = append(data.CodeLens[spn], protocol.CodeLens{
+	data.CodeLens[spn.URI()] = append(data.CodeLens[spn.URI()], protocol.CodeLens{
 		Range: rng,
 		Command: protocol.Command{
 			Title:   title,
@@ -1001,8 +1003,11 @@ func (data *Data) collectImports(spn span.Span) {
 	data.Imports = append(data.Imports, spn)
 }
 
-func (data *Data) collectSuggestedFixes(spn span.Span) {
-	data.SuggestedFixes = append(data.SuggestedFixes, spn)
+func (data *Data) collectSuggestedFixes(spn span.Span, actionKind string) {
+	if _, ok := data.SuggestedFixes[spn]; !ok {
+		data.SuggestedFixes[spn] = []string{}
+	}
+	data.SuggestedFixes[spn] = append(data.SuggestedFixes[spn], actionKind)
 }
 
 func (data *Data) collectDefinitions(src, target span.Span) {

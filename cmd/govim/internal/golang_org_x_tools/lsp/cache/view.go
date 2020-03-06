@@ -23,6 +23,7 @@ import (
 	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
@@ -332,13 +333,14 @@ func (v *view) refreshProcessEnv() {
 func (v *view) buildProcessEnv(ctx context.Context) (*imports.ProcessEnv, error) {
 	env, buildFlags := v.env()
 	processEnv := &imports.ProcessEnv{
-		WorkingDir: v.folder.Filename(),
-		BuildFlags: buildFlags,
-		Logf: func(format string, args ...interface{}) {
-			log.Print(ctx, fmt.Sprintf(format, args...))
-		},
+		WorkingDir:  v.folder.Filename(),
+		BuildFlags:  buildFlags,
 		LocalPrefix: v.options.LocalPrefix,
-		Debug:       v.options.VerboseOutput,
+	}
+	if v.options.VerboseOutput {
+		processEnv.Logf = func(format string, args ...interface{}) {
+			log.Print(ctx, fmt.Sprintf(format, args...))
+		}
 	}
 	for _, kv := range env {
 		split := strings.Split(kv, "=")
@@ -471,7 +473,7 @@ func (v *view) Shutdown(ctx context.Context) {
 	v.session.removeView(ctx, v)
 }
 
-func (v *view) shutdown(context.Context) {
+func (v *view) shutdown(ctx context.Context) {
 	// TODO: Cancel the view's initialization.
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -483,7 +485,9 @@ func (v *view) shutdown(context.Context) {
 		os.Remove(v.tempMod.Filename())
 		os.Remove(tempSumFile(v.tempMod.Filename()))
 	}
-	v.session.cache.debug.DropView(debugView{v})
+	if di := debug.GetInstance(ctx); di != nil {
+		di.State.DropView(debugView{v})
+	}
 }
 
 // Ignore checks if the given URI is a URI we ignore.

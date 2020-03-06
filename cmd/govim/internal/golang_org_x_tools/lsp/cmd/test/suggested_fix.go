@@ -5,16 +5,19 @@
 package cmdtest
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/tests"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
-func (r *runner) SuggestedFix(t *testing.T, spn span.Span) {
+func (r *runner) SuggestedFix(t *testing.T, spn span.Span, actionKinds []string) {
 	uri := spn.URI()
 	filename := uri.Filename()
-	got, _ := r.NormalizeGoplsCmd(t, "fix", "-a", filename)
+	args := []string{"fix", "-a", fmt.Sprintf("%s", spn)}
+	args = append(args, actionKinds...)
+	got, _ := r.NormalizeGoplsCmd(t, args...)
 	want := string(r.data.Golden("suggestedfix_"+tests.SpanName(spn), filename, func() ([]byte, error) {
 		return []byte(got), nil
 	}))
