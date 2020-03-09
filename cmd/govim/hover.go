@@ -98,7 +98,7 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 
 	var lines []popupLine
 	if *v.config.HoverDiagnostics {
-		for _, d := range v.diagnostics() {
+		for _, d := range *v.diagnostics() {
 			if (b.Num != d.Buf) || !pos.IsWithin(d.Range) {
 				continue
 			}

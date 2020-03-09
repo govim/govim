@@ -193,21 +193,21 @@ type govimplugin struct {
 	// diagnosticsChanged indicates that the new diagnostics are available
 	diagnosticsChanged bool
 
-	// diagnosticsChangedQuickfix indicates that the quickfix window needs to be updated with
-	// the latest diagnostics
-	diagnosticsChangedQuickfix bool
+	// lastDiagnosticsQuickfix records the last diagnostics that were used
+	// when updating the quickfix window
+	lastDiagnosticsQuickfix *[]types.Diagnostic
 
-	// diagnosticsChangedSigns indicates that the quickfix window needs to be updated with
-	// the latest diagnostics
-	diagnosticsChangedSigns bool
+	// lastDiagnosticsSigns records the last diagnostics that were used when
+	// updating signs
+	lastDiagnosticsSigns *[]types.Diagnostic
 
-	// diagnosticsChangedHighlights indicates that the text properties needs to be updated with
-	// the latest diagnostics
-	diagnosticsChangedHighlights bool
+	// lastDiagnosticsHighlights records the last diagnostics that were used
+	// when updating highlights
+	lastDiagnosticsHighlights *[]types.Diagnostic
 
 	// diagnosticsCache isn't inteded to be used directly since it might
 	// contain old data. Call diagnostics() to get the latest instead.
-	diagnosticsCache []types.Diagnostic
+	diagnosticsCache *[]types.Diagnostic
 
 	// currentReferences is the range of each LSP documentHighlights under the cursor
 	// It is used to avoid updating the text property when the cursor is moved within the
@@ -251,13 +251,15 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 		defaults.Apply(user)
 	}
 	d := plugin.NewDriver(PluginPrefix)
+	var emptyDiags []types.Diagnostic
 	res := &govimplugin{
-		tmpDir:         tmpDir,
-		rawDiagnostics: make(map[span.URI]*protocol.PublishDiagnosticsParams),
-		goplsEnv:       goplsEnv,
-		goplspath:      goplspath,
-		Driver:         d,
-		inShutdown:     make(chan struct{}),
+		tmpDir:           tmpDir,
+		rawDiagnostics:   make(map[span.URI]*protocol.PublishDiagnosticsParams),
+		goplsEnv:         goplsEnv,
+		goplspath:        goplspath,
+		Driver:           d,
+		inShutdown:       make(chan struct{}),
+		diagnosticsCache: &emptyDiags,
 		vimstate: &vimstate{
 			Driver:                d,
 			buffers:               make(map[int]*types.Buffer),
@@ -275,8 +277,6 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.errCh = errCh
 	g.Driver.Govim = gg
 	g.vimstate.Driver.Govim = gg.Scheduled()
-	g.ChannelEx(`augroup govim`)
-	g.ChannelEx(`augroup END`)
 	g.vimstate.workingDirectory = g.ParseString(g.ChannelCall("getcwd", -1))
 	g.DefineFunction(string(config.FunctionBalloonExpr), []string{}, g.vimstate.balloonExpr)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufUnload}, govim.Patterns{"*.go"}, false, g.vimstate.bufUnload, "eval(expand('<abuf>'))")

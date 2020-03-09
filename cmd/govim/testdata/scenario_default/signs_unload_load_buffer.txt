@@ -1,0 +1,102 @@
+# Test that signs are placed when unloading and reloading a buffer
+
+# a sign should be placed at the warning
+vim ex 'e main.go'
+vimexprwait placed_main.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+
+# open other.go and add a broken statement to get an error that masks the warnings
+vim ex 'e other.go'
+vim call append '[6,"asd"]'
+vimexprwait tmp_error.golden GOVIMTest_getqflist()
+
+# remove the broken statement
+vim ex 'call cursor(7,1)'
+vim ex 'normal dd'
+vimexprwait warnings.golden GOVIMTest_getqflist()
+
+# jump back to main and check that the sign is still present
+vim ex 'w'
+vim ex 'bp'
+vimexprwait placed_main.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("%v")
+}
+-- other.go --
+package main
+
+import "fmt"
+
+func foo() {
+	fmt.Printf("%v")
+}
+-- warnings.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "other.go",
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- tmp_error.golden --
+[
+  {
+    "bufname": "other.go",
+    "col": 1,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: asd",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- placed_main.golden --
+[
+  {
+    "bufname": "main.go",
+    "signs": [
+      {
+        "group": "govim",
+        "id": 1,
+        "lnum": 6,
+        "name": "GOVIMSignWarn",
+        "priority": 12
+      }
+    ]
+  }
+]
