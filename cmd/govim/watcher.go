@@ -27,13 +27,9 @@ type modWatcher struct {
 
 	// watches is the set of current watches "open" in the watcher
 	watches map[string]bool
-
-	// files is a map of open files and the current version known to gopls
-	// that are _not_ being handled by Vim in open buffers
-	files map[string]int
 }
 
-func (mw *modWatcher) close() error { return mw.watcher.Close() }
+func (m *modWatcher) close() error { return m.watcher.Close() }
 
 // newWatcher returns a new watcher that will "watch" on the Go files in the
 // module identified by gomodpath
@@ -54,7 +50,6 @@ func newModWatcher(plug *govimplugin, gomodpath string) (*modWatcher, error) {
 		watcher:     w,
 		root:        dirpath,
 		watches:     make(map[string]bool),
-		files:       make(map[string]int),
 	}
 
 	go res.watch()

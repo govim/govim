@@ -322,22 +322,6 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 		return err
 	}
 
-	// Temporary fix for the fact that gopls does not yet support watching (via
-	// the client) changed files: https://github.com/golang/go/issues/31553
-	gomodpath, err := goModPath(g.vimstate.workingDirectory)
-	if err != nil {
-		return fmt.Errorf("failed to derive go.mod path: %v", err)
-	}
-
-	if gomodpath != "" {
-		// i.e. we are in a module
-		mw, err := newModWatcher(g, gomodpath)
-		if err != nil {
-			return fmt.Errorf("failed to create modWatcher for %v: %v", gomodpath, err)
-		}
-		g.modWatcher = mw
-	}
-
 	return nil
 }
 
@@ -468,8 +452,6 @@ func (g *govimplugin) startGopls() error {
 		return fmt.Errorf("failed to call gopls.Initialized: %v", err)
 	}
 
-	// Temporary fix for the fact that gopls does not yet support watching (via
-	// the client) changed files: https://github.com/golang/go/issues/31553
 	gomodpath, err := goModPath(g.vimstate.workingDirectory)
 	if err != nil {
 		return fmt.Errorf("failed to derive go.mod path: %v", err)
