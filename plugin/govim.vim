@@ -195,7 +195,7 @@ endfunction
 function s:userBusy(busy)
   if s:userBusy != a:busy
     let s:userBusy = a:busy
-    call GOVIM_internal_SetUserBusy(s:userBusy)
+    call GOVIM_internal_SetUserBusy(s:userBusy, {"bufnr": bufnr(""), "line": line("."), "col": col(".")})
   endif
 endfunction
 
