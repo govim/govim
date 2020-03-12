@@ -1,0 +1,21 @@
+# Test that a busy state change (from busy to not) in a non go file
+# succeeds. This ensures we are correctly non trying to handle events
+# in non .go files
+
+vim ex 'call GOVIM_test_SetUserBusy(1)'
+vim ex 'e main.go'
+vim ex 'e other.txt'
+vim ex 'call GOVIM_test_SetUserBusy(0)'
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+-- other.txt --
+hello

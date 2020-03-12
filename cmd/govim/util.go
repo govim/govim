@@ -24,17 +24,21 @@ func (v *vimstate) currentBufferInfo(expr json.RawMessage) *types.Buffer {
 	return types.NewBuffer(buf.Num, buf.Name, []byte(buf.Contents), buf.Loaded == 1)
 }
 
+type cursorPosition struct {
+	BufNr int `json:"bufnr"`
+	Line  int `json:"line"`
+	Col   int `json:"col"`
+}
+
+const cursorPositionExpr = `{"bufnr": bufnr(""), "line": line("."), "col": col(".")}`
+
 func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {
-	var pos struct {
-		BufNum int `json:"bufnum"`
-		Line   int `json:"line"`
-		Col    int `json:"col"`
-	}
-	expr := v.ChannelExpr(`{"bufnum": bufnr(""), "line": line("."), "col": col(".")}`)
+	var pos cursorPosition
+	expr := v.ChannelExpr(cursorPositionExpr)
 	v.Parse(expr, &pos)
-	b, ok := v.buffers[pos.BufNum]
+	b, ok := v.buffers[pos.BufNr]
 	if !ok {
-		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNum)
+		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNr)
 		return
 	}
 	p, err = types.PointFromVim(b, pos.Line, pos.Col)

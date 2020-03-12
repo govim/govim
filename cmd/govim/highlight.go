@@ -121,23 +121,26 @@ func (v *vimstate) redefineHighlights(force bool) error {
 }
 
 func (v *vimstate) referenceHighlight(flags govim.CommandFlags, args ...string) error {
-	return v.updateReferenceHighlight(true)
+	return v.updateReferenceHighlight(true, nil)
 }
 
 // removeReferenceHighlight is used to only remove existing reference highlights if the
 // cursor has moved outside of the range(s) of existing highlights, to avoid flickering
-func (v *vimstate) removeReferenceHighlight() error {
+func (v *vimstate) removeReferenceHighlight(cursorPos cursorPosition) error {
 	if len(v.currentReferences) == 0 {
 		return nil
 	}
 
-	_, pos, err := v.cursorPos()
-	if err != nil {
-		return fmt.Errorf("failed to get current position: %v", err)
+	var pos *types.Point
+	if b, ok := v.buffers[cursorPos.BufNr]; ok {
+		point, err := types.PointFromVim(b, cursorPos.Line, cursorPos.Col)
+		if err == nil {
+			pos = &point
+		}
 	}
 
 	for i := range v.currentReferences {
-		if !pos.IsWithin(*v.currentReferences[i]) {
+		if pos == nil || !pos.IsWithin(*v.currentReferences[i]) {
 			v.removeTextProps(types.ReferencesTextPropID)
 			return nil
 		}
@@ -145,14 +148,25 @@ func (v *vimstate) removeReferenceHighlight() error {
 	return nil
 }
 
-func (v *vimstate) updateReferenceHighlight(force bool) error {
+// updateReferenceHighlight updates the reference highlighting if the cursor is
+// currently in a valid position, i.e. a go file. The cursor position can passed
+// in by supplying a non-nil cursorPos.
+func (v *vimstate) updateReferenceHighlight(force bool, cursorPos *cursorPosition) error {
 	if !force && (v.config.HighlightReferences == nil || !*v.config.HighlightReferences) {
 		return nil
 	}
 
-	b, pos, err := v.cursorPos()
+	if cursorPos == nil {
+		v.Parse(v.ChannelExpr(cursorPositionExpr), &cursorPos)
+	}
+	b, ok := v.buffers[(*cursorPos).BufNr]
+	if !ok {
+		// we are not tracking this buffer... i.e. is not a .go file
+		return nil
+	}
+	pos, err := types.PointFromVim(b, cursorPos.Line, cursorPos.Col)
 	if err != nil {
-		return fmt.Errorf("failed to get current position: %v", err)
+		return fmt.Errorf("failed to calculate cursor position in buffer %v from line %v and col %v: %v", b.Num, cursorPos.Line, cursorPos.Col, err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

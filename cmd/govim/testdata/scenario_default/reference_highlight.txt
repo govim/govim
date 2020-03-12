@@ -1,20 +1,20 @@
 # Tests that references to the identifier at the cursor is being highlighted when the user
-# goes idle. Since user idle detection is disabled in tests, GOVIM_internal_SetUserBusy()
+# goes idle. Since user idle detection is disabled in tests, GOVIM_test_SetUserBusy()
 # is invoked directly.
 
 vim ex 'e main.go'
 
 # Placing the cursor on "foo" should highlight all other occations of foo
 vim ex 'call cursor(5,5)'
-vim ex 'call GOVIM_internal_SetUserBusy(1)'
-vim ex 'call GOVIM_internal_SetUserBusy(0)'
+vim ex 'call GOVIM_test_SetUserBusy(1)'
+vim ex 'call GOVIM_test_SetUserBusy(0)'
 vimexprwait foo_references.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 
 # Placing the cursor on "fmt" should highlight all other occations of fmt
 vim ex 'call cursor(9,2)'
-vim ex 'call GOVIM_internal_SetUserBusy(1)'
-vim ex 'call GOVIM_internal_SetUserBusy(0)'
+vim ex 'call GOVIM_test_SetUserBusy(1)'
+vim ex 'call GOVIM_test_SetUserBusy(0)'
 vim ex 'w'
 vimexprwait fmt_references.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
