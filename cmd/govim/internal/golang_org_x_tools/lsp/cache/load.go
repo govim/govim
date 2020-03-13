@@ -16,9 +16,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -79,7 +77,7 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 	}
 	sort.Strings(query) // for determinism
 
-	ctx, done := trace.StartSpan(ctx, "cache.view.load", telemetry.Query.Of(query))
+	ctx, done := event.StartSpan(ctx, "cache.view.load", telemetry.Query.Of(query))
 	defer done()
 
 	cfg := s.Config(ctx)
@@ -92,13 +90,13 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 		return ctx.Err()
 	}
 
-	log.Print(ctx, "go/packages.Load", tag.Of("snapshot", s.ID()), tag.Of("query", query), tag.Of("packages", len(pkgs)))
+	event.Print(ctx, "go/packages.Load", event.TagOf("snapshot", s.ID()), event.TagOf("query", query), event.TagOf("packages", len(pkgs)))
 	if len(pkgs) == 0 {
 		return err
 	}
 	for _, pkg := range pkgs {
 		if !containsDir || s.view.Options().VerboseOutput {
-			log.Print(ctx, "go/packages.Load", tag.Of("snapshot", s.ID()), tag.Of("package", pkg.PkgPath), tag.Of("files", pkg.CompiledGoFiles))
+			event.Print(ctx, "go/packages.Load", event.TagOf("snapshot", s.ID()), event.TagOf("package", pkg.PkgPath), event.TagOf("files", pkg.CompiledGoFiles))
 		}
 		// Ignore packages with no sources, since we will never be able to
 		// correctly invalidate that metadata.
@@ -181,7 +179,7 @@ func (s *snapshot) setMetadata(ctx context.Context, pkgPath packagePath, pkg *pa
 		}
 		if s.getMetadata(importID) == nil {
 			if _, err := s.setMetadata(ctx, importPkgPath, importPkg, cfg, copied); err != nil {
-				log.Error(ctx, "error in dependency", err)
+				event.Error(ctx, "error in dependency", err)
 			}
 		}
 	}

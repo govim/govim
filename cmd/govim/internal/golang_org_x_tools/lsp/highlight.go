@@ -10,7 +10,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 func (s *Server) documentHighlight(ctx context.Context, params *protocol.DocumentHighlightParams) ([]protocol.DocumentHighlight, error) {
@@ -20,7 +20,7 @@ func (s *Server) documentHighlight(ctx context.Context, params *protocol.Documen
 	}
 	rngs, err := source.Highlight(ctx, snapshot, fh, params.Position)
 	if err != nil {
-		log.Error(ctx, "no highlight", err, telemetry.URI.Of(params.TextDocument.URI))
+		event.Error(ctx, "no highlight", err, telemetry.URI.Of(params.TextDocument.URI))
 	}
 	return toProtocolHighlight(rngs), nil
 }

@@ -14,12 +14,12 @@ import (
 
 	"golang.org/x/tools/go/ast/astutil"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
 func SignatureHelp(ctx context.Context, snapshot Snapshot, fh FileHandle, pos protocol.Position) (*protocol.SignatureInformation, int, error) {
-	ctx, done := trace.StartSpan(ctx, "source.SignatureHelp")
+	ctx, done := event.StartSpan(ctx, "source.SignatureHelp")
 	defer done()
 
 	pkg, pgh, err := getParsedFile(ctx, snapshot, fh, NarrowestPackageHandle)
@@ -109,10 +109,10 @@ FindCall:
 			return nil, 0, err
 		}
 		decl := &Declaration{
-			obj:         obj,
-			mappedRange: rng,
-			node:        node,
+			obj:  obj,
+			node: node,
 		}
+		decl.MappedRange = append(decl.MappedRange, rng)
 		d, err := decl.hover(ctx)
 		if err != nil {
 			return nil, 0, err

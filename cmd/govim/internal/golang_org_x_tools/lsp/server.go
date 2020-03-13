@@ -7,6 +7,7 @@ package lsp
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
@@ -37,6 +38,20 @@ const (
 	serverInitialized  // set once the server has received "initialized" request
 	serverShutDown
 )
+
+func (s serverState) String() string {
+	switch s {
+	case serverCreated:
+		return "created"
+	case serverInitializing:
+		return "initializing"
+	case serverInitialized:
+		return "initialized"
+	case serverShutDown:
+		return "shutDown"
+	}
+	return fmt.Sprintf("(unknown state: %d)", int(s))
+}
 
 // Server implements the protocol.Server interface.
 type Server struct {

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 type SpanContext struct {
@@ -23,8 +23,8 @@ type Span struct {
 	ParentID SpanID
 	Start    time.Time
 	Finish   time.Time
-	Tags     telemetry.TagList
-	Events   []telemetry.Event
+	Tags     event.TagList
+	Events   []event.Event
 }
 
 type contextKeyType int
@@ -46,17 +46,17 @@ func GetSpan(ctx context.Context) *Span {
 // It creates new spans on EventStartSpan, adds events to the current span on
 // EventLog or EventTag, and closes the span on EventEndSpan.
 // The span structure can then be used by other exporters.
-func ContextSpan(ctx context.Context, event telemetry.Event) context.Context {
-	switch event.Type {
-	case telemetry.EventLog, telemetry.EventTag:
+func ContextSpan(ctx context.Context, ev event.Event) context.Context {
+	switch {
+	case ev.IsLog(), ev.IsTag():
 		if span := GetSpan(ctx); span != nil {
-			span.Events = append(span.Events, event)
+			span.Events = append(span.Events, ev)
 		}
-	case telemetry.EventStartSpan:
+	case ev.IsStartSpan():
 		span := &Span{
-			Name:  event.Message,
-			Start: event.At,
-			Tags:  event.Tags,
+			Name:  ev.Message,
+			Start: ev.At,
+			Tags:  ev.Tags,
 		}
 		if parent := GetSpan(ctx); parent != nil {
 			span.ID.TraceID = parent.ID.TraceID
@@ -66,18 +66,14 @@ func ContextSpan(ctx context.Context, event telemetry.Event) context.Context {
 		}
 		span.ID.SpanID = newSpanID()
 		ctx = context.WithValue(ctx, spanContextKey, span)
-	case telemetry.EventEndSpan:
+	case ev.IsEndSpan():
 		if span := GetSpan(ctx); span != nil {
-			span.Finish = event.At
+			span.Finish = ev.At
 		}
+	case ev.IsDetach():
+		return context.WithValue(ctx, spanContextKey, nil)
 	}
 	return ctx
-}
-
-// Detach returns a context without an associated span.
-// This allows the creation of spans that are not children of the current span.
-func Detach(ctx context.Context) context.Context {
-	return context.WithValue(ctx, spanContextKey, nil)
 }
 
 func (s *SpanContext) Format(f fmt.State, r rune) {

@@ -16,18 +16,16 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
 func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitialize) (*protocol.InitializeResult, error) {
 	s.stateMu.Lock()
-	state := s.state
-	s.stateMu.Unlock()
-	if state >= serverInitializing {
-		return nil, jsonrpc2.NewErrorf(jsonrpc2.CodeInvalidRequest, "server already initialized")
+	if s.state >= serverInitializing {
+		defer s.stateMu.Unlock()
+		return nil, jsonrpc2.NewErrorf(jsonrpc2.CodeInvalidRequest, "initialize called while server in %v state", s.state)
 	}
-	s.stateMu.Lock()
 	s.state = serverInitializing
 	s.stateMu.Unlock()
 
@@ -111,6 +109,10 @@ func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitializ
 
 func (s *Server) initialized(ctx context.Context, params *protocol.InitializedParams) error {
 	s.stateMu.Lock()
+	if s.state >= serverInitialized {
+		defer s.stateMu.Unlock()
+		return jsonrpc2.NewErrorf(jsonrpc2.CodeInvalidRequest, "initalized called while server in %v state", s.state)
+	}
 	s.state = serverInitialized
 	s.stateMu.Unlock()
 
@@ -152,7 +154,7 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 
 	buf := &bytes.Buffer{}
 	debug.PrintVersionInfo(buf, true, debug.PlainText)
-	log.Print(ctx, buf.String())
+	event.Print(ctx, buf.String())
 
 	s.addFolders(ctx, s.pendingFolders)
 	s.pendingFolders = nil
@@ -264,7 +266,7 @@ func (s *Server) shutdown(ctx context.Context) error {
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
 	if s.state < serverInitialized {
-		return jsonrpc2.NewErrorf(jsonrpc2.CodeInvalidRequest, "server not initialized")
+		event.Print(ctx, "server shutdown without initialization")
 	}
 	if s.state != serverShutDown {
 		// drop all the active views

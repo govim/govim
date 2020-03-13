@@ -11,8 +11,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 func (s *Server) completion(ctx context.Context, params *protocol.CompletionParams) (*protocol.CompletionList, error) {
@@ -30,7 +29,7 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 	}
 
 	if err != nil {
-		log.Print(ctx, "no completions found", tag.Of("At", params.Position), tag.Of("Failure", err))
+		event.Print(ctx, "no completions found", event.TagOf("At", params.Position), event.TagOf("Failure", err))
 	}
 	if candidates == nil {
 		return &protocol.CompletionList{

@@ -21,8 +21,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -144,7 +143,7 @@ func (s *snapshot) buildKey(ctx context.Context, id packageID, mode source.Parse
 		}
 		depHandle, err := s.buildPackageHandle(ctx, depID, mode)
 		if err != nil {
-			log.Error(ctx, "no dep handle", err, telemetry.Package.Of(depID))
+			event.Error(ctx, "no dep handle", err, telemetry.Package.Of(depID))
 
 			// One bad dependency should not prevent us from checking the entire package.
 			// Add a special key to mark a bad dependency.
@@ -260,7 +259,7 @@ func (s *snapshot) parseGoHandles(ctx context.Context, files []span.URI, mode so
 }
 
 func typeCheck(ctx context.Context, fset *token.FileSet, m *metadata, mode source.ParseMode, goFiles []source.ParseGoHandle, compiledGoFiles []source.ParseGoHandle, deps map[packagePath]*packageHandle) (*pkg, error) {
-	ctx, done := trace.StartSpan(ctx, "cache.importer.typeCheck", telemetry.Package.Of(m.id))
+	ctx, done := event.StartSpan(ctx, "cache.importer.typeCheck", telemetry.Package.Of(m.id))
 	defer done()
 
 	var rawErrors []error
@@ -394,7 +393,7 @@ func typeCheck(ctx context.Context, fset *token.FileSet, m *metadata, mode sourc
 		for _, e := range rawErrors {
 			srcErr, err := sourceError(ctx, fset, pkg, e)
 			if err != nil {
-				log.Error(ctx, "unable to compute error positions", err, telemetry.Package.Of(pkg.ID()))
+				event.Error(ctx, "unable to compute error positions", err, telemetry.Package.Of(pkg.ID()))
 				continue
 			}
 			pkg.errors = append(pkg.errors, srcErr)

@@ -11,7 +11,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 func Hover(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle, position protocol.Position) (*protocol.Hover, error) {
@@ -20,7 +20,7 @@ func Hover(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle, 
 	if realURI == "" || fh.Identity().URI != realURI {
 		return nil, nil
 	}
-	ctx, done := trace.StartSpan(ctx, "mod.Hover")
+	ctx, done := event.StartSpan(ctx, "mod.Hover")
 	defer done()
 
 	file, m, why, err := snapshot.ModHandle(ctx, fh).Why(ctx)

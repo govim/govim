@@ -15,7 +15,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -73,7 +73,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 			// First, add the quick fixes reported by go/analysis.
 			qf, err := quickFixes(ctx, snapshot, fh, diagnostics)
 			if err != nil {
-				log.Error(ctx, "quick fixes failed", err, telemetry.File.Of(uri))
+				event.Error(ctx, "quick fixes failed", err, telemetry.File.Of(uri))
 			}
 			codeActions = append(codeActions, qf...)
 
@@ -97,7 +97,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 			}
 			actions, err := mod.SuggestedGoFixes(ctx, snapshot, fh, diagnostics)
 			if err != nil {
-				log.Error(ctx, "quick fixes failed", err, telemetry.File.Of(uri))
+				event.Error(ctx, "quick fixes failed", err, telemetry.File.Of(uri))
 			}
 			if len(actions) > 0 {
 				codeActions = append(codeActions, actions...)
@@ -234,7 +234,7 @@ func quickFixes(ctx context.Context, snapshot source.Snapshot, fh source.FileHan
 			for uri, edits := range fix.Edits {
 				fh, err := snapshot.GetFile(uri)
 				if err != nil {
-					log.Error(ctx, "no file", err, telemetry.URI.Of(uri))
+					event.Error(ctx, "no file", err, telemetry.URI.Of(uri))
 					continue
 				}
 				action.Edit.DocumentChanges = append(action.Edit.DocumentChanges, documentChanges(fh, edits)...)

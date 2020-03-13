@@ -2,8 +2,8 @@ package protocol
 
 // Package protocol contains data types and code for LSP jsonrpcs
 // generated automatically from vscode-languageserver-node
-// commit: 7b90c29d0cb5cd7b9c41084f6cb3781a955adeba
-// last fetched Wed Mar 04 2020 13:02:46 GMT-0500 (Eastern Standard Time)
+// commit: 151b520c995ee3d76729b5c46258ab273d989726
+// last fetched Mon Mar 09 2020 10:29:10 GMT-0400 (Eastern Daylight Time)
 
 // Code generated (see typescript/README.md) DO NOT EDIT.
 
@@ -12,7 +12,7 @@ import (
 	"encoding/json"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 )
 
@@ -46,7 +46,7 @@ func (h clientHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, deliver
 			return true
 		}
 		if err := h.client.ShowMessage(ctx, &params); err != nil {
-			log.Error(ctx, "", err)
+			event.Error(ctx, "", err)
 		}
 		return true
 	case "window/logMessage": // notif
@@ -56,7 +56,7 @@ func (h clientHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, deliver
 			return true
 		}
 		if err := h.client.LogMessage(ctx, &params); err != nil {
-			log.Error(ctx, "", err)
+			event.Error(ctx, "", err)
 		}
 		return true
 	case "telemetry/event": // notif
@@ -66,7 +66,7 @@ func (h clientHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, deliver
 			return true
 		}
 		if err := h.client.Event(ctx, &params); err != nil {
-			log.Error(ctx, "", err)
+			event.Error(ctx, "", err)
 		}
 		return true
 	case "textDocument/publishDiagnostics": // notif
@@ -76,7 +76,7 @@ func (h clientHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, deliver
 			return true
 		}
 		if err := h.client.PublishDiagnostics(ctx, &params); err != nil {
-			log.Error(ctx, "", err)
+			event.Error(ctx, "", err)
 		}
 		return true
 	case "workspace/workspaceFolders": // req
@@ -86,7 +86,7 @@ func (h clientHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, deliver
 		}
 		resp, err := h.client.WorkspaceFolders(ctx)
 		if err := r.Reply(ctx, resp, err); err != nil {
-			log.Error(ctx, "", err)
+			event.Error(ctx, "", err)
 		}
 		return true
 	case "workspace/configuration": // req
@@ -97,7 +97,7 @@ func (h clientHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, deliver
 		}
 		resp, err := h.client.Configuration(ctx, &params)
 		if err := r.Reply(ctx, resp, err); err != nil {
-			log.Error(ctx, "", err)
+			event.Error(ctx, "", err)
 		}
 		return true
 	case "client/registerCapability": // req
@@ -108,7 +108,7 @@ func (h clientHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, deliver
 		}
 		err := h.client.RegisterCapability(ctx, &params)
 		if err := r.Reply(ctx, nil, err); err != nil {
-			log.Error(ctx, "", err)
+			event.Error(ctx, "", err)
 		}
 		return true
 	case "client/unregisterCapability": // req
@@ -119,7 +119,7 @@ func (h clientHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, deliver
 		}
 		err := h.client.UnregisterCapability(ctx, &params)
 		if err := r.Reply(ctx, nil, err); err != nil {
-			log.Error(ctx, "", err)
+			event.Error(ctx, "", err)
 		}
 		return true
 	case "window/showMessageRequest": // req
@@ -130,7 +130,7 @@ func (h clientHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, deliver
 		}
 		resp, err := h.client.ShowMessageRequest(ctx, &params)
 		if err := r.Reply(ctx, resp, err); err != nil {
-			log.Error(ctx, "", err)
+			event.Error(ctx, "", err)
 		}
 		return true
 	case "workspace/applyEdit": // req
@@ -141,7 +141,7 @@ func (h clientHandler) Deliver(ctx context.Context, r *jsonrpc2.Request, deliver
 		}
 		resp, err := h.client.ApplyEdit(ctx, &params)
 		if err := r.Reply(ctx, resp, err); err != nil {
-			log.Error(ctx, "", err)
+			event.Error(ctx, "", err)
 		}
 		return true
 	default:

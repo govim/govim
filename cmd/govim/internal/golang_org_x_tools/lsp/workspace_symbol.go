@@ -9,11 +9,11 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 func (s *Server) symbol(ctx context.Context, params *protocol.WorkspaceSymbolParams) ([]protocol.SymbolInformation, error) {
-	ctx, done := trace.StartSpan(ctx, "lsp.Server.symbol")
+	ctx, done := event.StartSpan(ctx, "lsp.Server.symbol")
 	defer done()
 
 	return source.WorkspaceSymbols(ctx, s.session.Views(), params.Query)

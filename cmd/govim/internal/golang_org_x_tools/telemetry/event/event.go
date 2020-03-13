@@ -2,29 +2,37 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package telemetry
+// Package event provides support for event based telemetry.
+package event
 
 import (
 	"fmt"
 	"time"
 )
 
-type EventType uint8
+type eventType uint8
 
 const (
-	EventLog = EventType(iota)
-	EventStartSpan
-	EventEndSpan
-	EventTag
+	LogType = eventType(iota)
+	StartSpanType
+	EndSpanType
+	LabelType
+	DetachType
 )
 
 type Event struct {
-	Type    EventType
+	Type    eventType
 	At      time.Time
 	Message string
 	Error   error
 	Tags    TagList
 }
+
+func (e Event) IsLog() bool       { return e.Type == LogType }
+func (e Event) IsEndSpan() bool   { return e.Type == EndSpanType }
+func (e Event) IsStartSpan() bool { return e.Type == StartSpanType }
+func (e Event) IsTag() bool       { return e.Type == LabelType }
+func (e Event) IsDetach() bool    { return e.Type == DetachType }
 
 func (e Event) Format(f fmt.State, r rune) {
 	if !e.At.IsZero() {
@@ -39,6 +47,6 @@ func (e Event) Format(f fmt.State, r rune) {
 		}
 	}
 	for _, tag := range e.Tags {
-		fmt.Fprintf(f, "\n\t%v = %v", tag.Key, tag.Value)
+		fmt.Fprintf(f, "\n\t%s = %v", tag.Key.Name, tag.Value)
 	}
 }

@@ -18,12 +18,9 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
-
-// Limits the number of parallel parser calls per process.
-var parseLimit = make(chan struct{}, 20)
 
 // parseKey uniquely identifies a parsed Go file.
 type parseKey struct {
@@ -109,7 +106,7 @@ func hashParseKeys(phs []source.ParseGoHandle) string {
 }
 
 func parseGo(ctx context.Context, fset *token.FileSet, fh source.FileHandle, mode source.ParseMode) *parseGoData {
-	ctx, done := trace.StartSpan(ctx, "cache.parseGo", telemetry.File.Of(fh.Identity().URI.Filename()))
+	ctx, done := event.StartSpan(ctx, "cache.parseGo", telemetry.File.Of(fh.Identity().URI.Filename()))
 	defer done()
 
 	if fh.Identity().Kind != source.Go {
@@ -119,8 +116,7 @@ func parseGo(ctx context.Context, fset *token.FileSet, fh source.FileHandle, mod
 	if err != nil {
 		return &parseGoData{err: err}
 	}
-	parseLimit <- struct{}{}
-	defer func() { <-parseLimit }()
+
 	parserMode := parser.AllErrors | parser.ParseComments
 	if mode == source.ParseHeader {
 		parserMode = parser.ImportsOnly | parser.ParseComments
@@ -255,6 +251,16 @@ func fixAST(ctx context.Context, n ast.Node, tok *token.File, src []byte) error 
 			//   foo.var<> // want to complete to "foo.variance"
 			//
 			fixPhantomSelector(n, tok, src)
+			return true
+
+		case *ast.BlockStmt:
+			switch parent.(type) {
+			case *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt:
+				// Adjust closing curly brace of empty switch/select
+				// statements so we can complete inside them.
+				fixEmptySwitch(n, tok, src)
+			}
+
 			return true
 		default:
 			return true
@@ -396,6 +402,51 @@ func fixMissingCurlies(f *ast.File, b *ast.BlockStmt, parent ast.Node, tok *toke
 	buf.WriteByte('}')
 	buf.Write(src[tok.Offset(insertPos):])
 	return buf.Bytes()
+}
+
+// fixEmptySwitch moves empty switch/select statements' closing curly
+// brace down one line. This allows us to properly detect incomplete
+// "case" and "default" keywords as inside the switch statement. For
+// example:
+//
+//   switch {
+//   def<>
+//   }
+//
+// gets parsed like:
+//
+//   switch {
+//   }
+//
+// Later we manually pull out the "def" token, but we need to detect
+// that our "<>" position is inside the switch block. To do that we
+// move the curly brace so it looks like:
+//
+//   switch {
+//
+//   }
+//
+func fixEmptySwitch(body *ast.BlockStmt, tok *token.File, src []byte) {
+	// We only care about empty switch statements.
+	if len(body.List) > 0 || !body.Rbrace.IsValid() {
+		return
+	}
+
+	// If the right brace is actually in the source code at the
+	// specified position, don't mess with it.
+	braceOffset := tok.Offset(body.Rbrace)
+	if braceOffset < len(src) && src[braceOffset] == '}' {
+		return
+	}
+
+	braceLine := tok.Line(body.Rbrace)
+	if braceLine >= tok.LineCount() {
+		// If we are the last line in the file, no need to fix anything.
+		return
+	}
+
+	// Move the right brace down one line.
+	body.Rbrace = tok.LineStart(braceLine + 1)
 }
 
 // fixDanglingSelector inserts real "_" selector expressions in place

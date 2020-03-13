@@ -24,7 +24,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/fuzzy"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -423,8 +423,8 @@ func (e ErrIsDefinition) Error() string {
 // The selection is computed based on the preceding identifier and can be used by
 // the client to score the quality of the completion. For instance, some clients
 // may tolerate imperfect matches as valid completion results, since users may make typos.
-func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos protocol.Position) ([]CompletionItem, *Selection, error) {
-	ctx, done := trace.StartSpan(ctx, "source.Completion")
+func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos protocol.Position) ([]CompletionItem, *Selection, error) {
+	ctx, done := event.StartSpan(ctx, "source.Completion")
 	defer done()
 
 	startTime := time.Now()
@@ -437,7 +437,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 	if err != nil {
 		return nil, nil, err
 	}
-	spn, err := m.PointSpan(pos)
+	spn, err := m.PointSpan(protoPos)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -452,9 +452,18 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 		return nil, nil, errors.Errorf("cannot find node enclosing position")
 	}
 
-	// Skip completion inside any kind of literal.
-	if _, ok := path[0].(*ast.BasicLit); ok {
+	pos := rng.Start
+
+	switch n := path[0].(type) {
+	case *ast.BasicLit:
+		// Skip completion inside any kind of literal.
 		return nil, nil, nil
+	case *ast.CallExpr:
+		if n.Ellipsis.IsValid() && pos > n.Ellipsis && pos <= n.Ellipsis+token.Pos(len("...")) {
+			// Don't offer completions inside or directly after "...". For
+			// example, don't offer completions at "<>" in "foo(bar...<>").
+			return nil, nil, nil
+		}
 	}
 
 	opts := snapshot.View().Options()
@@ -466,7 +475,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 		filename:                  fh.Identity().URI.Filename(),
 		file:                      file,
 		path:                      path,
-		pos:                       rng.Start,
+		pos:                       pos,
 		seen:                      make(map[types.Object]bool),
 		enclosingFunc:             enclosingFunction(path, rng.Start, pkg.GetTypesInfo()),
 		enclosingCompositeLiteral: enclosingCompositeLiteral(path, rng.Start, pkg.GetTypesInfo()),
@@ -492,26 +501,8 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 		c.deepState.maxDepth = -1
 	}
 
-	// Detect our surrounding identifier.
-	switch leaf := path[0].(type) {
-	case *ast.Ident:
-		// In the normal case, our leaf AST node is the identifier being completed.
-		c.setSurrounding(leaf)
-	case *ast.BadDecl:
-		// You don't get *ast.Idents at the file level, so look for bad
-		// decls and manually extract the surrounding token.
-		pos, _, lit := c.scanToken(ctx, src)
-		if pos.IsValid() {
-			c.setSurrounding(&ast.Ident{Name: lit, NamePos: pos})
-		}
-	default:
-		// Otherwise, manually extract the prefix if our containing token
-		// is a keyword. This improves completion after an "accidental
-		// keyword", e.g. completing to "variance" in "someFunc(var<>)".
-		pos, tkn, lit := c.scanToken(ctx, src)
-		if pos.IsValid() && tkn.IsKeyword() {
-			c.setSurrounding(&ast.Ident{Name: lit, NamePos: pos})
-		}
+	if surrounding := c.containingIdent(src); surrounding != nil {
+		c.setSurrounding(surrounding)
 	}
 
 	c.inference = expectedCandidate(c)
@@ -536,6 +527,16 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 
 	if lt := c.wantLabelCompletion(); lt != labelNone {
 		c.labels(lt)
+		return c.items, c.getSurrounding(), nil
+	}
+
+	// Statement candidates offer an entire statement in certain
+	// contexts, as opposed to a single object.
+	c.addStatementCandidates()
+
+	if c.emptySwitchStmt() {
+		// Empty switch statements only admit "default" and "case" keywords.
+		c.addKeywordItems(map[string]bool{}, highScore, CASE, DEFAULT)
 		return c.items, c.getSurrounding(), nil
 	}
 
@@ -591,8 +592,43 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 	return c.items, c.getSurrounding(), nil
 }
 
+// containingIdent returns the *ast.Ident containing pos, if any. It
+// synthesizes an *ast.Ident to allow completion in the face of
+// certain syntax errors.
+func (c *completer) containingIdent(src []byte) *ast.Ident {
+	// In the normal case, our leaf AST node is the identifer being completed.
+	if ident, ok := c.path[0].(*ast.Ident); ok {
+		return ident
+	}
+
+	pos, tkn, lit := c.scanToken(src)
+	if !pos.IsValid() {
+		return nil
+	}
+
+	fakeIdent := &ast.Ident{Name: lit, NamePos: pos}
+
+	if _, isBadDecl := c.path[0].(*ast.BadDecl); isBadDecl {
+		// You don't get *ast.Idents at the file level, so look for bad
+		// decls and use the manually extracted token.
+		return fakeIdent
+	} else if c.emptySwitchStmt() {
+		// Only keywords are allowed in empty switch statements.
+		// *ast.Idents are not parsed, so we must use the manually
+		// extracted token.
+		return fakeIdent
+	} else if tkn.IsKeyword() {
+		// Otherwise, manually extract the prefix if our containing token
+		// is a keyword. This improves completion after an "accidental
+		// keyword", e.g. completing to "variance" in "someFunc(var<>)".
+		return fakeIdent
+	}
+
+	return nil
+}
+
 // scanToken scans pgh's contents for the token containing pos.
-func (c *completer) scanToken(ctx context.Context, contents []byte) (token.Pos, token.Token, string) {
+func (c *completer) scanToken(contents []byte) (token.Pos, token.Token, string) {
 	tok := c.snapshot.View().Session().Cache().FileSet().File(c.pos)
 
 	var s scanner.Scanner
@@ -620,6 +656,22 @@ func (c *completer) sortItems() {
 		// effect of prefering shorter candidates.
 		return c.items[i].Label < c.items[j].Label
 	})
+}
+
+// emptySwitchStmt reports whether pos is in an empty switch or select
+// statement.
+func (c *completer) emptySwitchStmt() bool {
+	block, ok := c.path[0].(*ast.BlockStmt)
+	if !ok || len(block.List) > 0 || len(c.path) == 1 {
+		return false
+	}
+
+	switch c.path[1].(type) {
+	case *ast.SwitchStmt, *ast.TypeSwitchStmt, *ast.SelectStmt:
+		return true
+	default:
+		return false
+	}
 }
 
 // populateCommentCompletions yields completions for an exported
@@ -1746,7 +1798,7 @@ Nodes:
 		case *ast.MapType:
 			wantTypeName = true
 			if n.Key != nil {
-				wantComparable = n.Key.Pos() <= c.pos && c.pos <= n.Key.End()
+				wantComparable = nodeContains(n.Key, c.pos)
 			} else {
 				// If the key is empty, assume we are completing the key if
 				// pos is directly after the "map[".
@@ -1754,10 +1806,10 @@ Nodes:
 			}
 			break Nodes
 		case *ast.ValueSpec:
-			if n.Type != nil && n.Type.Pos() <= c.pos && c.pos <= n.Type.End() {
-				wantTypeName = true
-			}
+			wantTypeName = nodeContains(n.Type, c.pos)
 			break Nodes
+		case *ast.TypeSpec:
+			wantTypeName = nodeContains(n.Type, c.pos)
 		default:
 			if breaksExpectedTypeInference(p) {
 				return typeNameInference{}

@@ -16,8 +16,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -129,7 +128,7 @@ func Diagnostics(ctx context.Context, snapshot Snapshot, ph PackageHandle, missi
 			if ctx.Err() != nil {
 				return nil, warn, ctx.Err()
 			}
-			log.Error(ctx, "failed to run analyses", err, telemetry.Package.Of(ph.ID()))
+			event.Error(ctx, "failed to run analyses", err, telemetry.Package.Of(ph.ID()))
 		}
 	}
 	return reports, warn, nil
@@ -164,7 +163,7 @@ type diagnosticSet struct {
 }
 
 func diagnostics(ctx context.Context, snapshot Snapshot, reports map[FileIdentity][]Diagnostic, pkg Package, hasMissingDeps bool) (bool, error) {
-	ctx, done := trace.StartSpan(ctx, "source.diagnostics", telemetry.Package.Of(pkg.ID()))
+	ctx, done := event.StartSpan(ctx, "source.diagnostics", telemetry.Package.Of(pkg.ID()))
 	_ = ctx // circumvent SA4006
 	defer done()
 
@@ -224,7 +223,7 @@ func missingModulesDiagnostics(ctx context.Context, snapshot Snapshot, reports m
 	}
 	file, _, m, _, err := snapshot.View().Session().Cache().ParseGoHandle(fh, ParseHeader).Parse(ctx)
 	if err != nil {
-		log.Error(ctx, "could not parse go file when checking for missing modules", err)
+		event.Error(ctx, "could not parse go file when checking for missing modules", err)
 		return err
 	}
 	// Make a dependency->import map to improve performance when finding missing dependencies.
