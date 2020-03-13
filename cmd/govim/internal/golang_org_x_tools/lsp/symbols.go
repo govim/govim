@@ -10,12 +10,11 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSymbolParams) ([]interface{}, error) {
-	ctx, done := trace.StartSpan(ctx, "lsp.Server.documentSymbol")
+	ctx, done := event.StartSpan(ctx, "lsp.Server.documentSymbol")
 	defer done()
 
 	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.Go)
@@ -24,7 +23,7 @@ func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSy
 	}
 	docSymbols, err := source.DocumentSymbols(ctx, snapshot, fh)
 	if err != nil {
-		log.Error(ctx, "DocumentSymbols failed", err, telemetry.URI.Of(fh.Identity().URI))
+		event.Error(ctx, "DocumentSymbols failed", err, telemetry.URI.Of(fh.Identity().URI))
 		return []interface{}{}, nil
 	}
 	// Convert the symbols to an interface array.

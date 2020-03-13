@@ -14,7 +14,7 @@ import (
 	"sync"
 
 	tlm "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/metric"
 )
 
@@ -92,7 +92,7 @@ type rpcCodeBucket struct {
 	Count int64
 }
 
-func (r *rpcs) Metric(ctx context.Context, data telemetry.MetricData) {
+func (r *rpcs) Metric(ctx context.Context, data event.MetricData) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i, group := range data.Groups() {
@@ -102,7 +102,6 @@ func (r *rpcs) Metric(ctx context.Context, data telemetry.MetricData) {
 		}
 		method, ok := group.Get(tlm.Method).(string)
 		if !ok {
-			log.Printf("Not a method... %v", group)
 			continue
 		}
 		index := sort.Search(len(*set), func(i int) bool {

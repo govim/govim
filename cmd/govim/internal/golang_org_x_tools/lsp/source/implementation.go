@@ -12,12 +12,12 @@ import (
 	"go/types"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
 func Implementation(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Position) ([]protocol.Location, error) {
-	ctx, done := trace.StartSpan(ctx, "source.Implementation")
+	ctx, done := event.StartSpan(ctx, "source.Implementation")
 	defer done()
 
 	impls, err := implementations(ctx, s, f, pp)

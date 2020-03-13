@@ -13,14 +13,13 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/fuzzy"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 const maxSymbols = 100
 
 func WorkspaceSymbols(ctx context.Context, views []View, query string) ([]protocol.SymbolInformation, error) {
-	ctx, done := trace.StartSpan(ctx, "source.WorkspaceSymbols")
+	ctx, done := event.StartSpan(ctx, "source.WorkspaceSymbols")
 	defer done()
 
 	seen := make(map[string]struct{})
@@ -49,12 +48,12 @@ outer:
 				for _, si := range findSymbol(file.Decls, pkg.GetTypesInfo(), matcher) {
 					mrng, err := posToMappedRange(view, pkg, si.node.Pos(), si.node.End())
 					if err != nil {
-						log.Error(ctx, "Error getting mapped range for node", err)
+						event.Error(ctx, "Error getting mapped range for node", err)
 						continue
 					}
 					rng, err := mrng.Range()
 					if err != nil {
-						log.Error(ctx, "Error getting range from mapped range", err)
+						event.Error(ctx, "Error getting range from mapped range", err)
 						continue
 					}
 					symbols = append(symbols, protocol.SymbolInformation{

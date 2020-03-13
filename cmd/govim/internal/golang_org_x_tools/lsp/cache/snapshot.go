@@ -20,7 +20,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -108,7 +108,7 @@ func (s *snapshot) Config(ctx context.Context) *packages.Config {
 		},
 		Logf: func(format string, args ...interface{}) {
 			if s.view.options.VerboseOutput {
-				log.Print(ctx, fmt.Sprintf(format, args...))
+				event.Print(ctx, fmt.Sprintf(format, args...))
 			}
 		},
 		Tests: true,
@@ -151,7 +151,7 @@ func (s *snapshot) PackageHandles(ctx context.Context, fh source.FileHandle) ([]
 		panic("called PackageHandles on a non-Go FileHandle")
 	}
 
-	ctx = telemetry.File.With(ctx, fh.Identity().URI)
+	ctx = event.Label(ctx, telemetry.File.Of(fh.Identity().URI))
 
 	// Check if we should reload metadata for the file. We don't invalidate IDs
 	// (though we should), so the IDs will be a better source of truth than the

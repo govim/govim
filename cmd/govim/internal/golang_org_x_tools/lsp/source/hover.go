@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -71,7 +71,7 @@ func Hover(ctx context.Context, snapshot Snapshot, fh FileHandle, position proto
 }
 
 func (i *IdentifierInfo) Hover(ctx context.Context) (*HoverInformation, error) {
-	ctx, done := trace.StartSpan(ctx, "source.Hover")
+	ctx, done := event.StartSpan(ctx, "source.Hover")
 	defer done()
 
 	h, err := i.Declaration.hover(ctx)
@@ -119,7 +119,7 @@ func (i *IdentifierInfo) linkAndSymbolName() (string, string) {
 	// package's API). This is true if the request originated in a test package,
 	// and if the declaration is also found in the same test package.
 	if i.pkg != nil && obj.Pkg() != nil && i.pkg.ForTest() != "" {
-		if _, pkg, _ := FindFileInPackage(i.pkg, i.Declaration.URI()); i.pkg == pkg {
+		if _, pkg, _ := FindFileInPackage(i.pkg, i.Declaration.MappedRange[0].URI()); i.pkg == pkg {
 			return "", ""
 		}
 	}
@@ -201,7 +201,7 @@ func objectString(obj types.Object, qf types.Qualifier) string {
 }
 
 func (d Declaration) hover(ctx context.Context) (*HoverInformation, error) {
-	_, done := trace.StartSpan(ctx, "source.hover")
+	_, done := event.StartSpan(ctx, "source.hover")
 	defer done()
 
 	obj := d.obj

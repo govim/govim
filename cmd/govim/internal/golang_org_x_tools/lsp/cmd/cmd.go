@@ -18,6 +18,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
@@ -57,7 +58,7 @@ type Application struct {
 	env []string
 
 	// Support for remote lsp server
-	Remote string `flag:"remote" help:"*EXPERIMENTAL* - forward all commands to a remote lsp specified by this flag. If prefixed by 'unix;', the subsequent address is assumed to be a unix domain socket. If 'auto', or prefixed by 'auto', the remote address is automatically resolved based on the executing environment. Otherwise, TCP is used."`
+	Remote string `flag:"remote" help:"forward all commands to a remote lsp specified by this flag. With no special prefix, this is assumed to be a TCP address. If prefixed by 'unix;', the subsequent address is assumed to be a unix domain socket. If 'auto', or prefixed by 'auto;', the remote address is automatically resolved based on the executing environment."`
 
 	// Enable verbose logging
 	Verbose bool `flag:"v" help:"verbose output"`
@@ -81,6 +82,11 @@ func New(name, wd string, env []string, options func(*source.Options)) *Applicat
 		wd:      wd,
 		env:     env,
 		OCAgent: "off", //TODO: Remove this line to default the exporter to on
+
+		Serve: Serve{
+			RemoteListenTimeout: 1 * time.Minute,
+			RemoteLogfile:       "auto",
+		},
 	}
 	return app
 }
@@ -169,6 +175,7 @@ func (app *Application) featureCommands() []tool.Application {
 		&highlight{app: app},
 		&implementation{app: app},
 		&imports{app: app},
+		&inspect{app: app},
 		&links{app: app},
 		&prepareRename{app: app},
 		&query{app: app},

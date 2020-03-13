@@ -40,7 +40,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff/myers"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -353,7 +353,7 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 		case "Structured":
 			o.HoverKind = Structured
 		default:
-			result.errorf("Unsupported hover kind", tag.Of("HoverKind", hoverKind))
+			result.errorf("Unsupported hover kind", event.TagOf("HoverKind", hoverKind))
 		}
 
 	case "linkTarget":

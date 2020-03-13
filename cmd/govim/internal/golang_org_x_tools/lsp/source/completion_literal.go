@@ -14,7 +14,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/log"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 // literal generates composite literal, function literal, and make()
@@ -103,7 +103,7 @@ func (c *completer) literal(literalType types.Type, imp *importInfo) {
 
 	addlEdits, err := c.importEdits(imp)
 	if err != nil {
-		log.Error(c.ctx, "error adding import for literal candidate", err)
+		event.Error(c.ctx, "error adding import for literal candidate", err)
 		return
 	}
 
@@ -116,7 +116,7 @@ func (c *completer) literal(literalType types.Type, imp *importInfo) {
 				// "foo.&Bar{}".
 				edits, err := prependEdit(c.snapshot.View().Session().Cache().FileSet(), c.mapper, sel, "&")
 				if err != nil {
-					log.Error(c.ctx, "error making edit for literal pointer completion", err)
+					event.Error(c.ctx, "error making edit for literal pointer completion", err)
 					return
 				}
 				addlEdits = append(addlEdits, edits...)

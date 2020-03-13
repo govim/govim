@@ -7,25 +7,25 @@
 package telemetry
 
 import (
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/stats"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/unit"
 )
 
-const (
+var (
 	// create the tag keys we use
-	Method        = tag.Key("method")
-	StatusCode    = tag.Key("status.code")
-	StatusMessage = tag.Key("status.message")
-	RPCID         = tag.Key("id")
-	RPCDirection  = tag.Key("direction")
-	File          = tag.Key("file")
-	Directory     = tag.Key("directory")
-	URI           = tag.Key("URI")
-	Package       = tag.Key("package")
-	PackagePath   = tag.Key("package_path")
-	Query         = tag.Key("query")
-	Snapshot      = tag.Key("snapshot")
+	Method        = &event.Key{Name: "method"}
+	StatusCode    = &event.Key{Name: "status.code"}
+	StatusMessage = &event.Key{Name: "status.message"}
+	RPCID         = &event.Key{Name: "id"}
+	RPCDirection  = &event.Key{Name: "direction"}
+	File          = &event.Key{Name: "file"}
+	Directory     = &event.Key{Name: "directory"}
+	URI           = &event.Key{Name: "URI"}
+	Package       = &event.Key{Name: "package"}
+	PackagePath   = &event.Key{Name: "package_path"}
+	Query         = &event.Key{Name: "query"}
+	Snapshot      = &event.Key{Name: "snapshot"}
 )
 
 var (

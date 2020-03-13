@@ -11,7 +11,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/trace"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 type telemetryHandler struct{}
@@ -43,13 +43,13 @@ func (h telemetryHandler) Request(ctx context.Context, conn *jsonrpc2.Conn, dire
 	if direction == jsonrpc2.Receive {
 		mode = telemetry.Inbound
 	}
-	ctx, stats.close = trace.StartSpan(ctx, r.Method,
+	ctx, stats.close = event.StartSpan(ctx, r.Method,
 		telemetry.Method.Of(r.Method),
 		telemetry.RPCDirection.Of(mode),
 		telemetry.RPCID.Of(r.ID),
 	)
 	telemetry.Started.Record(ctx, 1)
-	_, stats.delivering = trace.StartSpan(ctx, "queued")
+	_, stats.delivering = event.StartSpan(ctx, "queued")
 	return ctx
 }
 
@@ -60,9 +60,9 @@ func (h telemetryHandler) Response(ctx context.Context, conn *jsonrpc2.Conn, dir
 func (h telemetryHandler) Done(ctx context.Context, err error) {
 	stats := h.getStats(ctx)
 	if err != nil {
-		ctx = telemetry.StatusCode.With(ctx, "ERROR")
+		ctx = event.Label(ctx, telemetry.StatusCode.Of("ERROR"))
 	} else {
-		ctx = telemetry.StatusCode.With(ctx, "OK")
+		ctx = event.Label(ctx, telemetry.StatusCode.Of("OK"))
 	}
 	elapsedTime := time.Since(stats.start)
 	latencyMillis := float64(elapsedTime) / float64(time.Millisecond)
