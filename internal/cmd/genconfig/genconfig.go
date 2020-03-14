@@ -270,39 +270,43 @@ env:
   GH_USER: "x-access-token"
   GH_TOKEN: ${{ github.token }}
   GOVIM_TEST_RACE_SLOWDOWN: "1.5"
-  RACE_BUILD: 786
 
 name: Go
 jobs:
-  test:
+  test-macos:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        go_version: {{{ .GoVersions }}}
-        vim_flavor: {{{ .VimFlavors }}}
-        vim_version: {{{ .VimVersions }}}
+        os: [macos-latest]
+        go_version: ['1.14.x']
+        vim_version: ["master"]
+        vim_flavor: ['vim']
     runs-on: ${{ matrix.os }}
     env:
-      GO_VERSION: ${{ matrix.go_version }}
-      VIM_FLAVOR: ${{ matrix.vim_flavor }}
-      VIM_VERSION: ${{ matrix.vim_version }}
+      VIM_FLAVOR: vim
+      GOVIM_TESTSCRIPT_WORKDIR_ROOT: /tmp/artefacts
     steps:
     - name: Checkout code
       uses: actions/checkout@722adc63f1aa60a57ec37892e133b1d319cae598
-    - name: Build docker image
-      run: ./_scripts/buildGovimImage.sh
-    - name: Run Docker, run!
-      if: success()
-      run: ./_scripts/runDockerRun.sh
-    - name: Tidy up
-      if: success() || failure()
-      run: ./_scripts/postRun.sh
+    - name: Install Vim
+      uses: ./github/actions/setupvim
+      with:
+        version: ${{ matrix.vim_version }}
+    - name: Install Go
+      uses: actions/setup-go@9fbc767707c286e568c92927bbf57d76b73e0892
+      with:
+        go-version: ${{ matrix.go_version }}
+    - name: Vim version
+      run: vim --version
+    - name: Go version
+      run: go version
+    - name: Run tests
+      run: ./_scripts/captureLogs.sh $GOVIM_TESTSCRIPT_WORKDIR_ROOT go run ./internal/cmd/dots go test -timeout 30m ./...
     - name: Upload artefacts
-      if: (success() || failure()) && env.CI_UPLOAD_ARTIFACTS == 'true'
+      if: success() || failure()
       uses: actions/upload-artifact@3446296876d12d4e3a0f3145a3c87e67bf0a16b5
       with:
-        path: /home/runner/.artefacts
+        path: /tmp/artefacts
         name: ${{ matrix.os }}_${{ matrix.go_version }}_${{ matrix.vim_flavor }}_${{ matrix.vim_version }}
 `
 
