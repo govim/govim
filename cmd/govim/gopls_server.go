@@ -315,13 +315,6 @@ func (l loggingGoplsServer) SelectionRange(ctxt context.Context, params *protoco
 	return res, err
 }
 
-func (l loggingGoplsServer) Progress(ctxt context.Context, params *protocol.ProgressParams) error {
-	l.Logf("gopls.Progress() call; params:\n%v", pretty.Sprint(params))
-	err := l.u.Progress(ctxt, params)
-	l.Logf("gopls.Progress() return; err: %v\n", err)
-	return err
-}
-
 func (l loggingGoplsServer) NonstandardRequest(ctxt context.Context, method string, params interface{}) (interface{}, error) {
 	l.Logf("gopls.NonstandardRequest() call; method: %v, params:\n%v", method, pretty.Sprint(params))
 	res, err := l.u.NonstandardRequest(ctxt, method, params)
@@ -375,12 +368,5 @@ func (l loggingGoplsServer) WorkDoneProgressCancel(ctxt context.Context, params 
 	l.Logf("gopls.WorkDoneProgressCancel() call; params:\n%v", pretty.Sprint(params))
 	err := l.u.WorkDoneProgressCancel(ctxt, params)
 	l.Logf("gopls.WorkDoneProgressCancel() return; err: %v\n", err)
-	return err
-}
-
-func (l loggingGoplsServer) WorkDoneProgressCreate(ctxt context.Context, params *protocol.WorkDoneProgressCreateParams) error {
-	l.Logf("gopls.WorkDoneProgressCreate() call; params:\n%v", pretty.Sprint(params))
-	err := l.u.WorkDoneProgressCreate(ctxt, params)
-	l.Logf("gopls.WorkDoneProgressCreate() return; err: %v\n", err)
 	return err
 }

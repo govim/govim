@@ -15,6 +15,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 const concurrentAnalyses = 1
@@ -78,6 +79,12 @@ type Server struct {
 
 	// diagnosticsSema limits the concurrency of diagnostics runs, which can be expensive.
 	diagnosticsSema chan struct{}
+
+	// supportsWorkDoneProgress is set in the initializeRequest
+	// to determine if the client can support progress notifications
+	supportsWorkDoneProgress bool
+	inProgressMu             sync.Mutex
+	inProgress               map[string]func()
 }
 
 // sentDiagnostics is used to cache diagnostics that have been sent for a given file.
@@ -94,11 +101,18 @@ func (s *Server) cancelRequest(ctx context.Context, params *protocol.CancelParam
 }
 
 func (s *Server) codeLens(ctx context.Context, params *protocol.CodeLensParams) ([]protocol.CodeLens, error) {
-	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.Mod)
+	snapshot, fh, ok, err := s.beginFileRequest(params.TextDocument.URI, source.UnknownKind)
 	if !ok {
 		return nil, err
 	}
-	return mod.CodeLens(ctx, snapshot, fh.Identity().URI)
+	switch fh.Identity().Kind {
+	case source.Mod:
+		return mod.CodeLens(ctx, snapshot, fh.Identity().URI)
+	case source.Go:
+		return source.CodeLens(ctx, snapshot, fh)
+	}
+	// Unsupported file kind for a code action.
+	return nil, nil
 }
 
 func (s *Server) nonstandardRequest(ctx context.Context, method string, params interface{}) (interface{}, error) {
@@ -130,6 +144,27 @@ func (s *Server) nonstandardRequest(ctx context.Context, method string, params i
 		return struct{}{}, nil
 	}
 	return nil, notImplemented(method)
+}
+
+func (s *Server) workDoneProgressCancel(ctx context.Context, params *protocol.WorkDoneProgressCancelParams) error {
+	token, ok := params.Token.(string)
+	if !ok {
+		return errors.Errorf("expected params.Token to be string but got %T", params.Token)
+	}
+	s.inProgressMu.Lock()
+	defer s.inProgressMu.Unlock()
+	cancel, ok := s.inProgress[token]
+	if !ok {
+		return errors.Errorf("token %q not found in progress", token)
+	}
+	cancel()
+	return nil
+}
+
+func (s *Server) clearInProgress(token string) {
+	s.inProgressMu.Lock()
+	delete(s.inProgress, token)
+	s.inProgressMu.Unlock()
 }
 
 func notImplemented(method string) *jsonrpc2.Error {
