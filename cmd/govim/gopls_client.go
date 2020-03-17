@@ -63,7 +63,7 @@ func (g *govimplugin) ShowMessage(ctxt context.Context, params *protocol.ShowMes
 
 func (g *govimplugin) ShowMessageRequest(context.Context, *protocol.ShowMessageRequestParams) (*protocol.MessageActionItem, error) {
 	defer absorbShutdownErr()
-	panic("not implemented yet")
+	panic("ShowMessageRequest not implemented yet")
 }
 
 func (g *govimplugin) LogMessage(ctxt context.Context, params *protocol.LogMessageParams) error {
@@ -74,7 +74,7 @@ func (g *govimplugin) LogMessage(ctxt context.Context, params *protocol.LogMessa
 
 func (g *govimplugin) Telemetry(context.Context, interface{}) error {
 	defer absorbShutdownErr()
-	panic("not implemented yet")
+	panic("Telemetry not implemented yet")
 }
 
 func (g *govimplugin) RegisterCapability(ctxt context.Context, params *protocol.RegistrationParams) error {
@@ -85,12 +85,12 @@ func (g *govimplugin) RegisterCapability(ctxt context.Context, params *protocol.
 
 func (g *govimplugin) UnregisterCapability(context.Context, *protocol.UnregistrationParams) error {
 	defer absorbShutdownErr()
-	panic("not implemented yet")
+	panic("UnregisterCapability not implemented yet")
 }
 
 func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFolder, error) {
 	defer absorbShutdownErr()
-	panic("not implemented yet")
+	panic("WorkspaceFolders not implemented yet")
 }
 
 func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.ParamConfiguration) ([]interface{}, error) {
@@ -149,12 +149,12 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 
 func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {
 	defer absorbShutdownErr()
-	panic("not implemented yet")
+	panic("ApplyEdit not implemented yet")
 }
 
 func (g *govimplugin) Event(context.Context, *interface{}) error {
 	defer absorbShutdownErr()
-	panic("not implemented yet")
+	panic("Event not implemented yet")
 }
 
 func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.PublishDiagnosticsParams) error {
@@ -184,6 +184,15 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 		return v.handleDiagnosticsChanged()
 	})
 	return nil
+}
+
+func (g *govimplugin) Progress(ctxt context.Context, params *protocol.ProgressParams) error {
+	defer absorbShutdownErr()
+	panic("Progress not implemented yet")
+}
+func (g *govimplugin) WorkDoneProgressCreate(ctxt context.Context, params *protocol.WorkDoneProgressCreateParams) error {
+	defer absorbShutdownErr()
+	panic("WorkDoneProgressCreate not implemented yet")
 }
 
 func absorbShutdownErr() {
