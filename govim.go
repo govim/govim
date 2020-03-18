@@ -312,12 +312,13 @@ func (g *govimImpl) load() error {
 		g.Logf("No build info available")
 	}
 
-	g.tomb.Go(func() error {
-		return <-g.pluginErrCh
-	})
-
 	if g.plugin != nil {
 		g.pluginErrCh = make(chan error)
+
+		g.tomb.Go(func() error {
+			return <-g.pluginErrCh
+		})
+
 		err := g.DoProto(func() error {
 			var details struct {
 				Version     string
