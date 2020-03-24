@@ -184,6 +184,7 @@ func (app *Application) featureCommands() []tool.Application {
 		&signature{app: app},
 		&suggestedfix{app: app},
 		&symbols{app: app},
+		&workspaceSymbol{app: app},
 	}
 }
 
@@ -202,7 +203,12 @@ func (app *Application) connect(ctx context.Context) (*connection, error) {
 	case strings.HasPrefix(app.Remote, "internal@"):
 		internalMu.Lock()
 		defer internalMu.Unlock()
-		if c := internalConnections[app.wd]; c != nil {
+		opts := source.DefaultOptions()
+		if app.options != nil {
+			app.options(&opts)
+		}
+		key := fmt.Sprintf("%s %v", app.wd, opts)
+		if c := internalConnections[key]; c != nil {
 			return c, nil
 		}
 		remote := app.Remote[len("internal@"):]
@@ -211,7 +217,7 @@ func (app *Application) connect(ctx context.Context) (*connection, error) {
 		if err != nil {
 			return nil, err
 		}
-		internalConnections[app.wd] = connection
+		internalConnections[key] = connection
 		return connection, nil
 	default:
 		return app.connectRemote(ctx, app.Remote)
@@ -234,6 +240,12 @@ func (app *Application) connectRemote(ctx context.Context, remote string) (*conn
 	return connection, connection.initialize(ctx, app.options)
 }
 
+var matcherString = map[source.Matcher]string{
+	source.Fuzzy:           "fuzzy",
+	source.CaseSensitive:   "caseSensitive",
+	source.CaseInsensitive: "default",
+}
+
 func (c *connection) initialize(ctx context.Context, options func(*source.Options)) error {
 	params := &protocol.ParamInitialize{}
 	params.RootURI = protocol.URIFromPath(c.Client.app.wd)
@@ -248,6 +260,9 @@ func (c *connection) initialize(ctx context.Context, options func(*source.Option
 		ContentFormat: []protocol.MarkupKind{opts.PreferredContentFormat},
 	}
 	params.Capabilities.TextDocument.DocumentSymbol.HierarchicalDocumentSymbolSupport = opts.HierarchicalDocumentSymbolSupport
+	params.InitializationOptions = map[string]interface{}{
+		"matcher": matcherString[opts.Matcher],
+	}
 
 	if _, err := c.Server.Initialize(ctx, params); err != nil {
 		return err

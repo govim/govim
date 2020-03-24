@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"golang.org/x/tools/txtar"
@@ -59,7 +60,7 @@ func NewWorkspace(name string, txt []byte) (_ *Workspace, err error) {
 	w.gopath = gopath
 	archive := txtar.Parse(txt)
 	for _, f := range archive.Files {
-		if err := w.writeFileData(f.Name, f.Data); err != nil {
+		if err := w.writeFileData(f.Name, string(f.Data)); err != nil {
 			return nil, err
 		}
 	}
@@ -122,6 +123,16 @@ func (w *Workspace) ReadFile(path string) (string, error) {
 	return string(b), nil
 }
 
+// RegexpSearch searches the file
+func (w *Workspace) RegexpSearch(path string, re string) (Pos, error) {
+	content, err := w.ReadFile(path)
+	if err != nil {
+		return Pos{}, err
+	}
+	start, _, err := regexpRange(content, re)
+	return start, err
+}
+
 // RemoveFile removes a workspace-relative file path.
 func (w *Workspace) RemoveFile(ctx context.Context, path string) error {
 	fp := w.filePath(path)
@@ -136,6 +147,32 @@ func (w *Workspace) RemoveFile(ctx context.Context, path string) error {
 		},
 	}}
 	w.sendEvents(ctx, evts)
+	return nil
+}
+
+// RunGoCommand executes a go command in the workspace.
+func (w *Workspace) RunGoCommand(ctx context.Context, verb string, args ...string) error {
+	inv := gocommand.Invocation{
+		Verb:       verb,
+		Args:       args,
+		WorkingDir: w.workdir,
+	}
+	_, stderr, _, err := inv.RunRaw(ctx)
+	if err != nil {
+		return err
+	}
+	// Hardcoded "file watcher": If the command executed was "go mod init",
+	// send a file creation event for a go.mod in the working directory.
+	if strings.HasPrefix(stderr.String(), "go: creating new go.mod") {
+		modpath := filepath.Join(w.workdir, "go.mod")
+		w.sendEvents(ctx, []FileEvent{{
+			Path: modpath,
+			ProtocolEvent: protocol.FileEvent{
+				URI:  toURI(modpath),
+				Type: protocol.Created,
+			},
+		}})
+	}
 	return nil
 }
 
@@ -162,7 +199,7 @@ func (w *Workspace) WriteFile(ctx context.Context, path, content string) error {
 	} else {
 		changeType = protocol.Changed
 	}
-	if err := w.writeFileData(path, []byte(content)); err != nil {
+	if err := w.writeFileData(path, content); err != nil {
 		return err
 	}
 	evts := []FileEvent{{
@@ -176,12 +213,12 @@ func (w *Workspace) WriteFile(ctx context.Context, path, content string) error {
 	return nil
 }
 
-func (w *Workspace) writeFileData(path string, data []byte) error {
+func (w *Workspace) writeFileData(path string, content string) error {
 	fp := w.filePath(path)
 	if err := os.MkdirAll(filepath.Dir(fp), 0755); err != nil {
 		return fmt.Errorf("creating nested directory: %v", err)
 	}
-	if err := ioutil.WriteFile(fp, data, 0644); err != nil {
+	if err := ioutil.WriteFile(fp, []byte(content), 0644); err != nil {
 		return fmt.Errorf("writing %q: %v", path, err)
 	}
 	return nil

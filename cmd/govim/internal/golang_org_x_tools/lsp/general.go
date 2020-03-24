@@ -13,6 +13,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -156,7 +157,7 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 	}
 
 	buf := &bytes.Buffer{}
-	debug.PrintVersionInfo(buf, true, debug.PlainText)
+	debug.PrintVersionInfo(ctx, buf, true, debug.PlainText)
 	event.Print(ctx, buf.String())
 
 	s.addFolders(ctx, s.pendingFolders)
@@ -171,11 +172,20 @@ func (s *Server) addFolders(ctx context.Context, folders []protocol.WorkspaceFol
 
 	for _, folder := range folders {
 		uri := span.URIFromURI(folder.URI)
-		_, snapshot, err := s.addView(ctx, folder.Name, uri)
+		view, snapshot, err := s.addView(ctx, folder.Name, uri)
 		if err != nil {
 			viewErrors[uri] = err
 			continue
 		}
+		// Print each view's environment.
+		buf := &bytes.Buffer{}
+		if err := view.WriteEnv(ctx, buf); err != nil {
+			event.Error(ctx, "failed to write environment", err, tag.Directory.Of(view.Folder()))
+			continue
+		}
+		event.Print(ctx, buf.String())
+
+		// Diagnose the newly created view.
 		go s.diagnoseDetached(snapshot)
 	}
 	if len(viewErrors) > 0 {
@@ -291,16 +301,4 @@ func (s *Server) exit(ctx context.Context) error {
 	}
 	ServerExitFunc(0)
 	return nil
-}
-
-func setBool(b *bool, m map[string]interface{}, name string) {
-	if v, ok := m[name].(bool); ok {
-		*b = v
-	}
-}
-
-func setNotBool(b *bool, m map[string]interface{}, name string) {
-	if v, ok := m[name].(bool); ok {
-		*b = !v
-	}
 }

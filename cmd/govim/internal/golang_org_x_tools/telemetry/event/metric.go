@@ -4,14 +4,26 @@
 
 package event
 
-// MetricData represents a single point in the time series of a metric.
-// This provides the common interface to all metrics no matter their data
-// format.
-// To get the actual values for the metric you must type assert to a concrete
-// metric type.
-type MetricData interface {
-	// Handle returns the metric handle this data is for.
-	Handle() string
-	// Groups reports the rows that currently exist for this metric.
-	Groups() []TagList
+import (
+	"context"
+)
+
+// Record sends a label event to the exporter with the supplied tags.
+func Record(ctx context.Context, tags ...Tag) context.Context {
+	return dispatch(ctx, makeEvent(RecordType, sTags{}, tags))
+}
+
+// Record1 sends a label event to the exporter with the supplied tags.
+func Record1(ctx context.Context, t1 Tag) context.Context {
+	return dispatch(ctx, makeEvent(RecordType, sTags{t1}, nil))
+}
+
+// Record2 sends a label event to the exporter with the supplied tags.
+func Record2(ctx context.Context, t1, t2 Tag) context.Context {
+	return dispatch(ctx, makeEvent(RecordType, sTags{t1, t2}, nil))
+}
+
+// Record3 sends a label event to the exporter with the supplied tags.
+func Record3(ctx context.Context, t1, t2, t3 Tag) context.Context {
+	return dispatch(ctx, makeEvent(RecordType, sTags{t1, t2, t3}, nil))
 }

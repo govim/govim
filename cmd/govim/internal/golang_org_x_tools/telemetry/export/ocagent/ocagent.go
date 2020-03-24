@@ -20,6 +20,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/metric"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/ocagent/wire"
 )
 
@@ -46,7 +47,7 @@ type Exporter struct {
 	mu      sync.Mutex
 	config  Config
 	spans   []*export.Span
-	metrics []event.MetricData
+	metrics []metric.Data
 }
 
 // Connect creates a process specific exporter with the specified
@@ -84,23 +85,22 @@ func Connect(config *Config) *Exporter {
 	return exporter
 }
 
-func (e *Exporter) ProcessEvent(ctx context.Context, ev event.Event) context.Context {
-	if !ev.IsEndSpan() {
-		return ctx
-	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	span := export.GetSpan(ctx)
-	if span != nil {
-		e.spans = append(e.spans, span)
+func (e *Exporter) ProcessEvent(ctx context.Context, ev event.Event, tagMap event.TagMap) context.Context {
+	switch {
+	case ev.IsEndSpan():
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		span := export.GetSpan(ctx)
+		if span != nil {
+			e.spans = append(e.spans, span)
+		}
+	case ev.IsRecord():
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		data := metric.Entries.Get(tagMap).([]metric.Data)
+		e.metrics = append(e.metrics, data...)
 	}
 	return ctx
-}
-
-func (e *Exporter) Metric(ctx context.Context, data event.MetricData) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.metrics = append(e.metrics, data)
 }
 
 func (e *Exporter) Flush() {
@@ -198,10 +198,10 @@ func convertSpan(span *export.Span) *wire.Span {
 		ParentSpanID:            span.ParentID[:],
 		Name:                    toTruncatableString(span.Name),
 		Kind:                    wire.UnspecifiedSpanKind,
-		StartTime:               convertTimestamp(span.Start),
-		EndTime:                 convertTimestamp(span.Finish),
-		Attributes:              convertAttributes(span.Tags),
-		TimeEvents:              convertEvents(span.Events),
+		StartTime:               convertTimestamp(span.Start().At),
+		EndTime:                 convertTimestamp(span.Finish().At),
+		Attributes:              convertAttributes(event.Filter(span.Start().Tags(), event.Name)),
+		TimeEvents:              convertEvents(span.Events()),
 		SameProcessAsParentSpan: true,
 		//TODO: StackTrace?
 		//TODO: Links?
@@ -211,7 +211,7 @@ func convertSpan(span *export.Span) *wire.Span {
 	return result
 }
 
-func convertMetric(data event.MetricData, start time.Time) *wire.Metric {
+func convertMetric(data metric.Data, start time.Time) *wire.Metric {
 	descriptor := dataToMetricDescriptor(data)
 	timeseries := dataToTimeseries(data, start)
 
@@ -227,49 +227,54 @@ func convertMetric(data event.MetricData, start time.Time) *wire.Metric {
 	}
 }
 
-func convertAttributes(tags event.TagList) *wire.Attributes {
-	if len(tags) == 0 {
+func convertAttributes(it event.TagIterator) *wire.Attributes {
+	if !it.Valid() {
 		return nil
 	}
 	attributes := make(map[string]wire.Attribute)
-	for _, tag := range tags {
-		attributes[tag.Key.Name] = convertAttribute(tag.Value)
+	for ; it.Valid(); it.Advance() {
+		tag := it.Tag()
+		attributes[tag.Key.Name()] = convertAttribute(tag)
 	}
 	return &wire.Attributes{AttributeMap: attributes}
 }
 
-func convertAttribute(v interface{}) wire.Attribute {
-	switch v := v.(type) {
-	case int8:
-		return wire.IntAttribute{IntValue: int64(v)}
-	case int16:
-		return wire.IntAttribute{IntValue: int64(v)}
-	case int32:
-		return wire.IntAttribute{IntValue: int64(v)}
-	case int64:
-		return wire.IntAttribute{IntValue: v}
-	case int:
-		return wire.IntAttribute{IntValue: int64(v)}
-	case uint8:
-		return wire.IntAttribute{IntValue: int64(v)}
-	case uint16:
-		return wire.IntAttribute{IntValue: int64(v)}
-	case uint32:
-		return wire.IntAttribute{IntValue: int64(v)}
-	case uint64:
-		return wire.IntAttribute{IntValue: int64(v)}
-	case uint:
-		return wire.IntAttribute{IntValue: int64(v)}
-	case float32:
-		return wire.DoubleAttribute{DoubleValue: float64(v)}
-	case float64:
-		return wire.DoubleAttribute{DoubleValue: v}
-	case bool:
-		return wire.BoolAttribute{BoolValue: v}
-	case string:
-		return wire.StringAttribute{StringValue: toTruncatableString(v)}
+func convertAttribute(tag event.Tag) wire.Attribute {
+	switch key := tag.Key.(type) {
+	case *event.IntKey:
+		return wire.IntAttribute{IntValue: int64(key.From(tag))}
+	case *event.Int8Key:
+		return wire.IntAttribute{IntValue: int64(key.From(tag))}
+	case *event.Int16Key:
+		return wire.IntAttribute{IntValue: int64(key.From(tag))}
+	case *event.Int32Key:
+		return wire.IntAttribute{IntValue: int64(key.From(tag))}
+	case *event.Int64Key:
+		return wire.IntAttribute{IntValue: int64(key.From(tag))}
+	case *event.UIntKey:
+		return wire.IntAttribute{IntValue: int64(key.From(tag))}
+	case *event.UInt8Key:
+		return wire.IntAttribute{IntValue: int64(key.From(tag))}
+	case *event.UInt16Key:
+		return wire.IntAttribute{IntValue: int64(key.From(tag))}
+	case *event.UInt32Key:
+		return wire.IntAttribute{IntValue: int64(key.From(tag))}
+	case *event.UInt64Key:
+		return wire.IntAttribute{IntValue: int64(key.From(tag))}
+	case *event.Float32Key:
+		return wire.DoubleAttribute{DoubleValue: float64(key.From(tag))}
+	case *event.Float64Key:
+		return wire.DoubleAttribute{DoubleValue: key.From(tag)}
+	case *event.BooleanKey:
+		return wire.BoolAttribute{BoolValue: key.From(tag)}
+	case *event.StringKey:
+		return wire.StringAttribute{StringValue: toTruncatableString(key.From(tag))}
+	case *event.ErrorKey:
+		return wire.StringAttribute{StringValue: toTruncatableString(key.From(tag).Error())}
+	case *event.ValueKey:
+		return wire.StringAttribute{StringValue: toTruncatableString(fmt.Sprint(key.From(tag)))}
 	default:
-		return wire.StringAttribute{StringValue: toTruncatableString(fmt.Sprint(v))}
+		return wire.StringAttribute{StringValue: toTruncatableString(fmt.Sprintf("%T", key))}
 	}
 }
 
@@ -290,17 +295,19 @@ func convertEvent(ev event.Event) wire.TimeEvent {
 }
 
 func convertAnnotation(ev event.Event) *wire.Annotation {
-	description := ev.Message
-	if description == "" && ev.Error != nil {
-		description = ev.Error.Error()
-		ev.Error = nil
-	}
-	tags := ev.Tags
-	if ev.Error != nil {
-		tags = append(tags, event.TagOf("error", ev.Error))
-	}
-	if description == "" && len(tags) == 0 {
+	tags := ev.Tags()
+	if !tags.Valid() {
 		return nil
+	}
+	tagMap := ev.Map()
+	description := event.Msg.Get(tagMap)
+	tags = event.Filter(tags, event.Msg)
+	if description == "" {
+		err := event.Err.Get(tagMap)
+		tags = event.Filter(tags, event.Err)
+		if err != nil {
+			description = err.Error()
+		}
 	}
 	return &wire.Annotation{
 		Description: toTruncatableString(description),

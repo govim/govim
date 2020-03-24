@@ -5,9 +5,9 @@
 package debug
 
 import (
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/metric"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/metric"
 )
 
 var (
@@ -18,33 +18,41 @@ var (
 	receivedBytes = metric.HistogramInt64{
 		Name:        "received_bytes",
 		Description: "Distribution of received bytes, by method.",
-		Keys:        []*event.Key{telemetry.RPCDirection, telemetry.Method},
+		Keys:        []event.Key{tag.RPCDirection, tag.Method},
 		Buckets:     bytesDistribution,
-	}.Record(telemetry.ReceivedBytes)
+	}
 
 	sentBytes = metric.HistogramInt64{
 		Name:        "sent_bytes",
 		Description: "Distribution of sent bytes, by method.",
-		Keys:        []*event.Key{telemetry.RPCDirection, telemetry.Method},
+		Keys:        []event.Key{tag.RPCDirection, tag.Method},
 		Buckets:     bytesDistribution,
-	}.Record(telemetry.SentBytes)
+	}
 
 	latency = metric.HistogramFloat64{
 		Name:        "latency",
 		Description: "Distribution of latency in milliseconds, by method.",
-		Keys:        []*event.Key{telemetry.RPCDirection, telemetry.Method},
+		Keys:        []event.Key{tag.RPCDirection, tag.Method},
 		Buckets:     millisecondsDistribution,
-	}.Record(telemetry.Latency)
+	}
 
 	started = metric.Scalar{
 		Name:        "started",
 		Description: "Count of RPCs started by method.",
-		Keys:        []*event.Key{telemetry.RPCDirection, telemetry.Method},
-	}.CountInt64(telemetry.Started)
+		Keys:        []event.Key{tag.RPCDirection, tag.Method},
+	}
 
 	completed = metric.Scalar{
 		Name:        "completed",
 		Description: "Count of RPCs completed by method and status.",
-		Keys:        []*event.Key{telemetry.RPCDirection, telemetry.Method, telemetry.StatusCode},
-	}.CountFloat64(telemetry.Latency)
+		Keys:        []event.Key{tag.RPCDirection, tag.Method, tag.StatusCode},
+	}
 )
+
+func registerMetrics(m *metric.Config) {
+	receivedBytes.Record(m, tag.ReceivedBytes)
+	sentBytes.Record(m, tag.SentBytes)
+	latency.Record(m, tag.Latency)
+	started.Count(m, tag.Started)
+	completed.Count(m, tag.Latency)
+}

@@ -8,13 +8,11 @@ package mod
 
 import (
 	"context"
-	"fmt"
-	"regexp"
 
 	"golang.org/x/mod/modfile"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
@@ -26,8 +24,7 @@ func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.File
 	if realURI == "" || tempURI == "" {
 		return nil, nil, nil
 	}
-
-	ctx, done := event.StartSpan(ctx, "mod.Diagnostics", telemetry.File.Of(realURI))
+	ctx, done := event.StartSpan(ctx, "mod.Diagnostics", tag.URI.Of(realURI))
 	defer done()
 
 	realfh, err := snapshot.GetFile(realURI)
@@ -42,9 +39,8 @@ func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.File
 	if err != nil {
 		return nil, nil, err
 	}
-
 	reports := map[source.FileIdentity][]source.Diagnostic{
-		realfh.Identity(): []source.Diagnostic{},
+		realfh.Identity(): {},
 	}
 	for _, e := range parseErrors {
 		diag := source.Diagnostic{
@@ -97,7 +93,7 @@ func SuggestedFixes(ctx context.Context, snapshot source.Snapshot, realfh source
 				for uri, edits := range fix.Edits {
 					fh, err := snapshot.GetFile(uri)
 					if err != nil {
-						event.Error(ctx, "no file", err, telemetry.URI.Of(uri))
+						event.Error(ctx, "no file", err, tag.URI.Of(uri))
 						continue
 					}
 					action.Edit.DocumentChanges = append(action.Edit.DocumentChanges, protocol.TextDocumentEdit{
@@ -117,16 +113,15 @@ func SuggestedFixes(ctx context.Context, snapshot source.Snapshot, realfh source
 	return actions
 }
 
-func SuggestedGoFixes(ctx context.Context, snapshot source.Snapshot, gofh source.FileHandle, diags []protocol.Diagnostic) ([]protocol.CodeAction, error) {
-	// TODO: We will want to support diagnostics for go.mod files even when the -modfile flag is turned off.
+func SuggestedGoFixes(ctx context.Context, snapshot source.Snapshot) (map[string]protocol.TextDocumentEdit, error) {
+	// TODO(rstambler): Support diagnostics for go.mod files even when the
+	// -modfile flag is turned off.
 	realURI, tempURI := snapshot.View().ModFiles()
-
-	// Check the case when the tempModfile flag is turned off.
 	if realURI == "" || tempURI == "" {
 		return nil, nil
 	}
 
-	ctx, done := event.StartSpan(ctx, "mod.SuggestedGoFixes", telemetry.File.Of(realURI))
+	ctx, done := event.StartSpan(ctx, "mod.SuggestedGoFixes", tag.URI.Of(realURI))
 	defer done()
 
 	realfh, err := snapshot.GetFile(realURI)
@@ -141,23 +136,16 @@ func SuggestedGoFixes(ctx context.Context, snapshot source.Snapshot, gofh source
 	if err != nil {
 		return nil, err
 	}
+	if len(missingDeps) == 0 {
+		return nil, nil
+	}
 	// Get the contents of the go.mod file before we make any changes.
 	oldContents, _, err := realfh.Read(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	var actions []protocol.CodeAction
-	for _, diag := range diags {
-		re := regexp.MustCompile(`(.+) is not in your go.mod file`)
-		matches := re.FindStringSubmatch(diag.Message)
-		if len(matches) != 2 {
-			continue
-		}
-		req := missingDeps[matches[1]]
-		if req == nil {
-			continue
-		}
+	textDocumentEdits := make(map[string]protocol.TextDocumentEdit)
+	for dep, req := range missingDeps {
 		// Calculate the quick fix edits that need to be made to the go.mod file.
 		if err := realFile.AddRequire(req.Mod.Path, req.Mod.Version); err != nil {
 			return nil, err
@@ -177,27 +165,17 @@ func SuggestedGoFixes(ctx context.Context, snapshot source.Snapshot, gofh source
 		if err != nil {
 			return nil, err
 		}
-		action := protocol.CodeAction{
-			Title:       fmt.Sprintf("Add %s to go.mod", req.Mod.Path),
-			Kind:        protocol.QuickFix,
-			Diagnostics: []protocol.Diagnostic{diag},
-			Edit: protocol.WorkspaceEdit{
-				DocumentChanges: []protocol.TextDocumentEdit{
-					{
-						TextDocument: protocol.VersionedTextDocumentIdentifier{
-							Version: realfh.Identity().Version,
-							TextDocumentIdentifier: protocol.TextDocumentIdentifier{
-								URI: protocol.URIFromSpanURI(realfh.Identity().URI),
-							},
-						},
-						Edits: edits,
-					},
+		textDocumentEdits[dep] = protocol.TextDocumentEdit{
+			TextDocument: protocol.VersionedTextDocumentIdentifier{
+				Version: realfh.Identity().Version,
+				TextDocumentIdentifier: protocol.TextDocumentIdentifier{
+					URI: protocol.URIFromSpanURI(realfh.Identity().URI),
 				},
 			},
+			Edits: edits,
 		}
-		actions = append(actions, action)
 	}
-	return actions, nil
+	return textDocumentEdits, nil
 }
 
 func sameDiagnostic(d protocol.Diagnostic, e source.Error) bool {

@@ -17,8 +17,8 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
@@ -151,7 +151,7 @@ func (s *snapshot) PackageHandles(ctx context.Context, fh source.FileHandle) ([]
 		panic("called PackageHandles on a non-Go FileHandle")
 	}
 
-	ctx = event.Label(ctx, telemetry.File.Of(fh.Identity().URI))
+	ctx = event.Label(ctx, tag.URI.Of(fh.Identity().URI))
 
 	// Check if we should reload metadata for the file. We don't invalidate IDs
 	// (though we should), so the IDs will be a better source of truth than the
@@ -478,6 +478,8 @@ func (s *snapshot) addID(uri span.URI, id packageID) {
 		// had a command-line-arguments ID, we should just replace it.
 		if existingID == "command-line-arguments" {
 			s.ids[uri][i] = id
+			// Delete command-line-arguments if it was a workspace package.
+			delete(s.workspacePackages, existingID)
 			return
 		}
 	}
@@ -547,6 +549,10 @@ func (s *snapshot) reloadWorkspace(ctx context.Context) error {
 	s.mu.Lock()
 	var pkgPaths []interface{}
 	for id, pkgPath := range s.workspacePackages {
+		// Don't try to reload "command-line-arguments" directly.
+		if pkgPath == "command-line-arguments" {
+			continue
+		}
 		if s.metadata[id] == nil {
 			pkgPaths = append(pkgPaths, pkgPath)
 		}
@@ -581,6 +587,7 @@ func (s *snapshot) reloadOrphanedFiles(ctx context.Context) error {
 	// Check for context cancellation so that we don't incorrectly mark files
 	// as unloadable, but don't return before setting all workspace packages.
 	if ctx.Err() == nil && err != nil {
+		event.Error(ctx, "reloadOrphanedFiles: failed to load", err, tag.Query.Of(scopes))
 		s.mu.Lock()
 		for _, scope := range scopes {
 			uri := span.URI(scope.(fileURI))
@@ -689,7 +696,6 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Fi
 		if invalidateMetadata || fileWasSaved(originalFH, currentFH) {
 			result.modTidyHandle = nil
 		}
-
 		if currentFH.Identity().Kind == source.Mod {
 			// If the view's go.mod file's contents have changed, invalidate the metadata
 			// for all of the packages in the workspace.
@@ -745,10 +751,6 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Fi
 		// Make sure to remove the changed file from the unloadable set.
 		delete(result.unloadableFiles, withoutURI)
 	}
-	// Copy the set of initally loaded packages.
-	for k, v := range s.workspacePackages {
-		result.workspacePackages[k] = v
-	}
 	// Copy the package type information.
 	for k, v := range s.packages {
 		if _, ok := transitiveIDs[k.id]; ok {
@@ -781,6 +783,18 @@ outer:
 			}
 		}
 		result.ids[k] = ids
+	}
+	// Copy the set of initally loaded packages.
+	for id, pkgPath := range s.workspacePackages {
+		// TODO(rstambler): For now, we only invalidate "command-line-arguments"
+		// from workspace packages, but in general, we need to handle deletion
+		// of a package.
+		if id == "command-line-arguments" {
+			if invalidateMetadata, ok := transitiveIDs[id]; invalidateMetadata && ok {
+				continue
+			}
+		}
+		result.workspacePackages[id] = pkgPath
 	}
 	// Don't bother copying the importedBy graph,
 	// as it changes each time we update metadata.

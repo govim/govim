@@ -7,6 +7,7 @@ package lsp
 import (
 	"context"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
@@ -19,7 +20,7 @@ func (s *Server) signatureHelp(ctx context.Context, params *protocol.SignatureHe
 	}
 	info, activeParameter, err := source.SignatureHelp(ctx, snapshot, fh, params.Position)
 	if err != nil {
-		event.Print(ctx, "no signature help", event.TagOf("At", params.Position), event.TagOf("Failure", err))
+		event.Print(ctx, "no signature help", tag.Position.Of(params.Position), event.Err.Of(err))
 		return nil, nil
 	}
 	return &protocol.SignatureHelp{

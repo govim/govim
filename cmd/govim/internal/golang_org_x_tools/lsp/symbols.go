@@ -7,9 +7,9 @@ package lsp
 import (
 	"context"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
@@ -23,7 +23,7 @@ func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSy
 	}
 	docSymbols, err := source.DocumentSymbols(ctx, snapshot, fh)
 	if err != nil {
-		event.Error(ctx, "DocumentSymbols failed", err, telemetry.URI.Of(fh.Identity().URI))
+		event.Error(ctx, "DocumentSymbols failed", err, tag.URI.Of(fh.Identity().URI))
 		return []interface{}{}, nil
 	}
 	// Convert the symbols to an interface array.

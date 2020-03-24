@@ -10,6 +10,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"io"
 
 	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/analysis"
@@ -45,7 +46,7 @@ type Snapshot interface {
 
 	// FindAnalysisError returns the analysis error represented by the diagnostic.
 	// This is used to get the SuggestedFixes associated with that error.
-	FindAnalysisError(ctx context.Context, pkgID, analyzerName, msg string, rng protocol.Range) (*Error, error)
+	FindAnalysisError(ctx context.Context, pkgID, analyzerName, msg string, rng protocol.Range) (*Error, *Analyzer, error)
 
 	// ModTidyHandle returns a ModTidyHandle for the given go.mod file handle.
 	// This function can have no data or error if there is no modfile detected.
@@ -124,6 +125,9 @@ type View interface {
 
 	// Ignore returns true if this file should be ignored by this view.
 	Ignore(span.URI) bool
+
+	// WriteEnv writes the view-specific environment to the io.Writer.
+	WriteEnv(ctx context.Context, w io.Writer) error
 
 	// RunProcessEnvFunc runs fn with the process env for this snapshot's view.
 	// Note: the process env contains cached module and filesystem state.
@@ -358,6 +362,17 @@ const (
 	Sum
 	UnknownKind
 )
+
+// Analyzer represents a go/analysis analyzer with some boolean properties
+// that let the user know how to use the analyzer.
+type Analyzer struct {
+	Analyzer *analysis.Analyzer
+	Enabled  bool
+
+	// If this is true, then we can apply the suggested fixes
+	// as part of a source.FixAll codeaction.
+	HighConfidence bool
+}
 
 // Package represents a Go package that has been type-checked. It maintains
 // only the relevant fields of a *go/packages.Package.

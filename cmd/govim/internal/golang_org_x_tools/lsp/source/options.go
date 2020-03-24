@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"time"
 
-	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/asmdecl"
 	"golang.org/x/tools/go/analysis/passes/assign"
 	"golang.org/x/tools/go/analysis/passes/atomic"
@@ -37,10 +36,18 @@ import (
 	"golang.org/x/tools/go/analysis/passes/unreachable"
 	"golang.org/x/tools/go/analysis/passes/unsafeptr"
 	"golang.org/x/tools/go/analysis/passes/unusedresult"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/fillreturns"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/nonewvars"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/noresultvalues"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/simplifycompositelit"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/simplifyrange"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/simplifyslice"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/undeclaredname"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/unusedparams"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff/myers"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -58,6 +65,7 @@ func DefaultOptions() Options {
 		ServerOptions: ServerOptions{
 			SupportedCodeActions: map[FileKind]map[protocol.CodeActionKind]bool{
 				Go: {
+					protocol.SourceFixAll:          true,
 					protocol.SourceOrganizeImports: true,
 					protocol.QuickFix:              true,
 				},
@@ -88,10 +96,11 @@ func DefaultOptions() Options {
 			TempModfile: true,
 		},
 		Hooks: Hooks{
-			ComputeEdits: myers.ComputeEdits,
-			URLRegexp:    regexp.MustCompile(`(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?`),
-			Analyzers:    defaultAnalyzers(),
-			GoDiff:       true,
+			ComputeEdits:       myers.ComputeEdits,
+			URLRegexp:          regexp.MustCompile(`(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?`),
+			DefaultAnalyzers:   defaultAnalyzers(),
+			TypeErrorAnalyzers: typeErrorAnalyzers(),
+			GoDiff:             true,
 		},
 	}
 }
@@ -130,8 +139,17 @@ type UserOptions struct {
 	// HoverKind specifies the format of the content for hover requests.
 	HoverKind HoverKind
 
-	// DisabledAnalyses specify analyses that the user would like to disable.
-	DisabledAnalyses map[string]struct{}
+	// UserEnabledAnalyses specify analyses that the user would like to enable or disable.
+	// A map of the names of analysis passes that should be enabled/disabled.
+	// A full list of analyzers that gopls uses can be found [here](analyzers.md)
+	//
+	// Example Usage:
+	// ...
+	// "analyses": {
+	//   "unreachable": false, // Disable the unreachable analyzer.
+	//   "unusedparams": true  // Enable the unusedparams analyzer.
+	// }
+	UserEnabledAnalyses map[string]bool
 
 	// StaticCheck enables additional analyses from staticcheck.io.
 	StaticCheck bool
@@ -173,10 +191,11 @@ type completionOptions struct {
 }
 
 type Hooks struct {
-	GoDiff       bool
-	ComputeEdits diff.ComputeEdits
-	URLRegexp    *regexp.Regexp
-	Analyzers    map[string]*analysis.Analyzer
+	GoDiff             bool
+	ComputeEdits       diff.ComputeEdits
+	URLRegexp          *regexp.Regexp
+	DefaultAnalyzers   map[string]Analyzer
+	TypeErrorAnalyzers map[string]Analyzer
 }
 
 type ExperimentalOptions struct {
@@ -354,7 +373,7 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 		case "Structured":
 			o.HoverKind = Structured
 		default:
-			result.errorf("Unsupported hover kind", event.TagOf("HoverKind", hoverKind))
+			result.errorf("Unsupported hover kind", tag.HoverKind.Of(hoverKind))
 		}
 
 	case "linkTarget":
@@ -365,15 +384,17 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 		}
 		o.LinkTarget = linkTarget
 
-	case "experimentalDisabledAnalyses":
-		disabledAnalyses, ok := value.([]interface{})
+	case "analyses":
+		allAnalyses, ok := value.(map[string]interface{})
 		if !ok {
-			result.errorf("Invalid type %T for []string option %q", value, name)
+			result.errorf("Invalid type %T for map[string]interface{} option %q", value, name)
 			break
 		}
-		o.DisabledAnalyses = make(map[string]struct{})
-		for _, a := range disabledAnalyses {
-			o.DisabledAnalyses[fmt.Sprint(a)] = struct{}{}
+		o.UserEnabledAnalyses = make(map[string]bool)
+		for a, enabled := range allAnalyses {
+			if enabled, ok := enabled.(bool); ok {
+				o.UserEnabledAnalyses[a] = enabled
+			}
 		}
 
 	case "staticcheck":
@@ -394,6 +415,9 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 		result.setBool(&o.TempModfile)
 
 	// Deprecated settings.
+	case "experimentalDisabledAnalyses":
+		result.State = OptionDeprecated
+
 	case "wantSuggestedFixes":
 		result.State = OptionDeprecated
 
@@ -464,36 +488,51 @@ func (r *OptionResult) setBool(b *bool) {
 	}
 }
 
-func defaultAnalyzers() map[string]*analysis.Analyzer {
-	return map[string]*analysis.Analyzer{
+func typeErrorAnalyzers() map[string]Analyzer {
+	return map[string]Analyzer{
+		fillreturns.Analyzer.Name:    {Analyzer: fillreturns.Analyzer, Enabled: true},
+		nonewvars.Analyzer.Name:      {Analyzer: nonewvars.Analyzer, Enabled: true},
+		noresultvalues.Analyzer.Name: {Analyzer: noresultvalues.Analyzer, Enabled: true},
+		undeclaredname.Analyzer.Name: {Analyzer: undeclaredname.Analyzer, Enabled: true},
+	}
+}
+
+func defaultAnalyzers() map[string]Analyzer {
+	return map[string]Analyzer{
 		// The traditional vet suite:
-		asmdecl.Analyzer.Name:      asmdecl.Analyzer,
-		assign.Analyzer.Name:       assign.Analyzer,
-		atomic.Analyzer.Name:       atomic.Analyzer,
-		atomicalign.Analyzer.Name:  atomicalign.Analyzer,
-		bools.Analyzer.Name:        bools.Analyzer,
-		buildtag.Analyzer.Name:     buildtag.Analyzer,
-		cgocall.Analyzer.Name:      cgocall.Analyzer,
-		composite.Analyzer.Name:    composite.Analyzer,
-		copylock.Analyzer.Name:     copylock.Analyzer,
-		errorsas.Analyzer.Name:     errorsas.Analyzer,
-		httpresponse.Analyzer.Name: httpresponse.Analyzer,
-		loopclosure.Analyzer.Name:  loopclosure.Analyzer,
-		lostcancel.Analyzer.Name:   lostcancel.Analyzer,
-		nilfunc.Analyzer.Name:      nilfunc.Analyzer,
-		printf.Analyzer.Name:       printf.Analyzer,
-		shift.Analyzer.Name:        shift.Analyzer,
-		stdmethods.Analyzer.Name:   stdmethods.Analyzer,
-		structtag.Analyzer.Name:    structtag.Analyzer,
-		tests.Analyzer.Name:        tests.Analyzer,
-		unmarshal.Analyzer.Name:    unmarshal.Analyzer,
-		unreachable.Analyzer.Name:  unreachable.Analyzer,
-		unsafeptr.Analyzer.Name:    unsafeptr.Analyzer,
-		unusedresult.Analyzer.Name: unusedresult.Analyzer,
+		asmdecl.Analyzer.Name:      {Analyzer: asmdecl.Analyzer, Enabled: true},
+		assign.Analyzer.Name:       {Analyzer: assign.Analyzer, Enabled: true},
+		atomic.Analyzer.Name:       {Analyzer: atomic.Analyzer, Enabled: true},
+		atomicalign.Analyzer.Name:  {Analyzer: atomicalign.Analyzer, Enabled: true},
+		bools.Analyzer.Name:        {Analyzer: bools.Analyzer, Enabled: true},
+		buildtag.Analyzer.Name:     {Analyzer: buildtag.Analyzer, Enabled: true},
+		cgocall.Analyzer.Name:      {Analyzer: cgocall.Analyzer, Enabled: true},
+		composite.Analyzer.Name:    {Analyzer: composite.Analyzer, Enabled: true},
+		copylock.Analyzer.Name:     {Analyzer: copylock.Analyzer, Enabled: true},
+		errorsas.Analyzer.Name:     {Analyzer: errorsas.Analyzer, Enabled: true},
+		httpresponse.Analyzer.Name: {Analyzer: httpresponse.Analyzer, Enabled: true},
+		loopclosure.Analyzer.Name:  {Analyzer: loopclosure.Analyzer, Enabled: true},
+		lostcancel.Analyzer.Name:   {Analyzer: lostcancel.Analyzer, Enabled: true},
+		nilfunc.Analyzer.Name:      {Analyzer: nilfunc.Analyzer, Enabled: true},
+		printf.Analyzer.Name:       {Analyzer: printf.Analyzer, Enabled: true},
+		shift.Analyzer.Name:        {Analyzer: shift.Analyzer, Enabled: true},
+		stdmethods.Analyzer.Name:   {Analyzer: stdmethods.Analyzer, Enabled: true},
+		structtag.Analyzer.Name:    {Analyzer: structtag.Analyzer, Enabled: true},
+		tests.Analyzer.Name:        {Analyzer: tests.Analyzer, Enabled: true},
+		unmarshal.Analyzer.Name:    {Analyzer: unmarshal.Analyzer, Enabled: true},
+		unreachable.Analyzer.Name:  {Analyzer: unreachable.Analyzer, Enabled: true},
+		unsafeptr.Analyzer.Name:    {Analyzer: unsafeptr.Analyzer, Enabled: true},
+		unusedresult.Analyzer.Name: {Analyzer: unusedresult.Analyzer, Enabled: true},
 
 		// Non-vet analyzers
-		deepequalerrors.Analyzer.Name:  deepequalerrors.Analyzer,
-		sortslice.Analyzer.Name:        sortslice.Analyzer,
-		testinggoroutine.Analyzer.Name: testinggoroutine.Analyzer,
+		deepequalerrors.Analyzer.Name:  {Analyzer: deepequalerrors.Analyzer, Enabled: true},
+		sortslice.Analyzer.Name:        {Analyzer: sortslice.Analyzer, Enabled: true},
+		testinggoroutine.Analyzer.Name: {Analyzer: testinggoroutine.Analyzer, Enabled: true},
+		unusedparams.Analyzer.Name:     {Analyzer: unusedparams.Analyzer, Enabled: false},
+
+		// gofmt -s suite:
+		simplifycompositelit.Analyzer.Name: {Analyzer: simplifycompositelit.Analyzer, Enabled: true, HighConfidence: true},
+		simplifyrange.Analyzer.Name:        {Analyzer: simplifyrange.Analyzer, Enabled: true, HighConfidence: true},
+		simplifyslice.Analyzer.Name:        {Analyzer: simplifyslice.Analyzer, Enabled: true, HighConfidence: true},
 	}
 }

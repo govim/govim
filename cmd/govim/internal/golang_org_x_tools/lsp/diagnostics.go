@@ -6,14 +6,13 @@ package lsp
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 )
@@ -58,14 +57,14 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, alwaysA
 
 	// Diagnose the go.mod file.
 	reports, missingModules, err := mod.Diagnostics(ctx, snapshot)
+	if err != nil {
+		event.Error(ctx, "warning: diagnose go.mod", err, tag.Directory.Of(snapshot.View().Folder().Filename()))
+	}
 	if ctx.Err() != nil {
 		return nil
 	}
-	if err != nil {
-		event.Error(ctx, "diagnose: could not generate diagnostics for go.mod file", err)
-	}
-	// Ensure that the reports returned from mod.Diagnostics are only related to the
-	// go.mod file for the module.
+	// Ensure that the reports returned from mod.Diagnostics are only related
+	// to the go.mod file for the module.
 	if len(reports) > 1 {
 		panic("unexpected reports from mod.Diagnostics")
 	}
@@ -82,23 +81,8 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, alwaysA
 
 	// Diagnose all of the packages in the workspace.
 	wsPackages, err := snapshot.WorkspacePackages(ctx)
-	if ctx.Err() != nil {
-		return nil
-	}
 	if err != nil {
-		// If we encounter a genuine error when getting workspace packages,
-		// notify the user.
-		s.showedInitialErrorMu.Lock()
-		if !s.showedInitialError {
-			err := s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
-				Type:    protocol.Error,
-				Message: fmt.Sprintf("Your workspace is misconfigured: %s. Please see https://github.com/golang/tools/blob/master/gopls/doc/troubleshooting.md for more information or file an issue (https://github.com/golang/go/issues/new) if you believe this is a mistake.", err.Error()),
-			})
-			s.showedInitialError = err == nil
-		}
-		s.showedInitialErrorMu.Unlock()
-
-		event.Error(ctx, "diagnose: no workspace packages", err, telemetry.Snapshot.Of(snapshot.ID()), telemetry.Directory.Of(snapshot.View().Folder))
+		event.Error(ctx, "failed to load workspace packages, skipping diagnostics", err, tag.Snapshot.Of(snapshot.ID()), tag.Directory.Of(snapshot.View().Folder()))
 		return nil
 	}
 	for _, ph := range wsPackages {
@@ -120,11 +104,8 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, alwaysA
 					Message: `You are neither in a module nor in your GOPATH. If you are using modules, please open your editor at the directory containing the go.mod. If you believe this warning is incorrect, please file an issue: https://github.com/golang/go/issues/new.`,
 				})
 			}
-			if ctx.Err() != nil {
-				return
-			}
 			if err != nil {
-				event.Error(ctx, "diagnose: could not generate diagnostics for package", err, telemetry.Snapshot.Of(snapshot.ID()), telemetry.Package.Of(ph.ID()))
+				event.Error(ctx, "warning: diagnose package", err, tag.Snapshot.Of(snapshot.ID()), tag.Package.Of(ph.ID()))
 				return
 			}
 			reportsMu.Lock()
@@ -156,7 +137,6 @@ func (s *Server) publishReports(ctx context.Context, snapshot source.Snapshot, r
 		if ctx.Err() != nil {
 			break
 		}
-
 		// Pre-sort diagnostics to avoid extra work when we compare them.
 		source.SortDiagnostics(diagnostics)
 		toSend := sentDiagnostics{
@@ -194,15 +174,12 @@ func (s *Server) publishReports(ctx context.Context, snapshot source.Snapshot, r
 			// Do not update the delivered map since it already contains better diagnostics.
 			continue
 		}
-
 		if err := s.client.PublishDiagnostics(ctx, &protocol.PublishDiagnosticsParams{
 			Diagnostics: toProtocolDiagnostics(diagnostics),
 			URI:         protocol.URIFromSpanURI(key.id.URI),
 			Version:     key.id.Version,
 		}); err != nil {
-			if ctx.Err() == nil {
-				event.Error(ctx, "publishReports: failed to deliver diagnostic", err, telemetry.File.From(ctx))
-			}
+			event.Error(ctx, "publishReports: failed to deliver diagnostic", err, tag.URI.Of(key.id.URI))
 			continue
 		}
 		// Update the delivered map.

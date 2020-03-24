@@ -13,9 +13,9 @@ import (
 	"go/token"
 	"reflect"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
@@ -106,7 +106,7 @@ func hashParseKeys(phs []source.ParseGoHandle) string {
 }
 
 func parseGo(ctx context.Context, fset *token.FileSet, fh source.FileHandle, mode source.ParseMode) *parseGoData {
-	ctx, done := event.StartSpan(ctx, "cache.parseGo", telemetry.File.Of(fh.Identity().URI.Filename()))
+	ctx, done := event.StartSpan(ctx, "cache.parseGo", tag.File.Of(fh.Identity().URI.Filename()))
 	defer done()
 
 	if fh.Identity().Kind != source.Go {
@@ -307,7 +307,7 @@ func fixSrc(f *ast.File, tok *token.File, src []byte) (newSrc []byte) {
 		case *ast.BlockStmt:
 			newSrc = fixMissingCurlies(f, n, parent, tok, src)
 		case *ast.SelectorExpr:
-			newSrc = fixDanglingSelector(f, n, parent, tok, src)
+			newSrc = fixDanglingSelector(n, tok, src)
 		}
 
 		return newSrc == nil
@@ -460,7 +460,7 @@ func fixEmptySwitch(body *ast.BlockStmt, tok *token.File, src []byte) {
 // To fix completion at "<>", we insert a real "_" after the "." so the
 // following declaration of "x" can be parsed and type checked
 // normally.
-func fixDanglingSelector(f *ast.File, s *ast.SelectorExpr, parent ast.Node, tok *token.File, src []byte) []byte {
+func fixDanglingSelector(s *ast.SelectorExpr, tok *token.File, src []byte) []byte {
 	if !isPhantomUnderscore(s.Sel, tok, src) {
 		return nil
 	}
