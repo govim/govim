@@ -1,0 +1,73 @@
+# Test that ominfunc complete works when gopls sends additional text edits
+
+# Backup main.go
+cp main.go main.go.orig
+
+# Select candidate using cursor keys and enter
+cp main.go.orig main.go
+vim ex 'e! main.go'
+vim ex 'call cursor(12,1)'
+vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>\\<Down>\\<Enter>\", \"xt\")'
+vim ex 'w'
+cmp main.go main.go.golden1
+
+[github.com/govim/govim/issues/836] skip
+
+# Select candidate using <C-N>/<C-P> and non-enter key
+cp main.go.orig main.go
+vim ex 'e! main.go'
+vim ex 'call cursor(12,1)'
+vim ex 'call feedkeys(\"A\\<C-X>\\<C-O>)\", \"xt\")'
+vim ex 'w'
+cmp main.go main.go.golden2
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+type foo struct {
+	aaa *string
+	bbb *string
+}
+
+func fn(s string) {}
+
+func main() {
+	var x foo
+	fn(x.
+}
+-- main.go.golden1 --
+package main
+
+type foo struct {
+	aaa *string
+	bbb *string
+}
+
+func fn(s string) {}
+
+func main() {
+	var x foo
+	fn(*x.bbb
+}
+-- main.go.golden2 --
+package main
+
+type foo struct {
+	aaa *string
+	bbb *string
+}
+
+func fn(s string) {}
+
+func main() {
+	var x foo
+	fn(*x.aaa)
+}
