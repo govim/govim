@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -145,7 +146,7 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 	if b.Version == 1 {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
-				LanguageID: "go",
+				LanguageID: filepath.Base(b.Name),
 				URI:        protocol.DocumentURI(b.URI()),
 				Version:    float64(b.Version),
 				Text:       string(b.Contents()),
@@ -243,12 +244,8 @@ func (g *govimplugin) startProcessBufferUpdates() {
 			// flooded/overloaded first
 			g.tomb.Go(func() error {
 				fset := token.NewFileSet()
-				f, err := parser.ParseFile(fset, upd.name, upd.contents, parser.AllErrors)
-				if err != nil {
-					// This is best efforts so we just log the error as an info
-					// message
-					g.Logf("info only: failed to parse buffer %v: %v", upd.name, err)
-				}
+				// This is best efforts
+				f, _ := parser.ParseFile(fset, upd.name, upd.contents, parser.AllErrors)
 				lock.Lock()
 				if latest[upd.buffer] == upd.version {
 					upd.buffer.Fset = fset
@@ -265,6 +262,9 @@ func (g *govimplugin) startProcessBufferUpdates() {
 }
 
 func (v *vimstate) triggerBufferASTUpdate(b *types.Buffer) {
+	if !strings.HasSuffix(filepath.Base(b.Name), ".go") {
+		return
+	}
 	b.ASTWait = make(chan bool)
 	v.bufferUpdates <- &bufferUpdate{
 		buffer:   b,
