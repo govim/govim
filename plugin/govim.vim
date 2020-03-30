@@ -59,6 +59,13 @@ let s:activeGovimCalls = 0
 augroup govimScheduler
 
 function s:ch_evalexpr(args)
+  " For all callbacks to govim (other than the handler ultimately responsible
+  " for a listener_add callback) we need to flush any pending delta
+  " notifications so that govim isn't ever working with stale buffer
+  " contents
+  if a:args[0] != "function" || a:args[1] != "function:GOVIM_internal_BufChanged"
+    call listener_flush()
+  endif
   if s:minVimSafeState
     let l:resp = ch_evalexpr(s:channel, a:args)
     if l:resp[0] != ""
