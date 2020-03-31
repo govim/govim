@@ -16,6 +16,11 @@ if !has("patch-8.1.1711")
   finish
 endif
 
+if has("patch-8.2.0452") && !has("patch-8.2.0466")
+  echoerr "Vim versions v8.2.0452 <= N < v8.2.0466 have a bug that affects govim. Please update to another version"
+  finish
+endif
+
 " TODO we are ignoring windows right now....
 let s:tmpdir = $TMPDIR
 if s:tmpdir == ""
