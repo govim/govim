@@ -186,9 +186,13 @@ func (v *vimstate) handleEvent(event fswatcher.Event) error {
 	default:
 		panic(fmt.Errorf("unknown fswatcher event type: %v", event))
 	}
+
+	uri := span.URIFromPath(event.Path)
+	v.autoreadBuffer(uri)
+
 	params := &protocol.DidChangeWatchedFilesParams{
 		Changes: []protocol.FileEvent{
-			{URI: protocol.DocumentURI(span.URIFromPath(event.Path)), Type: changeType},
+			{URI: protocol.DocumentURI(uri), Type: changeType},
 		},
 	}
 	err := v.server.DidChangeWatchedFiles(context.Background(), params)
@@ -197,4 +201,16 @@ func (v *vimstate) handleEvent(event fswatcher.Event) error {
 	}
 	v.Logf("handleEvent: handled %v", event)
 	return nil
+}
+
+func (v *vimstate) autoreadBuffer(uri span.URI) {
+	if v.config.ExperimentalAutoreadLoadedBuffers == nil || !*v.config.ExperimentalAutoreadLoadedBuffers {
+		return
+	}
+
+	for _, b := range v.buffers {
+		if b.URI().Filename() == uri.Filename() {
+			v.ChannelEx(fmt.Sprintf("checktime %d", b.Num))
+		}
+	}
 }

@@ -120,6 +120,10 @@ function! s:validGoplsEnv(v)
   return [v:true, ""]
 endfunction
 
+function! s:validExperimentalAutoreadLoadedBuffers(v)
+  return s:validBool(a:v)
+endfunction
+
 function! s:validExperimentalMouseTriggeredHoverPopupOptions(v)
   if has_key(a:v, "line")
     if type(a:v["line"]) != 0
@@ -153,6 +157,7 @@ let s:validators = {
       \ "CompletionBudget": function("s:validCompletionBudget"),
       \ "TempModfile": function("s:validTempModfile"),
       \ "GoplsEnv": function("s:validGoplsEnv"),
+      \ "ExperimentalAutoreadLoadedBuffers": function("s:validExperimentalAutoreadLoadedBuffers"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
       \ }

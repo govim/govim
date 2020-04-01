@@ -151,6 +151,21 @@ type Config struct {
 	// GOFLAGS=-modfile=go.local.mod in order to use an alternative go.mod file.
 	GoplsEnv *map[string]string `json:",omitempty"`
 
+	// ExperimentalAutoreadLoadedBuffers is used to reload buffers that are
+	// changed outside vim even when they are loaded (e.g. running two vim
+	// sessions in the same workspace). This is achieved by running "checktime"
+	// when a file system event is handled. For this to work, vim must be
+	// configured to hide buffers instead of abandon them. It is also
+	// recommended to set autoread in vim to avoid a confirmation prompt when
+	// the buffer isn't modified.
+	// Recommended additions to vimrc:
+	//
+	// set hidden
+	// set autoread
+	//
+	// Default: false
+	ExperimentalAutoreadLoadedBuffers *bool `json:",omitempty"`
+
 	// ExperimentalMouseTriggeredHoverPopupOptions is a map of options to apply
 	// when creating hover-based popup windows triggered by the mouse hovering
 	// over an identifier. It corresponds to the second argument to popup_create

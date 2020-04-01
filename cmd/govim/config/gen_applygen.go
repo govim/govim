@@ -43,6 +43,9 @@ func (r *Config) Apply(v *Config) {
 	if v.GoplsEnv != nil {
 		r.GoplsEnv = v.GoplsEnv
 	}
+	if v.ExperimentalAutoreadLoadedBuffers != nil {
+		r.ExperimentalAutoreadLoadedBuffers = v.ExperimentalAutoreadLoadedBuffers
+	}
 	if v.ExperimentalMouseTriggeredHoverPopupOptions != nil {
 		r.ExperimentalMouseTriggeredHoverPopupOptions = v.ExperimentalMouseTriggeredHoverPopupOptions
 	}

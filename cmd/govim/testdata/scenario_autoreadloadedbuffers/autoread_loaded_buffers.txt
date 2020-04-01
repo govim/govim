@@ -1,0 +1,64 @@
+# Test that the file watcher trigger autoread of loaded buffer.
+#
+# Note that 'hidden' is required to hide buffers instead of abandon
+# them, so that they are still loaded after switching to another buffer
+# 'autoread' is to prevent a prompt when there is no conflicting
+# content in the buffer versus file on disk.
+vim ex 'set hidden'
+vim ex 'set autoread'
+
+vim ex 'e const.go'
+vim ex 'e main.go'
+
+# "edit" the loaded file from outside of vim
+cp const.go.commented const.go
+
+vimexprwait errors.undeclared GOVIMTest_getqflist()
+
+# No warnings or errors during the test
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println(Const1)
+}
+-- const.go --
+package main
+
+const (
+	Const1 = 1
+	Const2 = 2
+)
+-- const.go.commented --
+package main
+
+const (
+	// Const1 = 1
+	Const2 = 2
+)
+-- errors.undeclared --
+[
+  {
+    "bufname": "main.go",
+    "col": 14,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: Const1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

@@ -236,14 +236,15 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	}
 	if defaults == nil {
 		defaults = &config.Config{
-			FormatOnSave:            vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImportsGoFmt),
-			QuickfixAutoDiagnostics: vimconfig.BoolVal(true),
-			QuickfixSigns:           vimconfig.BoolVal(true),
-			Staticcheck:             vimconfig.BoolVal(false),
-			HighlightDiagnostics:    vimconfig.BoolVal(true),
-			HighlightReferences:     vimconfig.BoolVal(true),
-			HoverDiagnostics:        vimconfig.BoolVal(true),
-			TempModfile:             vimconfig.BoolVal(false),
+			FormatOnSave:                      vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImportsGoFmt),
+			QuickfixAutoDiagnostics:           vimconfig.BoolVal(true),
+			QuickfixSigns:                     vimconfig.BoolVal(true),
+			Staticcheck:                       vimconfig.BoolVal(false),
+			HighlightDiagnostics:              vimconfig.BoolVal(true),
+			HighlightReferences:               vimconfig.BoolVal(true),
+			HoverDiagnostics:                  vimconfig.BoolVal(true),
+			TempModfile:                       vimconfig.BoolVal(false),
+			ExperimentalAutoreadLoadedBuffers: vimconfig.BoolVal(false),
 		}
 	}
 	// Overlay the initial user values on the defaults
