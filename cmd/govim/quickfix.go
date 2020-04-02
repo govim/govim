@@ -23,11 +23,17 @@ func (q quickfixEntry) equalModuloBuffer(q2 quickfixEntry) bool {
 }
 
 func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string) error {
+	wasNotDiagnostics := !v.quickfixIsDiagnostics
 	v.quickfixIsDiagnostics = true
-	return v.updateQuickfix(true)
+	return v.updateQuickfixWithDiagnostics(true, wasNotDiagnostics)
 }
 
-func (v *vimstate) updateQuickfix(force bool) error {
+// updateQuickfixWithDiagnostics updates Vim's quickfix window with the current
+// diagnostics(), respecting config settings that are overridden by force.  The
+// rather clumsily named wasPrevNotDiagnostics can be set to true if it is
+// known to the caller that the quickfix window was previously (to this call)
+// being used for something other than diagnostics, e.g. references.
+func (v *vimstate) updateQuickfixWithDiagnostics(force bool, wasPrevNotDiagnostics bool) error {
 	if !force && (v.config.QuickfixAutoDiagnostics == nil || !*v.config.QuickfixAutoDiagnostics) {
 		return nil
 	}
@@ -60,10 +66,22 @@ func (v *vimstate) updateQuickfix(force bool) error {
 	}
 
 	// Note: indexes are 1-based, hence 0 means "no index"
+	//
+	// If we were previously not showing diagnostics, we default to selection
+	// the first entry. In the future we might want to improve this logic
+	// by stashing the last selected diagnostic when we flip to, for example,
+	// references mode. But for now we keep it simple.
 	newIdx := 0
-	if len(v.lastQuickFixDiagnostics) > 0 {
+	if !wasPrevNotDiagnostics && len(v.lastQuickFixDiagnostics) > 0 {
 		var want qflistWant
 		v.Parse(v.ChannelExpr(`getqflist({"idx":0})`), &want)
+		if want.Idx == 0 {
+			goto NewIndexSet
+		}
+		wantIdx := want.Idx - 1
+		if len(v.lastQuickFixDiagnostics) <= wantIdx {
+			goto NewIndexSet
+		}
 		currFix := v.lastQuickFixDiagnostics[want.Idx-1]
 		for i, f := range fixes {
 			if currFix.equalModuloBuffer(f) {
@@ -72,6 +90,7 @@ func (v *vimstate) updateQuickfix(force bool) error {
 			}
 		}
 	}
+NewIndexSet:
 	v.lastQuickFixDiagnostics = fixes
 	v.BatchStart()
 	v.BatchChannelCall("setqflist", fixes, "r")
