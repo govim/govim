@@ -240,6 +240,10 @@ const (
 	// CommandReferences finds references to the identifier under the cursor.
 	CommandReferences Command = "References"
 
+	// CommandImplements finds all interfaces implemented by the type of the
+	// identifier under the cursor.
+	CommandImplements Command = "Implements"
+
 	// CommandRename renames the identifier under the cursor. If provided with an
 	// argument, that argument is used as the new name. If not, the user is
 	// prompted for the new identifier name.

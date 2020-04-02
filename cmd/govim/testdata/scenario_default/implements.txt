@@ -1,0 +1,76 @@
+# Test that the quickfix window gets populated with locations for the
+# GOVIMImplements command
+
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+
+# Initial localtion population
+vim ex 'e main.go'
+vim ex 'call cursor (9,6)' #TODO: replcae with my values
+vim ex 'GOVIMImplements' # note this moves the cursor to the quickfix window
+vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
+vimexprwait locations.golden GOVIMTest_getqflist()
+
+# Introduce an error - locations should remain
+vim ex 'call cursor(14, 1)'
+vim ex 'call feedkeys(\"ofmt.Printf(\\\"%v\\\")\\<ESC>\", \"xt\")'
+sleep $GOVIM_ERRLOGMATCH_WAIT
+vimexprwait locations.golden GOVIMTest_getqflist()
+
+# Now use quickfix for errors
+vim ex 'GOVIMQuickfixDiagnostics'
+vimexprwait errors.golden GOVIMTest_getqflist()
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+import "fmt"
+
+type Foo interface {
+	Bar()
+}
+
+type Baz struct{}
+func (b Baz) Bar() {}
+
+func main() {
+	b := Baz{}
+	fmt.Printf("v: %v\n", b)
+}
+-- locations.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 6,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "type Foo interface {",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 15,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
