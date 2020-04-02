@@ -4,8 +4,6 @@
 vim ex 'e main.go'
 vimexprwait placed_main.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
-[golang.org/issues/38136] skip
-
 # open other.go and add a broken statement to get an error that masks the warnings
 vim ex 'e other.go'
 vim call append '[6,"asd"]'
