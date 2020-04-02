@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"golang.org/x/mod/modfile"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
@@ -22,7 +22,7 @@ func CodeLens(ctx context.Context, snapshot source.Snapshot, uri span.URI) ([]pr
 	if uri != realURI {
 		return nil, nil
 	}
-	ctx, done := event.StartSpan(ctx, "mod.CodeLens", telemetry.File.Of(realURI))
+	ctx, done := event.StartSpan(ctx, "mod.CodeLens", tag.URI.Of(realURI))
 	defer done()
 
 	fh, err := snapshot.GetFile(realURI)

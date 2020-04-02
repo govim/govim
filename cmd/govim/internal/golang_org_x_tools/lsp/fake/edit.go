@@ -12,7 +12,8 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 )
 
-// Pos represents a 0-indexed position in a text buffer.
+// Pos represents a position in a text buffer. Both Line and Column are
+// 0-indexed.
 type Pos struct {
 	Line, Column int
 }

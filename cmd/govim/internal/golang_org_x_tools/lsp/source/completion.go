@@ -345,8 +345,19 @@ func (c *completer) found(cand candidate) {
 		}
 	}
 
-	// Favor shallow matches by lowering weight according to depth.
-	cand.score -= cand.score * float64(len(c.deepState.chain)) / 10
+	// Lower score of function calls so we prefer fields and vars over calls.
+	if cand.expandFuncCall {
+		cand.score *= 0.9
+	}
+
+	// Prefer private objects over public ones.
+	if !obj.Exported() && obj.Parent() != types.Universe {
+		cand.score *= 1.1
+	}
+
+	// Favor shallow matches by lowering score according to depth.
+	cand.score -= cand.score * c.deepState.scorePenalty()
+
 	if cand.score < 0 {
 		cand.score = 0
 	}
@@ -477,7 +488,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos 
 		path:                      path,
 		pos:                       pos,
 		seen:                      make(map[types.Object]bool),
-		enclosingFunc:             enclosingFunction(path, rng.Start, pkg.GetTypesInfo()),
+		enclosingFunc:             enclosingFunction(path, pkg.GetTypesInfo()),
 		enclosingCompositeLiteral: enclosingCompositeLiteral(path, rng.Start, pkg.GetTypesInfo()),
 		opts: &completionOptions{
 			matcher:           opts.Matcher,
@@ -869,14 +880,15 @@ func (c *completer) methodsAndFields(typ types.Type, addressable bool, imp *impo
 	}
 
 	// Add fields of T.
-	for _, f := range fieldSelections(typ) {
+	eachField(typ, func(v *types.Var) {
 		c.found(candidate{
-			obj:         f,
+			obj:         v,
 			score:       stdScore - 0.01,
 			imp:         imp,
 			addressable: addressable || isPointer(typ),
 		})
-	}
+	})
+
 	return nil
 }
 
@@ -941,7 +953,7 @@ func (c *completer) lexical() error {
 			}
 
 			// Don't use LHS of value spec in RHS.
-			if vs := enclosingValueSpec(c.path, c.pos); vs != nil {
+			if vs := enclosingValueSpec(c.path); vs != nil {
 				for _, ident := range vs.Names {
 					if obj.Pos() == ident.Pos() {
 						continue Names
@@ -1051,12 +1063,18 @@ func (c *completer) lexical() error {
 		}
 	}
 
-	if c.inference.objType != nil {
+	if t := c.inference.objType; t != nil {
+		// Use variadic element type if we are completing variadic position.
+		if c.inference.variadicType != nil {
+			t = c.inference.variadicType
+		}
+
+		t = deref(t)
+
 		// If we have an expected type and it is _not_ a named type, see
 		// if an object literal makes a good candidate. For example, if
 		// our expected type is "[]int", this will add a candidate of
 		// "[]int{}".
-		t := deref(c.inference.objType)
 		if _, named := t.(*types.Named); !named {
 			c.literal(t, nil)
 		}
@@ -1245,7 +1263,7 @@ func enclosingCompositeLiteral(path []ast.Node, pos token.Pos, info *types.Info)
 
 // enclosingFunction returns the signature and body of the function
 // enclosing the given position.
-func enclosingFunction(path []ast.Node, pos token.Pos, info *types.Info) *funcInfo {
+func enclosingFunction(path []ast.Node, info *types.Info) *funcInfo {
 	for _, node := range path {
 		switch t := node.(type) {
 		case *ast.FuncDecl:

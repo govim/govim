@@ -272,34 +272,39 @@ func exprAtPos(pos token.Pos, args []ast.Expr) int {
 	return len(args)
 }
 
-// fieldSelections returns the set of fields that can
-// be selected from a value of type T.
-func fieldSelections(T types.Type) (fields []*types.Var) {
+// eachField invokes fn for each field that can be selected from a
+// value of type T.
+func eachField(T types.Type, fn func(*types.Var)) {
 	// TODO(adonovan): this algorithm doesn't exclude ambiguous
 	// selections that match more than one field/method.
 	// types.NewSelectionSet should do that for us.
 
-	seen := make(map[*types.Var]bool) // for termination on recursive types
+	// for termination on recursive types
+	var seen map[*types.Struct]bool
 
 	var visit func(T types.Type)
 	visit = func(T types.Type) {
 		if T, ok := deref(T).Underlying().(*types.Struct); ok {
+			if seen[T] {
+				return
+			}
+
 			for i := 0; i < T.NumFields(); i++ {
 				f := T.Field(i)
-				if seen[f] {
-					continue
-				}
-				seen[f] = true
-				fields = append(fields, f)
+				fn(f)
 				if f.Anonymous() {
+					if seen == nil {
+						// Lazily create "seen" since it is only needed for
+						// embedded structs.
+						seen = make(map[*types.Struct]bool)
+					}
+					seen[T] = true
 					visit(f.Type())
 				}
 			}
 		}
 	}
 	visit(T)
-
-	return fields
 }
 
 // typeIsValid reports whether typ doesn't contain any Invalid types.
@@ -452,7 +457,7 @@ func enclosingSelector(path []ast.Node, pos token.Pos) *ast.SelectorExpr {
 	return nil
 }
 
-func enclosingValueSpec(path []ast.Node, pos token.Pos) *ast.ValueSpec {
+func enclosingValueSpec(path []ast.Node) *ast.ValueSpec {
 	for _, n := range path {
 		if vs, ok := n.(*ast.ValueSpec); ok {
 			return vs
@@ -498,7 +503,7 @@ func formatParams(ctx context.Context, s Snapshot, pkg Package, sig *types.Signa
 	params := make([]string, 0, sig.Params().Len())
 	for i := 0; i < sig.Params().Len(); i++ {
 		el := sig.Params().At(i)
-		typ, err := formatFieldType(ctx, s, pkg, el, qf)
+		typ, err := formatFieldType(ctx, s, pkg, el)
 		if err != nil {
 			typ = types.TypeString(el.Type(), qf)
 		}
@@ -517,7 +522,7 @@ func formatParams(ctx context.Context, s Snapshot, pkg Package, sig *types.Signa
 	return params
 }
 
-func formatFieldType(ctx context.Context, s Snapshot, srcpkg Package, obj types.Object, qf types.Qualifier) (string, error) {
+func formatFieldType(ctx context.Context, s Snapshot, srcpkg Package, obj types.Object) (string, error) {
 	file, pkg, err := findPosInPackage(s.View(), srcpkg, obj.Pos())
 	if err != nil {
 		return "", err

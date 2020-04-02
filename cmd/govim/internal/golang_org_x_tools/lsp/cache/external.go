@@ -9,8 +9,8 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
@@ -48,7 +48,7 @@ func (h *nativeFileHandle) Identity() source.FileIdentity {
 }
 
 func (h *nativeFileHandle) Read(ctx context.Context) ([]byte, string, error) {
-	ctx, done := event.StartSpan(ctx, "cache.nativeFileHandle.Read", telemetry.File.Of(h.identity.URI.Filename()))
+	ctx, done := event.StartSpan(ctx, "cache.nativeFileHandle.Read", tag.File.Of(h.identity.URI.Filename()))
 	_ = ctx
 	defer done()
 

@@ -5,16 +5,15 @@
 package ocagent
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/metric"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/ocagent/wire"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/metric"
 )
 
 // dataToMetricDescriptor return a *wire.MetricDescriptor based on data.
-func dataToMetricDescriptor(data event.MetricData) *wire.MetricDescriptor {
+func dataToMetricDescriptor(data metric.Data) *wire.MetricDescriptor {
 	if data == nil {
 		return nil
 	}
@@ -30,7 +29,7 @@ func dataToMetricDescriptor(data event.MetricData) *wire.MetricDescriptor {
 }
 
 // getDescription returns the description of data.
-func getDescription(data event.MetricData) string {
+func getDescription(data metric.Data) string {
 	switch d := data.(type) {
 	case *metric.Int64Data:
 		return d.Info.Description
@@ -50,7 +49,7 @@ func getDescription(data event.MetricData) string {
 
 // getLabelKeys returns a slice of *wire.LabelKeys based on the keys
 // in data.
-func getLabelKeys(data event.MetricData) []*wire.LabelKey {
+func getLabelKeys(data metric.Data) []*wire.LabelKey {
 	switch d := data.(type) {
 	case *metric.Int64Data:
 		return infoKeysToLabelKeys(d.Info.Keys)
@@ -70,7 +69,7 @@ func getLabelKeys(data event.MetricData) []*wire.LabelKey {
 
 // dataToMetricDescriptorType returns a wire.MetricDescriptor_Type based on the
 // underlying type of data.
-func dataToMetricDescriptorType(data event.MetricData) wire.MetricDescriptor_Type {
+func dataToMetricDescriptorType(data metric.Data) wire.MetricDescriptor_Type {
 	switch d := data.(type) {
 	case *metric.Int64Data:
 		if d.IsGauge {
@@ -96,7 +95,7 @@ func dataToMetricDescriptorType(data event.MetricData) wire.MetricDescriptor_Typ
 
 // dataToTimeseries returns a slice of *wire.TimeSeries based on the
 // points in data.
-func dataToTimeseries(data event.MetricData, start time.Time) []*wire.TimeSeries {
+func dataToTimeseries(data metric.Data, start time.Time) []*wire.TimeSeries {
 	if data == nil {
 		return nil
 	}
@@ -117,7 +116,7 @@ func dataToTimeseries(data event.MetricData, start time.Time) []*wire.TimeSeries
 }
 
 // numRows returns the number of rows in data.
-func numRows(data event.MetricData) int {
+func numRows(data metric.Data) int {
 	switch d := data.(type) {
 	case *metric.Int64Data:
 		return len(d.Rows)
@@ -134,10 +133,10 @@ func numRows(data event.MetricData) int {
 
 // dataToPoints returns an array of *wire.Points based on the point(s)
 // in data at index i.
-func dataToPoints(data event.MetricData, i int) []*wire.Point {
+func dataToPoints(data metric.Data, i int) []*wire.Point {
 	switch d := data.(type) {
 	case *metric.Int64Data:
-		timestamp := convertTimestamp(*d.EndTime)
+		timestamp := convertTimestamp(d.EndTime)
 		return []*wire.Point{
 			{
 				Value: wire.PointInt64Value{
@@ -147,7 +146,7 @@ func dataToPoints(data event.MetricData, i int) []*wire.Point {
 			},
 		}
 	case *metric.Float64Data:
-		timestamp := convertTimestamp(*d.EndTime)
+		timestamp := convertTimestamp(d.EndTime)
 		return []*wire.Point{
 			{
 				Value: wire.PointDoubleValue{
@@ -162,10 +161,10 @@ func dataToPoints(data event.MetricData, i int) []*wire.Point {
 		for i, val := range d.Info.Buckets {
 			bucketBounds[i] = float64(val)
 		}
-		return distributionToPoints(row.Values, row.Count, float64(row.Sum), bucketBounds, *d.EndTime)
+		return distributionToPoints(row.Values, row.Count, float64(row.Sum), bucketBounds, d.EndTime)
 	case *metric.HistogramFloat64Data:
 		row := d.Rows[i]
-		return distributionToPoints(row.Values, row.Count, row.Sum, d.Info.Buckets, *d.EndTime)
+		return distributionToPoints(row.Values, row.Count, row.Sum, d.Info.Buckets, d.EndTime)
 	}
 
 	return nil
@@ -202,11 +201,11 @@ func distributionToPoints(counts []int64, count int64, sum float64, bucketBounds
 
 // infoKeysToLabelKeys returns an array of *wire.LabelKeys containing the
 // string values of the elements of labelKeys.
-func infoKeysToLabelKeys(infoKeys []*event.Key) []*wire.LabelKey {
+func infoKeysToLabelKeys(infoKeys []event.Key) []*wire.LabelKey {
 	labelKeys := make([]*wire.LabelKey, 0, len(infoKeys))
 	for _, key := range infoKeys {
 		labelKeys = append(labelKeys, &wire.LabelKey{
-			Key: fmt.Sprintf("%v", key.Name),
+			Key: key.Name(),
 		})
 	}
 

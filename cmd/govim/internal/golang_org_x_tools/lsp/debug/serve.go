@@ -15,7 +15,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
-	_ "net/http/pprof" // pull in the standard pprof handlers
 	"os"
 	"path"
 	"path/filepath"
@@ -27,17 +26,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/metric"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/ocagent"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/prometheus"
 )
-
-type exporter struct {
-	stderr io.Writer
-}
 
 type instanceKeyType int
 
@@ -54,6 +51,8 @@ type Instance struct {
 	OCAgentConfig        string
 
 	LogWriter io.Writer
+
+	exporter event.Exporter
 
 	ocagent    *ocagent.Exporter
 	prometheus *prometheus.Exporter
@@ -374,7 +373,7 @@ func (i *Instance) getFile(r *http.Request) interface{} {
 
 func (i *Instance) getInfo(r *http.Request) interface{} {
 	buf := &bytes.Buffer{}
-	i.PrintServerInfo(buf)
+	i.PrintServerInfo(r.Context(), buf)
 	return template.HTML(buf.String())
 }
 
@@ -385,9 +384,7 @@ func getMemory(r *http.Request) interface{} {
 }
 
 func init() {
-	event.SetExporter(&exporter{
-		stderr: os.Stderr,
-	})
+	event.SetExporter(makeGlobalExporter(os.Stderr))
 }
 
 func GetInstance(ctx context.Context) *Instance {
@@ -418,6 +415,7 @@ func WithInstance(ctx context.Context, workdir, agent string) context.Context {
 	i.rpcs = &rpcs{}
 	i.traces = &traces{}
 	i.State = &State{}
+	i.exporter = makeInstanceExporter(i)
 	return context.WithValue(ctx, instanceKey, i)
 }
 
@@ -462,7 +460,7 @@ func (i *Instance) Serve(ctx context.Context) error {
 	if strings.HasSuffix(i.DebugAddress, ":0") {
 		log.Printf("debug server listening on port %d", port)
 	}
-	event.Print(ctx, "Debug serving", event.TagOf("Port", port))
+	event.Print(ctx, "Debug serving", tag.Port.Of(port))
 	go func() {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/", render(mainTmpl, func(*http.Request) interface{} { return i }))
@@ -542,40 +540,42 @@ func (i *Instance) writeMemoryDebug(threshold uint64) error {
 	return nil
 }
 
-func (e *exporter) ProcessEvent(ctx context.Context, ev event.Event) context.Context {
-	ctx = export.ContextSpan(ctx, ev)
-	i := GetInstance(ctx)
-	if ev.IsLog() && (ev.Error != nil || i == nil) {
-		fmt.Fprintf(e.stderr, "%v\n", ev)
+func makeGlobalExporter(stderr io.Writer) event.Exporter {
+	return func(ctx context.Context, ev event.Event, tags event.TagMap) context.Context {
+		i := GetInstance(ctx)
+		if ev.IsLog() && (event.Err.Get(ev.Map()) != nil || i == nil) {
+			fmt.Fprintf(stderr, "%v\n", ev)
+		}
+		ctx = protocol.LogEvent(ctx, ev, tags)
+		if i == nil {
+			return ctx
+		}
+		return i.exporter(ctx, ev, tags)
 	}
-	ctx = protocol.LogEvent(ctx, ev)
-	if i == nil {
-		return ctx
-	}
-	ctx = export.Tag(ctx, ev)
-	if i.ocagent != nil {
-		ctx = i.ocagent.ProcessEvent(ctx, ev)
-	}
-	if i.traces != nil {
-		ctx = i.traces.ProcessEvent(ctx, ev)
-	}
-	return ctx
 }
 
-func (e *exporter) Metric(ctx context.Context, data event.MetricData) {
-	i := GetInstance(ctx)
-	if i == nil {
-		return
+func makeInstanceExporter(i *Instance) event.Exporter {
+	exporter := func(ctx context.Context, ev event.Event, tags event.TagMap) context.Context {
+		if i.ocagent != nil {
+			ctx = i.ocagent.ProcessEvent(ctx, ev, tags)
+		}
+		if i.prometheus != nil {
+			ctx = i.prometheus.ProcessEvent(ctx, ev, tags)
+		}
+		if i.rpcs != nil {
+			ctx = i.rpcs.ProcessEvent(ctx, ev, tags)
+		}
+		if i.traces != nil {
+			ctx = i.traces.ProcessEvent(ctx, ev, tags)
+		}
+		return ctx
 	}
-	if i.ocagent != nil {
-		i.ocagent.Metric(ctx, data)
-	}
-	if i.traces != nil {
-		i.prometheus.Metric(ctx, data)
-	}
-	if i.rpcs != nil {
-		i.rpcs.Metric(ctx, data)
-	}
+	metrics := metric.Config{}
+	registerMetrics(&metrics)
+	exporter = metrics.Exporter(exporter)
+	exporter = export.Spans(exporter)
+	exporter = export.Labels(exporter)
+	return exporter
 }
 
 type dataFunc func(*http.Request) interface{}

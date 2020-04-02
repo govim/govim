@@ -8,14 +8,15 @@ import (
 	"context"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"sort"
 	"sync"
+	"time"
 
-	tlm "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/metric"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/metric"
 )
 
 var rpcTmpl = template.Must(template.Must(baseTemplate.Clone()).Parse(`
@@ -92,84 +93,106 @@ type rpcCodeBucket struct {
 	Count int64
 }
 
-func (r *rpcs) Metric(ctx context.Context, data event.MetricData) {
+func (r *rpcs) ProcessEvent(ctx context.Context, ev event.Event, tagMap event.TagMap) context.Context {
+	switch {
+	case ev.IsEndSpan():
+		// calculate latency if this was an rpc span
+		span := export.GetSpan(ctx)
+		if span == nil {
+			return ctx
+		}
+		// is this a finished rpc span, if so it will have a status code record
+		for _, ev := range span.Events() {
+			code := tag.StatusCode.Get(ev.Map())
+			if code != "" {
+				elapsedTime := span.Finish().At.Sub(span.Start().At)
+				latencyMillis := float64(elapsedTime) / float64(time.Millisecond)
+				statsCtx := event.Label1(ctx, tag.StatusCode.Of(code))
+				event.Record1(statsCtx, tag.Latency.Of(latencyMillis))
+			}
+		}
+		return ctx
+	case ev.IsRecord():
+		// fall through to the metrics handling logic
+	default:
+		// ignore all other event types
+		return ctx
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for i, group := range data.Groups() {
-		set := &r.Inbound
-		if group.Get(tlm.RPCDirection) == tlm.Outbound {
-			set = &r.Outbound
-		}
-		method, ok := group.Get(tlm.Method).(string)
-		if !ok {
-			continue
-		}
-		index := sort.Search(len(*set), func(i int) bool {
-			return (*set)[i].Method >= method
-		})
-		if index >= len(*set) || (*set)[index].Method != method {
-			old := *set
-			*set = make([]*rpcStats, len(old)+1)
-			copy(*set, old[:index])
-			copy((*set)[index+1:], old[index:])
-			(*set)[index] = &rpcStats{Method: method}
-		}
-		stats := (*set)[index]
-		switch data.Handle() {
-		case started:
-			stats.Started = data.(*metric.Int64Data).Rows[i]
-		case completed:
-			status, ok := group.Get(tlm.StatusCode).(string)
-			if !ok {
-				log.Printf("Not status... %v", group)
-				continue
+	//TODO(38168): we should just deal with the events here and not use metrics
+	metrics := metric.Entries.Get(tagMap).([]metric.Data)
+	for _, data := range metrics {
+		for i, group := range data.Groups() {
+			set := &r.Inbound
+			groupTags := event.NewTagMap(group...)
+			if tag.RPCDirection.Get(groupTags) == tag.Outbound {
+				set = &r.Outbound
 			}
-			var b *rpcCodeBucket
-			for c, entry := range stats.Codes {
-				if entry.Key == status {
-					b = stats.Codes[c]
-					break
+			method := tag.Method.Get(groupTags)
+			index := sort.Search(len(*set), func(i int) bool {
+				return (*set)[i].Method >= method
+			})
+			if index >= len(*set) || (*set)[index].Method != method {
+				old := *set
+				*set = make([]*rpcStats, len(old)+1)
+				copy(*set, old[:index])
+				copy((*set)[index+1:], old[index:])
+				(*set)[index] = &rpcStats{Method: method}
+			}
+			stats := (*set)[index]
+			switch data.Handle() {
+			case started.Name:
+				stats.Started = data.(*metric.Int64Data).Rows[i]
+			case completed.Name:
+				status := tag.StatusCode.Get(groupTags)
+				var b *rpcCodeBucket
+				for c, entry := range stats.Codes {
+					if entry.Key == status {
+						b = stats.Codes[c]
+						break
+					}
 				}
+				if b == nil {
+					b = &rpcCodeBucket{Key: status}
+					stats.Codes = append(stats.Codes, b)
+					sort.Slice(stats.Codes, func(i int, j int) bool {
+						return stats.Codes[i].Key < stats.Codes[j].Key
+					})
+				}
+				b.Count = data.(*metric.Int64Data).Rows[i]
+			case latency.Name:
+				data := data.(*metric.HistogramFloat64Data)
+				row := data.Rows[i]
+				stats.Latency.Count = row.Count
+				stats.Latency.Sum = timeUnits(row.Sum)
+				stats.Latency.Min = timeUnits(row.Min)
+				stats.Latency.Max = timeUnits(row.Max)
+				stats.Latency.Mean = timeUnits(row.Sum) / timeUnits(row.Count)
+				stats.Latency.Values = make([]rpcTimeBucket, len(data.Info.Buckets))
+				last := int64(0)
+				for i, b := range data.Info.Buckets {
+					stats.Latency.Values[i].Limit = timeUnits(b)
+					stats.Latency.Values[i].Count = row.Values[i] - last
+					last = row.Values[i]
+				}
+			case sentBytes.Name:
+				data := data.(*metric.HistogramInt64Data)
+				row := data.Rows[i]
+				stats.Sent.Count = row.Count
+				stats.Sent.Sum = byteUnits(row.Sum)
+				stats.Sent.Min = byteUnits(row.Min)
+				stats.Sent.Max = byteUnits(row.Max)
+				stats.Sent.Mean = byteUnits(row.Sum) / byteUnits(row.Count)
+			case receivedBytes.Name:
+				data := data.(*metric.HistogramInt64Data)
+				row := data.Rows[i]
+				stats.Received.Count = row.Count
+				stats.Received.Sum = byteUnits(row.Sum)
+				stats.Sent.Min = byteUnits(row.Min)
+				stats.Sent.Max = byteUnits(row.Max)
+				stats.Received.Mean = byteUnits(row.Sum) / byteUnits(row.Count)
 			}
-			if b == nil {
-				b = &rpcCodeBucket{Key: status}
-				stats.Codes = append(stats.Codes, b)
-				sort.Slice(stats.Codes, func(i int, j int) bool {
-					return stats.Codes[i].Key < stats.Codes[j].Key
-				})
-			}
-			b.Count = data.(*metric.Int64Data).Rows[i]
-		case latency:
-			data := data.(*metric.HistogramFloat64Data)
-			row := data.Rows[i]
-			stats.Latency.Count = row.Count
-			stats.Latency.Sum = timeUnits(row.Sum)
-			stats.Latency.Min = timeUnits(row.Min)
-			stats.Latency.Max = timeUnits(row.Max)
-			stats.Latency.Mean = timeUnits(row.Sum) / timeUnits(row.Count)
-			stats.Latency.Values = make([]rpcTimeBucket, len(data.Info.Buckets))
-			last := int64(0)
-			for i, b := range data.Info.Buckets {
-				stats.Latency.Values[i].Limit = timeUnits(b)
-				stats.Latency.Values[i].Count = row.Values[i] - last
-				last = row.Values[i]
-			}
-		case sentBytes:
-			data := data.(*metric.HistogramInt64Data)
-			row := data.Rows[i]
-			stats.Sent.Count = row.Count
-			stats.Sent.Sum = byteUnits(row.Sum)
-			stats.Sent.Min = byteUnits(row.Min)
-			stats.Sent.Max = byteUnits(row.Max)
-			stats.Sent.Mean = byteUnits(row.Sum) / byteUnits(row.Count)
-		case receivedBytes:
-			data := data.(*metric.HistogramInt64Data)
-			row := data.Rows[i]
-			stats.Received.Count = row.Count
-			stats.Received.Sum = byteUnits(row.Sum)
-			stats.Sent.Min = byteUnits(row.Min)
-			stats.Sent.Max = byteUnits(row.Max)
-			stats.Received.Mean = byteUnits(row.Sum) / byteUnits(row.Count)
 		}
 	}
 
@@ -182,6 +205,7 @@ func (r *rpcs) Metric(ctx context.Context, data event.MetricData) {
 			stats.InProgress = stats.Started - stats.Completed
 		}
 	}
+	return ctx
 }
 
 func (r *rpcs) getData(req *http.Request) interface{} {

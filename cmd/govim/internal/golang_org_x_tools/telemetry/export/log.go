@@ -8,21 +8,17 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
-
-func init() {
-	event.SetExporter(LogWriter(os.Stderr, true))
-}
 
 // LogWriter returns an Exporter that logs events to the supplied writer.
 // If onlyErrors is true it does not log any event that did not have an
 // associated error.
 // It ignores all telemetry other than log events.
 func LogWriter(w io.Writer, onlyErrors bool) event.Exporter {
-	return &logWriter{writer: w, onlyErrors: onlyErrors}
+	lw := &logWriter{writer: w, onlyErrors: onlyErrors}
+	return lw.ProcessEvent
 }
 
 type logWriter struct {
@@ -30,10 +26,10 @@ type logWriter struct {
 	onlyErrors bool
 }
 
-func (w *logWriter) ProcessEvent(ctx context.Context, ev event.Event) context.Context {
+func (w *logWriter) ProcessEvent(ctx context.Context, ev event.Event, tagMap event.TagMap) context.Context {
 	switch {
 	case ev.IsLog():
-		if w.onlyErrors && ev.Error == nil {
+		if w.onlyErrors && event.Err.Get(tagMap) == nil {
 			return ctx
 		}
 		fmt.Fprintf(w.writer, "%v\n", ev)
@@ -51,5 +47,3 @@ func (w *logWriter) ProcessEvent(ctx context.Context, ev event.Event) context.Co
 	}
 	return ctx
 }
-
-func (w *logWriter) Metric(context.Context, event.MetricData) {}

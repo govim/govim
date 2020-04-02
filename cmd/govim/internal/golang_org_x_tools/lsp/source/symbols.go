@@ -30,32 +30,29 @@ func DocumentSymbols(ctx context.Context, snapshot Snapshot, fh FileHandle) ([]p
 	info := pkg.GetTypesInfo()
 	q := qualifier(file, pkg.GetTypes(), info)
 
-	methodsToReceiver := make(map[types.Type][]protocol.DocumentSymbol)
 	symbolsToReceiver := make(map[types.Type]int)
 	var symbols []protocol.DocumentSymbol
 	for _, decl := range file.Decls {
 		switch decl := decl.(type) {
 		case *ast.FuncDecl:
 			if obj := info.ObjectOf(decl.Name); obj != nil {
-				fs, err := funcSymbol(ctx, snapshot.View(), pkg, decl, obj, q)
+				fs, err := funcSymbol(snapshot.View(), pkg, decl, obj, q)
 				if err != nil {
 					return nil, err
 				}
-				// Store methods separately, as we want them to appear as children
-				// of the corresponding type (which we may not have seen yet).
+				// If function is a method, prepend the type of the method.
 				if fs.Kind == protocol.Method {
 					rtype := obj.Type().(*types.Signature).Recv().Type()
-					methodsToReceiver[rtype] = append(methodsToReceiver[rtype], fs)
-				} else {
-					symbols = append(symbols, fs)
+					fs.Name = fmt.Sprintf("(%s).%s", types.TypeString(rtype, q), fs.Name)
 				}
+				symbols = append(symbols, fs)
 			}
 		case *ast.GenDecl:
 			for _, spec := range decl.Specs {
 				switch spec := spec.(type) {
 				case *ast.TypeSpec:
 					if obj := info.ObjectOf(spec.Name); obj != nil {
-						ts, err := typeSymbol(ctx, snapshot.View(), pkg, info, spec, obj, q)
+						ts, err := typeSymbol(snapshot.View(), pkg, info, spec, obj, q)
 						if err != nil {
 							return nil, err
 						}
@@ -65,7 +62,7 @@ func DocumentSymbols(ctx context.Context, snapshot Snapshot, fh FileHandle) ([]p
 				case *ast.ValueSpec:
 					for _, name := range spec.Names {
 						if obj := info.ObjectOf(name); obj != nil {
-							vs, err := varSymbol(ctx, snapshot.View(), pkg, decl, name, obj, q)
+							vs, err := varSymbol(snapshot.View(), pkg, decl, name, obj, q)
 							if err != nil {
 								return nil, err
 							}
@@ -76,24 +73,10 @@ func DocumentSymbols(ctx context.Context, snapshot Snapshot, fh FileHandle) ([]p
 			}
 		}
 	}
-
-	// Attempt to associate methods to the corresponding type symbol.
-	for typ, methods := range methodsToReceiver {
-		if ptr, ok := typ.(*types.Pointer); ok {
-			typ = ptr.Elem()
-		}
-
-		if i, ok := symbolsToReceiver[typ]; ok {
-			symbols[i].Children = append(symbols[i].Children, methods...)
-		} else {
-			// The type definition for the receiver of these methods was not in the document.
-			symbols = append(symbols, methods...)
-		}
-	}
 	return symbols, nil
 }
 
-func funcSymbol(ctx context.Context, view View, pkg Package, decl *ast.FuncDecl, obj types.Object, q types.Qualifier) (protocol.DocumentSymbol, error) {
+func funcSymbol(view View, pkg Package, decl *ast.FuncDecl, obj types.Object, q types.Qualifier) (protocol.DocumentSymbol, error) {
 	s := protocol.DocumentSymbol{
 		Name: obj.Name(),
 		Kind: protocol.Function,
@@ -129,7 +112,7 @@ func funcSymbol(ctx context.Context, view View, pkg Package, decl *ast.FuncDecl,
 	return s, nil
 }
 
-func typeSymbol(ctx context.Context, view View, pkg Package, info *types.Info, spec *ast.TypeSpec, obj types.Object, q types.Qualifier) (protocol.DocumentSymbol, error) {
+func typeSymbol(view View, pkg Package, info *types.Info, spec *ast.TypeSpec, obj types.Object, q types.Qualifier) (protocol.DocumentSymbol, error) {
 	s := protocol.DocumentSymbol{
 		Name: obj.Name(),
 	}
@@ -255,7 +238,7 @@ func nodesForStructField(i int, st *ast.StructType) (span, selection ast.Node) {
 	return nil, nil
 }
 
-func varSymbol(ctx context.Context, view View, pkg Package, decl ast.Node, name *ast.Ident, obj types.Object, q types.Qualifier) (protocol.DocumentSymbol, error) {
+func varSymbol(view View, pkg Package, decl ast.Node, name *ast.Ident, obj types.Object, q types.Qualifier) (protocol.DocumentSymbol, error) {
 	s := protocol.DocumentSymbol{
 		Name: obj.Name(),
 		Kind: protocol.Variable,

@@ -14,9 +14,9 @@ import (
 	"strings"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/telemetry"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
@@ -67,7 +67,7 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 			detail = "struct{...}" // for anonymous structs
 		} else if obj.IsField() {
 			var err error
-			detail, err = formatFieldType(c.ctx, c.snapshot, c.pkg, obj, c.qf)
+			detail, err = formatFieldType(c.ctx, c.snapshot, c.pkg, obj)
 			if err != nil {
 				detail = types.TypeString(obj.Type(), c.qf)
 			}
@@ -196,7 +196,7 @@ func (c *completer) item(cand candidate) (CompletionItem, error) {
 	}
 	hover, err := ident.Hover(c.ctx)
 	if err != nil {
-		event.Error(c.ctx, "failed to find Hover", err, telemetry.URI.Of(uri))
+		event.Error(c.ctx, "failed to find Hover", err, tag.URI.Of(uri))
 		return item, nil
 	}
 	item.Documentation = hover.Synopsis
@@ -247,9 +247,7 @@ func (c *completer) formatBuiltin(cand candidate) CompletionItem {
 		item.Kind = protocol.FunctionCompletion
 		astObj, err := c.snapshot.View().LookupBuiltin(c.ctx, obj.Name())
 		if err != nil {
-			if c.ctx.Err() == nil {
-				event.Error(c.ctx, "no builtin package", err)
-			}
+			event.Error(c.ctx, "no builtin package", err)
 			break
 		}
 		decl, ok := astObj.Decl.(*ast.FuncDecl)
@@ -293,7 +291,7 @@ func formatFieldList(ctx context.Context, v View, list *ast.FieldList) ([]string
 		cfg := printer.Config{Mode: printer.UseSpaces | printer.TabIndent, Tabwidth: 4}
 		b := &bytes.Buffer{}
 		if err := cfg.Fprint(b, v.Session().Cache().FileSet(), p.Type); err != nil {
-			event.Error(ctx, "unable to print type", nil, event.TagOf("Type", p.Type))
+			event.Error(ctx, "unable to print type", nil, tag.Type.Of(p.Type))
 			continue
 		}
 		typ := replacer.Replace(b.String())
