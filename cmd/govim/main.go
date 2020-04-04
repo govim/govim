@@ -39,10 +39,6 @@ const (
 var (
 	fTail = flag.Bool("tail", false, "whether to also log output to stdout")
 
-	// gopls define InitializationOptions; they will make these well defined
-	// constants at some point
-	goplsInitOptIncrementalSync = "incrementalSync"
-
 	// exposeTestAPI is a rather hacky but clean way of only exposing certain
 	// functions, commands and autocommands to Vim when run from a test
 	exposeTestAPI = os.Getenv(testsetup.EnvLoadTestAPI) == "true"
@@ -441,10 +437,6 @@ func (g *govimplugin) startGopls() error {
 	// target language servers other than gopls.
 	initParams.Capabilities.Workspace.DidChangeConfiguration.DynamicRegistration = true
 	initParams.Capabilities.Workspace.DidChangeWatchedFiles.DynamicRegistration = true
-	initOpts := make(map[string]interface{})
-	initOpts[goplsInitOptIncrementalSync] = true
-	initOpts["noDocsOnHover"] = true
-	initParams.InitializationOptions = initOpts
 
 	if _, err := g.server.Initialize(context.Background(), initParams); err != nil {
 		return fmt.Errorf("failed to initialise gopls: %v", err)
