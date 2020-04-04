@@ -180,3 +180,7 @@ func (v *vimstate) populateQuickfix(locs []protocol.Location, shift bool) {
 	v.ChannelCall("setqflist", qfs, "r")
 	v.ChannelEx("copen")
 }
+
+func (v *vimstate) parentCommand(args ...json.RawMessage) (interface{}, error) {
+	return v.parentCallArgs, nil
+}

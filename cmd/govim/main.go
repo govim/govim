@@ -42,6 +42,10 @@ func mainerr() error {
 		return flagErr(err.Error())
 	}
 
+	if *fParent != "" {
+		return runAsChild()
+	}
+
 	var goplsPath string
 	if os.Getenv(string(config.EnvVarUseGoplsFromPath)) == "true" {
 		gopls, err := exec.LookPath("gopls")
@@ -201,6 +205,18 @@ type govimplugin struct {
 
 	// inShutdown is closed when govim is told to Shutdown
 	inShutdown chan struct{}
+
+	// socketDir is the temporary directory within which the parent-child
+	// socket file will be created
+	socketDir string
+
+	// socketListener is the parent-child listener
+	socketListener net.Listener
+
+	// parentCallArgs represents the command that should be run to create a
+	// "child" instance of govim to communicate with its "parent" (the instance
+	// which responded to this function call)
+	parentCallArgs []string
 }
 
 func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Config) *govimplugin {
@@ -255,6 +271,12 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 }
 
 func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
+	// Start the parent server first, because it establishes the command []string
+	// that forms the response to GOVIMParentCommand()
+	if err := g.startParentServer(); err != nil {
+		return err
+	}
+
 	g.errCh = errCh
 	g.Driver.Govim = gg
 	g.vimstate.Driver.Govim = gg.Scheduled()
@@ -287,6 +309,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandHighlightReferences), g.vimstate.highlightReferences)
 	g.DefineCommand(string(config.CommandClearReferencesHighlights), g.vimstate.clearReferencesHighlights)
 	g.DefineAutoCommand("", govim.Events{govim.EventCompleteDone}, govim.Patterns{"*.go", "go.mod", "go.sum"}, false, g.vimstate.completeDone, "eval(expand('<abuf>'))", "v:completed_item")
+	g.DefineFunction(string(config.FunctionParentCommand), []string{}, g.vimstate.parentCommand)
 	g.DefineCommand(string(config.CommandExperimentalSignatureHelp), g.vimstate.signatureHelp)
 	g.DefineCommand(string(config.CommandFillStruct), g.vimstate.fillStruct)
 	g.DefineCommand(string(config.CommandGCDetails), g.vimstate.toggleGCDetails)
@@ -325,18 +348,39 @@ func goModPath(wd string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// Shutdown implements the govim.Plugin Shutdown method.
+//
+// TODO: because we do not trigger a shutdown from Vim (we simply close the
+// channel and then exit Vim without waiting for govim to complete its
+// shutdown) we are not guaranteed that this method actually runs when Vim
+// exits. Hence any temporary files/directories that we (or another process)
+// have created might not actually get removed. We should trigger a proper
+// shutdown sequence from Vim that ultimately calls this method before closing
+// the channel; this is a similar protocol to that used in LSP. For more details
+// see: github.com/govim/govim/issues/842
 func (g *govimplugin) Shutdown() error {
 	close(g.inShutdown)
 	close(g.bufferUpdates)
-	if err := g.server.Shutdown(context.Background()); err != nil {
-		return fmt.Errorf("failed to call gopls Shutdown: %v", err)
+
+	// Tidy up the parent-child socket listener
+	if err := g.socketListener.Close(); err != nil {
+		return fmt.Errorf("failed to close the parent-child socket listener: %v", err)
 	}
+	os.RemoveAll(g.socketDir) // see note above
+
+	// Shutdown gopls
+	//
 	// We "kill" gopls by closing its stdin. Standard practice for processes
 	// that communicate over stdin/stdout is to exit cleanly when stdin is
 	// closed.
+	if err := g.server.Shutdown(context.Background()); err != nil {
+		return fmt.Errorf("failed to call gopls Shutdown: %v", err)
+	}
 	if err := g.goplsStdin.Close(); err != nil {
 		return fmt.Errorf("failed to close gopls stdin: %v", err)
 	}
+
+	// Shutdown the filewatcher
 	if g.modWatcher != nil {
 		if err := g.modWatcher.close(); err != nil {
 			return fmt.Errorf("failed to close file watcher: %v", err)
