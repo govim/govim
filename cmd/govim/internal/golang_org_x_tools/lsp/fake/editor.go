@@ -57,7 +57,7 @@ func NewConnectedEditor(ctx context.Context, ws *Workspace, conn *jsonrpc2.Conn)
 	e := NewEditor(ws)
 	e.server = protocol.ServerDispatcher(conn)
 	e.client = &Client{Editor: e}
-	conn.AddHandler(protocol.ClientHandler(e.client))
+	go conn.Run(ctx, protocol.ClientHandler(e.client, jsonrpc2.MethodNotFound))
 	if err := e.initialize(ctx); err != nil {
 		return nil, err
 	}
@@ -405,6 +405,14 @@ func (e *Editor) BufferText(name string) string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.buffers[name].text()
+}
+
+// BufferVersion returns the current version of the buffer corresponding to
+// name (or 0 if it is not being edited).
+func (e *Editor) BufferVersion(name string) int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.buffers[name].version
 }
 
 func (e *Editor) editBufferLocked(ctx context.Context, path string, edits []Edit) error {
