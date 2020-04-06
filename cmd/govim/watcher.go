@@ -159,7 +159,7 @@ func (m *modWatcher) watch() {
 				// watcher has been stopped?
 				return
 			}
-			// TODO - handle this case better
+			// TODO: handle this case better
 			m.Logf("***** file watcher error: %v", err)
 		}
 	}

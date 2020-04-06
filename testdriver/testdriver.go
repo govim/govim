@@ -63,7 +63,7 @@ func init() {
 	DefaultErrLogMatchWait = fmt.Sprintf("%v", d)
 }
 
-// TODO - this code is a mess and needs to be fixed
+// TODO: this code is a mess and needs to be fixed
 
 type TestDriver struct {
 	govimListener  net.Listener

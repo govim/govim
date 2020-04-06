@@ -189,7 +189,7 @@ func writeGithubActionsYaml() {
 	var vimFlavors []string
 	var vimVersions []string
 	for _, b := range buildmatrix() {
-		// TODO when we add Neovim to the actually build, drop this skip
+		// TODO: when we add Neovim to the actually build, drop this skip
 		if b.vimflavor == govim.FlavorNeovim {
 			continue
 		}
