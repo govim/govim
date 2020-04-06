@@ -45,24 +45,33 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		(*ast.RangeStmt)(nil),
 	}
 	inspect.Preorder(nodeFilter, func(n ast.Node) {
-		stmt := n.(*ast.RangeStmt)
-		end := newlineIndex(pass.Fset, stmt)
-		var old ast.Expr
+		var copy *ast.RangeStmt
+		if stmt, ok := n.(*ast.RangeStmt); ok {
+			copy = &ast.RangeStmt{
+				For:    stmt.For,
+				Body:   stmt.Body,
+				Key:    stmt.Key,
+				Tok:    stmt.Tok,
+				TokPos: stmt.TokPos,
+				Value:  stmt.Value,
+				X:      stmt.X,
+			}
+		}
+		if copy == nil {
+			return
+		}
+		end := newlineIndex(pass.Fset, copy)
+
 		// Range statements of the form: for i, _ := range x {}
-		if isBlank(stmt.Value) {
-			old = stmt.Value
-			defer func() {
-				stmt.Value = old
-			}()
-			stmt.Value = nil
+		var old ast.Expr
+		if isBlank(copy.Value) {
+			old = copy.Value
+			copy.Value = nil
 		}
 		// Range statements of the form: for _ := range x {}
-		if isBlank(stmt.Key) && stmt.Value == nil {
-			old = stmt.Key
-			defer func() {
-				stmt.Key = old
-			}()
-			stmt.Key = nil
+		if isBlank(copy.Key) && copy.Value == nil {
+			old = copy.Key
+			copy.Key = nil
 		}
 		// Return early if neither if condition is met.
 		if old == nil {
@@ -72,7 +81,7 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			Pos:            old.Pos(),
 			End:            old.End(),
 			Message:        "simplify range expression",
-			SuggestedFixes: suggestedFixes(pass.Fset, stmt, end),
+			SuggestedFixes: suggestedFixes(pass.Fset, copy, end),
 		})
 	})
 	return nil, nil
