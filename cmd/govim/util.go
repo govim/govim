@@ -51,15 +51,13 @@ func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {
 	return
 }
 
-// populateQuickfix populates and opens a quickfix window with a sorted
-// slice of locations. If shift is true the first element of the slice
-// will be skipped.
-func (v *vimstate) populateQuickfix(locs []protocol.Location, shift bool) {
+func (v *vimstate) locationsToQuickfix(locs []protocol.Location, rel bool) ([]quickfixEntry, error) {
 	// must be non-nil
 	qf := []quickfixEntry{}
 
 	for _, loc := range locs {
 		var buf *types.Buffer
+		var err error
 		for _, b := range v.buffers {
 			if b.Loaded && b.URI() == span.URI(loc.URI) {
 				buf = b
@@ -69,27 +67,25 @@ func (v *vimstate) populateQuickfix(locs []protocol.Location, shift bool) {
 		if buf == nil {
 			byts, err := ioutil.ReadFile(fn)
 			if err != nil {
-				v.Logf("populateQuickfix: failed to read contents of %v: %v", fn, err)
-				continue
+				return nil, fmt.Errorf("failed to read contents of %v: %v", fn, err)
 			}
 			// create a temp buffer
 			buf = types.NewBuffer(-1, fn, byts, false)
 		}
 		// make fn relative for reporting purposes
-		fn, err := filepath.Rel(v.workingDirectory, fn)
-		if err != nil {
-			v.Logf("populateQuickfix: failed to call filepath.Rel(%q, %q): %v", v.workingDirectory, fn, err)
-			continue
+		if rel {
+			fn, err = filepath.Rel(v.workingDirectory, fn)
+			if err != nil {
+				return nil, fmt.Errorf("failed to call filepath.Rel(%q, %q): %v", v.workingDirectory, fn, err)
+			}
 		}
 		p, err := types.PointFromPosition(buf, loc.Range.Start)
 		if err != nil {
-			v.Logf("popularQuickfix: failed to resolve position: %v", err)
-			continue
+			return nil, fmt.Errorf("failed to resolve position: %v", err)
 		}
 		line, err := buf.Line(p.Line())
 		if err != nil {
-			v.Logf("popularQuickfix: location invalid in buffer: %v", err)
-			continue
+			return nil, fmt.Errorf("location invalid in buffer: %v", err)
 		}
 		qf = append(qf, quickfixEntry{
 			Filename: fn,
@@ -97,6 +93,19 @@ func (v *vimstate) populateQuickfix(locs []protocol.Location, shift bool) {
 			Col:      p.Col(),
 			Text:     line,
 		})
+	}
+	return qf, nil
+}
+
+// populateQuickfix populates and opens a quickfix window with a sorted
+// slice of locations. If shift is true the first element of the slice
+// will be skipped.
+func (v *vimstate) populateQuickfix(locs []protocol.Location, shift bool) {
+	qf, err := v.locationsToQuickfix(locs, true)
+	if err != nil {
+		// TODO do better here
+		v.Logf("failed to convert locations to quickfix entries: %v", err)
+		return
 	}
 
 	var toSort []quickfixEntry
