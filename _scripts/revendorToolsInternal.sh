@@ -21,8 +21,11 @@ else
     find ./cmd/govim/internal/golang_org_x_tools -name "*.go" -exec sed -i $regex {} +
 fi
 
+# Remove _test.go files and testdata directories
 find ./cmd/govim/internal/golang_org_x_tools/ -name "*_test.go" -exec rm {} +
-rm -f ./cmd/govim/internal/golang_org_x_tools/LICENSE
+find ./cmd/govim/internal/golang_org_x_tools/ -type d -name testdata -exec rm -rf {} +
+
+# Copy license
 cp $tools/LICENSE ./cmd/govim/internal/golang_org_x_tools
 
 go mod tidy
