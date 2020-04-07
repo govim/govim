@@ -412,7 +412,7 @@ func (g *govimplugin) startGopls() error {
 	conn := jsonrpc2.NewConn(stream)
 	server := protocol.ServerDispatcher(conn)
 	handler := protocol.ClientHandler(g, jsonrpc2.MethodNotFound)
-	conn.LegacyHooks = protocol.Canceller{}
+	handler = protocol.Handlers(handler)
 	ctxt = protocol.WithClient(ctxt, g)
 
 	g.tomb.Go(func() error {

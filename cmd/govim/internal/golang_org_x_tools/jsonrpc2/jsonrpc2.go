@@ -30,34 +30,29 @@ const (
 // Conn is bidirectional; it does not have a designated server or client end.
 type Conn struct {
 	seq         int64 // must only be accessed using atomic operations
-	LegacyHooks LegacyHooks
 	stream      Stream
 	pendingMu   sync.Mutex // protects the pending map
 	pending     map[ID]chan *WireResponse
-	handlingMu  sync.Mutex // protects the handling map
-	handling    map[ID]*Request
+	onCancelled CallCanceller
 }
-
-type requestState int
-
-const (
-	requestWaiting = requestState(iota)
-	requestSerial
-	requestParallel
-	requestReplied
-	requestDone
-)
 
 // Request is sent to a server to represent a Call or Notify operaton.
 type Request struct {
-	conn        *Conn
-	cancel      context.CancelFunc
-	state       requestState
-	nextRequest chan struct{}
+	conn *Conn
+	// done holds set of callbacks added by OnReply, and is set back to nil if
+	// Reply has been called.
+	done []func()
 
 	// The Wire values of the request.
 	WireRequest
 }
+
+// Canceller is the type for a function that can cancel an in progress request.
+type Canceller func(id ID)
+
+// CallCanceller is the type for a callback when an outgoing request is
+// has it's context cancelled.
+type CallCanceller func(context.Context, *Conn, ID)
 
 type constError string
 
@@ -76,25 +71,17 @@ func NewErrorf(code int64, format string, args ...interface{}) *Error {
 // You must call Run for the connection to be active.
 func NewConn(s Stream) *Conn {
 	conn := &Conn{
-		stream:   s,
-		pending:  make(map[ID]chan *WireResponse),
-		handling: make(map[ID]*Request),
+		stream:  s,
+		pending: make(map[ID]chan *WireResponse),
 	}
 	return conn
 }
 
-// Cancel cancels a pending Call on the server side.
-// The call is identified by its id.
-// JSON RPC 2 does not specify a cancel message, so cancellation support is not
-// directly wired in. This method allows a higher level protocol to choose how
-// to propagate the cancel.
-func (c *Conn) Cancel(id ID) {
-	c.handlingMu.Lock()
-	handling, found := c.handling[id]
-	c.handlingMu.Unlock()
-	if found {
-		handling.cancel()
-	}
+// OnCancelled sets the callback used when an outgoing call request has
+// it's context cancelled when still in progress.
+// Only the last callback registered is used.
+func (c *Conn) OnCancelled(cancelled CallCanceller) {
+	c.onCancelled = cancelled
 }
 
 // Notify is called to send a notification request over the connection.
@@ -113,9 +100,6 @@ func (c *Conn) Notify(ctx context.Context, method string, params interface{}) (e
 	if err != nil {
 		return fmt.Errorf("marshalling notify request: %v", err)
 	}
-	if c.LegacyHooks != nil {
-		ctx = c.LegacyHooks.Request(ctx, c, Send, request)
-	}
 	ctx, done := event.StartSpan(ctx, request.Method,
 		tag.Method.Of(request.Method),
 		tag.RPCDirection.Of(tag.Outbound),
@@ -128,7 +112,7 @@ func (c *Conn) Notify(ctx context.Context, method string, params interface{}) (e
 
 	event.Record(ctx, tag.Started.Of(1))
 	n, err := c.stream.Write(ctx, data)
-	event.Record(ctx, tag.ReceivedBytes.Of(n))
+	event.Record(ctx, tag.SentBytes.Of(n))
 	return err
 }
 
@@ -151,9 +135,6 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 	data, err := json.Marshal(request)
 	if err != nil {
 		return fmt.Errorf("marshalling call request: %v", err)
-	}
-	if c.LegacyHooks != nil {
-		ctx = c.LegacyHooks.Request(ctx, c, Send, request)
 	}
 	ctx, done := event.StartSpan(ctx, request.Method,
 		tag.Method.Of(request.Method),
@@ -180,7 +161,7 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 	}()
 	// now we are ready to send
 	n, err := c.stream.Write(ctx, data)
-	event.Record(ctx, tag.ReceivedBytes.Of(n))
+	event.Record(ctx, tag.SentBytes.Of(n))
 	if err != nil {
 		// sending failed, we will never get a response, so don't leave it pending
 		return err
@@ -201,8 +182,8 @@ func (c *Conn) Call(ctx context.Context, method string, params, result interface
 		return nil
 	case <-ctx.Done():
 		// Allow the handler to propagate the cancel.
-		if c.LegacyHooks != nil {
-			c.LegacyHooks.Cancel(ctx, c, id, false)
+		if c.onCancelled != nil {
+			c.onCancelled(ctx, c, id)
 		}
 		return ctx.Err()
 	}
@@ -222,16 +203,17 @@ func (r *Request) IsNotify() bool {
 // This will mark the request as done, triggering any done
 // handlers
 func (r *Request) Reply(ctx context.Context, result interface{}, err error) error {
-	if r.state >= requestReplied {
+	if r.done == nil {
 		return fmt.Errorf("reply invoked more than once")
 	}
 
-	if r.state < requestParallel {
-		r.state = requestParallel
-		close(r.nextRequest)
-	}
-	r.state = requestReplied
-	recordStatus(ctx, nil)
+	defer func() {
+		recordStatus(ctx, err)
+		for i := len(r.done); i > 0; i-- {
+			r.done[i-1]()
+		}
+		r.done = nil
+	}()
 
 	if r.IsNotify() {
 		return nil
@@ -257,7 +239,7 @@ func (r *Request) Reply(ctx context.Context, result interface{}, err error) erro
 		return err
 	}
 	n, err := r.conn.stream.Write(ctx, data)
-	event.Record(ctx, tag.ReceivedBytes.Of(n))
+	event.Record(ctx, tag.SentBytes.Of(n))
 
 	if err != nil {
 		// TODO(iancottrell): if a stream write fails, we really need to shut down
@@ -267,17 +249,15 @@ func (r *Request) Reply(ctx context.Context, result interface{}, err error) erro
 	return nil
 }
 
-func setHandling(r *Request, active bool) {
-	if r.ID == nil {
-		return
-	}
-	r.conn.handlingMu.Lock()
-	defer r.conn.handlingMu.Unlock()
-	if active {
-		r.conn.handling[*r.ID] = r
-	} else {
-		delete(r.conn.handling, *r.ID)
-	}
+// OnReply adds a done callback to the request.
+// All added callbacks are invoked during the one required call to Reply, and
+// then dropped.
+// It is an error to call this after Reply.
+// This call is not safe for concurrent use, but should only be invoked by
+// handlers and in general only one handler should be working on a request
+// at any time.
+func (r *Request) OnReply(do func()) {
+	r.done = append(r.done, do)
 }
 
 // combined has all the fields of both Request and Response.
@@ -296,12 +276,6 @@ type combined struct {
 // It must be called exactly once for each Conn.
 // It returns only when the reader is closed or there is an error in the stream.
 func (c *Conn) Run(runCtx context.Context, handler Handler) error {
-	handler = MustReply(handler)
-	// we need to make the next request "lock" in an unlocked state to allow
-	// the first incoming request to proceed. All later requests are unlocked
-	// by the preceding request going to parallel mode.
-	nextRequest := make(chan struct{})
-	close(nextRequest)
 	for {
 		// get the data for a message
 		data, n, err := c.stream.Read(runCtx)
@@ -321,13 +295,17 @@ func (c *Conn) Run(runCtx context.Context, handler Handler) error {
 		switch {
 		case msg.Method != "":
 			// If method is set it must be a request.
-			reqCtx, cancelReq := context.WithCancel(runCtx)
-			thisRequest := nextRequest
-			nextRequest = make(chan struct{})
+			reqCtx, spanDone := event.StartSpan(runCtx, msg.Method,
+				tag.Method.Of(msg.Method),
+				tag.RPCDirection.Of(tag.Inbound),
+				tag.RPCID.Of(msg.ID.String()),
+			)
+			event.Record(reqCtx,
+				tag.Started.Of(1),
+				tag.ReceivedBytes.Of(n))
+
 			req := &Request{
-				conn:        c,
-				cancel:      cancelReq,
-				nextRequest: nextRequest,
+				conn: c,
 				WireRequest: WireRequest{
 					VersionTag: msg.VersionTag,
 					Method:     msg.Method,
@@ -335,39 +313,12 @@ func (c *Conn) Run(runCtx context.Context, handler Handler) error {
 					ID:         msg.ID,
 				},
 			}
-			if c.LegacyHooks != nil {
-				reqCtx = c.LegacyHooks.Request(reqCtx, c, Receive, &req.WireRequest)
+			req.OnReply(func() { spanDone() })
+
+			if err := handler(reqCtx, req); err != nil {
+				// delivery failed, not much we can do
+				event.Error(reqCtx, "jsonrpc2 message delivery failed", err)
 			}
-			reqCtx, done := event.StartSpan(reqCtx, req.WireRequest.Method,
-				tag.Method.Of(req.WireRequest.Method),
-				tag.RPCDirection.Of(tag.Inbound),
-				tag.RPCID.Of(req.WireRequest.ID.String()),
-			)
-			event.Record(reqCtx,
-				tag.Started.Of(1),
-				tag.SentBytes.Of(n))
-			setHandling(req, true)
-			_, queueDone := event.StartSpan(reqCtx, "queued")
-			go func() {
-				<-thisRequest
-				queueDone()
-				req.state = requestSerial
-				defer func() {
-					setHandling(req, false)
-					done()
-					cancelReq()
-				}()
-				if c.LegacyHooks != nil {
-					if c.LegacyHooks.Deliver(reqCtx, req, false) {
-						return
-					}
-				}
-				err := handler(reqCtx, req)
-				if err != nil {
-					// delivery failed, not much we can do
-					event.Error(reqCtx, "jsonrpc2 message delivery failed", err)
-				}
-			}()
 		case msg.ID != nil:
 			// If method is not set, this should be a response, in which case we must
 			// have an id to send the response back to the caller.
