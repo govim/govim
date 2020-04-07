@@ -86,7 +86,7 @@ func (v *vimstate) diagnostics() *[]types.Diagnostic {
 }
 
 func (v *vimstate) handleDiagnosticsChanged() error {
-	if err := v.updateQuickfix(false); err != nil {
+	if err := v.updateQuickfixWithDiagnostics(false, false); err != nil {
 		return err
 	}
 

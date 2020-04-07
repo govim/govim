@@ -88,7 +88,7 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 			}
 		} else {
 			// QuickfixAutoDiagnostics is now on
-			if err := v.updateQuickfix(true); err != nil {
+			if err := v.updateQuickfixWithDiagnostics(true, false); err != nil {
 				return nil, fmt.Errorf("failed to update diagnostics: %v", err)
 			}
 		}
