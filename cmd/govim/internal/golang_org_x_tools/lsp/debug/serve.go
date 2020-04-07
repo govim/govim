@@ -34,6 +34,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/metric"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/ocagent"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/export/prometheus"
+	"golang.org/x/xerrors"
 )
 
 type instanceKeyType int
@@ -543,8 +544,16 @@ func (i *Instance) writeMemoryDebug(threshold uint64) error {
 func makeGlobalExporter(stderr io.Writer) event.Exporter {
 	return func(ctx context.Context, ev event.Event, tags event.TagMap) context.Context {
 		i := GetInstance(ctx)
-		if ev.IsLog() && (event.Err.Get(ev.Map()) != nil || i == nil) {
-			fmt.Fprintf(stderr, "%v\n", ev)
+
+		if ev.IsLog() {
+			// Don't log context cancellation errors.
+			if err := event.Err.Get(ev.Map()); xerrors.Is(err, context.Canceled) {
+				return ctx
+			}
+			// Make sure any log messages without an instance go to stderr.
+			if i == nil {
+				fmt.Fprintf(stderr, "%v\n", ev)
+			}
 		}
 		ctx = protocol.LogEvent(ctx, ev, tags)
 		if i == nil {
