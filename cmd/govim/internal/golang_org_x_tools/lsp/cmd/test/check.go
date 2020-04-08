@@ -14,7 +14,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
-func (r *runner) Diagnostics(t *testing.T, uri span.URI, want []source.Diagnostic) {
+func (r *runner) Diagnostics(t *testing.T, uri span.URI, want []*source.Diagnostic) {
 	if len(want) == 1 && want[0].Message == "" {
 		return
 	}

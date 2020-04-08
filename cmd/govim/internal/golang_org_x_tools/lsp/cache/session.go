@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -133,6 +134,7 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 			modHandles:        make(map[span.URI]*modHandle),
 		},
 		ignoredURIs: make(map[span.URI]struct{}),
+		gocmdRunner: &gocommand.Runner{},
 	}
 	v.snapshot.view = v
 
