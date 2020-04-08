@@ -275,8 +275,13 @@ const (
 	CommandSuggestedFixes Command = "SuggestedFixes"
 
 	// CommandHighlightReferences highlights references to the identifier under
-	// the cursor.
+	// the cursor. The highlights are removed by a change to any file or a call
+	// to CommandClearReferencesHighlights.
 	CommandHighlightReferences Command = "HighlightReferences"
+
+	// CommandClearReferencesHighlights clears any highlighint of references
+	// added by a previous call to CommandHighlightReferences
+	CommandClearReferencesHighlights Command = "ClearReferencesHighlights"
 )
 
 type Function string
