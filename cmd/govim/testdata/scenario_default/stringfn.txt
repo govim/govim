@@ -11,7 +11,7 @@ cmp main.go main.go.golden
 
 skip 'Pending work to fix up Vim commands in test'
 
-# TODO add a test based on a visual selection
+# TODO: add a test based on a visual selection
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103

@@ -688,7 +688,7 @@ func (g *govimImpl) DefineAutoCommand(group string, events Events, patts Pattern
 	}
 	sort.Strings(strEvents)
 	w(strings.Join(strEvents, ","))
-	// TODO validate patterns
+	// TODO: validate patterns
 	var strPatts []string
 	for _, p := range patts {
 		strPatts = append(strPatts, string(p))
@@ -901,7 +901,7 @@ func (g *govimImpl) parseInt(m json.RawMessage) int {
 func (g *govimImpl) sendJSONMsg(p1, p2 interface{}, ps ...interface{}) {
 	msg := []interface{}{p1, p2}
 	msg = append(msg, ps...)
-	// TODO could use a multi-writer here
+	// TODO: could use a multi-writer here
 	logMsg, err := json.Marshal(msg)
 	if err != nil {
 		g.errProto("failed to create log message: %v", err)

@@ -45,12 +45,11 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 		v.Logf("No changes to apply for rename")
 		return nil
 	}
-	// TODO it feels like we need a new config variable for the strategy to use
+	// TODO: it feels like we need a new config variable for the strategy to use
 	// when making edits of this sort (to multiple files). It doesn't feel right
 	// to use the value of &switchbuf because there might be multiple changes
-	// (as opposed to jumping to a single definition/location).
-	//
-	// For now we hardcode a split.
+	// (as opposed to jumping to a single definition/location). For now we
+	// hardcode a split.
 	vp := v.Viewport()
 	bufNrs := make(map[string]int)
 	var fps []string

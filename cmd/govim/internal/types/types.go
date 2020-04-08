@@ -88,7 +88,8 @@ func (w *WatchedFile) URI() span.URI {
 }
 
 // URI returns the b's Name as a span.URI, assuming it is a file.
-// TODO we should panic here is this is not a file-based buffer
+//
+// TODO: we should panic here is this is not a file-based buffer
 func (b *Buffer) URI() span.URI {
 	return span.URIFromPath(b.Name)
 }

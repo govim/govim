@@ -9,7 +9,7 @@ augroup END
 
 let s:minVimSafeState = has("patch-8.1.2056")
 
-" TODO we should source a code-generated, auto-loaded
+" TODO: we should source a code-generated, auto-loaded
 " vim file or similar to source this minimum version
 if !has("patch-8.1.1711")
   echoerr "Need at least version v8.1.1711 of Vim; govim will not be loaded"
@@ -21,7 +21,7 @@ if has("patch-8.2.0452") && !has("patch-8.2.0466")
   finish
 endif
 
-" TODO we are ignoring windows right now....
+" TODO: we are ignoring windows right now....
 let s:tmpdir = $TMPDIR
 if s:tmpdir == ""
   let s:tmpdir = "/tmp"
@@ -172,7 +172,7 @@ endfunction
 
 function s:doShutdown()
   if s:govim_status != "loaded" && s:govim_status != "initcomplete"
-    " TODO anything to do here other than return?
+    " TODO: anything to do here other than return?
     return
   endif
   call ch_close(s:channel)
@@ -379,7 +379,7 @@ command -bar GOVIMLogfilePaths echom "Vim channel logfile: ".s:ch_logfile | echo
 function s:install(force)
   let oldpath = getcwd()
   execute "cd ".s:plugindir
-  " TODO make work on Windows
+  " TODO: make work on Windows
   let commit = trim(system("git rev-parse HEAD 2>&1"))
   if v:shell_error
     throw commit
@@ -388,7 +388,7 @@ function s:install(force)
   if a:force || $GOVIM_ALWAYS_INSTALL == "true" || !filereadable(targetdir."govim") || !filereadable(targetdir."gopls")
     echom "Installing govim and gopls"
     call feedkeys(" ") " to prevent press ENTER to continue
-    " TODO make work on Windows
+    " TODO: make work on Windows
     let install = system("env GO111MODULE=on GOBIN=".shellescape(targetdir)." go install github.com/govim/govim/cmd/govim golang.org/x/tools/gopls 2>&1")
     if v:shell_error
       throw install
@@ -398,7 +398,7 @@ function s:install(force)
   return targetdir
 endfunction
 
-" TODO - would be nice to be able to specify -1 as a timeout
+" TODO: would be nice to be able to specify -1 as a timeout
 let opts = {"in_mode": "json", "out_mode": "json", "err_mode": "json", "callback": function("s:define"), "timeout": 30000}
 if $GOVIMTEST_SOCKET != ""
   let s:channel = ch_open($GOVIMTEST_SOCKET, opts)

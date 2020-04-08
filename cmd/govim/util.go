@@ -103,7 +103,9 @@ func (v *vimstate) locationsToQuickfix(locs []protocol.Location, rel bool) ([]qu
 func (v *vimstate) populateQuickfix(locs []protocol.Location, shift bool) {
 	qf, err := v.locationsToQuickfix(locs, true)
 	if err != nil {
-		// TODO do better here
+		// TODO: come up with a better strategy for alerting the user to the
+		// fact that the conversation to quickfix entries failed. Should be rare
+		// but when it does happen, we need to be noisy.
 		v.Logf("failed to convert locations to quickfix entries: %v", err)
 		return
 	}
