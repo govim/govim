@@ -11,6 +11,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 	errors "golang.org/x/xerrors"
 )
@@ -32,14 +33,16 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 		if !ok {
 			return nil, err
 		}
+		cfg := snapshot.Config(ctx)
 		// Run go.mod tidy on the view.
 		inv := gocommand.Invocation{
 			Verb:       "mod",
 			Args:       []string{"tidy"},
-			Env:        snapshot.Config(ctx).Env,
+			Env:        cfg.Env,
 			WorkingDir: snapshot.View().Folder().Filename(),
 		}
-		if _, err := inv.Run(ctx); err != nil {
+		gocmdRunner := packagesinternal.GetGoCmdRunner(cfg)
+		if _, err := gocmdRunner.Run(ctx, inv); err != nil {
 			return nil, err
 		}
 	case "upgrade.dependency":
@@ -52,14 +55,16 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 		if !ok {
 			return nil, err
 		}
+		cfg := snapshot.Config(ctx)
 		// Run "go get" on the dependency to upgrade it to the latest version.
 		inv := gocommand.Invocation{
 			Verb:       "get",
 			Args:       strings.Split(deps, " "),
-			Env:        snapshot.Config(ctx).Env,
+			Env:        cfg.Env,
 			WorkingDir: snapshot.View().Folder().Filename(),
 		}
-		if _, err := inv.Run(ctx); err != nil {
+		gocmdRunner := packagesinternal.GetGoCmdRunner(cfg)
+		if _, err := gocmdRunner.Run(ctx, inv); err != nil {
 			return nil, err
 		}
 	}
