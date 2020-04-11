@@ -212,6 +212,15 @@ type Config struct {
 	//
 	// Default: nil
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{} `json:",omitempty"`
+
+	// ExperimentalWorkaroundCompleteoptLongest provides a partial workaround
+	// for users who would otherwise set completeopt+=longest but can't because
+	// of github.com/vim/vim/issues/5891. That bug prevents completeopt+=longest
+	// from working properly, and as the comments in that issue describe why the
+	// workaround needs to be in govim. Set this config option along with
+	// completeopt=menu,popup and Vim+govim will behave approximately like
+	// completeopt+=longest.
+	ExperimentalWorkaroundCompleteoptLongest *bool `json:",omitempty"`
 }
 
 type Command string

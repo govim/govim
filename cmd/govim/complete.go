@@ -45,6 +45,15 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 			}
 			start = pos.Col() - 1 // see help complete-functions
 		}
+		if v.config.ExperimentalWorkaroundCompleteoptLongest != nil && *v.config.ExperimentalWorkaroundCompleteoptLongest {
+			if len(res.Items) <= 1 {
+				v.ChannelEx("set completeopt-=noinsert")
+				v.ChannelEx("set completeopt-=noselect")
+			} else {
+				v.ChannelEx("set completeopt+=noinsert")
+				v.ChannelEx("set completeopt+=noselect")
+			}
+		}
 		v.lastCompleteResults = res
 		return start, nil
 	} else {
