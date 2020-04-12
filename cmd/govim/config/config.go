@@ -282,6 +282,14 @@ const (
 	// CommandClearReferencesHighlights clears any highlighint of references
 	// added by a previous call to CommandHighlightReferences
 	CommandClearReferencesHighlights Command = "ClearReferencesHighlights"
+
+	// CommandExperimentalSignatureHelp shows a popup with signature information
+	// and documentation for the command or method call enclosed by the cursor
+	// position. The cursor must be after the left parentheses of the call
+	// expression. If there is no signature help available for the current
+	// cursor position, no popup is shown. Moving the cursor or the mouse causes
+	// the popup to be dismissed.
+	CommandExperimentalSignatureHelp Command = "ExperimentalSignatureHelp"
 )
 
 type Function string
