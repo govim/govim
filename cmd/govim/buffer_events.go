@@ -79,9 +79,12 @@ type bufChangedChange struct {
 // bufChanged(bufnr, start, end, added, changes)
 //
 func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
-	// For now any change (in a .go file) causes an existing highlights to be removed
-	v.highlightingReferences = false
-	v.removeReferenceHighlight(nil)
+	// For now, if we are "manually" highlighting, any change (in a .go file)
+	// causes an existing highlights to be removed.
+	if v.highlightingReferences {
+		v.highlightingReferences = false
+		v.removeReferenceHighlight(nil)
+	}
 
 	bufnr := v.ParseInt(args[0])
 	b, ok := v.buffers[bufnr]
