@@ -142,6 +142,10 @@ function! s:validExperimentalCursorTriggeredHoverPopupOptions(v)
   return s:validExperimentalMouseTriggeredHoverPopupOptions(a:v)
 endfunction
 
+function! s:validExperimentalWorkaroundCompleteoptLongest(v)
+  return s:validBool(a:v)
+endfunction
+
 let s:validators = {
       \ "FormatOnSave": function("s:validFormatOnSave"),
       \ "QuickfixAutoDiagnostics": function("s:validQuickfixAutoDiagnostics"),
@@ -160,4 +164,5 @@ let s:validators = {
       \ "ExperimentalAutoreadLoadedBuffers": function("s:validExperimentalAutoreadLoadedBuffers"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
+      \ "ExperimentalWorkaroundCompleteoptLongest": function("s:validExperimentalWorkaroundCompleteoptLongest"),
       \ }

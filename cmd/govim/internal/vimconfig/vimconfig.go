@@ -24,6 +24,7 @@ type VimConfig struct {
 	ExperimentalAutoreadLoadedBuffers            *int
 	ExperimentalMouseTriggeredHoverPopupOptions  *map[string]interface{}
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
+	ExperimentalWorkaroundCompleteoptLongest     *int
 }
 
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
@@ -45,6 +46,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		ExperimentalAutoreadLoadedBuffers: boolVal(c.ExperimentalAutoreadLoadedBuffers, d.ExperimentalAutoreadLoadedBuffers),
 		ExperimentalMouseTriggeredHoverPopupOptions:  copyMap(c.ExperimentalMouseTriggeredHoverPopupOptions, d.ExperimentalMouseTriggeredHoverPopupOptions),
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),
+		ExperimentalWorkaroundCompleteoptLongest:     boolVal(c.ExperimentalWorkaroundCompleteoptLongest, d.ExperimentalWorkaroundCompleteoptLongest),
 	}
 	if v.FormatOnSave == nil {
 		v.FormatOnSave = d.FormatOnSave

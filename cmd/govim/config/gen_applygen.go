@@ -52,4 +52,7 @@ func (r *Config) Apply(v *Config) {
 	if v.ExperimentalCursorTriggeredHoverPopupOptions != nil {
 		r.ExperimentalCursorTriggeredHoverPopupOptions = v.ExperimentalCursorTriggeredHoverPopupOptions
 	}
+	if v.ExperimentalWorkaroundCompleteoptLongest != nil {
+		r.ExperimentalWorkaroundCompleteoptLongest = v.ExperimentalWorkaroundCompleteoptLongest
+	}
 }
