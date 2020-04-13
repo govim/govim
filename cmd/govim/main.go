@@ -184,11 +184,6 @@ type govimplugin struct {
 	// contain old data. Call diagnostics() to get the latest instead.
 	diagnosticsCache *[]types.Diagnostic
 
-	// currentReferences is the range of each LSP documentHighlights under the cursor
-	// It is used to avoid updating the text property when the cursor is moved within the
-	// existing highlights.
-	currentReferences []*types.Range
-
 	// cancelDocHighlight is the function to cancel the ongoing LSP documentHighlight call. It must
 	// be called before assigning a new value (or nil) to it. It is nil when there is no ongoing
 	// call.
@@ -278,7 +273,8 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandRename), g.vimstate.rename, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandStringFn), g.vimstate.stringfns, govim.RangeLine, govim.CompleteCustomList(PluginPrefix+config.FunctionStringFnComplete), govim.NArgsOneOrMore)
 	g.DefineFunction(string(config.FunctionStringFnComplete), []string{"ArgLead", "CmdLine", "CursorPos"}, g.vimstate.stringfncomplete)
-	g.DefineCommand(string(config.CommandHighlightReferences), g.vimstate.referenceHighlight)
+	g.DefineCommand(string(config.CommandHighlightReferences), g.vimstate.highlightReferences)
+	g.DefineCommand(string(config.CommandClearReferencesHighlights), g.vimstate.clearReferencesHighlights)
 	g.DefineAutoCommand("", govim.Events{govim.EventCompleteDone}, govim.Patterns{"*.go"}, false, g.vimstate.completeDone, "eval(expand('<abuf>'))", "v:completed_item")
 	g.defineHighlights()
 	if err := g.vimstate.signDefine(); err != nil {

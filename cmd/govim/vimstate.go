@@ -66,6 +66,18 @@ type vimstate struct {
 	// working directory (when govim was started)
 	// TODO: handle changes to current working directory during runtime
 	workingDirectory string
+
+	// currentReferences is the range of each LSP documentHighlights under the cursor
+	// It is used to avoid updating the text property when the cursor is moved within the
+	// existing highlights.
+	currentReferences []*types.Range
+
+	// highlightingReferences indicates the user has explicitly called
+	// CommandHighlightReferences. When set, those highlights are only removed
+	// through an explicit call to CommandClearReferencesHighlights or via a
+	// change to any file (because we can't know without requerying gopls
+	// whether the highlights are still correct/accurate/etc)
+	highlightingReferences bool
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
@@ -173,7 +185,7 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	v.Parse(args[1], &pos)
 
 	if v.userBusy {
-		return nil, v.removeReferenceHighlight(pos)
+		return nil, v.removeReferenceHighlight(&pos)
 	}
 
 	if err := v.updateReferenceHighlight(false, &pos); err != nil {

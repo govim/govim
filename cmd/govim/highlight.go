@@ -120,31 +120,42 @@ func (v *vimstate) redefineHighlights(force bool) error {
 	return nil
 }
 
-func (v *vimstate) referenceHighlight(flags govim.CommandFlags, args ...string) error {
+func (v *vimstate) highlightReferences(flags govim.CommandFlags, args ...string) error {
+	v.highlightingReferences = true
 	return v.updateReferenceHighlight(true, nil)
 }
 
-// removeReferenceHighlight is used to only remove existing reference highlights if the
-// cursor has moved outside of the range(s) of existing highlights, to avoid flickering
-func (v *vimstate) removeReferenceHighlight(cursorPos cursorPosition) error {
-	if len(v.currentReferences) == 0 {
+func (v *vimstate) clearReferencesHighlights(flags govim.CommandFlags, args ...string) error {
+	v.highlightingReferences = false
+	return v.removeReferenceHighlight(nil)
+}
+
+// removeReferenceHighlight is used to only remove existing reference
+// highlights if the cursor has moved outside of the range(s) of existing
+// highlights, to avoid flickering.  Passing a nil *cursorPosition removes
+// highlights regardless.
+func (v *vimstate) removeReferenceHighlight(cursorPos *cursorPosition) error {
+	if v.highlightingReferences || v.currentReferences == nil {
 		return nil
 	}
-
 	var pos *types.Point
-	if b, ok := v.buffers[cursorPos.BufNr]; ok {
-		point, err := types.PointFromVim(b, cursorPos.Line, cursorPos.Col)
-		if err == nil {
-			pos = &point
+	if cursorPos != nil {
+		if b, ok := v.buffers[cursorPos.BufNr]; ok {
+			point, err := types.PointFromVim(b, cursorPos.Line, cursorPos.Col)
+			if err == nil {
+				pos = &point
+			}
 		}
 	}
-
-	for i := range v.currentReferences {
-		if pos == nil || !pos.IsWithin(*v.currentReferences[i]) {
-			v.removeTextProps(types.ReferencesTextPropID)
-			return nil
+	if pos != nil {
+		for i := range v.currentReferences {
+			if pos.IsWithin(*v.currentReferences[i]) {
+				return nil
+			}
 		}
 	}
+	v.removeTextProps(types.ReferencesTextPropID)
+	v.currentReferences = nil
 	return nil
 }
 
@@ -159,7 +170,7 @@ func (v *vimstate) updateReferenceHighlight(force bool, cursorPos *cursorPositio
 	if cursorPos == nil {
 		v.Parse(v.ChannelExpr(cursorPositionExpr), &cursorPos)
 	}
-	b, ok := v.buffers[(*cursorPos).BufNr]
+	b, ok := v.buffers[cursorPos.BufNr]
 	if !ok {
 		// we are not tracking this buffer... i.e. is not a .go file
 		return nil
@@ -225,7 +236,7 @@ func (g *govimplugin) redefineReferenceHighlight(ctx context.Context, b *types.B
 
 func (v *vimstate) handleDocumentHighlight(b *types.Buffer, cursorPos types.Point, res []protocol.DocumentHighlight) error {
 	if len(v.currentReferences) > 0 {
-		v.currentReferences = make([]*types.Range, 0)
+		v.currentReferences = nil
 		v.removeTextProps(types.ReferencesTextPropID)
 	}
 
@@ -245,7 +256,12 @@ func (v *vimstate) handleDocumentHighlight(b *types.Buffer, cursorPos types.Poin
 		r := types.Range{Start: start, End: end}
 		if cursorPos.IsWithin(r) {
 			v.currentReferences = append(v.currentReferences, &r)
-			continue // We don't want to highlight what is currently under the cursor
+			// If we are highighting references as a result of a direct call to
+			// CommandHighlightReferences then we do want to highlight the identifier
+			// under the cusor, otherwise not.
+			if !v.highlightingReferences {
+				continue
+			}
 		}
 		v.BatchAssertChannelCall(assertPropAdd, "prop_add",
 			start.Line(),
