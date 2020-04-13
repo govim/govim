@@ -58,7 +58,7 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 		return fmt.Errorf("failed to find a visible popup")
 	}
 
-	cb, pos, err := v.cursorPos()
+	cb, pos, err := v.bufCursorPos()
 	if err != nil {
 		return fmt.Errorf("failed to determine cursor position: %v", err)
 	}

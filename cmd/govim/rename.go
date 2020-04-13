@@ -12,7 +12,7 @@ import (
 )
 
 func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
-	b, pos, err := v.cursorPos()
+	b, pos, err := v.bufCursorPos()
 	if err != nil {
 		return fmt.Errorf("failed to get current position: %v", err)
 	}

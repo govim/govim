@@ -6,6 +6,19 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
+// CursorPosition represents a cursor position within a window
+type CursorPosition struct {
+	*Point
+
+	BufNr         int
+	WinNr         int
+	WinID         int
+	ScreenRow     int
+	ScreenCol     int
+	ScreenEndCol  int
+	ScreenCursCol int
+}
+
 // A WatchedFile is a file we are watching but that is not loaded as a buffer
 // in Vim
 type WatchedFile struct {

@@ -10,7 +10,7 @@ import (
 
 func (v *vimstate) implements(flags govim.CommandFlags, args ...string) error {
 	v.quickfixIsDiagnostics = false
-	b, pos, err := v.cursorPos()
+	b, pos, err := v.bufCursorPos()
 	if err != nil {
 		return fmt.Errorf("failed to get current position: %v", err)
 	}

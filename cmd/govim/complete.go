@@ -15,7 +15,7 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 	findstart := v.ParseInt(args[0]) == 1
 
 	if findstart {
-		b, pos, err := v.cursorPos()
+		b, pos, err := v.bufCursorPos()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get current position: %v", err)
 		}
