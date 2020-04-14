@@ -93,48 +93,42 @@ func (v *vimstate) parseCursorPos(r json.RawMessage) (types.CursorPosition, erro
 	return cp, nil
 }
 
-func (v *vimstate) locationsToQuickfix(locs []protocol.Location, rel bool) ([]quickfixEntry, error) {
-	// must be non-nil
-	qf := []quickfixEntry{}
-
-	for _, loc := range locs {
-		var buf *types.Buffer
-		var err error
-		for _, b := range v.buffers {
-			if b.Loaded && b.URI() == span.URI(loc.URI) {
-				buf = b
-			}
+func (v *vimstate) locationToQuickfix(loc protocol.Location, rel bool) (qf quickfixEntry, err error) {
+	var buf *types.Buffer
+	for _, b := range v.buffers {
+		if b.Loaded && b.URI() == span.URI(loc.URI) {
+			buf = b
 		}
-		fn := span.URI(loc.URI).Filename()
-		if buf == nil {
-			byts, err := ioutil.ReadFile(fn)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read contents of %v: %v", fn, err)
-			}
-			// create a temp buffer
-			buf = types.NewBuffer(-1, fn, byts, false)
-		}
-		// make fn relative for reporting purposes
-		if rel {
-			fn, err = filepath.Rel(v.workingDirectory, fn)
-			if err != nil {
-				return nil, fmt.Errorf("failed to call filepath.Rel(%q, %q): %v", v.workingDirectory, fn, err)
-			}
-		}
-		p, err := types.PointFromPosition(buf, loc.Range.Start)
+	}
+	fn := span.URI(loc.URI).Filename()
+	if buf == nil {
+		byts, err := ioutil.ReadFile(fn)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve position: %v", err)
+			return qf, fmt.Errorf("failed to read contents of %v: %v", fn, err)
 		}
-		line, err := buf.Line(p.Line())
+		// create a temp buffer
+		buf = types.NewBuffer(-1, fn, byts, false)
+	}
+	// make fn relative for reporting purposes
+	if rel {
+		fn, err = filepath.Rel(v.workingDirectory, fn)
 		if err != nil {
-			return nil, fmt.Errorf("location invalid in buffer: %v", err)
+			return qf, fmt.Errorf("failed to call filepath.Rel(%q, %q): %v", v.workingDirectory, fn, err)
 		}
-		qf = append(qf, quickfixEntry{
-			Filename: fn,
-			Lnum:     p.Line(),
-			Col:      p.Col(),
-			Text:     line,
-		})
+	}
+	p, err := types.PointFromPosition(buf, loc.Range.Start)
+	if err != nil {
+		return qf, fmt.Errorf("failed to resolve position: %v", err)
+	}
+	line, err := buf.Line(p.Line())
+	if err != nil {
+		return qf, fmt.Errorf("location invalid in buffer: %v", err)
+	}
+	qf = quickfixEntry{
+		Filename: fn,
+		Lnum:     p.Line(),
+		Col:      p.Col(),
+		Text:     line,
 	}
 	return qf, nil
 }
@@ -143,30 +137,34 @@ func (v *vimstate) locationsToQuickfix(locs []protocol.Location, rel bool) ([]qu
 // slice of locations. If shift is true the first element of the slice
 // will be skipped.
 func (v *vimstate) populateQuickfix(locs []protocol.Location, shift bool) {
-	qf, err := v.locationsToQuickfix(locs, true)
-	if err != nil {
-		// TODO: come up with a better strategy for alerting the user to the
-		// fact that the conversation to quickfix entries failed. Should be rare
-		// but when it does happen, we need to be noisy.
-		v.Logf("failed to convert locations to quickfix entries: %v", err)
-		return
+	var qfs []quickfixEntry
+	for _, l := range locs {
+		qf, err := v.locationToQuickfix(l, true)
+		if err != nil {
+			// TODO: come up with a better strategy for alerting the user to the
+			// fact that the conversation to quickfix entries failed. Should be rare
+			// but when it does happen, we need to be noisy.
+			v.Logf("failed to convert locations to quickfix entries: %v", err)
+			return
+		}
+		qfs = append(qfs, qf)
 	}
 
 	var toSort []quickfixEntry
 
 	if shift {
-		toSort = qf[1:]
+		toSort = qfs[1:]
 	} else {
-		toSort = qf
+		toSort = qfs
 	}
 
 	sort.Slice(toSort, func(i, j int) bool {
 		lhs, rhs := toSort[i], toSort[j]
 		cmp := strings.Compare(lhs.Filename, rhs.Filename)
 		if cmp != 0 {
-			if lhs.Filename == qf[0].Filename {
+			if lhs.Filename == qfs[0].Filename {
 				return true
-			} else if rhs.Filename == qf[0].Filename {
+			} else if rhs.Filename == qfs[0].Filename {
 				return false
 			}
 		}
@@ -179,6 +177,6 @@ func (v *vimstate) populateQuickfix(locs []protocol.Location, shift bool) {
 		return cmp < 0
 	})
 
-	v.ChannelCall("setqflist", qf, "r")
+	v.ChannelCall("setqflist", qfs, "r")
 	v.ChannelEx("copen")
 }
