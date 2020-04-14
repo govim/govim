@@ -10,6 +10,9 @@ import (
 
 // Point represents a position within a Buffer
 type Point struct {
+	// buffer is the buffer corresponding to the Point
+	buffer *Buffer
+
 	// line is Vim's line number within the buffer, i.e. 1-indexed
 	line int
 
@@ -35,6 +38,7 @@ func PointFromOffset(b *Buffer, offset int) (Point, error) {
 		return Point{}, fmt.Errorf("failed to calculate UTF16 char value: %v", err)
 	}
 	res := Point{
+		buffer:   b,
 		line:     line,
 		col:      col,
 		offset:   offset,
@@ -55,6 +59,7 @@ func PointFromVim(b *Buffer, line, col int) (Point, error) {
 		return Point{}, fmt.Errorf("failed to calculate UTF16 char value: %v", err)
 	}
 	res := Point{
+		buffer:   b,
 		line:     line,
 		col:      col,
 		offset:   off,
@@ -77,6 +82,7 @@ func PointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 		return Point{}, fmt.Errorf("failed to translate char colum for buffer %v: %v", b.Num, err)
 	}
 	res := Point{
+		buffer:   b,
 		line:     p.Line(),
 		col:      p.Column(),
 		offset:   p.Offset(),
@@ -102,6 +108,11 @@ func VisualPointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 		p, err = PointFromVim(b, newLine, newCol)
 	}
 	return p, err
+}
+
+// Buffer is the buffer corresponding to the Point
+func (p Point) Buffer() *Buffer {
+	return p.buffer
 }
 
 // Line refers to the 1-indexed line in the buffer. This is how Vim refers to
