@@ -26,26 +26,55 @@ func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
 	if err != nil {
 		return fmt.Errorf("failed to call gopls.Definition: %v\nparams were: %v", err, pretty.Sprint(params))
 	}
+	loc, err := v.handleProtocolLocations(cb, pos, locs)
+	if err != nil || loc == nil {
+		return err
+	}
+	return v.loadLocation(flags.Mods, *loc, args...)
+}
 
+func (v *vimstate) gotoTypeDef(flags govim.CommandFlags, args ...string) error {
+	cb, pos, err := v.bufCursorPos()
+	if err != nil {
+		return fmt.Errorf("failed to determine cursor position: %v", err)
+	}
+	params := &protocol.TypeDefinitionParams{
+		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
+			TextDocument: cb.ToTextDocumentIdentifier(),
+			Position:     pos.ToPosition(),
+		},
+	}
+	locs, err := v.server.TypeDefinition(context.Background(), params)
+	if err != nil {
+		return fmt.Errorf("failed to call gopls.TypeDefinition: %v\nparams were: %v", err, pretty.Sprint(params))
+	}
+	loc, err := v.handleProtocolLocations(cb, pos, locs)
+	if err != nil || loc == nil {
+		return err
+	}
+	return v.loadLocation(flags.Mods, *loc, args...)
+}
+
+func (v *vimstate) handleProtocolLocations(b *types.Buffer, pos types.CursorPosition, locs []protocol.Location) (*protocol.Location, error) {
 	switch len(locs) {
 	case 0:
 		v.ChannelEx(`echorerr "No definition exists under cursor"`)
-		return nil
+		return nil, nil
 	case 1:
 	default:
-		return fmt.Errorf("got multiple locations (%v); don't know how to handle this", len(locs))
+		return nil, fmt.Errorf("got multiple locations (%v); don't know how to handle this", len(locs))
 	}
 
 	loc := locs[0]
 	v.jumpStack = append(v.jumpStack[:v.jumpStackPos], protocol.Location{
-		URI: protocol.DocumentURI(cb.URI()),
+		URI: protocol.DocumentURI(b.URI()),
 		Range: protocol.Range{
 			Start: pos.ToPosition(),
 			End:   pos.ToPosition(),
 		},
 	})
 	v.jumpStackPos++
-	return v.loadLocation(flags.Mods, loc, args...)
+	return &loc, nil
 }
 
 func (v *vimstate) gotoPrevDef(flags govim.CommandFlags, args ...string) error {

@@ -256,6 +256,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePost}, govim.Patterns{"*.go"}, false, g.vimstate.bufWritePost, "eval(expand('<abuf>'))")
 	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.vimstate.complete)
 	g.DefineCommand(string(config.CommandGoToDef), g.vimstate.gotoDef, govim.NArgsZeroOrOne)
+	g.DefineCommand(string(config.CommandGoToTypeDef), g.vimstate.gotoTypeDef, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandSuggestedFixes), g.vimstate.suggestFixes, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandGoToPrevDef), g.vimstate.gotoPrevDef, govim.NArgsZeroOrOne, govim.CountN(1))
 	g.DefineFunction(string(config.FunctionHover), []string{}, g.vimstate.hover)

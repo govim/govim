@@ -231,6 +231,11 @@ const (
 	// &switchbuf
 	CommandGoToDef Command = "GoToDef"
 
+	// CommandGoToTypeDef jumps to the definition of the identifier under the
+	// cursor, pushing the current location onto the jump stack.
+	// CommandGoToTypeDef respects &switchbuf
+	CommandGoToTypeDef Command = "GoToTypeDef"
+
 	// CommandGoToPrevDef jumps to the previous location in the jump stack.
 	// CommandGoToPrevDef respects &switchbuf
 	CommandGoToPrevDef Command = "GoToPrevDef"
