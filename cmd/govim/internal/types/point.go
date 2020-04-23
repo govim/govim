@@ -23,6 +23,26 @@ type Point struct {
 	utf16Col int
 }
 
+func PointFromOffset(b *Buffer, offset int) (Point, error) {
+	cc := b.tokenConvertor()
+	line, col, err := cc.ToPosition(offset)
+	if err != nil {
+		return Point{}, fmt.Errorf("failed to calculate position within buffer %v: %v", b.Num, err)
+	}
+	p := span.NewPoint(line, col, offset)
+	utf16col, err := span.ToUTF16Column(p, b.contents)
+	if err != nil {
+		return Point{}, fmt.Errorf("failed to calculate UTF16 char value: %v", err)
+	}
+	res := Point{
+		line:     line,
+		col:      col,
+		offset:   offset,
+		utf16Col: utf16col - 1,
+	}
+	return res, nil
+}
+
 func PointFromVim(b *Buffer, line, col int) (Point, error) {
 	cc := b.tokenConvertor()
 	off, err := cc.ToOffset(line, col)
