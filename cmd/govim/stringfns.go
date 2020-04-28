@@ -73,7 +73,7 @@ func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {
 		}
 	case 0:
 		// current line
-		b, _, err = v.cursorPos()
+		b, _, err = v.bufCursorPos()
 		if err != nil {
 			return fmt.Errorf("failed to get cursor position for line range")
 		}

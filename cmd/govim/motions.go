@@ -36,7 +36,7 @@ func (v *vimstate) motion(args ...json.RawMessage) (interface{}, error) {
 	}
 
 	// Get the current cursor position
-	b, point, err := v.cursorPos()
+	b, point, err := v.bufCursorPos()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current position: %v", err)
 	}

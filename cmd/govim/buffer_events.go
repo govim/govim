@@ -97,10 +97,8 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 		v.Logf("bufChanged: no changes to apply for %v", b.Name)
 		return nil, nil
 	}
-
 	contents := bytes.Split(b.Contents()[:len(b.Contents())-1], []byte("\n"))
 	b.Version++
-
 	params := &protocol.DidChangeTextDocumentParams{
 		TextDocument: protocol.VersionedTextDocumentIdentifier{
 			TextDocumentIdentifier: b.ToTextDocumentIdentifier(),
@@ -135,7 +133,10 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 	// add back trailing newline
 	b.SetContents(append(bytes.Join(contents, []byte("\n")), '\n'))
 	v.triggerBufferASTUpdate(b)
-	return nil, v.server.DidChange(context.Background(), params)
+	if err := v.server.DidChange(context.Background(), params); err != nil {
+		return nil, fmt.Errorf("failed to notify gopls of change: %v", err)
+	}
+	return nil, nil
 }
 
 func (v *vimstate) bufUnload(args ...json.RawMessage) error {

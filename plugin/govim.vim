@@ -207,7 +207,7 @@ endfunction
 function s:userBusy(busy)
   if s:userBusy != a:busy
     let s:userBusy = a:busy
-    call GOVIM_internal_SetUserBusy(s:userBusy, {"bufnr": bufnr(""), "line": line("."), "col": col(".")})
+    call GOVIM_internal_SetUserBusy(s:userBusy, s:cursorPos())
   endif
 endfunction
 
@@ -420,6 +420,24 @@ function GOVIM_internal_EnrichDelta(bufnr, start, end, added, changes)
     let l:change.lines = getbufline(a:bufnr, l:change.lnum, l:change.end-1+l:change.added)
   endfor
   call GOVIM_internal_BufChanged(a:bufnr, a:start, a:end, a:added, a:changes)
+endfunction
+
+" s:cursorPos returns a structure that represents the current cursor position.
+" This is interpretted within (*vimstate).parseCursorPos
+function s:cursorPos()
+  let l:bufnr = bufnr("")
+  let l:line = line(".")
+  let l:col = col(".")
+  let l:winnr = winnr()
+  let l:winid = win_getid(l:winnr)
+  let l:screenpos = screenpos(l:winid, l:line, l:col)
+  return {"bufnr": l:bufnr,
+        \ "line": l:line,
+        \ "col": l:col,
+        \ "winnr": l:winnr,
+        \ "winid": l:winid,
+        \ "screenpos": l:screenpos
+        \ }
 endfunction
 
 function s:batchCall(calls)

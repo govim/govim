@@ -30,25 +30,67 @@ func (v *vimstate) currentBufferInfo(expr json.RawMessage) *types.Buffer {
 	return types.NewBuffer(buf.Num, buf.Name, []byte(buf.Contents), buf.Loaded == 1)
 }
 
-type cursorPosition struct {
-	BufNr int `json:"bufnr"`
-	Line  int `json:"line"`
-	Col   int `json:"col"`
+// cursorPos returns the current cursor position cp. If the current buffer
+// (i.e. the buffer behind the window in which the cursor is currently found)
+// is being tracked by govim then cp.Point will be set, otherwise it will be
+// nil.
+func (v *vimstate) cursorPos() (types.CursorPosition, error) {
+	return v.parseCursorPos(v.ChannelExpr("s:cursorPos()"))
 }
 
-const cursorPositionExpr = `{"bufnr": bufnr(""), "line": line("."), "col": col(".")}`
-
-func (v *vimstate) cursorPos() (b *types.Buffer, p types.Point, err error) {
-	var pos cursorPosition
-	expr := v.ChannelExpr(cursorPositionExpr)
-	v.Parse(expr, &pos)
-	b, ok := v.buffers[pos.BufNr]
-	if !ok {
-		err = fmt.Errorf("failed to resolve buffer %v", pos.BufNr)
+// bufCursorPos returns the current buffer b and current cursor position cp if
+// the current buffer is being tracked by govim. Otherwise it returns an error.
+func (v *vimstate) bufCursorPos() (b *types.Buffer, cp types.CursorPosition, err error) {
+	cp, err = v.parseCursorPos(v.ChannelExpr("s:cursorPos()"))
+	if err != nil {
 		return
 	}
-	p, err = types.PointFromVim(b, pos.Line, pos.Col)
+	if cp.Point == nil {
+		err = fmt.Errorf("cursor position in buffer %v not tracked by govim", cp.BufNr)
+		return
+	}
+	b = cp.Point.Buffer()
 	return
+}
+
+// parseCursorPos expects a json.RawMessage of the structure returned by s:cursorPos
+// from plugin/govim.vim.
+func (v *vimstate) parseCursorPos(r json.RawMessage) (types.CursorPosition, error) {
+	var cp types.CursorPosition
+	var pos struct {
+		BufNr     int `json:"bufnr"`
+		Line      int `json:"line"`
+		Col       int `json:"col"`
+		WinNr     int `json:"winnr"`
+		WinID     int `json:"winid"`
+		ScreenPos struct {
+			Row     int `json:"row"`
+			Col     int `json:"col"`
+			EndCol  int `json:"endcol"`
+			CursCol int `json:"curscol"`
+		} `json:"screenpos"`
+	}
+	v.Parse(r, &pos)
+	var p *types.Point
+	b, ok := v.buffers[pos.BufNr]
+	if ok {
+		pt, err := types.PointFromVim(b, pos.Line, pos.Col)
+		if err != nil {
+			return cp, fmt.Errorf("failed to create Point: %v", err)
+		}
+		p = &pt
+	}
+	cp = types.CursorPosition{
+		Point:         p,
+		BufNr:         pos.BufNr,
+		WinNr:         pos.WinNr,
+		WinID:         pos.WinID,
+		ScreenRow:     pos.ScreenPos.Row,
+		ScreenCol:     pos.ScreenPos.Col,
+		ScreenEndCol:  pos.ScreenPos.EndCol,
+		ScreenCursCol: pos.ScreenPos.CursCol,
+	}
+	return cp, nil
 }
 
 func (v *vimstate) locationsToQuickfix(locs []protocol.Location, rel bool) ([]quickfixEntry, error) {

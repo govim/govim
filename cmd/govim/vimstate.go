@@ -134,7 +134,7 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 			// HighlightReferences is now not on - remove existing text properties
 			v.removeTextProps(types.ReferencesTextPropID)
 		} else {
-			if err := v.updateReferenceHighlight(true, nil); err != nil {
+			if err := v.updateReferenceHighlight(true); err != nil {
 				return nil, fmt.Errorf("failed to update reference highlight: %v", err)
 			}
 		}
@@ -181,16 +181,20 @@ func (v *vimstate) popupSelection(args ...json.RawMessage) (interface{}, error) 
 
 func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	v.userBusy = v.ParseInt(args[0]) != 0
-	var pos cursorPosition
-	v.Parse(args[1], &pos)
-
+	pos, err := v.parseCursorPos(args[1])
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cursor position: %v", err)
+	}
 	if v.userBusy {
+		// We are now busy
 		return nil, v.removeReferenceHighlight(&pos)
 	}
-
-	if err := v.updateReferenceHighlight(false, &pos); err != nil {
+	// We are now idle
+	if err := v.updateReferenceHighlightAtCursorPosition(false, pos); err != nil {
 		return nil, err
 	}
-
-	return nil, v.handleDiagnosticsChanged()
+	if err := v.handleDiagnosticsChanged(); err != nil {
+		return nil, err
+	}
+	return nil, nil
 }

@@ -122,7 +122,7 @@ func (v *vimstate) redefineHighlights(force bool) error {
 
 func (v *vimstate) highlightReferences(flags govim.CommandFlags, args ...string) error {
 	v.highlightingReferences = true
-	return v.updateReferenceHighlight(true, nil)
+	return v.updateReferenceHighlight(true)
 }
 
 func (v *vimstate) clearReferencesHighlights(flags govim.CommandFlags, args ...string) error {
@@ -132,24 +132,16 @@ func (v *vimstate) clearReferencesHighlights(flags govim.CommandFlags, args ...s
 
 // removeReferenceHighlight is used to only remove existing reference
 // highlights if the cursor has moved outside of the range(s) of existing
-// highlights, to avoid flickering.  Passing a nil *cursorPosition removes
+// highlights, to avoid flickering. Passing a nil *types.CursorPosition or a
+// cursorPos without a Point (i.e. not in a buffer tracked by govim) removes
 // highlights regardless.
-func (v *vimstate) removeReferenceHighlight(cursorPos *cursorPosition) error {
+func (v *vimstate) removeReferenceHighlight(cursorPos *types.CursorPosition) error {
 	if v.highlightingReferences || v.currentReferences == nil {
 		return nil
 	}
-	var pos *types.Point
-	if cursorPos != nil {
-		if b, ok := v.buffers[cursorPos.BufNr]; ok {
-			point, err := types.PointFromVim(b, cursorPos.Line, cursorPos.Col)
-			if err == nil {
-				pos = &point
-			}
-		}
-	}
-	if pos != nil {
+	if cursorPos != nil && cursorPos.Point != nil {
 		for i := range v.currentReferences {
-			if pos.IsWithin(*v.currentReferences[i]) {
+			if cursorPos.IsWithin(*v.currentReferences[i]) {
 				return nil
 			}
 		}
@@ -159,25 +151,25 @@ func (v *vimstate) removeReferenceHighlight(cursorPos *cursorPosition) error {
 	return nil
 }
 
+func (v *vimstate) updateReferenceHighlight(force bool) error {
+	pos, err := v.cursorPos()
+	if err != nil {
+		return fmt.Errorf("failed to get cursor position: %w", err)
+	}
+	return v.updateReferenceHighlightAtCursorPosition(force, pos)
+}
+
 // updateReferenceHighlight updates the reference highlighting if the cursor is
 // currently in a valid position, i.e. a go file. The cursor position can passed
 // in by supplying a non-nil cursorPos.
-func (v *vimstate) updateReferenceHighlight(force bool, cursorPos *cursorPosition) error {
+func (v *vimstate) updateReferenceHighlightAtCursorPosition(force bool, cursorPos types.CursorPosition) error {
 	if !force && (v.config.HighlightReferences == nil || !*v.config.HighlightReferences) {
 		return nil
 	}
 
-	if cursorPos == nil {
-		v.Parse(v.ChannelExpr(cursorPositionExpr), &cursorPos)
-	}
-	b, ok := v.buffers[cursorPos.BufNr]
-	if !ok {
-		// we are not tracking this buffer... i.e. is not a .go file
-		return nil
-	}
-	pos, err := types.PointFromVim(b, cursorPos.Line, cursorPos.Col)
-	if err != nil {
-		return fmt.Errorf("failed to calculate cursor position in buffer %v from line %v and col %v: %v", b.Num, cursorPos.Line, cursorPos.Col, err)
+	if cursorPos.Point == nil {
+		// Cursor is in a non-go buffer. Remove referenceHighlights
+		return v.removeReferenceHighlight(nil)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -192,19 +184,19 @@ func (v *vimstate) updateReferenceHighlight(force bool, cursorPos *cursorPositio
 	v.cancelDocHighlightLock.Unlock()
 
 	v.tomb.Go(func() error {
-		v.redefineReferenceHighlight(ctx, b, pos)
+		v.redefineReferenceHighlight(ctx, cursorPos)
 		return nil
 	})
 
 	return nil
 }
 
-func (g *govimplugin) redefineReferenceHighlight(ctx context.Context, b *types.Buffer, cursorPos types.Point) {
+func (g *govimplugin) redefineReferenceHighlight(ctx context.Context, cursorPos types.CursorPosition) {
 	res, err := g.server.DocumentHighlight(ctx,
 		&protocol.DocumentHighlightParams{
 			TextDocumentPositionParams: protocol.TextDocumentPositionParams{
 				TextDocument: protocol.TextDocumentIdentifier{
-					URI: protocol.DocumentURI(b.URI()),
+					URI: protocol.DocumentURI(cursorPos.Buffer().URI()),
 				},
 				Position: cursorPos.ToPosition(),
 			},
@@ -230,15 +222,17 @@ func (g *govimplugin) redefineReferenceHighlight(ctx context.Context, b *types.B
 		default:
 		}
 
-		return g.vimstate.handleDocumentHighlight(b, cursorPos, res)
+		return g.vimstate.handleDocumentHighlight(cursorPos, res)
 	})
 }
 
-func (v *vimstate) handleDocumentHighlight(b *types.Buffer, cursorPos types.Point, res []protocol.DocumentHighlight) error {
+func (v *vimstate) handleDocumentHighlight(cursorPos types.CursorPosition, res []protocol.DocumentHighlight) error {
 	if len(v.currentReferences) > 0 {
 		v.currentReferences = nil
 		v.removeTextProps(types.ReferencesTextPropID)
 	}
+
+	b := cursorPos.Buffer()
 
 	v.BatchStart()
 	defer v.BatchCancelIfNotEnded()

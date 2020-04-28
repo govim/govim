@@ -12,7 +12,7 @@ import (
 )
 
 func (v *vimstate) gotoDef(flags govim.CommandFlags, args ...string) error {
-	cb, pos, err := v.cursorPos()
+	cb, pos, err := v.bufCursorPos()
 	if err != nil {
 		return fmt.Errorf("failed to determine cursor position: %v", err)
 	}
