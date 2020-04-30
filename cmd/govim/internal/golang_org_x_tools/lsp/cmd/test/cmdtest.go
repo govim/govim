@@ -18,7 +18,11 @@ import (
 	"testing"
 
 	"golang.org/x/tools/go/packages/packagestest"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2/servertest"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cmd"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/lsprpc"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/tests"
@@ -40,6 +44,31 @@ type normalizer struct {
 	slashed  string
 	escaped  string
 	fragment string
+}
+
+func TestCommandLine(testdata string, options func(*source.Options)) func(*testing.T, packagestest.Exporter) {
+	return func(t *testing.T, exporter packagestest.Exporter) {
+		if stat, err := os.Stat(testdata); err != nil || !stat.IsDir() {
+			t.Skip("testdata directory not present")
+		}
+		ctx := tests.Context(t)
+		ts := NewTestServer(ctx, options)
+		data := tests.Load(t, exporter, testdata)
+		for _, datum := range data {
+			defer datum.Exported.Cleanup()
+			t.Run(tests.FormatFolderName(datum.Folder), func(t *testing.T) {
+				t.Helper()
+				tests.Run(t, NewRunner(exporter, datum, ctx, ts.Addr, options), datum)
+			})
+		}
+	}
+}
+
+func NewTestServer(ctx context.Context, options func(*source.Options)) *servertest.TCPServer {
+	ctx = debug.WithInstance(ctx, "", "")
+	cache := cache.New(ctx, options)
+	ss := lsprpc.NewStreamServer(cache)
+	return servertest.NewTCPServer(ctx, ss)
 }
 
 func NewRunner(exporter packagestest.Exporter, data *tests.Data, ctx context.Context, remote string, options func(*source.Options)) *runner {

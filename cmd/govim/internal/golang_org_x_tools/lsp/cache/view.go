@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/keys"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
@@ -26,7 +28,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 	errors "golang.org/x/xerrors"
 )
@@ -342,10 +343,13 @@ func (v *view) refreshProcessEnv() {
 	v.importsMu.Unlock()
 
 	// We don't have a context handy to use for logging, so use the stdlib for now.
-	event.Print(v.baseCtx, "background imports cache refresh starting")
+	event.Log(v.baseCtx, "background imports cache refresh starting")
 	err := imports.PrimeCache(context.Background(), env)
-	event.Print(v.baseCtx, fmt.Sprintf("background refresh finished after %v", time.Since(start)), event.Err.Of(err))
-
+	if err == nil {
+		event.Log(v.baseCtx, fmt.Sprintf("background refresh finished after %v", time.Since(start)))
+	} else {
+		event.Log(v.baseCtx, fmt.Sprintf("background refresh finished after %v", time.Since(start)), keys.Err.Of(err))
+	}
 	v.importsMu.Lock()
 	v.cacheRefreshDuration = time.Since(start)
 	v.cacheRefreshTimer = nil
@@ -365,11 +369,11 @@ func (v *view) buildProcessEnv(ctx context.Context) (*imports.ProcessEnv, error)
 	}
 	if verboseOutput {
 		processEnv.Logf = func(format string, args ...interface{}) {
-			event.Print(ctx, fmt.Sprintf(format, args...))
+			event.Log(ctx, fmt.Sprintf(format, args...))
 		}
 	}
 	for _, kv := range env {
-		split := strings.Split(kv, "=")
+		split := strings.SplitN(kv, "=", 2)
 		if len(split) < 2 {
 			continue
 		}
@@ -387,6 +391,9 @@ func (v *view) buildProcessEnv(ctx context.Context) (*imports.ProcessEnv, error)
 		case "GOSUMDB":
 			processEnv.GOSUMDB = split[1]
 		}
+	}
+	if processEnv.GOPATH == "" {
+		return nil, fmt.Errorf("no GOPATH for view %s", v.folder)
 	}
 	return processEnv, nil
 }

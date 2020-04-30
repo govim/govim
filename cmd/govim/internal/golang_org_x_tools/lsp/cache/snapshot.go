@@ -17,11 +17,11 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -113,7 +113,7 @@ func (s *snapshot) Config(ctx context.Context) *packages.Config {
 		},
 		Logf: func(format string, args ...interface{}) {
 			if verboseOutput {
-				event.Print(ctx, fmt.Sprintf(format, args...))
+				event.Log(ctx, fmt.Sprintf(format, args...))
 			}
 		},
 		Tests: true,

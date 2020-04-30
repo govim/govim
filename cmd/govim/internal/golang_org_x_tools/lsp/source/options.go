@@ -203,11 +203,16 @@ func (o Options) AddDefaultAnalyzer(a *analysis.Analyzer) {
 	o.DefaultAnalyzers[a.Name] = Analyzer{Analyzer: a, enabled: true}
 }
 
+// ExperimentalOptions defines configuration for features under active
+// development. WARNING: This configuration will be changed in the future. It
+// only exists while these features are under development.
 type ExperimentalOptions struct {
-	// WARNING: This configuration will be changed in the future.
-	// It only exists while this feature is under development.
-	// Disable use of the -modfile flag in Go 1.14.
+	// TempModfile controls the use of the -modfile flag in Go 1.14.
 	TempModfile bool
+
+	// VerboseWorkDoneProgress controls whether the LSP server should send
+	// progress reports for all work done outside the scope of an RPC.
+	VerboseWorkDoneProgress bool
 }
 
 type DebuggingOptions struct {
@@ -416,6 +421,9 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 	case "verboseOutput":
 		result.setBool(&o.VerboseOutput)
 
+	case "verboseWorkDoneProgress":
+		result.setBool(&o.VerboseWorkDoneProgress)
+
 	case "tempModfile":
 		result.setBool(&o.TempModfile)
 
@@ -498,55 +506,31 @@ func (r *OptionResult) setBool(b *bool) {
 func typeErrorAnalyzers() map[string]Analyzer {
 	return map[string]Analyzer{
 		fillreturns.Analyzer.Name: {
-			Analyzer:   fillreturns.Analyzer,
-			enabled:    false,
-			FixesError: fillreturns.FixesError,
+			Analyzer:       fillreturns.Analyzer,
+			enabled:        true,
+			FixesError:     fillreturns.FixesError,
+			HighConfidence: true,
 		},
 		nonewvars.Analyzer.Name: {
 			Analyzer:   nonewvars.Analyzer,
-			enabled:    false,
+			enabled:    true,
 			FixesError: nonewvars.FixesError,
 		},
 		noresultvalues.Analyzer.Name: {
 			Analyzer:   noresultvalues.Analyzer,
-			enabled:    false,
+			enabled:    true,
 			FixesError: noresultvalues.FixesError,
 		},
 		undeclaredname.Analyzer.Name: {
 			Analyzer:   undeclaredname.Analyzer,
-			enabled:    false,
+			enabled:    true,
 			FixesError: undeclaredname.FixesError,
 		},
 	}
 }
 
 func defaultAnalyzers() map[string]Analyzer {
-	return map[string]Analyzer{
-		// The traditional vet suite:
-		asmdecl.Analyzer.Name:      {Analyzer: asmdecl.Analyzer, enabled: true},
-		assign.Analyzer.Name:       {Analyzer: assign.Analyzer, enabled: true},
-		atomic.Analyzer.Name:       {Analyzer: atomic.Analyzer, enabled: true},
-		atomicalign.Analyzer.Name:  {Analyzer: atomicalign.Analyzer, enabled: true},
-		bools.Analyzer.Name:        {Analyzer: bools.Analyzer, enabled: true},
-		buildtag.Analyzer.Name:     {Analyzer: buildtag.Analyzer, enabled: true},
-		cgocall.Analyzer.Name:      {Analyzer: cgocall.Analyzer, enabled: true},
-		composite.Analyzer.Name:    {Analyzer: composite.Analyzer, enabled: true},
-		copylock.Analyzer.Name:     {Analyzer: copylock.Analyzer, enabled: true},
-		errorsas.Analyzer.Name:     {Analyzer: errorsas.Analyzer, enabled: true},
-		httpresponse.Analyzer.Name: {Analyzer: httpresponse.Analyzer, enabled: true},
-		loopclosure.Analyzer.Name:  {Analyzer: loopclosure.Analyzer, enabled: true},
-		lostcancel.Analyzer.Name:   {Analyzer: lostcancel.Analyzer, enabled: true},
-		nilfunc.Analyzer.Name:      {Analyzer: nilfunc.Analyzer, enabled: true},
-		printf.Analyzer.Name:       {Analyzer: printf.Analyzer, enabled: true},
-		shift.Analyzer.Name:        {Analyzer: shift.Analyzer, enabled: true},
-		stdmethods.Analyzer.Name:   {Analyzer: stdmethods.Analyzer, enabled: true},
-		structtag.Analyzer.Name:    {Analyzer: structtag.Analyzer, enabled: true},
-		tests.Analyzer.Name:        {Analyzer: tests.Analyzer, enabled: true},
-		unmarshal.Analyzer.Name:    {Analyzer: unmarshal.Analyzer, enabled: true},
-		unreachable.Analyzer.Name:  {Analyzer: unreachable.Analyzer, enabled: true},
-		unsafeptr.Analyzer.Name:    {Analyzer: unsafeptr.Analyzer, enabled: true},
-		unusedresult.Analyzer.Name: {Analyzer: unusedresult.Analyzer, enabled: true},
-
+	m := map[string]Analyzer{
 		// Non-vet analyzers
 		deepequalerrors.Analyzer.Name:  {Analyzer: deepequalerrors.Analyzer, enabled: true},
 		sortslice.Analyzer.Name:        {Analyzer: sortslice.Analyzer, enabled: true},
@@ -558,4 +542,39 @@ func defaultAnalyzers() map[string]Analyzer {
 		simplifyrange.Analyzer.Name:        {Analyzer: simplifyrange.Analyzer, enabled: true, HighConfidence: true},
 		simplifyslice.Analyzer.Name:        {Analyzer: simplifyslice.Analyzer, enabled: true, HighConfidence: true},
 	}
+	for k, v := range vetAnalyzers {
+		m[k] = v
+	}
+	return m
+}
+
+func isVetAnalyzer(name string) bool {
+	_, ok := vetAnalyzers[name]
+	return ok
+}
+
+var vetAnalyzers = map[string]Analyzer{
+	asmdecl.Analyzer.Name:      {Analyzer: asmdecl.Analyzer, enabled: true},
+	assign.Analyzer.Name:       {Analyzer: assign.Analyzer, enabled: true},
+	atomic.Analyzer.Name:       {Analyzer: atomic.Analyzer, enabled: true},
+	atomicalign.Analyzer.Name:  {Analyzer: atomicalign.Analyzer, enabled: true},
+	bools.Analyzer.Name:        {Analyzer: bools.Analyzer, enabled: true},
+	buildtag.Analyzer.Name:     {Analyzer: buildtag.Analyzer, enabled: true},
+	cgocall.Analyzer.Name:      {Analyzer: cgocall.Analyzer, enabled: true},
+	composite.Analyzer.Name:    {Analyzer: composite.Analyzer, enabled: true},
+	copylock.Analyzer.Name:     {Analyzer: copylock.Analyzer, enabled: true},
+	errorsas.Analyzer.Name:     {Analyzer: errorsas.Analyzer, enabled: true},
+	httpresponse.Analyzer.Name: {Analyzer: httpresponse.Analyzer, enabled: true},
+	loopclosure.Analyzer.Name:  {Analyzer: loopclosure.Analyzer, enabled: true},
+	lostcancel.Analyzer.Name:   {Analyzer: lostcancel.Analyzer, enabled: true},
+	nilfunc.Analyzer.Name:      {Analyzer: nilfunc.Analyzer, enabled: true},
+	printf.Analyzer.Name:       {Analyzer: printf.Analyzer, enabled: true},
+	shift.Analyzer.Name:        {Analyzer: shift.Analyzer, enabled: true},
+	stdmethods.Analyzer.Name:   {Analyzer: stdmethods.Analyzer, enabled: true},
+	structtag.Analyzer.Name:    {Analyzer: structtag.Analyzer, enabled: true},
+	tests.Analyzer.Name:        {Analyzer: tests.Analyzer, enabled: true},
+	unmarshal.Analyzer.Name:    {Analyzer: unmarshal.Analyzer, enabled: true},
+	unreachable.Analyzer.Name:  {Analyzer: unreachable.Analyzer, enabled: true},
+	unsafeptr.Analyzer.Name:    {Analyzer: unsafeptr.Analyzer, enabled: true},
+	unusedresult.Analyzer.Name: {Analyzer: unusedresult.Analyzer, enabled: true},
 }

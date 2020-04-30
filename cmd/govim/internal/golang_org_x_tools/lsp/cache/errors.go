@@ -6,6 +6,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"go/scanner"
 	"go/token"
 	"go/types"
@@ -16,11 +17,11 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/analysisinternal"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -85,6 +86,9 @@ func sourceError(ctx context.Context, fset *token.FileSet, pkg *pkg, e interface
 	case types.Error:
 		msg = e.Msg
 		kind = source.TypeError
+		if !e.Pos.IsValid() {
+			return nil, fmt.Errorf("invalid position for type error %v", e)
+		}
 		spn, err = typeErrorRange(ctx, fset, pkg, e.Pos)
 		if err != nil {
 			return nil, err

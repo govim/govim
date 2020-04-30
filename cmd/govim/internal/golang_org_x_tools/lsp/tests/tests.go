@@ -231,7 +231,7 @@ func DefaultOptions() source.Options {
 
 var haveCgo = false
 
-// For Load() to properly create the folder structure required when testing with modules.
+// Load creates the folder structure required when testing with modules.
 // The directory structure of a test needs to look like the example below:
 //
 // - dir
@@ -808,7 +808,7 @@ func checkData(t *testing.T, data *Data) {
 	}))
 	got := buf.String()
 	if want != got {
-		t.Errorf("test summary does not match, want\n%s\ngot:\n%s", want, got)
+		t.Errorf("test summary does not match:\n%s", Diff(want, got))
 	}
 }
 
@@ -1076,7 +1076,8 @@ func (data *Data) collectPrepareRenames(src span.Span, rng span.Range, placehold
 	}
 }
 
-func (data *Data) collectSymbols(name string, spn span.Span, kind string, parentName string) {
+// collectSymbols is responsible for collecting @symbol annotations.
+func (data *Data) collectSymbols(name string, spn span.Span, kind string, parentName string, siName string) {
 	m, err := data.Mapper(spn.URI())
 	if err != nil {
 		data.t.Fatal(err)
@@ -1098,7 +1099,7 @@ func (data *Data) collectSymbols(name string, spn span.Span, kind string, parent
 
 	// Reuse @symbol in the workspace symbols tests.
 	si := protocol.SymbolInformation{
-		Name: sym.Name,
+		Name: siName,
 		Kind: sym.Kind,
 		Location: protocol.Location{
 			URI:   protocol.URIFromSpanURI(spn.URI()),
