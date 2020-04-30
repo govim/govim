@@ -12,10 +12,10 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 // literal generates composite literal, function literal, and make()

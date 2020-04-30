@@ -11,11 +11,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 	errors "golang.org/x/xerrors"
 )

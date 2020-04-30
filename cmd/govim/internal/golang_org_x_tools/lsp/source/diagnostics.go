@@ -13,10 +13,10 @@ import (
 
 	"golang.org/x/mod/modfile"
 	"golang.org/x/tools/go/analysis"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -168,7 +168,7 @@ type diagnosticSet struct {
 }
 
 func diagnostics(ctx context.Context, snapshot Snapshot, reports map[FileIdentity][]*Diagnostic, pkg Package, hasMissingDeps bool) (bool, bool, error) {
-	ctx, done := event.StartSpan(ctx, "source.diagnostics", tag.Package.Of(pkg.ID()))
+	ctx, done := event.Start(ctx, "source.diagnostics", tag.Package.Of(pkg.ID()))
 	_ = ctx // circumvent SA4006
 	defer done()
 
@@ -294,6 +294,10 @@ func analyses(ctx context.Context, snapshot Snapshot, reports map[FileIdentity][
 		if onlyDeletions(e.SuggestedFixes) {
 			tags = append(tags, protocol.Unnecessary)
 		}
+		// Don't show non-vet analysis diagnostics for generated files.
+		if !isVetAnalyzer(e.Category) && IsGenerated(ctx, snapshot, e.URI) {
+			continue
+		}
 		if err := addReports(snapshot, reports, e.URI, &Diagnostic{
 			Range:          e.Range,
 			Message:        e.Message,
@@ -350,9 +354,7 @@ func addReports(snapshot Snapshot, reports map[FileIdentity][]*Diagnostic, uri s
 			return nil
 		}
 	}
-	for _, diag := range diagnostics {
-		reports[fh.Identity()] = append(reports[fh.Identity()], diag)
-	}
+	reports[fh.Identity()] = append(reports[fh.Identity()], diagnostics...)
 	return nil
 }
 

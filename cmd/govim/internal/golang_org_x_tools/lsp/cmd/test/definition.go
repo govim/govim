@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff/myers"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/tests"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
@@ -33,13 +35,12 @@ func (r *runner) Definition(t *testing.T, spn span.Span, d tests.Definition) {
 	}
 	d.Src = span.New(d.Src.URI(), span.NewPoint(0, 0, d.Src.Start().Offset()), span.Point{})
 	for _, mode := range godefModes {
-		args := []string{"query", "-markdown"}
+		args := []string{"definition", "-markdown"}
 		tag := d.Name + "-definition"
 		if mode&jsonGoDef != 0 {
 			tag += "-json"
 			args = append(args, "-json")
 		}
-		args = append(args, "definition")
 		uri := d.Src.URI()
 		args = append(args, fmt.Sprint(d.Src))
 		got, _ := r.NormalizeGoplsCmd(t, args...)
@@ -50,7 +51,8 @@ func (r *runner) Definition(t *testing.T, spn span.Span, d tests.Definition) {
 			return []byte(got), nil
 		})))
 		if expect != "" && !strings.HasPrefix(got, expect) {
-			t.Errorf("definition %v failed with %#v expected:\n%q\ngot:\n%q", tag, args, expect, got)
+			d := myers.ComputeEdits("", expect, got)
+			t.Errorf("definition %v failed with %#v\n%s", tag, args, diff.ToUnified("expect", "got", expect, d))
 		}
 	}
 }

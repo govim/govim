@@ -13,8 +13,8 @@ import (
 	"strconv"
 
 	"golang.org/x/tools/go/ast/astutil"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
@@ -49,7 +49,7 @@ type Declaration struct {
 // Identifier returns identifier information for a position
 // in a file, accounting for a potentially incomplete selector.
 func Identifier(ctx context.Context, snapshot Snapshot, fh FileHandle, pos protocol.Position) (*IdentifierInfo, error) {
-	ctx, done := event.StartSpan(ctx, "source.Identifier")
+	ctx, done := event.Start(ctx, "source.Identifier")
 	defer done()
 
 	pkg, pgh, err := getParsedFile(ctx, snapshot, fh, NarrowestPackageHandle)
@@ -84,15 +84,46 @@ func findIdentifier(ctx context.Context, s Snapshot, pkg Package, file *ast.File
 	}
 
 	view := s.View()
+	qf := qualifier(file, pkg.GetTypes(), pkg.GetTypesInfo())
 
 	ident, _ := path[0].(*ast.Ident)
 	if ident == nil {
 		return nil, ErrNoIdentFound
 	}
+	// Special case for package declarations, since they have no
+	// corresponding types.Object.
+	if ident == file.Name {
+		rng, err := posToMappedRange(view, pkg, file.Name.Pos(), file.Name.End())
+		if err != nil {
+			return nil, err
+		}
+		var declAST *ast.File
+		for _, f := range pkg.GetSyntax() {
+			if f.Doc != nil {
+				declAST = f
+			}
+		}
+		declRng, err := posToMappedRange(view, pkg, declAST.Name.Pos(), declAST.Name.End())
+		if err != nil {
+			return nil, err
+		}
+		return &IdentifierInfo{
+			Name:        file.Name.Name,
+			ident:       file.Name,
+			mappedRange: rng,
+			pkg:         pkg,
+			qf:          qf,
+			Snapshot:    s,
+			Declaration: Declaration{
+				node:        declAST.Name,
+				MappedRange: []mappedRange{declRng},
+			},
+		}, nil
+	}
 
 	result := &IdentifierInfo{
 		Snapshot:  s,
-		qf:        qualifier(file, pkg.GetTypes(), pkg.GetTypesInfo()),
+		qf:        qf,
 		pkg:       pkg,
 		ident:     ident,
 		enclosing: searchForEnclosing(pkg, path),

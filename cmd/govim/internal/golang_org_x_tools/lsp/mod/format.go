@@ -3,13 +3,13 @@ package mod
 import (
 	"context"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 func Format(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle) ([]protocol.TextEdit, error) {
-	ctx, done := event.StartSpan(ctx, "mod.Format")
+	ctx, done := event.Start(ctx, "mod.Format")
 	defer done()
 
 	file, m, err := snapshot.ModHandle(ctx, fh).Parse(ctx)

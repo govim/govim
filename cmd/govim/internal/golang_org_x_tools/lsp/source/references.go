@@ -10,8 +10,8 @@ import (
 	"go/token"
 	"go/types"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"golang.org/x/xerrors"
 )
 
@@ -28,7 +28,7 @@ type ReferenceInfo struct {
 // References returns a list of references for a given identifier within the packages
 // containing i.File. Declarations appear first in the result.
 func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Position, includeDeclaration bool) ([]*ReferenceInfo, error) {
-	ctx, done := event.StartSpan(ctx, "source.References")
+	ctx, done := event.Start(ctx, "source.References")
 	defer done()
 
 	qualifiedObjs, err := qualifiedObjsAtProtocolPos(ctx, s, f, pp)

@@ -14,10 +14,10 @@ import (
 	"regexp"
 
 	"golang.org/x/tools/go/types/typeutil"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"golang.org/x/tools/refactor/satisfy"
 	errors "golang.org/x/xerrors"
 )
@@ -42,7 +42,7 @@ type PrepareItem struct {
 }
 
 func PrepareRename(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Position) (*PrepareItem, error) {
-	ctx, done := event.StartSpan(ctx, "source.PrepareRename")
+	ctx, done := event.Start(ctx, "source.PrepareRename")
 	defer done()
 
 	qos, err := qualifiedObjsAtProtocolPos(ctx, s, f, pp)
@@ -70,7 +70,7 @@ func PrepareRename(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Po
 
 // Rename returns a map of TextEdits for each file modified when renaming a given identifier within a package.
 func Rename(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Position, newName string) (map[span.URI][]protocol.TextEdit, error) {
-	ctx, done := event.StartSpan(ctx, "source.Rename")
+	ctx, done := event.Start(ctx, "source.Rename")
 	defer done()
 
 	qos, err := qualifiedObjsAtProtocolPos(ctx, s, f, pp)

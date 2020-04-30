@@ -9,11 +9,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 )
 
@@ -25,14 +25,12 @@ type diagnosticKey struct {
 func (s *Server) diagnoseDetached(snapshot source.Snapshot) {
 	ctx := snapshot.View().BackgroundContext()
 	ctx = xcontext.Detach(ctx)
-
 	reports := s.diagnose(ctx, snapshot, false)
 	s.publishReports(ctx, snapshot, reports)
 }
 
 func (s *Server) diagnoseSnapshot(snapshot source.Snapshot) {
 	ctx := snapshot.View().BackgroundContext()
-
 	reports := s.diagnose(ctx, snapshot, false)
 	s.publishReports(ctx, snapshot, reports)
 }
@@ -40,7 +38,7 @@ func (s *Server) diagnoseSnapshot(snapshot source.Snapshot) {
 // diagnose is a helper function for running diagnostics with a given context.
 // Do not call it directly.
 func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, alwaysAnalyze bool) map[diagnosticKey][]*source.Diagnostic {
-	ctx, done := event.StartSpan(ctx, "lsp:background-worker")
+	ctx, done := event.Start(ctx, "lsp:background-worker")
 	defer done()
 
 	// Wait for a free diagnostics slot.

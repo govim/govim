@@ -13,13 +13,13 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/ast/astutil"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 	errors "golang.org/x/xerrors"
 )
 
 func Highlight(ctx context.Context, snapshot Snapshot, fh FileHandle, pos protocol.Position) ([]protocol.Range, error) {
-	ctx, done := event.StartSpan(ctx, "source.Highlight")
+	ctx, done := event.Start(ctx, "source.Highlight")
 	defer done()
 
 	pkg, pgh, err := getParsedFile(ctx, snapshot, fh, WidestPackageHandle)

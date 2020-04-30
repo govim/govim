@@ -15,7 +15,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tool"
 )
 
-// highlight implements the highlight verb for gopls
+// highlight implements the highlight verb for gopls.
 type highlight struct {
 	app *Application
 }

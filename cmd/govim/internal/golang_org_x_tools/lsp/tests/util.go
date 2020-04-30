@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff/myers"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -173,13 +175,13 @@ func DiffDiagnostics(uri span.URI, want, got []*source.Diagnostic) string {
 	for i, w := range want {
 		g := got[i]
 		if w.Message != g.Message {
-			return summarizeDiagnostics(i, uri, want, got, "incorrect Message got %v want %v", g.Message, w.Message)
+			return summarizeDiagnostics(i, uri, want, got, "incorrect Message:\n%s", Diff(w.Message, g.Message))
 		}
 		if w.Severity != g.Severity {
 			return summarizeDiagnostics(i, uri, want, got, "incorrect Severity got %v want %v", g.Severity, w.Severity)
 		}
 		if w.Source != g.Source {
-			return summarizeDiagnostics(i, uri, want, got, "incorrect Source got %v want %v", g.Source, w.Source)
+			return summarizeDiagnostics(i, uri, want, got, "incorrect Source:\n%s", Diff(w.Source, g.Source))
 		}
 		// Don't check the range on the badimport test.
 		if strings.Contains(uri.Filename(), "badimport") {
@@ -205,14 +207,15 @@ func summarizeDiagnostics(i int, uri span.URI, want, got []*source.Diagnostic, r
 	}
 	fmt.Fprint(msg, " because of ")
 	fmt.Fprintf(msg, reason, args...)
-	fmt.Fprint(msg, ":\nexpected:\n")
+	w := &bytes.Buffer{}
 	for _, d := range want {
-		fmt.Fprintf(msg, "  %s:%v: %s\n", uri, d.Range, d.Message)
+		fmt.Fprintf(w, "  %s:%v: %s %s %s\n", uri, d.Range, d.Source, d.Message, d.Severity)
 	}
-	fmt.Fprintf(msg, "got:\n")
+	g := &bytes.Buffer{}
 	for _, d := range got {
-		fmt.Fprintf(msg, "  %s:%v: %s\n", uri, d.Range, d.Message)
+		fmt.Fprintf(g, "  %s:%v: %s %s %s\n", uri, d.Range, d.Source, d.Message, d.Severity)
 	}
+	fmt.Fprintf(msg, "\nFull diff:\n%s", Diff(w.String(), g.String()))
 	return msg.String()
 }
 
@@ -279,36 +282,32 @@ func summarizeCodeLens(i int, uri span.URI, want, got []protocol.CodeLens, reaso
 
 func DiffSignatures(spn span.Span, want, got *protocol.SignatureHelp) string {
 	decorate := func(f string, args ...interface{}) string {
-		return fmt.Sprintf("Invalid signature at %s: %s", spn, fmt.Sprintf(f, args...))
+		return fmt.Sprintf("invalid signature at %s: %s", spn, fmt.Sprintf(f, args...))
 	}
-
 	if len(got.Signatures) != 1 {
 		return decorate("wanted 1 signature, got %d", len(got.Signatures))
 	}
-
 	if got.ActiveSignature != 0 {
 		return decorate("wanted active signature of 0, got %d", int(got.ActiveSignature))
 	}
-
 	if want.ActiveParameter != got.ActiveParameter {
 		return decorate("wanted active parameter of %d, got %d", want.ActiveParameter, int(got.ActiveParameter))
 	}
-
-	gotSig := got.Signatures[int(got.ActiveSignature)]
-
-	if want.Signatures[0].Label != got.Signatures[0].Label {
-		return decorate("wanted label %q, got %q", want.Signatures[0].Label, got.Signatures[0].Label)
+	g := got.Signatures[0]
+	w := want.Signatures[0]
+	if w.Label != g.Label {
+		wLabel := w.Label + "\n"
+		d := myers.ComputeEdits("", wLabel, g.Label+"\n")
+		return decorate("mismatched labels:\n%q", diff.ToUnified("want", "got", wLabel, d))
 	}
-
 	var paramParts []string
-	for _, p := range gotSig.Parameters {
+	for _, p := range g.Parameters {
 		paramParts = append(paramParts, p.Label)
 	}
 	paramsStr := strings.Join(paramParts, ", ")
-	if !strings.Contains(gotSig.Label, paramsStr) {
-		return decorate("expected signature %q to contain params %q", gotSig.Label, paramsStr)
+	if !strings.Contains(g.Label, paramsStr) {
+		return decorate("expected signature %q to contain params %q", g.Label, paramsStr)
 	}
-
 	return ""
 }
 
@@ -518,4 +517,15 @@ func EnableAllAnalyzers(snapshot source.Snapshot, opts *source.Options) {
 			opts.UserEnabledAnalyses[a.Analyzer.Name] = true
 		}
 	}
+}
+
+func Diff(want, got string) string {
+	if want == got {
+		return ""
+	}
+	// Add newlines to avoid newline messages in diff.
+	want += "\n"
+	got += "\n"
+	d := myers.ComputeEdits("", want, got)
+	return fmt.Sprintf("%q", diff.ToUnified("want", "got", want, d))
 }

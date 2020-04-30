@@ -11,15 +11,15 @@ import (
 	"go/types"
 	"strings"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/fuzzy"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/telemetry/event"
 )
 
 const maxSymbols = 100
 
 func WorkspaceSymbols(ctx context.Context, views []View, query string) ([]protocol.SymbolInformation, error) {
-	ctx, done := event.StartSpan(ctx, "source.WorkspaceSymbols")
+	ctx, done := event.Start(ctx, "source.WorkspaceSymbols")
 	defer done()
 
 	seen := make(map[string]struct{})
