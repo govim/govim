@@ -64,6 +64,7 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 				Menu:     i.Detail,
 				Word:     i.TextEdit.NewText,
 				Info:     i.Documentation,
+				Dup:      1,
 				UserData: "govim",
 			})
 		}
