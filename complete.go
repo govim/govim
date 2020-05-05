@@ -27,6 +27,7 @@ type CompleteItem struct {
 	Info     string `json:"info"`
 	Menu     string `json:"menu"`
 	UserData string `json:"user_data"`
+	Dup      int    `json:"dup"`
 }
 
 type CompleteInfo struct {
