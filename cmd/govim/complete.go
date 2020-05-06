@@ -89,7 +89,7 @@ func (v *vimstate) completeDone(args ...json.RawMessage) error {
 	}
 	var match *protocol.CompletionItem
 	for _, c := range v.lastCompleteResults.Items {
-		if c.Label == chosen.Abbr {
+		if c.Label == chosen.Abbr && c.Detail == chosen.Menu {
 			match = &c
 			break
 		}
