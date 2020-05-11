@@ -9,8 +9,8 @@ doBranchCheck
 #   buildGovimImage.sh
 #   buildGovimImage.sh VIM_FLAVOR VIM_VERSION GO_VERSION
 #
-# Note that VIM_FLAVOR can be one of vim, gvim or neovim and
-# VIM_VERSION is a version pertaining to any of them.
+# Note that VIM_FLAVOR can be one of vim or gvim and VIM_VERSION is a version
+# pertaining to any of them.
 
 cd "${BASH_SOURCE%/*}"
 
