@@ -5,6 +5,7 @@
 package regtest
 
 import (
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/fake"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 )
@@ -13,7 +14,7 @@ import (
 // editor. It calls t.Fatal on any error.
 func (e *Env) RemoveFileFromWorkspace(name string) {
 	e.T.Helper()
-	if err := e.W.RemoveFile(e.Ctx, name); err != nil {
+	if err := e.Sandbox.Workdir.RemoveFile(e.Ctx, name); err != nil {
 		e.T.Fatal(err)
 	}
 }
@@ -22,7 +23,7 @@ func (e *Env) RemoveFileFromWorkspace(name string) {
 // error.
 func (e *Env) ReadWorkspaceFile(name string) string {
 	e.T.Helper()
-	content, err := e.W.ReadFile(name)
+	content, err := e.Sandbox.Workdir.ReadFile(name)
 	if err != nil {
 		e.T.Fatal(err)
 	}
@@ -32,7 +33,7 @@ func (e *Env) ReadWorkspaceFile(name string) string {
 // OpenFile opens a file in the editor, calling t.Fatal on any error.
 func (e *Env) OpenFile(name string) {
 	e.T.Helper()
-	if err := e.E.OpenFile(e.Ctx, name); err != nil {
+	if err := e.Editor.OpenFile(e.Ctx, name); err != nil {
 		e.T.Fatal(err)
 	}
 }
@@ -40,7 +41,7 @@ func (e *Env) OpenFile(name string) {
 // CreateBuffer creates a buffer in the editor, calling t.Fatal on any error.
 func (e *Env) CreateBuffer(name string, content string) {
 	e.T.Helper()
-	if err := e.E.CreateBuffer(e.Ctx, name, content); err != nil {
+	if err := e.Editor.CreateBuffer(e.Ctx, name, content); err != nil {
 		e.T.Fatal(err)
 	}
 }
@@ -49,7 +50,7 @@ func (e *Env) CreateBuffer(name string, content string) {
 // error.
 func (e *Env) CloseBuffer(name string) {
 	e.T.Helper()
-	if err := e.E.CloseBuffer(e.Ctx, name); err != nil {
+	if err := e.Editor.CloseBuffer(e.Ctx, name); err != nil {
 		e.T.Fatal(err)
 	}
 }
@@ -57,7 +58,7 @@ func (e *Env) CloseBuffer(name string) {
 // EditBuffer applies edits to an editor buffer, calling t.Fatal on any error.
 func (e *Env) EditBuffer(name string, edits ...fake.Edit) {
 	e.T.Helper()
-	if err := e.E.EditBuffer(e.Ctx, name, edits); err != nil {
+	if err := e.Editor.EditBuffer(e.Ctx, name, edits); err != nil {
 		e.T.Fatal(err)
 	}
 }
@@ -67,9 +68,9 @@ func (e *Env) EditBuffer(name string, edits ...fake.Edit) {
 // for the position in open buffers, then in workspace files.
 func (e *Env) RegexpSearch(name, re string) fake.Pos {
 	e.T.Helper()
-	pos, err := e.E.RegexpSearch(name, re)
+	pos, err := e.Editor.RegexpSearch(name, re)
 	if err == fake.ErrUnknownBuffer {
-		pos, err = e.W.RegexpSearch(name, re)
+		pos, err = e.Sandbox.Workdir.RegexpSearch(name, re)
 	}
 	if err != nil {
 		e.T.Fatalf("RegexpSearch: %v, %v", name, err)
@@ -81,7 +82,7 @@ func (e *Env) RegexpSearch(name, re string) fake.Pos {
 // the replace text, calling t.Fatal on any error.
 func (e *Env) RegexpReplace(name, regexpStr, replace string) {
 	e.T.Helper()
-	if err := e.E.RegexpReplace(e.Ctx, name, regexpStr, replace); err != nil {
+	if err := e.Editor.RegexpReplace(e.Ctx, name, regexpStr, replace); err != nil {
 		e.T.Fatalf("RegexpReplace: %v", err)
 	}
 }
@@ -89,7 +90,7 @@ func (e *Env) RegexpReplace(name, regexpStr, replace string) {
 // SaveBuffer saves an editor buffer, calling t.Fatal on any error.
 func (e *Env) SaveBuffer(name string) {
 	e.T.Helper()
-	if err := e.E.SaveBuffer(e.Ctx, name); err != nil {
+	if err := e.Editor.SaveBuffer(e.Ctx, name); err != nil {
 		e.T.Fatal(err)
 	}
 }
@@ -98,7 +99,7 @@ func (e *Env) SaveBuffer(name string) {
 // error.
 func (e *Env) GoToDefinition(name string, pos fake.Pos) (string, fake.Pos) {
 	e.T.Helper()
-	n, p, err := e.E.GoToDefinition(e.Ctx, name, pos)
+	n, p, err := e.Editor.GoToDefinition(e.Ctx, name, pos)
 	if err != nil {
 		e.T.Fatal(err)
 	}
@@ -108,7 +109,7 @@ func (e *Env) GoToDefinition(name string, pos fake.Pos) (string, fake.Pos) {
 // FormatBuffer formats the editor buffer, calling t.Fatal on any error.
 func (e *Env) FormatBuffer(name string) {
 	e.T.Helper()
-	if err := e.E.FormatBuffer(e.Ctx, name); err != nil {
+	if err := e.Editor.FormatBuffer(e.Ctx, name); err != nil {
 		e.T.Fatal(err)
 	}
 }
@@ -117,7 +118,7 @@ func (e *Env) FormatBuffer(name string) {
 // t.Fatal on any error.
 func (e *Env) OrganizeImports(name string) {
 	e.T.Helper()
-	if err := e.E.OrganizeImports(e.Ctx, name); err != nil {
+	if err := e.Editor.OrganizeImports(e.Ctx, name); err != nil {
 		e.T.Fatal(err)
 	}
 }
@@ -125,7 +126,7 @@ func (e *Env) OrganizeImports(name string) {
 // ApplyQuickFixes processes the quickfix codeAction, calling t.Fatal on any error.
 func (e *Env) ApplyQuickFixes(path string, diagnostics []protocol.Diagnostic) {
 	e.T.Helper()
-	if err := e.E.ApplyQuickFixes(e.Ctx, path, diagnostics); err != nil {
+	if err := e.Editor.ApplyQuickFixes(e.Ctx, path, diagnostics); err != nil {
 		e.T.Fatal(err)
 	}
 }
@@ -133,10 +134,46 @@ func (e *Env) ApplyQuickFixes(path string, diagnostics []protocol.Diagnostic) {
 // CloseEditor shuts down the editor, calling t.Fatal on any error.
 func (e *Env) CloseEditor() {
 	e.T.Helper()
-	if err := e.E.Shutdown(e.Ctx); err != nil {
+	if err := e.Editor.Shutdown(e.Ctx); err != nil {
 		e.T.Fatal(err)
 	}
-	if err := e.E.Exit(e.Ctx); err != nil {
+	if err := e.Editor.Exit(e.Ctx); err != nil {
 		e.T.Fatal(err)
 	}
+}
+
+// RunGenerate runs go:generate on the given dir, calling t.Fatal on any error.
+// It waits for the generate command to complete and checks for file changes
+// before returning.
+func (e *Env) RunGenerate(dir string) {
+	e.T.Helper()
+	if err := e.Editor.RunGenerate(e.Ctx, dir); err != nil {
+		e.T.Fatal(err)
+	}
+	e.Await(CompletedWork(lsp.GenerateWorkDoneTitle, 1))
+	// Ideally the fake.Workspace would handle all synthetic file watching, but
+	// we help it out here as we need to wait for the generate command to
+	// complete before checking the filesystem.
+	e.CheckForFileChanges()
+}
+
+// CheckForFileChanges triggers a manual poll of the workspace for any file
+// changes since creation, or since last polling. It is a workaround for the
+// lack of true file watching support in the fake workspace.
+func (e *Env) CheckForFileChanges() {
+	e.T.Helper()
+	if err := e.Sandbox.Workdir.CheckForFileChanges(e.Ctx); err != nil {
+		e.T.Fatal(err)
+	}
+}
+
+// CodeLens calls textDocument/codeLens for the given path, calling t.Fatal on
+// any error.
+func (e *Env) CodeLens(path string) []protocol.CodeLens {
+	e.T.Helper()
+	lens, err := e.Editor.CodeLens(e.Ctx, path)
+	if err != nil {
+		e.T.Fatal(err)
+	}
+	return lens
 }

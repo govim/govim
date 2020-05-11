@@ -31,8 +31,12 @@ type Snapshot interface {
 	// Config returns the configuration for the view.
 	Config(ctx context.Context) *packages.Config
 
-	// GetFile returns the file object for a given URI, initializing it
-	// if it is not already part of the view.
+	// FindFile returns the FileHandle for the given URI, if it is already
+	// in the given snapshot.
+	FindFile(uri span.URI) FileHandle
+
+	// GetFile returns the FileHandle for a given URI, initializing it
+	// if it is not already part of the snapshot.
 	GetFile(uri span.URI) (FileHandle, error)
 
 	// IsOpen returns whether the editor currently has a file open.
@@ -180,6 +184,9 @@ type Session interface {
 	// DidModifyFile reports a file modification to the session.
 	// It returns the resulting snapshots, a guaranteed one per view.
 	DidModifyFiles(ctx context.Context, changes []FileModification) ([]Snapshot, error)
+
+	// UnsavedFiles returns a slice of open but unsaved files in the session.
+	UnsavedFiles() []span.URI
 
 	// Options returns a copy of the SessionOptions for this session.
 	Options() Options
@@ -353,9 +360,13 @@ func (fileID FileIdentity) String() string {
 type FileKind int
 
 const (
+	// Go is a normal go source file.
 	Go = FileKind(iota)
+	// Mod is a go.mod file.
 	Mod
+	// Sum is a go.sum file.
 	Sum
+	// UnknownKind is a file type we don't know about.
 	UnknownKind
 )
 

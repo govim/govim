@@ -432,7 +432,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos 
 
 	pkg, pgh, err := getParsedFile(ctx, snapshot, fh, NarrowestPackageHandle)
 	if err != nil {
-		return nil, nil, fmt.Errorf("getting file for Completion: %v", err)
+		return nil, nil, fmt.Errorf("getting file for Completion: %w", err)
 	}
 	file, src, m, _, err := pgh.Cached()
 	if err != nil {
@@ -455,6 +455,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos 
 
 	pos := rng.Start
 
+	// Check if completion at this position is valid. If not, return early.
 	switch n := path[0].(type) {
 	case *ast.BasicLit:
 		// Skip completion inside any kind of literal.
@@ -464,6 +465,20 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos 
 			// Don't offer completions inside or directly after "...". For
 			// example, don't offer completions at "<>" in "foo(bar...<>").
 			return nil, nil, nil
+		}
+	case *ast.Ident:
+		// reject defining identifiers
+		if obj, ok := pkg.GetTypesInfo().Defs[n]; ok {
+			if v, ok := obj.(*types.Var); ok && v.IsField() && v.Embedded() {
+				// An anonymous field is also a reference to a type.
+			} else {
+				objStr := ""
+				if obj != nil {
+					qual := types.RelativeTo(pkg.GetTypes())
+					objStr = types.ObjectString(obj, qual)
+				}
+				return nil, nil, ErrIsDefinition{objStr: objStr}
+			}
 		}
 	}
 
@@ -556,19 +571,6 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos 
 				return nil, nil, err
 			}
 			return c.items, c.getSurrounding(), nil
-		}
-		// reject defining identifiers
-		if obj, ok := pkg.GetTypesInfo().Defs[n]; ok {
-			if v, ok := obj.(*types.Var); ok && v.IsField() && v.Embedded() {
-				// An anonymous field is also a reference to a type.
-			} else {
-				objStr := ""
-				if obj != nil {
-					qual := types.RelativeTo(pkg.GetTypes())
-					objStr = types.ObjectString(obj, qual)
-				}
-				return nil, nil, ErrIsDefinition{objStr: objStr}
-			}
 		}
 		if err := c.lexical(ctx); err != nil {
 			return nil, nil, err
@@ -682,8 +684,8 @@ func (c *completer) emptySwitchStmt() bool {
 	}
 }
 
-// populateCommentCompletions yields completions for an exported
-// variable immediately preceding comment.
+// populateCommentCompletions yields completions for exported
+// symbols immediately preceding comment.
 func (c *completer) populateCommentCompletions(ctx context.Context, comment *ast.CommentGroup) {
 
 	// Using the comment position find the line after
@@ -694,33 +696,72 @@ func (c *completer) populateCommentCompletions(ctx context.Context, comment *ast
 	}
 
 	line := file.Line(comment.Pos())
+	if file.LineCount() < line+1 {
+		return
+	}
+
 	nextLinePos := file.LineStart(line + 1)
 	if !nextLinePos.IsValid() {
 		return
 	}
 
-	// Using the next line pos, grab and parse the exported variable on that line
+	// Using the next line pos, grab and parse the exported symbol on that line
 	for _, n := range c.file.Decls {
 		if n.Pos() != nextLinePos {
 			continue
 		}
 		switch node := n.(type) {
+		// handle const, vars, and types
 		case *ast.GenDecl:
-			if node.Tok != token.VAR {
-				return
-			}
 			for _, spec := range node.Specs {
-				if value, ok := spec.(*ast.ValueSpec); ok {
-					for _, name := range value.Names {
-						if name.Name == "_" || !name.IsExported() {
+				switch spec.(type) {
+				case *ast.ValueSpec:
+					valueSpec, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for _, name := range valueSpec.Names {
+						if name.String() == "_" || !name.IsExported() {
 							continue
 						}
 
-						exportedVar := c.pkg.GetTypesInfo().ObjectOf(name)
-						c.found(ctx, candidate{obj: exportedVar, score: stdScore})
+						obj := c.pkg.GetTypesInfo().ObjectOf(name)
+						c.found(ctx, candidate{obj: obj, score: stdScore})
 					}
+				case *ast.TypeSpec:
+					typeSpec, ok := spec.(*ast.TypeSpec)
+					if !ok {
+						continue
+					}
+
+					if typeSpec.Name.String() == "_" || !typeSpec.Name.IsExported() {
+						continue
+					}
+
+					obj := c.pkg.GetTypesInfo().ObjectOf(typeSpec.Name)
+					c.found(ctx, candidate{obj: obj, score: stdScore})
 				}
 			}
+		// handle functions
+		case *ast.FuncDecl:
+			if node.Name.String() == "_" || !node.Name.IsExported() {
+				continue
+			}
+
+			obj := c.pkg.GetTypesInfo().ObjectOf(node.Name)
+
+			// We don't want expandFuncCall inside comments. We add this directly to the
+			// completions list because using c.found sets expandFuncCall to true by default
+			item, err := c.item(ctx, candidate{
+				obj:            obj,
+				name:           obj.Name(),
+				expandFuncCall: false,
+				score:          stdScore,
+			})
+			if err != nil {
+				continue
+			}
+			c.items = append(c.items, item)
 		}
 	}
 }
@@ -804,7 +845,7 @@ func (c *completer) unimportedMembers(ctx context.Context, id *ast.Ident) error 
 		if imports.ImportPathToAssumedName(path) != pkg.GetTypes().Name() {
 			imp.name = pkg.GetTypes().Name()
 		}
-		c.packageMembers(ctx, pkg.GetTypes(), stdScore+.01*float64(relevance), imp)
+		c.packageMembers(ctx, pkg.GetTypes(), stdScore+.1*float64(relevance), imp)
 		if len(c.items) >= unimportedMemberTarget {
 			return nil
 		}
@@ -824,7 +865,7 @@ func (c *completer) unimportedMembers(ctx context.Context, id *ast.Ident) error 
 		// Continue with untyped proposals.
 		pkg := types.NewPackage(pkgExport.Fix.StmtInfo.ImportPath, pkgExport.Fix.IdentName)
 		for _, export := range pkgExport.Exports {
-			score := stdScore + 0.01*float64(pkgExport.Fix.Relevance)
+			score := stdScore + 0.1*float64(pkgExport.Fix.Relevance)
 			c.found(ctx, candidate{
 				obj:   types.NewVar(0, pkg, export, nil),
 				score: score,

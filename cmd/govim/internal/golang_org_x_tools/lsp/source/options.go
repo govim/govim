@@ -52,6 +52,18 @@ import (
 	errors "golang.org/x/xerrors"
 )
 
+const (
+	// CommandGenerate is a gopls command to run `go generate` for a directory.
+	CommandGenerate = "generate"
+	// CommandTidy is a gopls command to run `go mod tidy` for a module.
+	CommandTidy = "tidy"
+	// CommandUpgradeDependency is a gopls command to upgrade a dependency.
+	CommandUpgradeDependency = "upgrade.dependency"
+)
+
+// DefaultOptions is the options that are used for Gopls execution independent
+// of any externally provided configuration (LSP initialization, command
+// invokation, etc.).
 func DefaultOptions() Options {
 	return Options{
 		ClientOptions: ClientOptions{
@@ -76,9 +88,9 @@ func DefaultOptions() Options {
 				Sum: {},
 			},
 			SupportedCommands: []string{
-				"tidy",               // for go.mod files
-				"upgrade.dependency", // for go.mod dependency upgrades
-				"generate",           // for "go generate" commands
+				CommandTidy,              // for go.mod files
+				CommandUpgradeDependency, // for go.mod dependency upgrades
+				CommandGenerate,          // for "go generate" commands
 			},
 		},
 		UserOptions: UserOptions{
@@ -89,6 +101,10 @@ func DefaultOptions() Options {
 			DeepCompletion:          true,
 			UnimportedCompletion:    true,
 			CompletionDocumentation: true,
+			EnabledCodeLens: map[string]bool{
+				CommandGenerate:          true,
+				CommandUpgradeDependency: true,
+			},
 		},
 		DebuggingOptions: DebuggingOptions{
 			CompletionBudget: 100 * time.Millisecond,
@@ -106,6 +122,8 @@ func DefaultOptions() Options {
 	}
 }
 
+// Options holds various configuration that affects Gopls execution, organized
+// by the nature or origin of the settings.
 type Options struct {
 	ClientOptions
 	ServerOptions
@@ -115,6 +133,8 @@ type Options struct {
 	Hooks
 }
 
+// ClientOptions holds LSP-specific configuration that is provided by the
+// client.
 type ClientOptions struct {
 	InsertTextFormat                  protocol.InsertTextFormat
 	ConfigurationSupported            bool
@@ -125,11 +145,15 @@ type ClientOptions struct {
 	HierarchicalDocumentSymbolSupport bool
 }
 
+// ServerOptions holds LSP-specific configuration that is provided by the
+// server.
 type ServerOptions struct {
 	SupportedCodeActions map[FileKind]map[protocol.CodeActionKind]bool
 	SupportedCommands    []string
 }
 
+// UserOptions holds custom Gopls configuration (not part of the LSP) that is
+// modified by the client.
 type UserOptions struct {
 	// Env is the current set of environment overrides on this view.
 	Env []string
@@ -140,9 +164,10 @@ type UserOptions struct {
 	// HoverKind specifies the format of the content for hover requests.
 	HoverKind HoverKind
 
-	// UserEnabledAnalyses specify analyses that the user would like to enable or disable.
-	// A map of the names of analysis passes that should be enabled/disabled.
-	// A full list of analyzers that gopls uses can be found [here](analyzers.md)
+	// UserEnabledAnalyses specifies analyses that the user would like to enable
+	// or disable. A map of the names of analysis passes that should be
+	// enabled/disabled. A full list of analyzers that gopls uses can be found
+	// [here](analyzers.md).
 	//
 	// Example Usage:
 	// ...
@@ -151,6 +176,10 @@ type UserOptions struct {
 	//   "unusedparams": true  // Enable the unusedparams analyzer.
 	// }
 	UserEnabledAnalyses map[string]bool
+
+	// EnabledCodeLens specifies which codelens are enabled, keyed by the gopls
+	// command that they provide.
+	EnabledCodeLens map[string]bool
 
 	// StaticCheck enables additional analyses from staticcheck.io.
 	StaticCheck bool
@@ -191,6 +220,8 @@ type completionOptions struct {
 	budget            time.Duration
 }
 
+// Hooks contains configuration that is provided to the Gopls command by the
+// main package.
 type Hooks struct {
 	GoDiff             bool
 	ComputeEdits       diff.ComputeEdits
@@ -215,6 +246,8 @@ type ExperimentalOptions struct {
 	VerboseWorkDoneProgress bool
 }
 
+// DebuggingOptions should not affect the logical execution of Gopls, but may
+// be altered for debugging purposes.
 type DebuggingOptions struct {
 	VerboseOutput bool
 
@@ -387,23 +420,20 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 		}
 
 	case "linkTarget":
-		linkTarget, ok := value.(string)
-		if !ok {
-			result.errorf("invalid type %T for string option %q", value, name)
-			break
-		}
-		o.LinkTarget = linkTarget
+		result.setString(&o.LinkTarget)
 
 	case "analyses":
-		allAnalyses, ok := value.(map[string]interface{})
-		if !ok {
-			result.errorf("Invalid type %T for map[string]interface{} option %q", value, name)
-			break
-		}
-		o.UserEnabledAnalyses = make(map[string]bool)
-		for a, enabled := range allAnalyses {
-			if enabled, ok := enabled.(bool); ok {
-				o.UserEnabledAnalyses[a] = enabled
+		result.setBoolMap(&o.UserEnabledAnalyses)
+
+	case "codelens":
+		var lensOverrides map[string]bool
+		result.setBoolMap(&lensOverrides)
+		if result.Error == nil {
+			if o.EnabledCodeLens == nil {
+				o.EnabledCodeLens = make(map[string]bool)
+			}
+			for lens, enabled := range lensOverrides {
+				o.EnabledCodeLens[lens] = enabled
 			}
 		}
 
@@ -411,12 +441,7 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 		result.setBool(&o.StaticCheck)
 
 	case "local":
-		localPrefix, ok := value.(string)
-		if !ok {
-			result.errorf("invalid type %T for string option %q", value, name)
-			break
-		}
-		o.LocalPrefix = localPrefix
+		result.setString(&o.LocalPrefix)
 
 	case "verboseOutput":
 		result.setBool(&o.VerboseOutput)
@@ -488,6 +513,30 @@ func (r *OptionResult) asBool() (bool, bool) {
 	return b, true
 }
 
+func (r *OptionResult) setBool(b *bool) {
+	if v, ok := r.asBool(); ok {
+		*b = v
+	}
+}
+
+func (r *OptionResult) setBoolMap(bm *map[string]bool) {
+	all, ok := r.Value.(map[string]interface{})
+	if !ok {
+		r.errorf("Invalid type %T for map[string]interface{} option %q", r.Value, r.Name)
+		return
+	}
+	m := make(map[string]bool)
+	for a, enabled := range all {
+		if enabled, ok := enabled.(bool); ok {
+			m[a] = enabled
+		} else {
+			r.errorf("Invalid type %d for map key %q in option %q", a, r.Name)
+			return
+		}
+	}
+	*bm = m
+}
+
 func (r *OptionResult) asString() (string, bool) {
 	b, ok := r.Value.(string)
 	if !ok {
@@ -497,9 +546,9 @@ func (r *OptionResult) asString() (string, bool) {
 	return b, true
 }
 
-func (r *OptionResult) setBool(b *bool) {
-	if v, ok := r.asBool(); ok {
-		*b = v
+func (r *OptionResult) setString(s *string) {
+	if v, ok := r.asString(); ok {
+		*s = v
 	}
 }
 
@@ -530,7 +579,32 @@ func typeErrorAnalyzers() map[string]Analyzer {
 }
 
 func defaultAnalyzers() map[string]Analyzer {
-	m := map[string]Analyzer{
+	return map[string]Analyzer{
+		// The traditional vet suite:
+		asmdecl.Analyzer.Name:      {Analyzer: asmdecl.Analyzer, enabled: true},
+		assign.Analyzer.Name:       {Analyzer: assign.Analyzer, enabled: true},
+		atomic.Analyzer.Name:       {Analyzer: atomic.Analyzer, enabled: true},
+		atomicalign.Analyzer.Name:  {Analyzer: atomicalign.Analyzer, enabled: true},
+		bools.Analyzer.Name:        {Analyzer: bools.Analyzer, enabled: true},
+		buildtag.Analyzer.Name:     {Analyzer: buildtag.Analyzer, enabled: true},
+		cgocall.Analyzer.Name:      {Analyzer: cgocall.Analyzer, enabled: true},
+		composite.Analyzer.Name:    {Analyzer: composite.Analyzer, enabled: true},
+		copylock.Analyzer.Name:     {Analyzer: copylock.Analyzer, enabled: true},
+		errorsas.Analyzer.Name:     {Analyzer: errorsas.Analyzer, enabled: true},
+		httpresponse.Analyzer.Name: {Analyzer: httpresponse.Analyzer, enabled: true},
+		loopclosure.Analyzer.Name:  {Analyzer: loopclosure.Analyzer, enabled: true},
+		lostcancel.Analyzer.Name:   {Analyzer: lostcancel.Analyzer, enabled: true},
+		nilfunc.Analyzer.Name:      {Analyzer: nilfunc.Analyzer, enabled: true},
+		printf.Analyzer.Name:       {Analyzer: printf.Analyzer, enabled: true},
+		shift.Analyzer.Name:        {Analyzer: shift.Analyzer, enabled: true},
+		stdmethods.Analyzer.Name:   {Analyzer: stdmethods.Analyzer, enabled: true},
+		structtag.Analyzer.Name:    {Analyzer: structtag.Analyzer, enabled: true},
+		tests.Analyzer.Name:        {Analyzer: tests.Analyzer, enabled: true},
+		unmarshal.Analyzer.Name:    {Analyzer: unmarshal.Analyzer, enabled: true},
+		unreachable.Analyzer.Name:  {Analyzer: unreachable.Analyzer, enabled: true},
+		unsafeptr.Analyzer.Name:    {Analyzer: unsafeptr.Analyzer, enabled: true},
+		unusedresult.Analyzer.Name: {Analyzer: unusedresult.Analyzer, enabled: true},
+
 		// Non-vet analyzers
 		deepequalerrors.Analyzer.Name:  {Analyzer: deepequalerrors.Analyzer, enabled: true},
 		sortslice.Analyzer.Name:        {Analyzer: sortslice.Analyzer, enabled: true},
@@ -542,39 +616,4 @@ func defaultAnalyzers() map[string]Analyzer {
 		simplifyrange.Analyzer.Name:        {Analyzer: simplifyrange.Analyzer, enabled: true, HighConfidence: true},
 		simplifyslice.Analyzer.Name:        {Analyzer: simplifyslice.Analyzer, enabled: true, HighConfidence: true},
 	}
-	for k, v := range vetAnalyzers {
-		m[k] = v
-	}
-	return m
-}
-
-func isVetAnalyzer(name string) bool {
-	_, ok := vetAnalyzers[name]
-	return ok
-}
-
-var vetAnalyzers = map[string]Analyzer{
-	asmdecl.Analyzer.Name:      {Analyzer: asmdecl.Analyzer, enabled: true},
-	assign.Analyzer.Name:       {Analyzer: assign.Analyzer, enabled: true},
-	atomic.Analyzer.Name:       {Analyzer: atomic.Analyzer, enabled: true},
-	atomicalign.Analyzer.Name:  {Analyzer: atomicalign.Analyzer, enabled: true},
-	bools.Analyzer.Name:        {Analyzer: bools.Analyzer, enabled: true},
-	buildtag.Analyzer.Name:     {Analyzer: buildtag.Analyzer, enabled: true},
-	cgocall.Analyzer.Name:      {Analyzer: cgocall.Analyzer, enabled: true},
-	composite.Analyzer.Name:    {Analyzer: composite.Analyzer, enabled: true},
-	copylock.Analyzer.Name:     {Analyzer: copylock.Analyzer, enabled: true},
-	errorsas.Analyzer.Name:     {Analyzer: errorsas.Analyzer, enabled: true},
-	httpresponse.Analyzer.Name: {Analyzer: httpresponse.Analyzer, enabled: true},
-	loopclosure.Analyzer.Name:  {Analyzer: loopclosure.Analyzer, enabled: true},
-	lostcancel.Analyzer.Name:   {Analyzer: lostcancel.Analyzer, enabled: true},
-	nilfunc.Analyzer.Name:      {Analyzer: nilfunc.Analyzer, enabled: true},
-	printf.Analyzer.Name:       {Analyzer: printf.Analyzer, enabled: true},
-	shift.Analyzer.Name:        {Analyzer: shift.Analyzer, enabled: true},
-	stdmethods.Analyzer.Name:   {Analyzer: stdmethods.Analyzer, enabled: true},
-	structtag.Analyzer.Name:    {Analyzer: structtag.Analyzer, enabled: true},
-	tests.Analyzer.Name:        {Analyzer: tests.Analyzer, enabled: true},
-	unmarshal.Analyzer.Name:    {Analyzer: unmarshal.Analyzer, enabled: true},
-	unreachable.Analyzer.Name:  {Analyzer: unreachable.Analyzer, enabled: true},
-	unsafeptr.Analyzer.Name:    {Analyzer: unsafeptr.Analyzer, enabled: true},
-	unusedresult.Analyzer.Name: {Analyzer: unusedresult.Analyzer, enabled: true},
 }
