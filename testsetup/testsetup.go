@@ -58,13 +58,12 @@ const (
 	// and SafeState* functionality.
 	MinVimSafeState = "v8.1.2056"
 
-	LatestVim = "v8.2.0318"
+	LatestVim = "v8.2.0735"
 )
 
 var (
-	VimCommand    = Command{"vim"}
-	GvimCommand   = Command{"xvfb-run", "-a", "gvim", "-f"}
-	NeovimCommand = Command{"nvim"}
+	VimCommand  = Command{"vim"}
+	GvimCommand = Command{"xvfb-run", "-a", "gvim", "-f"}
 )
 
 type Command []string
@@ -80,11 +79,10 @@ func (c Command) BuildCommand(args ...string) *exec.Cmd {
 }
 
 var (
-	GoVersions = []string{"go1.13.8", "go1.14"}
+	GoVersions = []string{"go1.13.10", "go1.14.2"}
 
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{
-		NeovimVersion("v0.3.5"),
 		VimVersion(MinVimGovim),
 		GvimVersion(MinVimGovim),
 		VimVersion(MinVimSafeState),
@@ -138,22 +136,6 @@ func (v gvimVersionType) Command() string {
 
 func (v gvimVersionType) Flavor() govim.Flavor {
 	return govim.FlavorGvim
-}
-
-func NeovimVersion(v string) neovimVersionType {
-	return neovimVersionType{baseVersionType: baseVersionType{v: v}}
-}
-
-type neovimVersionType struct {
-	baseVersionType
-}
-
-func (v neovimVersionType) Command() string {
-	return strings.Join(NeovimCommand, " ")
-}
-
-func (v neovimVersionType) Flavor() govim.Flavor {
-	return govim.FlavorNeovim
 }
 
 func EnvLookupFlavorCommand() (flav govim.Flavor, cmd Command, err error) {
