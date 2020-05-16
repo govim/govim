@@ -3,7 +3,7 @@
 Command `github.com/govim/govim/cmd/govim` (referred to simply as `govim`) is a Go development plugin for Vim8, much
 like [`vim-go`](https://github.com/fatih/vim-go). But unlike `vim-go`, `govim` is written in Go, not VimScript. It has
 features like code completion, format-on-save, hover details and go-to definition, all of which are driven by
-[`gopls`](https://godoc.org/golang.org/x/tools/gopls), the Language Server Protocol (LSP) server for Go. See [the
+[`gopls`](https://pkg.go.dev/golang.org/x/tools/gopls), the Language Server Protocol (LSP) server for Go. See [the
 wiki](https://github.com/govim/govim/wiki/govim-plugin-API) for more details. Installation instructions below.
 
 Package [`github.com/govim/govim`](https://godoc.org/github.com/govim/govim) provides an API for plugin developers to
