@@ -44,17 +44,6 @@ func (v *vimstate) hoverMsgAt(pos types.Point, tdi protocol.TextDocumentIdentifi
 	return strings.TrimSpace(hovRes.Contents.Value), nil
 }
 
-type popupLine struct {
-	Text  string      `json:"text"`
-	Props []popupProp `json:"props"`
-}
-
-type popupProp struct {
-	Type   string `json:"type"`
-	Col    int    `json:"col"`
-	Length int    `json:"length"`
-}
-
 func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOpts *map[string]interface{}) (interface{}, error) {
 	if v.popupWinId > 0 {
 		v.ChannelCall("popup_close", v.popupWinId)
@@ -86,17 +75,17 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 	// while the common "source highlight" is applied to the source part. Since
 	// the source highlight is combined to existing highlight (and have a higher
 	// priority than the unique), it enables a wide range of styling combinations.
-	formatPopupline := func(msg, source string, severity types.Severity) popupLine {
+	formatPopupline := func(msg, source string, severity types.Severity) types.PopupLine {
 		srcProp := string(config.HighlightHoverDiagSrc)
 		msgProp := string(types.SeverityHoverHighlight[severity])
-		return popupLine{Text: fmt.Sprintf("%s %s", msg, source),
-			Props: []popupProp{
-				{Type: msgProp, Col: 1, Length: len(msg) + 1 + len(source)}, // Diagnostic message
-				{Type: srcProp, Col: len(msg) + 2, Length: len(source)},     // Source
+		return types.PopupLine{Text: fmt.Sprintf("%s %s", msg, source),
+			Props: []types.PopupProp{
+				{Type: msgProp, Col: 1, Len: len(msg) + 1 + len(source)}, // Diagnostic message
+				{Type: srcProp, Col: len(msg) + 2, Len: len(source)},     // Source
 			}}
 	}
 
-	var lines []popupLine
+	var lines []types.PopupLine
 	if *v.config.HoverDiagnostics {
 		for _, d := range *v.diagnostics() {
 			if (b.Num != d.Buf) || !pos.IsWithin(d.Range) {
@@ -111,7 +100,7 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 	}
 	if msg != "" {
 		for _, l := range strings.Split(msg, "\n") {
-			lines = append(lines, popupLine{l, []popupProp{}})
+			lines = append(lines, types.PopupLine{Text: l, Props: []types.PopupProp{}})
 		}
 	}
 	if len(lines) == 0 {

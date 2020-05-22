@@ -67,6 +67,18 @@ func (v *vimstate) textpropDefine() error {
 		Priority:  types.SeverityPriority[types.SeverityErr] + 1,
 	})
 
+	v.BatchChannelCall("prop_type_add", config.HighlightSignature, propDict{
+		Highlight: string(config.HighlightSignature),
+		Combine:   true,
+		Priority:  types.SeverityPriority[types.SeverityErr] + 1,
+	})
+
+	v.BatchChannelCall("prop_type_add", config.HighlightSignatureParam, propDict{
+		Highlight: string(config.HighlightSignatureParam),
+		Combine:   true,
+		Priority:  types.SeverityPriority[types.SeverityErr] + 1,
+	})
+
 	res := v.MustBatchEnd()
 	for i := range res {
 		if v.ParseInt(res[i]) != 0 {

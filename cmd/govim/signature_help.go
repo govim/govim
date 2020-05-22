@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/govim/govim"
+	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 	"golang.org/x/tools/go/ast/astutil"
@@ -33,10 +34,18 @@ func (v *vimstate) signatureHelp(flags govim.CommandFlags, args ...string) error
 	if res == nil || len(res.Signatures) == 0 {
 		return nil
 	}
-	if l := len(res.Signatures); l > 1 {
-		return fmt.Errorf("don't know how to handle %v signatures", l)
+	sigInx := int(res.ActiveSignature)
+	if l := len(res.Signatures); sigInx >= l {
+		return fmt.Errorf("active signature not in list (i: %d, len: %d)", sigInx, l)
 	}
-	sig := res.Signatures[0]
+	sig := res.Signatures[sigInx]
+
+	var activeParam string
+	// According to LSP Specification 3.15 the server might send an active parameter index
+	// that is outside the range of parameters sent so we need to ensure it exists here.
+	if i := int(res.ActiveParameter); i < len(sig.Parameters) {
+		activeParam = sig.Parameters[i].Label
+	}
 
 	// Use our locally parsed AST to find where to place this signature
 	<-b.ASTWait
@@ -108,8 +117,28 @@ FindCall:
 	opts["col"] = screenPos.Col - 1
 	opts["close"] = "click"
 
-	sigLabel := strings.Split(sig.Label, "\n")
-	v.ChannelCall("popup_create", sigLabel, opts)
+	// formatPopupLine applies text properties to a signature help line and the active
+	// parameter (if found).
+	formatPopupLine := func(text, param string) types.PopupLine {
+		sigProp := string(config.HighlightSignature)
+		paramProp := string(config.HighlightSignatureParam)
+		popupLine := types.PopupLine{
+			Text:  text,
+			Props: []types.PopupProp{{Type: sigProp, Col: 1, Len: len(text)}},
+		}
+
+		if i := strings.Index(text, param); param != "" && i >= 0 {
+			popupLine.Props = append(popupLine.Props,
+				types.PopupProp{Type: paramProp, Col: i + 1, Len: len(param)})
+		}
+		return popupLine
+	}
+
+	var lines []types.PopupLine
+	for _, l := range strings.Split(sig.Label, "\n") {
+		lines = append(lines, formatPopupLine(l, activeParam))
+	}
+	v.ChannelCall("popup_create", lines, opts)
 
 	return nil
 }
