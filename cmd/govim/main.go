@@ -359,6 +359,9 @@ func (g *govimplugin) defineHighlights() {
 		fmt.Sprintf("highlight default %s cterm=none gui=italic ctermfg=%d guifg=#8a8a8a", config.HighlightHoverDiagSrc, diagSrcColor),
 
 		fmt.Sprintf("highlight default %s term=reverse cterm=reverse gui=reverse", config.HighlightReferences),
+
+		fmt.Sprintf("highlight default link %s PMenu", config.HighlightSignature),
+		fmt.Sprintf("highlight default %s term=bold cterm=bold gui=bold", config.HighlightSignatureParam),
 	} {
 		g.vimstate.BatchChannelCall("execute", hi)
 	}

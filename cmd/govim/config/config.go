@@ -419,4 +419,9 @@ const (
 
 	// HighlightReferences is the group used to add text properties to references
 	HighlightReferences Highlight = "GOVIMReferences"
+
+	// HighlightSignature is the group used to add text properties to the signature help popup
+	HighlightSignature Highlight = "GOVIMSignature"
+	// HighlightSignatureParam is the group used to add text properties to the signature active parameter
+	HighlightSignatureParam Highlight = "GOVIMSignatureParam"
 )
