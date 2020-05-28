@@ -6,24 +6,56 @@ package lsp
 
 import (
 	"context"
+	"io"
+	"path/filepath"
 	"strings"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
+	"golang.org/x/xerrors"
 	errors "golang.org/x/xerrors"
 )
 
 func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCommandParams) (interface{}, error) {
 	switch params.Command {
+	case source.CommandTest:
+		if len(s.session.UnsavedFiles()) != 0 {
+			return nil, s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
+				Type:    protocol.Error,
+				Message: "could not run tests, there are unsaved files in the view",
+			})
+		}
+
+		funcName, uri, err := getRunTestArguments(params.Arguments)
+		if err != nil {
+			return nil, err
+		}
+
+		snapshot, fh, ok, err := s.beginFileRequest(protocol.DocumentURI(uri), source.Go)
+		if !ok {
+			return nil, err
+		}
+
+		dir := filepath.Dir(fh.Identity().URI.Filename())
+		go s.runTest(ctx, funcName, dir, snapshot)
 	case source.CommandGenerate:
 		dir, recursive, err := getGenerateRequest(params.Arguments)
 		if err != nil {
 			return nil, err
 		}
 		go s.runGenerate(xcontext.Detach(ctx), dir, recursive)
+	case source.CommandRegenerateCgo:
+		mod := source.FileModification{
+			URI:    protocol.DocumentURI(params.Arguments[0].(string)).SpanURI(),
+			Action: source.InvalidateMetadata,
+		}
+		_, err := s.didModifyFiles(ctx, []source.FileModification{mod}, FromRegenerateCgo)
+		return nil, err
 	case source.CommandTidy:
 		if len(params.Arguments) == 0 || len(params.Arguments) > 1 {
 			return nil, errors.Errorf("expected one file URI for call to `go mod tidy`, got %v", params.Arguments)
@@ -69,6 +101,57 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 		}
 	}
 	return nil, nil
+}
+
+func (s *Server) runTest(ctx context.Context, funcName string, dir string, snapshot source.Snapshot) {
+	args := []string{"-run", funcName, dir}
+	inv := gocommand.Invocation{
+		Verb:       "test",
+		Args:       args,
+		Env:        snapshot.Config(ctx).Env,
+		WorkingDir: dir,
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	er := &eventWriter{ctx: ctx, operation: "test"}
+	wc := s.newProgressWriter(ctx, "test", "running "+funcName, cancel)
+	defer wc.Close()
+
+	messageType := protocol.Info
+	message := "test passed"
+	stderr := io.MultiWriter(er, wc)
+	if err := inv.RunPiped(ctx, er, stderr); err != nil {
+		event.Error(ctx, "test: command error", err, tag.Directory.Of(dir))
+		if !xerrors.Is(err, context.Canceled) {
+			messageType = protocol.Error
+			message = "test failed"
+		}
+	}
+
+	s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
+		Type:    messageType,
+		Message: message,
+	})
+}
+
+func getRunTestArguments(args []interface{}) (string, string, error) {
+	if len(args) != 2 {
+		return "", "", errors.Errorf("expected one test func name and one file path, got %v", args)
+	}
+
+	funcName, ok := args[0].(string)
+	if !ok {
+		return "", "", errors.Errorf("expected func name to be a string, got %T", args[0])
+	}
+
+	file, ok := args[1].(string)
+	if !ok {
+		return "", "", errors.Errorf("expected file to be a string, got %T", args[1])
+	}
+
+	return funcName, file, nil
 }
 
 func getGenerateRequest(args []interface{}) (string, bool, error) {

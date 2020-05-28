@@ -22,9 +22,9 @@ import (
 type Editor struct {
 	Config EditorConfig
 
-	// server, client, and sandbox are concurrency safe and written only
+	// Server, client, and sandbox are concurrency safe and written only
 	// at construction time, so do not require synchronization.
-	server  protocol.Server
+	Server  protocol.Server
 	client  *Client
 	sandbox *Sandbox
 
@@ -59,6 +59,10 @@ type EditorConfig struct {
 	// codeLens command. CodeLens which are not present in this map are left in
 	// their default state.
 	CodeLens map[string]bool
+
+	// SymbolMatcher is the config associated with the "symbolMatcher" gopls
+	// config option.
+	SymbolMatcher *string
 }
 
 // NewEditor Creates a new Editor.
@@ -77,7 +81,7 @@ func NewEditor(ws *Sandbox, config EditorConfig) *Editor {
 // It returns the editor, so that it may be called as follows:
 //   editor, err := NewEditor(s).Connect(ctx, conn)
 func (e *Editor) Connect(ctx context.Context, conn *jsonrpc2.Conn, hooks ClientHooks) (*Editor, error) {
-	e.server = protocol.ServerDispatcher(conn)
+	e.Server = protocol.ServerDispatcher(conn)
 	e.client = &Client{editor: e, hooks: hooks}
 	go conn.Run(ctx,
 		protocol.Handlers(
@@ -92,8 +96,8 @@ func (e *Editor) Connect(ctx context.Context, conn *jsonrpc2.Conn, hooks ClientH
 
 // Shutdown issues the 'shutdown' LSP notification.
 func (e *Editor) Shutdown(ctx context.Context) error {
-	if e.server != nil {
-		if err := e.server.Shutdown(ctx); err != nil {
+	if e.Server != nil {
+		if err := e.Server.Shutdown(ctx); err != nil {
 			return fmt.Errorf("Shutdown: %w", err)
 		}
 	}
@@ -102,10 +106,10 @@ func (e *Editor) Shutdown(ctx context.Context) error {
 
 // Exit issues the 'exit' LSP notification.
 func (e *Editor) Exit(ctx context.Context) error {
-	if e.server != nil {
+	if e.Server != nil {
 		// Not all LSP clients issue the exit RPC, but we do so here to ensure that
 		// we gracefully handle it on multi-session servers.
-		if err := e.server.Exit(ctx); err != nil {
+		if err := e.Server.Exit(ctx); err != nil {
 			return fmt.Errorf("Exit: %w", err)
 		}
 	}
@@ -135,6 +139,10 @@ func (e *Editor) configuration() map[string]interface{} {
 		config["codelens"] = e.Config.CodeLens
 	}
 
+	if e.Config.SymbolMatcher != nil {
+		config["symbolMatcher"] = *e.Config.SymbolMatcher
+	}
+
 	return config
 }
 
@@ -150,8 +158,8 @@ func (e *Editor) initialize(ctx context.Context) error {
 
 	params.Trace = "messages"
 	// TODO: support workspace folders.
-	if e.server != nil {
-		resp, err := e.server.Initialize(ctx, params)
+	if e.Server != nil {
+		resp, err := e.Server.Initialize(ctx, params)
 		if err != nil {
 			return fmt.Errorf("initialize: %w", err)
 		}
@@ -159,7 +167,7 @@ func (e *Editor) initialize(ctx context.Context) error {
 		e.serverCapabilities = resp.Capabilities
 		e.mu.Unlock()
 
-		if err := e.server.Initialized(ctx, &protocol.InitializedParams{}); err != nil {
+		if err := e.Server.Initialized(ctx, &protocol.InitializedParams{}); err != nil {
 			return fmt.Errorf("initialized: %w", err)
 		}
 	}
@@ -168,14 +176,14 @@ func (e *Editor) initialize(ctx context.Context) error {
 }
 
 func (e *Editor) onFileChanges(ctx context.Context, evts []FileEvent) {
-	if e.server == nil {
+	if e.Server == nil {
 		return
 	}
 	var lspevts []protocol.FileEvent
 	for _, evt := range evts {
 		lspevts = append(lspevts, evt.ProtocolEvent)
 	}
-	e.server.DidChangeWatchedFiles(ctx, &protocol.DidChangeWatchedFilesParams{
+	e.Server.DidChangeWatchedFiles(ctx, &protocol.DidChangeWatchedFilesParams{
 		Changes: lspevts,
 	})
 }
@@ -192,8 +200,8 @@ func (e *Editor) OpenFile(ctx context.Context, path string) error {
 	item := textDocumentItem(e.sandbox.Workdir, buf)
 	e.mu.Unlock()
 
-	if e.server != nil {
-		if err := e.server.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
+	if e.Server != nil {
+		if err := e.Server.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
 			TextDocument: item,
 		}); err != nil {
 			return fmt.Errorf("DidOpen: %w", err)
@@ -234,8 +242,8 @@ func (e *Editor) CreateBuffer(ctx context.Context, path, content string) error {
 	item := textDocumentItem(e.sandbox.Workdir, buf)
 	e.mu.Unlock()
 
-	if e.server != nil {
-		if err := e.server.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
+	if e.Server != nil {
+		if err := e.Server.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
 			TextDocument: item,
 		}); err != nil {
 			return fmt.Errorf("DidOpen: %w", err)
@@ -255,8 +263,8 @@ func (e *Editor) CloseBuffer(ctx context.Context, path string) error {
 	delete(e.buffers, path)
 	e.mu.Unlock()
 
-	if e.server != nil {
-		if err := e.server.DidClose(ctx, &protocol.DidCloseTextDocumentParams{
+	if e.Server != nil {
+		if err := e.Server.DidClose(ctx, &protocol.DidCloseTextDocumentParams{
 			TextDocument: e.textDocumentIdentifier(path),
 		}); err != nil {
 			return fmt.Errorf("DidClose: %w", err)
@@ -280,7 +288,10 @@ func (e *Editor) SaveBuffer(ctx context.Context, path string) error {
 	if err := e.FormatBuffer(ctx, path); err != nil {
 		return fmt.Errorf("formatting before save: %w", err)
 	}
+	return e.SaveBufferWithoutActions(ctx, path)
+}
 
+func (e *Editor) SaveBufferWithoutActions(ctx context.Context, path string) error {
 	e.mu.Lock()
 	buf, ok := e.buffers[path]
 	if !ok {
@@ -296,8 +307,8 @@ func (e *Editor) SaveBuffer(ctx context.Context, path string) error {
 	e.mu.Unlock()
 
 	docID := e.textDocumentIdentifier(buf.path)
-	if e.server != nil {
-		if err := e.server.WillSave(ctx, &protocol.WillSaveTextDocumentParams{
+	if e.Server != nil {
+		if err := e.Server.WillSave(ctx, &protocol.WillSaveTextDocumentParams{
 			TextDocument: docID,
 			Reason:       protocol.Manual,
 		}); err != nil {
@@ -307,7 +318,7 @@ func (e *Editor) SaveBuffer(ctx context.Context, path string) error {
 	if err := e.sandbox.Workdir.WriteFile(ctx, path, content); err != nil {
 		return fmt.Errorf("writing %q: %w", path, err)
 	}
-	if e.server != nil {
+	if e.Server != nil {
 		params := &protocol.DidSaveTextDocumentParams{
 			TextDocument: protocol.VersionedTextDocumentIdentifier{
 				Version:                float64(buf.version),
@@ -317,7 +328,7 @@ func (e *Editor) SaveBuffer(ctx context.Context, path string) error {
 		if includeText {
 			params.Text = &content
 		}
-		if err := e.server.DidSave(ctx, params); err != nil {
+		if err := e.Server.DidSave(ctx, params); err != nil {
 			return fmt.Errorf("DidSave: %w", err)
 		}
 	}
@@ -485,8 +496,8 @@ func (e *Editor) editBufferLocked(ctx context.Context, path string, edits []Edit
 		},
 		ContentChanges: evts,
 	}
-	if e.server != nil {
-		if err := e.server.DidChange(ctx, params); err != nil {
+	if e.Server != nil {
+		if err := e.Server.DidChange(ctx, params); err != nil {
 			return fmt.Errorf("DidChange: %w", err)
 		}
 	}
@@ -503,7 +514,7 @@ func (e *Editor) GoToDefinition(ctx context.Context, path string, pos Pos) (stri
 	params.TextDocument.URI = e.sandbox.Workdir.URI(path)
 	params.Position = pos.toProtocolPosition()
 
-	resp, err := e.server.Definition(ctx, params)
+	resp, err := e.Server.Definition(ctx, params)
 	if err != nil {
 		return "", Pos{}, fmt.Errorf("definition: %w", err)
 	}
@@ -518,6 +529,38 @@ func (e *Editor) GoToDefinition(ctx context.Context, path string, pos Pos) (stri
 	return newPath, newPos, nil
 }
 
+// Symbol performs a workspace symbol search using query
+func (e *Editor) Symbol(ctx context.Context, query string) ([]SymbolInformation, error) {
+	params := &protocol.WorkspaceSymbolParams{}
+	params.Query = query
+
+	resp, err := e.Server.Symbol(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("symbol: %w", err)
+	}
+	var res []SymbolInformation
+	for _, si := range resp {
+		ploc := si.Location
+		path := e.sandbox.Workdir.URIToPath(ploc.URI)
+		start := fromProtocolPosition(ploc.Range.Start)
+		end := fromProtocolPosition(ploc.Range.End)
+		rnge := Range{
+			Start: start,
+			End:   end,
+		}
+		loc := Location{
+			Path:  path,
+			Range: rnge,
+		}
+		res = append(res, SymbolInformation{
+			Name:     si.Name,
+			Kind:     si.Kind,
+			Location: loc,
+		})
+	}
+	return res, nil
+}
+
 // OrganizeImports requests and performs the source.organizeImports codeAction.
 func (e *Editor) OrganizeImports(ctx context.Context, path string) error {
 	return e.codeAction(ctx, path, nil, protocol.SourceOrganizeImports)
@@ -529,7 +572,7 @@ func (e *Editor) ApplyQuickFixes(ctx context.Context, path string, diagnostics [
 }
 
 func (e *Editor) codeAction(ctx context.Context, path string, diagnostics []protocol.Diagnostic, only ...protocol.CodeActionKind) error {
-	if e.server == nil {
+	if e.Server == nil {
 		return nil
 	}
 	params := &protocol.CodeActionParams{}
@@ -538,7 +581,7 @@ func (e *Editor) codeAction(ctx context.Context, path string, diagnostics []prot
 	if diagnostics != nil {
 		params.Context.Diagnostics = diagnostics
 	}
-	actions, err := e.server.CodeAction(ctx, params)
+	actions, err := e.Server.CodeAction(ctx, params)
 	if err != nil {
 		return fmt.Errorf("textDocument/codeAction: %w", err)
 	}
@@ -580,7 +623,7 @@ func convertEdits(protocolEdits []protocol.TextEdit) []Edit {
 
 // FormatBuffer gofmts a Go file.
 func (e *Editor) FormatBuffer(ctx context.Context, path string) error {
-	if e.server == nil {
+	if e.Server == nil {
 		return nil
 	}
 	e.mu.Lock()
@@ -588,7 +631,7 @@ func (e *Editor) FormatBuffer(ctx context.Context, path string) error {
 	e.mu.Unlock()
 	params := &protocol.DocumentFormattingParams{}
 	params.TextDocument.URI = e.sandbox.Workdir.URI(path)
-	resp, err := e.server.Formatting(ctx, params)
+	resp, err := e.Server.Formatting(ctx, params)
 	if err != nil {
 		return fmt.Errorf("textDocument/formatting: %w", err)
 	}
@@ -619,7 +662,7 @@ func (e *Editor) checkBufferPosition(path string, pos Pos) error {
 // change, so must be followed by a call to Workdir.CheckForFileChanges once
 // the generate command has completed.
 func (e *Editor) RunGenerate(ctx context.Context, dir string) error {
-	if e.server == nil {
+	if e.Server == nil {
 		return nil
 	}
 	absDir := e.sandbox.Workdir.filePath(dir)
@@ -627,7 +670,7 @@ func (e *Editor) RunGenerate(ctx context.Context, dir string) error {
 		Command:   "generate",
 		Arguments: []interface{}{absDir, false},
 	}
-	if _, err := e.server.ExecuteCommand(ctx, params); err != nil {
+	if _, err := e.Server.ExecuteCommand(ctx, params); err != nil {
 		return fmt.Errorf("running generate: %v", err)
 	}
 	// Unfortunately we can't simply poll the workdir for file changes here,
@@ -639,7 +682,7 @@ func (e *Editor) RunGenerate(ctx context.Context, dir string) error {
 
 // CodeLens execute a codelens request on the server.
 func (e *Editor) CodeLens(ctx context.Context, path string) ([]protocol.CodeLens, error) {
-	if e.server == nil {
+	if e.Server == nil {
 		return nil, nil
 	}
 	e.mu.Lock()
@@ -651,7 +694,28 @@ func (e *Editor) CodeLens(ctx context.Context, path string) ([]protocol.CodeLens
 	params := &protocol.CodeLensParams{
 		TextDocument: e.textDocumentIdentifier(path),
 	}
-	lens, err := e.server.CodeLens(ctx, params)
+	lens, err := e.Server.CodeLens(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	return lens, nil
+}
+
+// CodeAction executes a codeAction request on the server.
+func (e *Editor) CodeAction(ctx context.Context, path string) ([]protocol.CodeAction, error) {
+	if e.Server == nil {
+		return nil, nil
+	}
+	e.mu.Lock()
+	_, ok := e.buffers[path]
+	e.mu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("buffer %q is not open", path)
+	}
+	params := &protocol.CodeActionParams{
+		TextDocument: e.textDocumentIdentifier(path),
+	}
+	lens, err := e.Server.CodeAction(ctx, params)
 	if err != nil {
 		return nil, err
 	}

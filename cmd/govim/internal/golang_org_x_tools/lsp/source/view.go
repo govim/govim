@@ -17,7 +17,6 @@ import (
 	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -152,6 +151,10 @@ type View interface {
 	// user's workspace. In particular, if they are both outside of a module
 	// and their GOPATH.
 	ValidBuildConfiguration() bool
+
+	// IsGoPrivatePath reports whether target is a private import path, as identified
+	// by the GOPRIVATE environment variable.
+	IsGoPrivatePath(path string) bool
 }
 
 // Session represents a single connection from a client.
@@ -216,13 +219,14 @@ type FileModification struct {
 type FileAction int
 
 const (
-	Open = FileAction(iota)
+	UnknownFileAction = FileAction(iota)
+	Open
 	Change
 	Close
 	Save
 	Create
 	Delete
-	UnknownFileAction
+	InvalidateMetadata
 )
 
 // Cache abstracts the core logic of dealing with the environment from the
@@ -409,7 +413,7 @@ type Package interface {
 	ForTest() string
 	GetImport(pkgPath string) (Package, error)
 	Imports() []Package
-	Module() *packagesinternal.Module
+	Module() *packages.Module
 }
 
 type Error struct {
