@@ -53,12 +53,20 @@ import (
 )
 
 const (
+	// CommandGenerate is a gopls command to run `go test` for a specific test function.
+	CommandTest = "test"
+
 	// CommandGenerate is a gopls command to run `go generate` for a directory.
 	CommandGenerate = "generate"
+
 	// CommandTidy is a gopls command to run `go mod tidy` for a module.
 	CommandTidy = "tidy"
+
 	// CommandUpgradeDependency is a gopls command to upgrade a dependency.
-	CommandUpgradeDependency = "upgrade.dependency"
+	CommandUpgradeDependency = "upgrade_dependency"
+
+	// CommandRegenerateCfgo is a gopls command to regenerate cgo definitions.
+	CommandRegenerateCgo = "regenerate_cgo"
 )
 
 // DefaultOptions is the options that are used for Gopls execution independent
@@ -88,9 +96,11 @@ func DefaultOptions() Options {
 				Sum: {},
 			},
 			SupportedCommands: []string{
-				CommandTidy,              // for go.mod files
-				CommandUpgradeDependency, // for go.mod dependency upgrades
-				CommandGenerate,          // for "go generate" commands
+				CommandTest,
+				CommandTidy,
+				CommandUpgradeDependency,
+				CommandGenerate,
+				CommandRegenerateCgo,
 			},
 		},
 		UserOptions: UserOptions{
@@ -98,16 +108,19 @@ func DefaultOptions() Options {
 			HoverKind:               FullDocumentation,
 			LinkTarget:              "pkg.go.dev",
 			Matcher:                 Fuzzy,
+			SymbolMatcher:           SymbolFuzzy,
 			DeepCompletion:          true,
 			UnimportedCompletion:    true,
 			CompletionDocumentation: true,
 			EnabledCodeLens: map[string]bool{
 				CommandGenerate:          true,
 				CommandUpgradeDependency: true,
+				CommandRegenerateCgo:     true,
 			},
 		},
 		DebuggingOptions: DebuggingOptions{
-			CompletionBudget: 100 * time.Millisecond,
+			CompletionBudget:   100 * time.Millisecond,
+			LiteralCompletions: true,
 		},
 		ExperimentalOptions: ExperimentalOptions{
 			TempModfile: true,
@@ -193,6 +206,9 @@ type UserOptions struct {
 	// Matcher specifies the type of matcher to use for completion requests.
 	Matcher Matcher
 
+	// SymbolMatcher specifies the type of matcher to use for symbol requests.
+	SymbolMatcher SymbolMatcher
+
 	// DeepCompletion allows completion to perform nested searches through
 	// possible candidates.
 	DeepCompletion bool
@@ -257,6 +273,11 @@ type DebuggingOptions struct {
 	// dynamically reduce the search scope to ensure we return timely
 	// results. Zero means unlimited.
 	CompletionBudget time.Duration
+
+	// LiteralCompletions controls whether literal candidates such as
+	// "&someStruct{}" are offered. Tests disable this flag to simplify
+	// their expected values.
+	LiteralCompletions bool
 }
 
 type Matcher int
@@ -265,6 +286,14 @@ const (
 	Fuzzy = Matcher(iota)
 	CaseInsensitive
 	CaseSensitive
+)
+
+type SymbolMatcher int
+
+const (
+	SymbolFuzzy = SymbolMatcher(iota)
+	SymbolCaseInsensitive
+	SymbolCaseSensitive
 )
 
 type HoverKind int
@@ -397,6 +426,20 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 			o.Matcher = CaseSensitive
 		default:
 			o.Matcher = CaseInsensitive
+		}
+
+	case "symbolMatcher":
+		matcher, ok := result.asString()
+		if !ok {
+			break
+		}
+		switch matcher {
+		case "fuzzy":
+			o.SymbolMatcher = SymbolFuzzy
+		case "caseSensitive":
+			o.SymbolMatcher = SymbolCaseSensitive
+		default:
+			o.SymbolMatcher = SymbolCaseInsensitive
 		}
 
 	case "hoverKind":

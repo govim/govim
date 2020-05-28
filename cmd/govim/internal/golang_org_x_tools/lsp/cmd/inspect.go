@@ -6,8 +6,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"log"
+	"os"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/lsprpc"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tool"
@@ -89,18 +92,10 @@ func (c *listSessions) Run(ctx context.Context, args ...string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Server logfile: %s\n", state.Logfile)
-	fmt.Printf("Server debug address: %v\n", state.DebugAddr)
-	for _, c := range state.Clients {
-		if c.ClientID == state.CurrentClientID {
-			// This is the client for the listsessions command itself.
-			continue
-		}
-		fmt.Println()
-		fmt.Printf("Client %s:\n", c.ClientID)
-		fmt.Printf("\tsession: %s:\n", c.SessionID)
-		fmt.Printf("\tlogfile: %s:\n", c.Logfile)
-		fmt.Printf("\tdebug address: %s:\n", c.DebugAddr)
+	v, err := json.MarshalIndent(state, "", "\t")
+	if err != nil {
+		log.Fatal(err)
 	}
+	os.Stdout.Write(v)
 	return nil
 }

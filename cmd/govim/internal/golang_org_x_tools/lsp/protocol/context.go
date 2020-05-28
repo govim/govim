@@ -1,11 +1,12 @@
 package protocol
 
 import (
+	"bytes"
 	"context"
-	"fmt"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/core"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/export"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/label"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 )
@@ -28,7 +29,10 @@ func LogEvent(ctx context.Context, ev core.Event, tags label.Map) context.Contex
 	if !ok {
 		return ctx
 	}
-	msg := &LogMessageParams{Type: Info, Message: fmt.Sprint(ev)}
+	buf := &bytes.Buffer{}
+	p := export.Printer{}
+	p.WriteEvent(buf, ev, tags)
+	msg := &LogMessageParams{Type: Info, Message: buf.String()}
 	if event.IsError(ev) {
 		msg.Type = Error
 	}

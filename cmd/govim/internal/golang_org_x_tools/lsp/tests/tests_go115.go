@@ -1,7 +1,7 @@
-// +build cgo
+// +build go1.15
 
 package tests
 
 func init() {
-	haveCgo = true
+	go115 = true
 }

@@ -106,6 +106,16 @@ func (e *Env) GoToDefinition(name string, pos fake.Pos) (string, fake.Pos) {
 	return n, p
 }
 
+// Symbol returns symbols matching query
+func (e *Env) Symbol(query string) []fake.SymbolInformation {
+	e.T.Helper()
+	r, err := e.Editor.Symbol(e.Ctx, query)
+	if err != nil {
+		e.T.Fatal(err)
+	}
+	return r
+}
+
 // FormatBuffer formats the editor buffer, calling t.Fatal on any error.
 func (e *Env) FormatBuffer(name string) {
 	e.T.Helper()
@@ -176,4 +186,15 @@ func (e *Env) CodeLens(path string) []protocol.CodeLens {
 		e.T.Fatal(err)
 	}
 	return lens
+}
+
+// CodeAction calls testDocument/codeAction for the given path, and calls
+// t.Fatal if there are errors.
+func (e *Env) CodeAction(path string) []protocol.CodeAction {
+	e.T.Helper()
+	actions, err := e.Editor.CodeAction(e.Ctx, path)
+	if err != nil {
+		e.T.Fatal(err)
+	}
+	return actions
 }

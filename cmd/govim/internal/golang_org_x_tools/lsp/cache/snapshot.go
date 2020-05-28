@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -105,7 +107,8 @@ func (s *snapshot) Config(ctx context.Context) *packages.Config {
 			packages.NeedCompiledGoFiles |
 			packages.NeedImports |
 			packages.NeedDeps |
-			packages.NeedTypesSizes,
+			packages.NeedTypesSizes |
+			packages.NeedModule,
 		Fset:    s.view.session.cache.fset,
 		Overlay: s.buildOverlay(),
 		ParseFile: func(*token.FileSet, string, []byte) (*ast.File, error) {
@@ -117,6 +120,10 @@ func (s *snapshot) Config(ctx context.Context) *packages.Config {
 			}
 		},
 		Tests: true,
+	}
+	// We want to type check cgo code if go/types supports it.
+	if reflect.ValueOf(&types.Config{}).Elem().FieldByName("UsesCgo").IsValid() {
+		cfg.Mode |= packages.TypecheckCgo
 	}
 	packagesinternal.SetGoCmdRunner(cfg, s.view.gocmdRunner)
 
@@ -658,7 +665,7 @@ func contains(views []*view, view *view) bool {
 	return false
 }
 
-func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.FileHandle) *snapshot {
+func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.FileHandle, forceReloadMetadata bool) *snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -708,7 +715,7 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Fi
 
 		// Check if the file's package name or imports have changed,
 		// and if so, invalidate this file's packages' metadata.
-		invalidateMetadata := s.shouldInvalidateMetadata(ctx, originalFH, currentFH)
+		invalidateMetadata := forceReloadMetadata || s.shouldInvalidateMetadata(ctx, originalFH, currentFH)
 
 		// Invalidate the previous modTidyHandle if any of the files have been
 		// saved or if any of the metadata has been invalidated.
