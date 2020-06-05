@@ -17,7 +17,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/sync/errgroup"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
@@ -106,10 +105,9 @@ func (c debugClient) ServerID() string {
 
 // ServeStream implements the jsonrpc2.StreamServer interface, by handling
 // incoming streams using a new lsp server.
-func (s *StreamServer) ServeStream(ctx context.Context, stream jsonrpc2.Stream) error {
+func (s *StreamServer) ServeStream(ctx context.Context, conn jsonrpc2.Conn) error {
 	index := atomic.AddInt64(&clientIndex, 1)
 
-	conn := jsonrpc2.NewConn(stream)
 	client := protocol.ClientDispatcher(conn)
 	session := s.cache.NewSession(ctx)
 	dc := &debugClient{
@@ -140,11 +138,13 @@ func (s *StreamServer) ServeStream(ctx context.Context, stream jsonrpc2.Stream) 
 		executable = ""
 	}
 	ctx = protocol.WithClient(ctx, client)
-	return conn.Run(ctx,
+	conn.Go(ctx,
 		protocol.Handlers(
 			handshaker(dc, executable,
 				protocol.ServerHandler(server,
 					jsonrpc2.MethodNotFound))))
+	<-conn.Done()
+	return conn.Err()
 }
 
 // A Forwarder is a jsonrpc2.StreamServer that handles an LSP stream by
@@ -233,8 +233,8 @@ func QueryServerState(ctx context.Context, network, address string) (*ServerStat
 	if err != nil {
 		return nil, fmt.Errorf("dialing remote: %w", err)
 	}
-	serverConn := jsonrpc2.NewConn(jsonrpc2.NewHeaderStream(netConn, netConn))
-	go serverConn.Run(ctx, jsonrpc2.MethodNotFound)
+	serverConn := jsonrpc2.NewConn(jsonrpc2.NewHeaderStream(netConn))
+	serverConn.Go(ctx, jsonrpc2.MethodNotFound)
 	var state ServerState
 	if err := protocol.Call(ctx, serverConn, sessionsMethod, nil, &state); err != nil {
 		return nil, fmt.Errorf("querying server state: %w", err)
@@ -244,25 +244,21 @@ func QueryServerState(ctx context.Context, network, address string) (*ServerStat
 
 // ServeStream dials the forwarder remote and binds the remote to serve the LSP
 // on the incoming stream.
-func (f *Forwarder) ServeStream(ctx context.Context, stream jsonrpc2.Stream) error {
-	clientConn := jsonrpc2.NewConn(stream)
+func (f *Forwarder) ServeStream(ctx context.Context, clientConn jsonrpc2.Conn) error {
 	client := protocol.ClientDispatcher(clientConn)
 
 	netConn, err := f.connectToRemote(ctx)
 	if err != nil {
 		return fmt.Errorf("forwarder: connecting to remote: %w", err)
 	}
-	serverConn := jsonrpc2.NewConn(jsonrpc2.NewHeaderStream(netConn, netConn))
+	serverConn := jsonrpc2.NewConn(jsonrpc2.NewHeaderStream(netConn))
 	server := protocol.ServerDispatcher(serverConn)
 
 	// Forward between connections.
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return serverConn.Run(ctx,
-			protocol.Handlers(
-				protocol.ClientHandler(client,
-					jsonrpc2.MethodNotFound)))
-	})
+	serverConn.Go(ctx,
+		protocol.Handlers(
+			protocol.ClientHandler(client,
+				jsonrpc2.MethodNotFound)))
 	// Don't run the clientConn yet, so that we can complete the handshake before
 	// processing any client messages.
 
@@ -298,15 +294,23 @@ func (f *Forwarder) ServeStream(ctx context.Context, stream jsonrpc2.Stream) err
 			clientID: hresp.ClientID,
 		})
 	}
-	g.Go(func() error {
-		return clientConn.Run(ctx,
-			protocol.Handlers(
-				forwarderHandler(
-					protocol.ServerHandler(server,
-						jsonrpc2.MethodNotFound))))
-	})
+	clientConn.Go(ctx,
+		protocol.Handlers(
+			protocol.ServerHandler(server,
+				jsonrpc2.MethodNotFound)))
 
-	return g.Wait()
+	select {
+	case <-serverConn.Done():
+		clientConn.Close()
+	case <-clientConn.Done():
+		serverConn.Close()
+	}
+
+	err = serverConn.Err()
+	if err == nil {
+		err = clientConn.Err()
+	}
+	return err
 }
 
 func (f *Forwarder) connectToRemote(ctx context.Context) (net.Conn, error) {
@@ -386,48 +390,6 @@ func (f *Forwarder) connectToRemote(ctx context.Context) (net.Conn, error) {
 		}
 	}
 	return nil, fmt.Errorf("dialing remote: %w", err)
-}
-
-// ForwarderExitFunc is used to exit the forwarder process. It is mutable for
-// testing purposes.
-var ForwarderExitFunc = os.Exit
-
-// OverrideExitFuncsForTest can be used from test code to prevent the test
-// process from exiting on server shutdown. The returned func reverts the exit
-// funcs to their previous state.
-func OverrideExitFuncsForTest() func() {
-	// Override functions that would shut down the test process
-	cleanup := func(lspExit, forwarderExit func(code int)) func() {
-		return func() {
-			lsp.ServerExitFunc = lspExit
-			ForwarderExitFunc = forwarderExit
-		}
-	}(lsp.ServerExitFunc, ForwarderExitFunc)
-	// It is an error for a test to shutdown a server process.
-	lsp.ServerExitFunc = func(code int) {
-		panic(fmt.Sprintf("LSP server exited with code %d", code))
-	}
-	// We don't want our forwarders to exit, but it's OK if they would have.
-	ForwarderExitFunc = func(code int) {}
-	return cleanup
-}
-
-// forwarderHandler intercepts 'exit' messages to prevent the shared gopls
-// instance from exiting. In the future it may also intercept 'shutdown' to
-// provide more graceful shutdown of the client connection.
-func forwarderHandler(handler jsonrpc2.Handler) jsonrpc2.Handler {
-	return func(ctx context.Context, reply jsonrpc2.Replier, r jsonrpc2.Request) error {
-		// TODO(golang.org/issues/34111): we should more gracefully disconnect here,
-		// once that process exists.
-		if r.Method() == "exit" {
-			ForwarderExitFunc(0)
-			// reply nil here to consume the message: in
-			// tests, ForwarderExitFunc may be overridden to something that doesn't
-			// exit the process.
-			return reply(ctx, nil, nil)
-		}
-		return handler(ctx, reply, r)
-	}
 }
 
 // A handshakeRequest identifies a client to the LSP server.

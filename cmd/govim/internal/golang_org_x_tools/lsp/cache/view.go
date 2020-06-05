@@ -93,6 +93,10 @@ type view struct {
 	initializeOnce sync.Once
 	initialized    chan struct{}
 
+	// initializedErr needs no mutex, since any access to it happens after it
+	// has been set.
+	initializedErr error
+
 	// builtin pins the AST and package for builtin.go in memory.
 	builtin *builtinPackageHandle
 
@@ -571,6 +575,7 @@ func (v *view) initialize(ctx context.Context, s *snapshot) {
 		defer close(v.initialized)
 
 		if err := s.load(ctx, viewLoadScope("LOAD_VIEW"), packagePath("builtin")); err != nil {
+			v.initializedErr = err
 			event.Error(ctx, "initial workspace load failed", err)
 		}
 	})
@@ -608,7 +613,10 @@ func (v *view) invalidateContent(ctx context.Context, uris map[span.URI]source.F
 func (v *view) cancelBackground() {
 	v.mu.Lock()
 	defer v.mu.Unlock()
-
+	if v.cancel == nil {
+		// this can happen during shutdown
+		return
+	}
 	v.cancel()
 	v.backgroundCtx, v.cancel = context.WithCancel(v.baseCtx)
 }

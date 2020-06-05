@@ -18,6 +18,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 // Snapshot represents the current state for the given view.
@@ -439,3 +440,5 @@ const (
 func (e *Error) Error() string {
 	return fmt.Sprintf("%s:%s: %s", e.URI, e.Range, e.Message)
 }
+
+var InconsistentVendoring = errors.New("inconsistent vendoring")

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -134,7 +135,7 @@ func (s *Server) didChangeWatchedFiles(ctx context.Context, params *protocol.Did
 	if err != nil {
 		return err
 	}
-	// Clear the diagnostics for any deleted files.
+	// Clear the diagnostics for any deleted files that are not open in the editor.
 	for uri := range deletions {
 		if snapshot := snapshots[uri]; snapshot == nil || snapshot.IsOpen(uri) {
 			continue
@@ -203,6 +204,18 @@ func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocu
 }
 
 func (s *Server) didModifyFiles(ctx context.Context, modifications []source.FileModification, cause ModificationSource) (map[span.URI]source.Snapshot, error) {
+	// diagnosticWG tracks outstanding diagnostic work as a result of this file
+	// modification.
+	var diagnosticWG sync.WaitGroup
+	if s.session.Options().VerboseWorkDoneProgress {
+		work := s.StartWork(ctx, DiagnosticWorkTitle(cause), "Calculating file diagnostics...", nil)
+		defer func() {
+			go func() {
+				diagnosticWG.Wait()
+				work.End(ctx, "Done.")
+			}()
+		}()
+	}
 	snapshots, err := s.session.DidModifyFiles(ctx, modifications)
 	if err != nil {
 		return nil, err
@@ -262,11 +275,9 @@ func (s *Server) didModifyFiles(ctx context.Context, modifications []source.File
 				}
 			}
 		}
+		diagnosticWG.Add(1)
 		go func(snapshot source.Snapshot) {
-			if s.session.Options().VerboseWorkDoneProgress {
-				work := s.StartWork(ctx, DiagnosticWorkTitle(cause), "Calculating file diagnostics...", nil)
-				defer work.End(ctx, "Done.")
-			}
+			defer diagnosticWG.Done()
 			s.diagnoseSnapshot(snapshot)
 		}(snapshot)
 	}

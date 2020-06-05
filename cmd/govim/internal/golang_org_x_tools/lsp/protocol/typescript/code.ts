@@ -929,7 +929,8 @@ function goNot(side: side, m: string) {
     err:= ${side.name}.${nm}(ctx, &params)
     return reply(ctx, nil, err)`
   } else {
-    case1 = `return ${side.name}.${nm}(ctx)`;
+    case1 = `err := ${side.name}.${nm}(ctx)
+    return reply(ctx, nil, err)`;
   }
   side.cases.push(`${caseHdr}\n${case1}`);
 
@@ -1095,7 +1096,7 @@ function output(side: side) {
       }`);
   f(`
         type ${side.name}Dispatcher struct {
-          *jsonrpc2.Conn
+          jsonrpc2.Conn
         }
         `);
   side.calls.forEach((v) => {f(v)});
