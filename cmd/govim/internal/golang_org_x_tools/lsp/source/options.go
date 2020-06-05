@@ -62,6 +62,9 @@ const (
 	// CommandTidy is a gopls command to run `go mod tidy` for a module.
 	CommandTidy = "tidy"
 
+	// CommandVendor is a gopls command to run `go mod vendor` for a module.
+	CommandVendor = "vendor"
+
 	// CommandUpgradeDependency is a gopls command to upgrade a dependency.
 	CommandUpgradeDependency = "upgrade_dependency"
 
@@ -89,6 +92,7 @@ func DefaultOptions() Options {
 					protocol.SourceFixAll:          true,
 					protocol.SourceOrganizeImports: true,
 					protocol.QuickFix:              true,
+					protocol.RefactorRewrite:       true,
 				},
 				Mod: {
 					protocol.SourceOrganizeImports: true,

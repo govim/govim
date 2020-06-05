@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/fakenet"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
@@ -92,11 +93,12 @@ func (s *Serve) Run(ctx context.Context, args ...string) error {
 		addr := fmt.Sprintf(":%v", s.Port)
 		return jsonrpc2.ListenAndServe(ctx, "tcp", addr, ss, s.IdleTimeout)
 	}
-	stream := jsonrpc2.NewHeaderStream(os.Stdin, os.Stdout)
+	stream := jsonrpc2.NewHeaderStream(fakenet.NewConn("stdio", os.Stdin, os.Stdout))
 	if s.Trace && di != nil {
 		stream = protocol.LoggingStream(stream, di.LogWriter)
 	}
-	return ss.ServeStream(ctx, stream)
+	conn := jsonrpc2.NewConn(stream)
+	return ss.ServeStream(ctx, conn)
 }
 
 // parseAddr parses the -listen flag in to a network, and address.

@@ -146,7 +146,7 @@ type govimplugin struct {
 
 	goplspath   string
 	gopls       *os.Process
-	goplsConn   *jsonrpc2.Conn
+	goplsConn   jsonrpc2.Conn
 	goplsCancel context.CancelFunc
 	goplsStdin  io.WriteCloser
 	server      protocol.Server

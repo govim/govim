@@ -12,7 +12,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2/servertest"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/fake"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -31,7 +30,6 @@ type Env struct {
 	Sandbox *fake.Sandbox
 	Editor  *fake.Editor
 	Server  servertest.Connector
-	Conn    *jsonrpc2.Conn
 
 	// mu guards the fields below, for the purpose of checking conditions on
 	// every change to diagnostics.
@@ -45,9 +43,10 @@ type Env struct {
 // State encapsulates the server state TODO: explain more
 type State struct {
 	// diagnostics are a map of relative path->diagnostics params
-	diagnostics map[string]*protocol.PublishDiagnosticsParams
-	logs        []*protocol.LogMessageParams
-	showMessage []*protocol.ShowMessageParams
+	diagnostics        map[string]*protocol.PublishDiagnosticsParams
+	logs               []*protocol.LogMessageParams
+	showMessage        []*protocol.ShowMessageParams
+	showMessageRequest []*protocol.ShowMessageRequestParams
 	// outstandingWork is a map of token->work summary. All tokens are assumed to
 	// be string, though the spec allows for numeric tokens as well.  When work
 	// completes, it is deleted from this map.
@@ -87,7 +86,11 @@ func (s State) String() string {
 		if name == "" {
 			name = fmt.Sprintf("!NO NAME(token: %s)", token)
 		}
-		fmt.Fprintf(&b, "\t%s: %.2f", name, state.percent)
+		fmt.Fprintf(&b, "\t%s: %.2f\n", name, state.percent)
+	}
+	b.WriteString("#### completed work:\n")
+	for name, count := range s.completedWork {
+		fmt.Fprintf(&b, "\t%s: %d\n", name, count)
 	}
 	return b.String()
 }
@@ -110,7 +113,6 @@ func NewEnv(ctx context.Context, t *testing.T, scratch *fake.Sandbox, ts servert
 		Ctx:     ctx,
 		Sandbox: scratch,
 		Server:  ts,
-		Conn:    conn,
 		state: State{
 			diagnostics:     make(map[string]*protocol.PublishDiagnosticsParams),
 			outstandingWork: make(map[string]*workProgress),
@@ -124,6 +126,7 @@ func NewEnv(ctx context.Context, t *testing.T, scratch *fake.Sandbox, ts servert
 		OnWorkDoneProgressCreate: env.onWorkDoneProgressCreate,
 		OnProgress:               env.onProgress,
 		OnShowMessage:            env.onShowMessage,
+		OnShowMessageRequest:     env.onShowMessageRequest,
 	}
 	editor, err := fake.NewEditor(scratch, editorConfig).Connect(ctx, conn, hooks)
 	if err != nil {
@@ -148,6 +151,15 @@ func (e *Env) onShowMessage(_ context.Context, m *protocol.ShowMessageParams) er
 	defer e.mu.Unlock()
 
 	e.state.showMessage = append(e.state.showMessage, m)
+	e.checkConditionsLocked()
+	return nil
+}
+
+func (e *Env) onShowMessageRequest(_ context.Context, m *protocol.ShowMessageRequestParams) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.state.showMessageRequest = append(e.state.showMessageRequest, m)
 	e.checkConditionsLocked()
 	return nil
 }
@@ -363,6 +375,29 @@ func SomeShowMessage(title string) SimpleExpectation {
 	return SimpleExpectation{
 		check:       check,
 		description: "received ShowMessage",
+	}
+}
+
+// ShowMessageRequest asserts that the editor has received a ShowMessageRequest
+// with an action item that has the given title.
+func ShowMessageRequest(title string) SimpleExpectation {
+	check := func(s State) (Verdict, interface{}) {
+		if len(s.showMessageRequest) == 0 {
+			return Unmet, nil
+		}
+		// Only check the most recent one.
+		m := s.showMessageRequest[len(s.showMessageRequest)-1]
+		if len(m.Actions) == 0 || len(m.Actions) > 1 {
+			return Unmet, nil
+		}
+		if m.Actions[0].Title == title {
+			return Met, m.Actions[0]
+		}
+		return Unmet, nil
+	}
+	return SimpleExpectation{
+		check:       check,
+		description: "received ShowMessageRequest",
 	}
 }
 

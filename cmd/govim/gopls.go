@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/govim/govim/cmd/govim/config"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/fakenet"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -102,7 +103,8 @@ func (g *govimplugin) startGopls() error {
 		}
 	})
 
-	stream := jsonrpc2.NewHeaderStream(stdout, stdin)
+	fakeconn := fakenet.NewConn("stdio", stdout, stdin)
+	stream := jsonrpc2.NewHeaderStream(fakeconn)
 	ctxt, cancel := context.WithCancel(context.Background())
 	conn := jsonrpc2.NewConn(stream)
 	server := protocol.ServerDispatcher(conn)
@@ -111,7 +113,9 @@ func (g *govimplugin) startGopls() error {
 	ctxt = protocol.WithClient(ctxt, g)
 
 	g.tomb.Go(func() error {
-		return conn.Run(ctxt, handler)
+		conn.Go(ctxt, handler)
+		<-conn.Done()
+		return conn.Err()
 	})
 
 	g.gopls = gopls.Process
