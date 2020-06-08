@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        go-version: [go1.14.2]
+        go-version: [go1.14.4]
     runs-on: ${{ matrix.os }}
     env:
       GO_VERSION: ${{ matrix.go_version }}
