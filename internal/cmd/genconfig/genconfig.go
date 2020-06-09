@@ -88,19 +88,21 @@ func main() {
 
 func writeMaxVersionsScripts() {
 	var vs struct {
-		MaxGoVersion   string
-		MaxVimVersion  string
-		MaxGvimVersion string
-		GoVersions     string
-		VimVersions    string
-		GvimVersions   string
-		VimCommand     string
-		GvimCommand    string
-		ValidFlavors   string
+		MaxRealGoVersion string
+		MaxGoVersion     string
+		MaxVimVersion    string
+		MaxGvimVersion   string
+		GoVersions       string
+		VimVersions      string
+		GvimVersions     string
+		VimCommand       string
+		GvimCommand      string
+		ValidFlavors     string
 	}
 	vs.VimCommand = strconv.Quote(testsetup.VimCommand.String())
 	vs.GvimCommand = strconv.Quote(testsetup.GvimCommand.String())
 	vs.MaxGoVersion = testsetup.GoVersions[len(testsetup.GoVersions)-1]
+	vs.MaxRealGoVersion = strings.TrimPrefix(vs.MaxGoVersion, "go")
 
 	goVersionsSet := make(map[string]bool)
 	vimVersionsSet := make(map[string]bool)
@@ -301,10 +303,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        go-version: [{{{.MaxGoVersion}}}]
+        go-version: ["{{{.MaxRealGoVersion}}}"]
     runs-on: ${{ matrix.os }}
     env:
-      GO_VERSION: ${{ matrix.go_version }}
       VIM_FLAVOR: vim
     steps:
     - name: Checkout code
