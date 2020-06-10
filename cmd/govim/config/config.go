@@ -295,6 +295,10 @@ const (
 	// cursor position, no popup is shown. Moving the cursor or the mouse causes
 	// the popup to be dismissed.
 	CommandExperimentalSignatureHelp Command = "ExperimentalSignatureHelp"
+
+	// CommandFillStruct populates fields in the struct under the cursor. Each
+	// field will get the respective zero value as value.
+	CommandFillStruct Command = "FillStruct"
 )
 
 type Function string
