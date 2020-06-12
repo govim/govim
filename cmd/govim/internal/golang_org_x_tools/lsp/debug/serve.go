@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"go/token"
 	"html/template"
 	"io"
 	"log"
@@ -18,7 +17,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	rpprof "runtime/pprof"
 	"strconv"
@@ -34,9 +32,9 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/export/prometheus"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/keys"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/label"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"golang.org/x/xerrors"
 )
 
@@ -67,312 +65,210 @@ type Instance struct {
 
 // State holds debugging information related to the server state.
 type State struct {
-	mu       sync.Mutex
-	caches   objset
-	sessions objset
-	views    objset
-	clients  objset
-	servers  objset
+	mu      sync.Mutex
+	clients []*Client
+	servers []*Server
 }
 
-type ider interface {
-	ID() string
-}
-
-type objset struct {
-	objs []ider
-}
-
-func (s *objset) add(elem ider) {
-	s.objs = append(s.objs, elem)
-}
-
-func (s *objset) drop(elem ider) {
-	var newobjs []ider
-	for _, obj := range s.objs {
-		if obj.ID() != elem.ID() {
-			newobjs = append(newobjs, obj)
+// Caches returns the set of Cache objects currently being served.
+func (st *State) Caches() []*cache.Cache {
+	var caches []*cache.Cache
+	seen := make(map[string]struct{})
+	for _, client := range st.Clients() {
+		cache, ok := client.Session.Cache().(*cache.Cache)
+		if !ok {
+			continue
 		}
+		if _, found := seen[cache.ID()]; found {
+			continue
+		}
+		seen[cache.ID()] = struct{}{}
+		caches = append(caches, cache)
 	}
-	s.objs = newobjs
+	return caches
 }
 
-func (s *objset) find(id string) ider {
-	for _, e := range s.objs {
-		if e.ID() == id {
-			return e
+// Cache returns the Cache that matches the supplied id.
+func (st *State) Cache(id string) *cache.Cache {
+	for _, c := range st.Caches() {
+		if c.ID() == id {
+			return c
 		}
 	}
 	return nil
 }
 
-// Caches returns the set of Cache objects currently being served.
-func (st *State) Caches() []Cache {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	caches := make([]Cache, len(st.caches.objs))
-	for i, c := range st.caches.objs {
-		caches[i] = c.(Cache)
-	}
-	return caches
-}
-
 // Sessions returns the set of Session objects currently being served.
-func (st *State) Sessions() []Session {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	sessions := make([]Session, len(st.sessions.objs))
-	for i, s := range st.sessions.objs {
-		sessions[i] = s.(Session)
+func (st *State) Sessions() []*cache.Session {
+	var sessions []*cache.Session
+	for _, client := range st.Clients() {
+		sessions = append(sessions, client.Session)
 	}
 	return sessions
 }
 
+// Session returns the Session that matches the supplied id.
+func (st *State) Session(id string) *cache.Session {
+	for _, s := range st.Sessions() {
+		if s.ID() == id {
+			return s
+		}
+	}
+	return nil
+}
+
 // Views returns the set of View objects currently being served.
-func (st *State) Views() []View {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	views := make([]View, len(st.views.objs))
-	for i, v := range st.views.objs {
-		views[i] = v.(View)
+func (st *State) Views() []*cache.View {
+	var views []*cache.View
+	for _, s := range st.Sessions() {
+		for _, v := range s.Views() {
+			if cv, ok := v.(*cache.View); ok {
+				views = append(views, cv)
+			}
+		}
 	}
 	return views
 }
 
+// View returns the View that matches the supplied id.
+func (st *State) View(id string) *cache.View {
+	for _, v := range st.Views() {
+		if v.ID() == id {
+			return v
+		}
+	}
+	return nil
+}
+
 // Clients returns the set of Clients currently being served.
-func (st *State) Clients() []Client {
+func (st *State) Clients() []*Client {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	clients := make([]Client, len(st.clients.objs))
-	for i, c := range st.clients.objs {
-		clients[i] = c.(Client)
-	}
+	clients := make([]*Client, len(st.clients))
+	copy(clients, st.clients)
 	return clients
 }
 
 // Servers returns the set of Servers the instance is currently connected to.
-func (st *State) Servers() []Server {
+func (st *State) Servers() []*Server {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	servers := make([]Server, len(st.servers.objs))
-	for i, s := range st.servers.objs {
-		servers[i] = s.(Server)
-	}
+	servers := make([]*Server, len(st.servers))
+	copy(servers, st.servers)
 	return servers
 }
 
 // A Client is an incoming connection from a remote client.
-type Client interface {
-	ID() string
-	Session() Session
-	DebugAddress() string
-	Logfile() string
-	ServerID() string
+type Client struct {
+	ID           string
+	Session      *cache.Session
+	DebugAddress string
+	Logfile      string
+	GoplsPath    string
+	ServerID     string
 }
 
 // A Server is an outgoing connection to a remote LSP server.
-type Server interface {
-	ID() string
-	DebugAddress() string
-	Logfile() string
-	ClientID() string
-}
-
-// A Cache is an in-memory cache.
-type Cache interface {
-	ID() string
-	FileSet() *token.FileSet
-	MemStats() map[reflect.Type]int
-}
-
-// A Session is an LSP serving session.
-type Session interface {
-	ID() string
-	Cache() Cache
-	Files() []*File
-	File(hash string) *File
-}
-
-// A View is a root directory within a Session.
-type View interface {
-	ID() string
-	Name() string
-	Folder() span.URI
-	Session() Session
-}
-
-// A File is a file within a session.
-type File struct {
-	Session Session
-	URI     span.URI
-	Data    string
-	Error   error
-	Hash    string
-}
-
-// AddCache adds a cache to the set being served.
-func (st *State) AddCache(cache Cache) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.caches.add(cache)
-}
-
-// DropCache drops a cache from the set being served.
-func (st *State) DropCache(cache Cache) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.caches.drop(cache)
-}
-
-// AddSession adds a session to the set being served.
-func (st *State) AddSession(session Session) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.sessions.add(session)
-}
-
-// DropSession drops a session from the set being served.
-func (st *State) DropSession(session Session) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.sessions.drop(session)
-}
-
-// AddView adds a view to the set being served.
-func (st *State) AddView(view View) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.views.add(view)
-}
-
-// DropView drops a view from the set being served.
-func (st *State) DropView(view View) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.views.drop(view)
+type Server struct {
+	ID           string
+	DebugAddress string
+	Logfile      string
+	GoplsPath    string
+	ClientID     string
 }
 
 // AddClient adds a client to the set being served.
-func (st *State) AddClient(client Client) {
+func (st *State) AddClient(client *Client) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	st.clients.add(client)
+	st.clients = append(st.clients, client)
 }
 
-// DropClient adds a client to the set being served.
-func (st *State) DropClient(client Client) {
+// DropClient removes a client from the set being served.
+func (st *State) DropClient(id string) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	st.clients.drop(client)
+	for i, c := range st.clients {
+		if c.ID == id {
+			copy(st.clients[i:], st.clients[i+1:])
+			st.clients[len(st.clients)-1] = nil
+			st.clients = st.clients[:len(st.clients)-1]
+			return
+		}
+	}
 }
 
 // AddServer adds a server to the set being queried. In practice, there should
 // be at most one remote server.
-func (st *State) AddServer(server Server) {
+func (st *State) AddServer(server *Server) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	st.servers.add(server)
+	st.servers = append(st.servers, server)
 }
 
-// DropServer drops a server to the set being queried.
-func (st *State) DropServer(server Server) {
+// DropServer drops a server from the set being queried.
+func (st *State) DropServer(id string) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	st.servers.drop(server)
+	for i, s := range st.servers {
+		if s.ID == id {
+			copy(st.servers[i:], st.servers[i+1:])
+			st.servers[len(st.servers)-1] = nil
+			st.servers = st.servers[:len(st.servers)-1]
+			return
+		}
+	}
 }
 
 func (i *Instance) getCache(r *http.Request) interface{} {
-	i.State.mu.Lock()
-	defer i.State.mu.Unlock()
-	id := path.Base(r.URL.Path)
-	c, ok := i.State.caches.find(id).(Cache)
-	if !ok {
-		return nil
-	}
-	result := struct {
-		Cache
-		Sessions []Session
-	}{
-		Cache: c,
-	}
-
-	// now find all the views that belong to this session
-	for _, vd := range i.State.sessions.objs {
-		v := vd.(Session)
-		if v.Cache().ID() == id {
-			result.Sessions = append(result.Sessions, v)
-		}
-	}
-	return result
+	return i.State.Cache(path.Base(r.URL.Path))
 }
 
 func (i *Instance) getSession(r *http.Request) interface{} {
-	i.State.mu.Lock()
-	defer i.State.mu.Unlock()
-	id := path.Base(r.URL.Path)
-	s, ok := i.State.sessions.find(id).(Session)
-	if !ok {
-		return nil
-	}
-	result := struct {
-		Session
-		Views []View
-	}{
-		Session: s,
-	}
-	// now find all the views that belong to this session
-	for _, vd := range i.State.views.objs {
-		v := vd.(View)
-		if v.Session().ID() == id {
-			result.Views = append(result.Views, v)
-		}
-	}
-	return result
+	return i.State.Session(path.Base(r.URL.Path))
 }
 
 func (i Instance) getClient(r *http.Request) interface{} {
 	i.State.mu.Lock()
 	defer i.State.mu.Unlock()
 	id := path.Base(r.URL.Path)
-	c, ok := i.State.clients.find(id).(Client)
-	if !ok {
-		return nil
+	for _, c := range i.State.clients {
+		if c.ID == id {
+			return c
+		}
 	}
-	return c
+	return nil
 }
 
 func (i Instance) getServer(r *http.Request) interface{} {
 	i.State.mu.Lock()
 	defer i.State.mu.Unlock()
 	id := path.Base(r.URL.Path)
-	s, ok := i.State.servers.find(id).(Server)
-	if !ok {
-		return nil
+	for _, s := range i.State.servers {
+		if s.ID == id {
+			return s
+		}
 	}
-	return s
+	return nil
 }
 
 func (i Instance) getView(r *http.Request) interface{} {
-	i.State.mu.Lock()
-	defer i.State.mu.Unlock()
-	id := path.Base(r.URL.Path)
-	v, ok := i.State.views.find(id).(View)
-	if !ok {
-		return nil
-	}
-	return v
+	return i.State.View(path.Base(r.URL.Path))
 }
 
 func (i *Instance) getFile(r *http.Request) interface{} {
-	i.State.mu.Lock()
-	defer i.State.mu.Unlock()
-	hash := path.Base(r.URL.Path)
+	identifier := path.Base(r.URL.Path)
 	sid := path.Base(path.Dir(r.URL.Path))
-	s, ok := i.State.sessions.find(sid).(Session)
-	if !ok {
+	s := i.State.Session(sid)
+	if s == nil {
 		return nil
 	}
-	return s.File(hash)
+	for _, o := range s.Overlays() {
+		if o.Identity().Identifier == identifier {
+			return o
+		}
+	}
+	return nil
 }
 
 func (i *Instance) getInfo(r *http.Request) interface{} {
@@ -625,6 +521,10 @@ func fuint32(v uint32) string {
 	return commas(strconv.FormatUint(uint64(v), 10))
 }
 
+func fcontent(v []byte) string {
+	return string(v)
+}
+
 var baseTemplate = template.Must(template.New("").Parse(`
 <html>
 <head>
@@ -664,10 +564,11 @@ Unknown page
 {{define "serverlink"}}<a href="/server/{{.}}">Server {{.}}</a>{{end}}
 {{define "sessionlink"}}<a href="/session/{{.}}">Session {{.}}</a>{{end}}
 {{define "viewlink"}}<a href="/view/{{.}}">View {{.}}</a>{{end}}
-{{define "filelink"}}<a href="/file/{{.Session.ID}}/{{.Hash}}">{{.URI}}</a>{{end}}
+{{define "filelink"}}<a href="/file/{{.SessionID}}/{{.Identifier}}">{{.URI}}</a>{{end}}
 `)).Funcs(template.FuncMap{
-	"fuint64": fuint64,
-	"fuint32": fuint32,
+	"fuint64":  fuint64,
+	"fuint32":  fuint32,
+	"fcontent": fcontent,
 	"localAddress": func(s string) string {
 		// Try to translate loopback addresses to localhost, both for cosmetics and
 		// because unspecified ipv6 addresses can break links on Windows.
@@ -785,8 +686,8 @@ var sessionTmpl = template.Must(template.Must(baseTemplate.Clone()).Parse(`
 From: <b>{{template "cachelink" .Cache.ID}}</b><br>
 <h2>Views</h2>
 <ul>{{range .Views}}<li>{{.Name}} is {{template "viewlink" .ID}} in {{.Folder}}</li>{{end}}</ul>
-<h2>Files</h2>
-<ul>{{range .Files}}<li>{{template "filelink" .}}</li>{{end}}</ul>
+<h2>Overlays</h2>
+<ul>{{range .Overlays}}<li>{{template "filelink" .Identity}}</li>{{end}}</ul>
 {{end}}
 `))
 
@@ -797,18 +698,21 @@ Name: <b>{{.Name}}</b><br>
 Folder: <b>{{.Folder}}</b><br>
 From: <b>{{template "sessionlink" .Session.ID}}</b><br>
 <h2>Environment</h2>
-<ul>{{range .Env}}<li>{{.}}</li>{{end}}</ul>
+<ul>{{range .Options.Env}}<li>{{.}}</li>{{end}}</ul>
 {{end}}
 `))
 
 var fileTmpl = template.Must(template.Must(baseTemplate.Clone()).Parse(`
-{{define "title"}}File {{.Hash}}{{end}}
+{{define "title"}}Overlay {{.Identity.Identifier}}{{end}}
 {{define "body"}}
-From: <b>{{template "sessionlink" .Session.ID}}</b><br>
-URI: <b>{{.URI}}</b><br>
-Hash: <b>{{.Hash}}</b><br>
-Error: <b>{{.Error}}</b><br>
+{{with .Identity}}
+	From: <b>{{template "sessionlink" .SessionID}}</b><br>
+	URI: <b>{{.URI}}</b><br>
+	Identifier: <b>{{.Identifier}}</b><br>
+	Version: <b>{{.Version}}</b><br>
+	Kind: <b>{{.Kind}}</b><br>
+{{end}}
 <h3>Contents</h3>
-<pre>{{.Data}}</pre>
+<pre>{{fcontent .Data}}</pre>
 {{end}}
 `))
