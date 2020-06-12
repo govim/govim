@@ -46,8 +46,8 @@ type overlay struct {
 	saved bool
 }
 
-func (o *overlay) FileSystem() source.FileSystem {
-	return o.session
+func (o *overlay) Read() ([]byte, error) {
+	return o.text, nil
 }
 
 func (o *overlay) Identity() source.FileIdentity {
@@ -60,15 +60,24 @@ func (o *overlay) Identity() source.FileIdentity {
 	}
 }
 
-func (o *overlay) Read(ctx context.Context) ([]byte, string, error) {
-	return o.text, o.hash, nil
+func (o *overlay) Kind() source.FileKind {
+	return o.kind
+}
+
+func (o *overlay) URI() span.URI {
+	return o.uri
+}
+
+func (o *overlay) Version() float64 {
+	return o.version
 }
 
 func (o *overlay) Session() source.Session { return o.session }
 func (o *overlay) Saved() bool             { return o.saved }
 func (o *overlay) Data() []byte            { return o.text }
 
-func (s *Session) ID() string { return s.id }
+func (s *Session) ID() string     { return s.id }
+func (s *Session) String() string { return s.id }
 
 func (s *Session) Options() source.Options {
 	return s.options
@@ -86,6 +95,7 @@ func (s *Session) Shutdown(ctx context.Context) {
 	}
 	s.views = nil
 	s.viewMap = nil
+	event.Log(ctx, "Shutdown session", KeyShutdownSession.Of(s))
 }
 
 func (s *Session) Cache() source.Cache {
@@ -136,7 +146,6 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 			unloadableFiles:   make(map[span.URI]struct{}),
 			modHandles:        make(map[span.URI]*modHandle),
 		},
-		ignoredURIs: make(map[span.URI]struct{}),
 		gocmdRunner: &gocommand.Runner{},
 	}
 	v.snapshot.view = v
@@ -309,9 +318,6 @@ func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModif
 		// Look through all of the session's views, invalidating the file for
 		// all of the views to which it is known.
 		for _, view := range s.views {
-			if view.Ignore(c.URI) {
-				return nil, errors.Errorf("ignored file %v", c.URI)
-			}
 			// Don't propagate changes that are outside of the view's scope
 			// or knowledge.
 			if !view.relevantChange(c) {
@@ -327,7 +333,11 @@ func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModif
 			if o, ok := overlays[c.URI]; ok {
 				views[view][c.URI] = o
 			} else {
-				views[view][c.URI] = s.cache.GetFile(c.URI)
+				fh, err := s.cache.GetFile(ctx, c.URI)
+				if err != nil {
+					return nil, err
+				}
+				views[view][c.URI] = fh
 			}
 		}
 	}
@@ -388,8 +398,12 @@ func (s *Session) updateOverlays(ctx context.Context, changes []source.FileModif
 		var sameContentOnDisk bool
 		switch c.Action {
 		case source.Open:
-			_, h, err := s.cache.GetFile(c.URI).Read(ctx)
-			sameContentOnDisk = (err == nil && h == hash)
+			fh, err := s.cache.GetFile(ctx, c.URI)
+			if err != nil {
+				return nil, err
+			}
+			_, readErr := fh.Read()
+			sameContentOnDisk = (readErr == nil && fh.Identity().Identifier == hash)
 		case source.Save:
 			// Make sure the version and content (if present) is the same.
 			if o.version != c.Version {
@@ -422,13 +436,12 @@ func (s *Session) updateOverlays(ctx context.Context, changes []source.FileModif
 	return overlays, nil
 }
 
-// GetFile implements the source.FileSystem interface.
-func (s *Session) GetFile(uri span.URI) source.FileHandle {
+func (s *Session) GetFile(ctx context.Context, uri span.URI) (source.FileHandle, error) {
 	if overlay := s.readOverlay(uri); overlay != nil {
-		return overlay
+		return overlay, nil
 	}
 	// Fall back to the cache-level file system.
-	return s.cache.GetFile(uri)
+	return s.cache.GetFile(ctx, uri)
 }
 
 func (s *Session) readOverlay(uri span.URI) *overlay {
