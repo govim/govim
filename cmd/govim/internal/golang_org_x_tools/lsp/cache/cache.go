@@ -9,19 +9,24 @@ import (
 	"crypto/sha1"
 	"fmt"
 	"go/token"
+	"io/ioutil"
+	"os"
 	"reflect"
 	"strconv"
 	"sync/atomic"
+	"time"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 func New(ctx context.Context, options func(*source.Options)) *Cache {
 	index := atomic.AddInt64(&cacheIndex, 1)
 	c := &Cache{
-		fs:      &nativeFileSystem{},
 		id:      strconv.FormatInt(index, 10),
 		fset:    token.NewFileSet(),
 		options: options,
@@ -30,7 +35,6 @@ func New(ctx context.Context, options func(*source.Options)) *Cache {
 }
 
 type Cache struct {
-	fs      source.FileSystem
 	id      string
 	fset    *token.FileSet
 	options func(*source.Options)
@@ -39,36 +43,65 @@ type Cache struct {
 }
 
 type fileKey struct {
-	identity source.FileIdentity
+	uri     span.URI
+	modTime time.Time
 }
 
 type fileHandle struct {
-	cache      *Cache
-	underlying source.FileHandle
-	handle     *memoize.Handle
-}
-
-type fileData struct {
+	uri span.URI
 	memoize.NoCopy
 	bytes []byte
 	hash  string
 	err   error
 }
 
-func (c *Cache) GetFile(uri span.URI) source.FileHandle {
-	underlying := c.fs.GetFile(uri)
+func (c *Cache) GetFile(ctx context.Context, uri span.URI) (source.FileHandle, error) {
+	var modTime time.Time
+	if fi, err := os.Stat(uri.Filename()); err == nil {
+		modTime = fi.ModTime()
+	}
+
 	key := fileKey{
-		identity: underlying.Identity(),
+		uri:     uri,
+		modTime: modTime,
 	}
 	h := c.store.Bind(key, func(ctx context.Context) interface{} {
-		data := &fileData{}
-		data.bytes, data.hash, data.err = underlying.Read(ctx)
-		return data
+		return readFile(ctx, uri, modTime)
 	})
+	v := h.Get(ctx)
+	if v == nil {
+		return nil, ctx.Err()
+	}
+	return v.(*fileHandle), nil
+}
+
+// ioLimit limits the number of parallel file reads per process.
+var ioLimit = make(chan struct{}, 128)
+
+func readFile(ctx context.Context, uri span.URI, origTime time.Time) *fileHandle {
+	ctx, done := event.Start(ctx, "cache.getFile", tag.File.Of(uri.Filename()))
+	_ = ctx
+	defer done()
+
+	ioLimit <- struct{}{}
+	defer func() { <-ioLimit }()
+
+	var modTime time.Time
+	if fi, err := os.Stat(uri.Filename()); err == nil {
+		modTime = fi.ModTime()
+	}
+
+	if modTime != origTime {
+		return &fileHandle{err: errors.Errorf("%s: file has been modified", uri.Filename())}
+	}
+	data, err := ioutil.ReadFile(uri.Filename())
+	if err != nil {
+		return &fileHandle{err: err}
+	}
 	return &fileHandle{
-		cache:      c,
-		underlying: underlying,
-		handle:     h,
+		uri:   uri,
+		bytes: data,
+		hash:  hashContents(data),
 	}
 }
 
@@ -80,6 +113,7 @@ func (c *Cache) NewSession(ctx context.Context) *Session {
 		options:  source.DefaultOptions(),
 		overlays: make(map[span.URI]*overlay),
 	}
+	event.Log(ctx, "New session", KeyCreateSession.Of(s))
 	return s
 }
 
@@ -87,21 +121,28 @@ func (c *Cache) FileSet() *token.FileSet {
 	return c.fset
 }
 
-func (h *fileHandle) FileSystem() source.FileSystem {
-	return h.cache
+func (h *fileHandle) URI() span.URI {
+	return h.uri
+}
+
+func (h *fileHandle) Kind() source.FileKind {
+	return source.DetectLanguage("", h.uri.Filename())
+}
+
+func (h *fileHandle) Version() float64 {
+	return 0
 }
 
 func (h *fileHandle) Identity() source.FileIdentity {
-	return h.underlying.Identity()
+	return source.FileIdentity{
+		URI:        h.uri,
+		Identifier: h.hash,
+		Kind:       h.Kind(),
+	}
 }
 
-func (h *fileHandle) Read(ctx context.Context) ([]byte, string, error) {
-	v := h.handle.Get(ctx)
-	if v == nil {
-		return nil, "", ctx.Err()
-	}
-	data := v.(*fileData)
-	return data.bytes, data.hash, data.err
+func (h *fileHandle) Read() ([]byte, error) {
+	return h.bytes, h.err
 }
 
 func hashContents(contents []byte) string {
