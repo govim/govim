@@ -87,6 +87,7 @@ type View struct {
 	// If we failed to load, we don't re-try to avoid too many go/packages calls.
 	initializeOnce sync.Once
 	initialized    chan struct{}
+	initCancel     context.CancelFunc
 
 	// initializedErr needs no mutex, since any access to it happens after it
 	// has been set.
@@ -416,6 +417,8 @@ func (v *View) buildProcessEnv(ctx context.Context) (*imports.ProcessEnv, error)
 	return processEnv, nil
 }
 
+// envLocked returns the environment and build flags for the current view.
+// It assumes that the caller is holding the view's optionsMu.
 func (v *View) envLocked() ([]string, []string) {
 	// We want to run the go commands with the -modfile flag if the version of go
 	// that we are using supports it.
@@ -525,7 +528,9 @@ func (v *View) Shutdown(ctx context.Context) {
 }
 
 func (v *View) shutdown(ctx context.Context) {
-	// TODO: Cancel the view's initialization.
+	// Cancel the initial workspace load if it is still running.
+	v.initCancel()
+
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.cancel != nil {
@@ -561,6 +566,9 @@ func (v *View) initialize(ctx context.Context, s *snapshot) {
 		defer close(v.initialized)
 
 		if err := s.load(ctx, viewLoadScope("LOAD_VIEW"), packagePath("builtin")); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			v.initializedErr = err
 			event.Error(ctx, "initial workspace load failed", err)
 		}

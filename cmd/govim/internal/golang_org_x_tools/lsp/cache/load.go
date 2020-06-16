@@ -83,7 +83,7 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 	ctx, done := event.Start(ctx, "cache.view.load", tag.Query.Of(query))
 	defer done()
 
-	cfg := s.Config(ctx)
+	cfg := s.config(ctx)
 	pkgs, err := packages.Load(cfg, query...)
 
 	// If the context was canceled, return early. Otherwise, we might be
@@ -222,13 +222,13 @@ func (s *snapshot) setMetadata(ctx context.Context, pkgPath packagePath, pkg *pa
 			continue
 		}
 
-		switch m.forTest {
-		case "":
+		switch {
+		case m.forTest == "":
 			// A normal package.
 			s.workspacePackages[m.id] = pkgPath
-		case m.pkgPath:
-			// The test variant of some workspace package. To load it, we need to
-			// load the non-test variant with -test.
+		case m.forTest == m.pkgPath, m.forTest+"_test" == m.pkgPath:
+			// The test variant of some workspace package or its x_test.
+			// To load it, we need to load the non-test variant with -test.
 			s.workspacePackages[m.id] = m.forTest
 		default:
 			// A test variant of some intermediate package. We don't care about it.

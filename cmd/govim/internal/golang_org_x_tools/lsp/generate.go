@@ -9,17 +9,17 @@ import (
 	"io"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"golang.org/x/xerrors"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 // GenerateWorkDoneTitle is the title used in progress reporting for go
 // generate commands. It is exported for testing purposes.
 const GenerateWorkDoneTitle = "generate"
 
-func (s *Server) runGenerate(ctx context.Context, dir string, recursive bool) {
+func (s *Server) runGenerate(ctx context.Context, dir string, recursive bool) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -30,23 +30,25 @@ func (s *Server) runGenerate(ctx context.Context, dir string, recursive bool) {
 	if recursive {
 		args = append(args, "./...")
 	}
-	inv := &gocommand.Invocation{
-		Verb:       "generate",
-		Args:       args,
-		Env:        s.session.Options().Env,
-		WorkingDir: dir,
-	}
+
 	stderr := io.MultiWriter(er, wc)
-	err := inv.RunPiped(ctx, er, stderr)
+	uri := span.URIFromPath(dir)
+	view, err := s.session.ViewOf(uri)
 	if err != nil {
-		event.Error(ctx, "generate: command error", err, tag.Directory.Of(dir))
-		if !xerrors.Is(err, context.Canceled) {
-			s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
-				Type:    protocol.Error,
-				Message: "go generate exited with an error, check gopls logs",
-			})
-		}
+		return err
 	}
+	snapshot := view.Snapshot()
+	if err := snapshot.RunGoCommandPiped(ctx, "generate", args, er, stderr); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
+		event.Error(ctx, "generate: command error", err, tag.Directory.Of(dir))
+		return s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
+			Type:    protocol.Error,
+			Message: "go generate exited with an error, check gopls logs",
+		})
+	}
+	return nil
 }
 
 // eventWriter writes every incoming []byte to
