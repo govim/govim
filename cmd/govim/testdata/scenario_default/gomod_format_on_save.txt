@@ -1,0 +1,23 @@
+# Test that the default format-on-save setting is GOVIMGoFmt followed
+# by GOVIMGoImports for go.mod files
+
+# :GOVIMGoImports whole file
+vim ex 'e go.mod'
+vim ex 'w'
+cmp go.mod go.mod.golden
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+
+  go 1.12
+-- go.mod.golden --
+module mod.com
+
+go 1.12
+-- main.go --
+package blah
