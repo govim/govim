@@ -70,12 +70,16 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, alwaysA
 	// Ensure that the reports returned from mod.Diagnostics are only related
 	// to the go.mod file for the module.
 	if len(reports) > 1 {
-		panic("unexpected reports from mod.Diagnostics")
+		panic(fmt.Sprintf("expected 1 report from mod.Diagnostics, got %v: %v", len(reports), reports))
 	}
-	modURI, _ := snapshot.View().ModFiles()
+	modURI := snapshot.View().ModFile()
 	for id, diags := range reports {
+		if id.URI == "" {
+			event.Error(ctx, "missing URI for module diagnostics", fmt.Errorf("empty URI"), tag.Directory.Of(snapshot.View().Folder().Filename()))
+			continue
+		}
 		if id.URI != modURI {
-			panic("unexpected reports from mod.Diagnostics")
+			panic(fmt.Sprintf("expected module diagnostics report for %q, got %q", modURI, id.URI))
 		}
 		key := diagnosticKey{
 			id: id,

@@ -64,7 +64,7 @@ type Application struct {
 	Verbose bool `flag:"v" help:"verbose output"`
 
 	// Control ocagent export of telemetry
-	OCAgent string `flag:"ocagent" help:"the address of the ocagent, or off"`
+	OCAgent string `flag:"ocagent" help:"the address of the ocagent (e.g. http://localhost:55678), or off"`
 
 	// PrepareOptions is called to update the options when a new view is built.
 	// It is primarily to allow the behavior of gopls to be modified by hooks.
@@ -221,6 +221,15 @@ func (app *Application) connect(ctx context.Context) (*connection, error) {
 		return connection, nil
 	default:
 		return app.connectRemote(ctx, app.Remote)
+	}
+}
+
+// CloseTestConnections terminates shared connections used in command tests. It
+// should only be called from tests.
+func CloseTestConnections(ctx context.Context) {
+	for _, c := range internalConnections {
+		c.Shutdown(ctx)
+		c.Exit(ctx)
 	}
 }
 
