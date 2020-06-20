@@ -71,7 +71,7 @@ type snapshot struct {
 
 	// modTidyHandle is the saved modTidyHandle for this snapshot, it is attached to the
 	// snapshot so we can reuse it without having to call "go mod tidy" everytime.
-	modTidyHandle *modHandle
+	modTidyHandle *modTidyHandle
 }
 
 type packageKey struct {
@@ -92,7 +92,7 @@ func (s *snapshot) View() source.View {
 	return s.view
 }
 
-// Config returns the configuration used for the snapshot's interaction with the
+// config returns the configuration used for the snapshot's interaction with the
 // go/packages API.
 func (s *snapshot) config(ctx context.Context) *packages.Config {
 	s.view.optionsMu.Lock()
@@ -135,28 +135,83 @@ func (s *snapshot) config(ctx context.Context) *packages.Config {
 
 func (s *snapshot) RunGoCommand(ctx context.Context, verb string, args []string) (*bytes.Buffer, error) {
 	cfg := s.config(ctx)
-	inv := gocommand.Invocation{
-		Verb:       verb,
-		Args:       args,
-		Env:        cfg.Env,
-		BuildFlags: cfg.BuildFlags,
-		WorkingDir: s.view.folder.Filename(),
+	var modFH, sumFH source.FileHandle
+	if s.view.tmpMod {
+		var err error
+		modFH, err = s.GetFile(ctx, s.view.modURI)
+		if err != nil {
+			return nil, err
+		}
+		if s.view.sumURI != "" {
+			sumFH, err = s.GetFile(ctx, s.view.sumURI)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
-	runner := packagesinternal.GetGoCmdRunner(cfg)
-	return runner.Run(ctx, inv)
+	_, stdout, err := runGoCommand(ctx, cfg, modFH, sumFH, verb, args)
+	return stdout, err
 }
 
 func (s *snapshot) RunGoCommandPiped(ctx context.Context, verb string, args []string, stdout, stderr io.Writer) error {
 	cfg := s.config(ctx)
-	inv := gocommand.Invocation{
+	var modFH, sumFH source.FileHandle
+	if s.view.tmpMod {
+		var err error
+		modFH, err = s.GetFile(ctx, s.view.modURI)
+		if err != nil {
+			return err
+		}
+		if s.view.sumURI != "" {
+			sumFH, err = s.GetFile(ctx, s.view.sumURI)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	_, inv, cleanup, err := goCommandInvocation(ctx, cfg, modFH, sumFH, verb, args)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	runner := packagesinternal.GetGoCmdRunner(cfg)
+	return runner.RunPiped(ctx, *inv, stdout, stderr)
+}
+
+// runGoCommand runs the given go command with the given config.
+// The given go.mod file is used to construct the temporary go.mod file, which
+// is then passed to the go command via the BuildFlags.
+// It assumes that modURI is only provided when the -modfile flag is enabled.
+func runGoCommand(ctx context.Context, cfg *packages.Config, modFH, sumFH source.FileHandle, verb string, args []string) (span.URI, *bytes.Buffer, error) {
+	tmpURI, inv, cleanup, err := goCommandInvocation(ctx, cfg, modFH, sumFH, verb, args)
+	if err != nil {
+		return "", nil, err
+	}
+	defer cleanup()
+
+	runner := packagesinternal.GetGoCmdRunner(cfg)
+	stdout, err := runner.Run(ctx, *inv)
+	return tmpURI, stdout, err
+}
+
+// Assumes that modURI is only provided when the -modfile flag is enabled.
+func goCommandInvocation(ctx context.Context, cfg *packages.Config, modFH, sumFH source.FileHandle, verb string, args []string) (tmpURI span.URI, inv *gocommand.Invocation, cleanup func(), err error) {
+	cleanup = func() {} // fallback
+	if modFH != nil {
+		tmpURI, cleanup, err = tempModFile(modFH, sumFH)
+		if err != nil {
+			return "", nil, nil, err
+		}
+		cfg.BuildFlags = append(cfg.BuildFlags, fmt.Sprintf("-modfile=%s", tmpURI.Filename()))
+	}
+	return tmpURI, &gocommand.Invocation{
 		Verb:       verb,
 		Args:       args,
 		Env:        cfg.Env,
 		BuildFlags: cfg.BuildFlags,
-		WorkingDir: s.view.folder.Filename(),
-	}
-	runner := packagesinternal.GetGoCmdRunner(cfg)
-	return runner.RunPiped(ctx, inv, stdout, stderr)
+		WorkingDir: cfg.Dir,
+	}, cleanup, nil
 }
 
 func (s *snapshot) buildOverlay() map[string][]byte {
@@ -290,7 +345,7 @@ func (s *snapshot) getModHandle(uri span.URI) *modHandle {
 	return s.modHandles[uri]
 }
 
-func (s *snapshot) getModTidyHandle() *modHandle {
+func (s *snapshot) getModTidyHandle() *modTidyHandle {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.modTidyHandle
@@ -747,7 +802,6 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Fi
 	// If an ID is present in the map, invalidate its types.
 	// If an ID's value is true, invalidate its metadata too.
 	transitiveIDs := make(map[packageID]bool)
-
 	for withoutURI, currentFH := range withoutURIs {
 		directIDs := map[packageID]struct{}{}
 
@@ -847,25 +901,38 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Fi
 	}
 	// Copy the URI to package ID mappings, skipping only those URIs whose
 	// metadata will be reloaded in future calls to load.
-outer:
+copyIDs:
 	for k, ids := range s.ids {
 		for _, id := range ids {
 			if invalidateMetadata, ok := transitiveIDs[id]; invalidateMetadata && ok {
-				continue outer
+				continue copyIDs
 			}
 		}
 		result.ids[k] = ids
 	}
 	// Copy the set of initally loaded packages.
 	for id, pkgPath := range s.workspacePackages {
-		// TODO(rstambler): For now, we only invalidate "command-line-arguments"
-		// from workspace packages, but in general, we need to handle deletion
-		// of a package.
 		if id == "command-line-arguments" {
 			if invalidateMetadata, ok := transitiveIDs[id]; invalidateMetadata && ok {
 				continue
 			}
 		}
+
+		// If all the files we know about in a package have been deleted,
+		// the package is gone and we should no longer try to load it.
+		if m := s.metadata[id]; m != nil {
+			hasFiles := false
+			for _, uri := range s.metadata[id].goFiles {
+				if _, ok := result.files[uri]; ok {
+					hasFiles = true
+					break
+				}
+			}
+			if !hasFiles {
+				continue
+			}
+		}
+
 		result.workspacePackages[id] = pkgPath
 	}
 	// Don't bother copying the importedBy graph,
@@ -901,8 +968,7 @@ func (s *snapshot) shouldInvalidateMetadata(ctx context.Context, originalFH, cur
 	}
 	// If a go.mod file's contents have changed, always invalidate metadata.
 	if kind := originalFH.Kind(); kind == source.Mod {
-		modfile, _ := s.view.ModFiles()
-		return originalFH.URI() == modfile
+		return originalFH.URI() == s.view.modURI
 	}
 	// Get the original and current parsed files in order to check package name and imports.
 	original, _, _, _, originalErr := s.view.session.cache.ParseGoHandle(ctx, originalFH, source.ParseHeader).Parse(ctx)

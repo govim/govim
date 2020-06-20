@@ -62,7 +62,10 @@ type View struct {
 
 	// importsMu guards imports-related state, particularly the ProcessEnv.
 	importsMu sync.Mutex
-	// process is the process env for this view.
+
+	// processEnv is the process env for this view.
+	// Some of its fields can be changed dynamically by modifications to
+	// the view's options. These fields are repopulated for every use.
 	// Note: this contains cached module and filesystem state.
 	//
 	// TODO(suzmue): the state cached in the process env is specific to each view,
@@ -100,9 +103,12 @@ type View struct {
 	// non go command build system.
 	hasValidBuildConfiguration bool
 
-	// The real and temporary go.mod files that are attributed to a view.
-	// The temporary go.mod is for use with the Go command's -modfile flag.
-	realMod, tempMod span.URI
+	// The real go.mod and go.sum files that are attributed to a view.
+	modURI, sumURI span.URI
+
+	// True if this view runs go commands using temporary mod files.
+	// Only possible with Go versions 1.14 and above.
+	tmpMod bool
 
 	// goCommand indicates if the user is using the go command or some other
 	// build system.
@@ -164,8 +170,58 @@ func (v *View) ValidBuildConfiguration() bool {
 	return v.hasValidBuildConfiguration
 }
 
-func (v *View) ModFiles() (span.URI, span.URI) {
-	return v.realMod, v.tempMod
+func (v *View) ModFile() span.URI {
+	return v.modURI
+}
+
+// tempModFile creates a temporary go.mod file based on the contents of the
+// given go.mod file. It is the caller's responsibility to clean up the files
+// when they are done using them.
+func tempModFile(modFh, sumFH source.FileHandle) (tmpURI span.URI, cleanup func(), err error) {
+	filenameHash := hashContents([]byte(modFh.URI().Filename()))
+	tmpMod, err := ioutil.TempFile("", fmt.Sprintf("go.%s.*.mod", filenameHash))
+	if err != nil {
+		return "", nil, err
+	}
+	defer tmpMod.Close()
+
+	tmpURI = span.URIFromPath(tmpMod.Name())
+	tmpSumName := tmpURI.Filename()[:len(tmpURI.Filename())-len("mod")] + "sum"
+
+	content, err := modFh.Read()
+	if err != nil {
+		return "", nil, err
+	}
+
+	if _, err := tmpMod.Write(content); err != nil {
+		return "", nil, err
+	}
+
+	cleanup = func() {
+		_ = os.Remove(tmpSumName)
+		_ = os.Remove(tmpURI.Filename())
+	}
+
+	// Be careful to clean up if we return an error from this function.
+	defer func() {
+		if err != nil {
+			cleanup()
+			cleanup = nil
+		}
+	}()
+
+	// Create an analogous go.sum, if one exists.
+	if sumFH != nil {
+		sumContents, err := sumFH.Read()
+		if err != nil {
+			return "", nil, err
+		}
+		if err := ioutil.WriteFile(tmpSumName, sumContents, 0655); err != nil {
+			return "", nil, err
+		}
+	}
+
+	return tmpURI, cleanup, nil
 }
 
 func (v *View) Session() source.Session {
@@ -285,6 +341,7 @@ func (v *View) WriteEnv(ctx context.Context, w io.Writer) error {
 	v.optionsMu.Lock()
 	env, buildFlags := v.envLocked()
 	v.optionsMu.Unlock()
+
 	// TODO(rstambler): We could probably avoid running this by saving the
 	// output on original create, but I'm not sure if it's worth it.
 	inv := gocommand.Invocation{
@@ -292,6 +349,8 @@ func (v *View) WriteEnv(ctx context.Context, w io.Writer) error {
 		Env:        env,
 		WorkingDir: v.Folder().Filename(),
 	}
+	// Don't go through runGoCommand, as we don't need a temporary go.mod to
+	// run `go env`.
 	stdout, err := v.gocmdRunner.Run(ctx, inv)
 	if err != nil {
 		return err
@@ -305,22 +364,45 @@ func (v *View) RunProcessEnvFunc(ctx context.Context, fn func(*imports.Options) 
 	v.importsMu.Lock()
 	defer v.importsMu.Unlock()
 
+	// The resolver cached in the process env is reused, but some fields need
+	// to be repopulated for each use.
 	if v.processEnv == nil {
-		var err error
-		if v.processEnv, err = v.buildProcessEnv(ctx); err != nil {
-			return err
-		}
+		v.processEnv = &imports.ProcessEnv{}
 	}
 
-	// In module mode, check if the mod file has changed.
-	if v.realMod != "" {
-		mod, err := v.session.cache.GetFile(ctx, v.realMod)
+	var modFH, sumFH source.FileHandle
+	if v.tmpMod {
+		var err error
+		// Use temporary go.mod files, but always go to disk for the contents.
+		// Rebuilding the cache is expensive, and we don't want to do it for
+		// transient changes.
+		modFH, err = v.session.cache.GetFile(ctx, v.modURI)
 		if err != nil {
 			return err
 		}
-		if mod.Identity() != v.cachedModFileVersion {
+		if v.sumURI != "" {
+			sumFH, err = v.session.cache.GetFile(ctx, v.sumURI)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	cleanup, err := v.populateProcessEnv(ctx, modFH, sumFH)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	// If the go.mod file has changed, clear the cache.
+	if v.modURI != "" {
+		modFH, err := v.session.cache.GetFile(ctx, v.modURI)
+		if err != nil {
+			return err
+		}
+		if modFH.Identity() != v.cachedModFileVersion {
 			v.processEnv.GetResolver().(*imports.ModuleResolver).ClearForNewMod()
-			v.cachedModFileVersion = mod.Identity()
+			v.cachedModFileVersion = modFH.Identity()
 		}
 	}
 
@@ -375,19 +457,37 @@ func (v *View) refreshProcessEnv() {
 	v.importsMu.Unlock()
 }
 
-func (v *View) buildProcessEnv(ctx context.Context) (*imports.ProcessEnv, error) {
+// populateProcessEnv sets the dynamically configurable fields for the view's
+// process environment. It operates on a snapshot because it needs to access
+// file contents. Assumes that the caller is holding the s.view.importsMu.
+func (v *View) populateProcessEnv(ctx context.Context, modFH, sumFH source.FileHandle) (cleanup func(), err error) {
+	cleanup = func() {}
+
 	v.optionsMu.Lock()
 	env, buildFlags := v.envLocked()
 	localPrefix, verboseOutput := v.options.LocalPrefix, v.options.VerboseOutput
 	v.optionsMu.Unlock()
-	processEnv := &imports.ProcessEnv{
-		WorkingDir:  v.folder.Filename(),
-		BuildFlags:  buildFlags,
-		LocalPrefix: localPrefix,
-		GocmdRunner: v.gocmdRunner,
+
+	pe := v.processEnv
+
+	pe.BuildFlags = buildFlags
+
+	// Add -modfile to the build flags, if we are using it.
+	if modFH != nil {
+		var tmpURI span.URI
+		tmpURI, cleanup, err = tempModFile(modFH, sumFH)
+		if err != nil {
+			return nil, err
+		}
+		pe.BuildFlags = append(pe.BuildFlags, fmt.Sprintf("-modfile=%s", tmpURI.Filename()))
 	}
+
+	pe.WorkingDir = v.folder.Filename()
+	pe.LocalPrefix = localPrefix
+	pe.GocmdRunner = v.gocmdRunner
+
 	if verboseOutput {
-		processEnv.Logf = func(format string, args ...interface{}) {
+		pe.Logf = func(format string, args ...interface{}) {
 			event.Log(ctx, fmt.Sprintf(format, args...))
 		}
 	}
@@ -398,36 +498,31 @@ func (v *View) buildProcessEnv(ctx context.Context) (*imports.ProcessEnv, error)
 		}
 		switch split[0] {
 		case "GOPATH":
-			processEnv.GOPATH = split[1]
+			pe.GOPATH = split[1]
 		case "GOROOT":
-			processEnv.GOROOT = split[1]
+			pe.GOROOT = split[1]
 		case "GO111MODULE":
-			processEnv.GO111MODULE = split[1]
+			pe.GO111MODULE = split[1]
 		case "GOPROXY":
-			processEnv.GOPROXY = split[1]
+			pe.GOPROXY = split[1]
 		case "GOFLAGS":
-			processEnv.GOFLAGS = split[1]
+			pe.GOFLAGS = split[1]
 		case "GOSUMDB":
-			processEnv.GOSUMDB = split[1]
+			pe.GOSUMDB = split[1]
 		}
 	}
-	if processEnv.GOPATH == "" {
+	if pe.GOPATH == "" {
 		return nil, fmt.Errorf("no GOPATH for view %s", v.folder)
 	}
-	return processEnv, nil
+	return cleanup, nil
 }
 
 // envLocked returns the environment and build flags for the current view.
 // It assumes that the caller is holding the view's optionsMu.
 func (v *View) envLocked() ([]string, []string) {
-	// We want to run the go commands with the -modfile flag if the version of go
-	// that we are using supports it.
-	buildFlags := v.options.BuildFlags
-	if v.tempMod != "" {
-		buildFlags = append(buildFlags, fmt.Sprintf("-modfile=%s", v.tempMod.Filename()))
-	}
 	env := []string{fmt.Sprintf("GOPATH=%s", v.gopath)}
 	env = append(env, v.options.Env...)
+	buildFlags := append([]string{}, v.options.BuildFlags...)
 	return env, buildFlags
 }
 
@@ -537,10 +632,6 @@ func (v *View) shutdown(ctx context.Context) {
 		v.cancel()
 		v.cancel = nil
 	}
-	if v.tempMod != "" {
-		os.Remove(v.tempMod.Filename())
-		os.Remove(tempSumFile(v.tempMod.Filename()))
-	}
 }
 
 func (v *View) BackgroundContext() context.Context {
@@ -628,54 +719,25 @@ func (v *View) setBuildInformation(ctx context.Context, folder span.URI, env []s
 	if modFile == os.DevNull {
 		return nil
 	}
-	v.realMod = span.URIFromPath(modFile)
+	v.modURI = span.URIFromPath(modFile)
+	// Set the sumURI, if the go.sum exists.
+	sumFilename := filepath.Join(filepath.Dir(modFile), "go.sum")
+	if stat, _ := os.Stat(sumFilename); stat != nil {
+		v.sumURI = span.URIFromPath(sumFilename)
+	}
 
 	// Now that we have set all required fields,
 	// check if the view has a valid build configuration.
-	v.hasValidBuildConfiguration = checkBuildConfiguration(v.goCommand, v.realMod, v.folder, v.gopath)
+	v.setBuildConfiguration()
 
 	// The user has disabled the use of the -modfile flag or has no go.mod file.
-	if !modfileFlagEnabled || v.realMod == "" {
+	if !modfileFlagEnabled || v.modURI == "" {
 		return nil
 	}
 	if modfileFlag, err := v.modfileFlagExists(ctx, v.Options().Env); err != nil {
 		return err
-	} else if !modfileFlag {
-		return nil
-	}
-	// Copy the current go.mod file into the temporary go.mod file.
-	// The file's name will be of the format go.directory.1234.mod.
-	// It's temporary go.sum file should have the corresponding format of go.directory.1234.sum.
-	tmpPattern := fmt.Sprintf("go.%s.*.mod", filepath.Base(folder.Filename()))
-	tempModFile, err := ioutil.TempFile("", tmpPattern)
-	if err != nil {
-		return err
-	}
-	defer tempModFile.Close()
-
-	origFile, err := os.Open(modFile)
-	if err != nil {
-		return err
-	}
-	defer origFile.Close()
-
-	if _, err := io.Copy(tempModFile, origFile); err != nil {
-		return err
-	}
-	v.tempMod = span.URIFromPath(tempModFile.Name())
-
-	// Copy go.sum file as well (if there is one).
-	sumFile := filepath.Join(filepath.Dir(modFile), "go.sum")
-	stat, err := os.Stat(sumFile)
-	if err != nil || !stat.Mode().IsRegular() {
-		return nil
-	}
-	contents, err := ioutil.ReadFile(sumFile)
-	if err != nil {
-		return err
-	}
-	if err := ioutil.WriteFile(tempSumFile(tempModFile.Name()), contents, stat.Mode()); err != nil {
-		return err
+	} else if modfileFlag {
+		v.tmpMod = true
 	}
 	return nil
 }
@@ -687,20 +749,23 @@ func defaultCheckPathCase(path string) error {
 	return nil
 }
 
-func checkBuildConfiguration(goCommand bool, mod, folder span.URI, gopath string) bool {
+func (v *View) setBuildConfiguration() (isValid bool) {
+	defer func() {
+		v.hasValidBuildConfiguration = isValid
+	}()
 	// Since we only really understand the `go` command, if the user is not
 	// using the go command, assume that their configuration is valid.
-	if !goCommand {
+	if !v.goCommand {
 		return true
 	}
 	// Check if the user is working within a module.
-	if mod != "" {
+	if v.modURI != "" {
 		return true
 	}
 	// The user may have a multiple directories in their GOPATH.
 	// Check if the workspace is within any of them.
-	for _, gp := range filepath.SplitList(gopath) {
-		if isSubdirectory(filepath.Join(gp, "src"), folder.Filename()) {
+	for _, gp := range filepath.SplitList(v.gopath) {
+		if isSubdirectory(filepath.Join(gp, "src"), v.folder.Filename()) {
 			return true
 		}
 	}
@@ -740,6 +805,8 @@ func (v *View) getGoEnv(ctx context.Context, env []string) (string, error) {
 			gopackagesdriver = true
 		}
 	}
+	// Don't go through runGoCommand, as we don't need a temporary -modfile to
+	// run `go env`.
 	inv := gocommand.Invocation{
 		Verb:       "env",
 		Args:       []string{"-json"},
@@ -856,13 +923,4 @@ func (v *View) modfileFlagExists(ctx context.Context, env []string) (bool, error
 		return false, nil
 	}
 	return lines[0] == "go1.14", nil
-}
-
-// tempSumFile returns the path to the copied temporary go.sum file.
-// It simply replaces the extension of the temporary go.mod file with "sum".
-func tempSumFile(filename string) string {
-	if filename == "" {
-		return ""
-	}
-	return filename[:len(filename)-len("mod")] + "sum"
 }
