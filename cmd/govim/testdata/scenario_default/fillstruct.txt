@@ -1,7 +1,9 @@
 # Test that code action "fill struct" works
 
 vim ex 'e main.go'
-vim ex 'call cursor(10,13)'
+vim ex 'call cursor(14,1)'
+vim ex 'call execute(\"GOVIMFillStruct\")'
+vim ex 'call cursor(12,10)'
 vim ex 'call execute(\"GOVIMFillStruct\")'
 vim ex 'w'
 cmp main.go main.go.golden
@@ -23,8 +25,12 @@ type foo struct {
 	i int
 }
 
+func fn(a, b foo) {}
+
 func main() {
 	_ = foo{}
+
+    fn(foo{}, foo{})
 }
 -- main.go.golden --
 package main
@@ -35,10 +41,22 @@ type foo struct {
 	i int
 }
 
+func fn(a, b foo) {}
+
 func main() {
 	_ = foo{
 		b: false,
 		s: "",
 		i: 0,
 	}
+
+	fn(foo{
+		b: false,
+		s: "",
+		i: 0,
+	}, foo{
+		b: false,
+		s: "",
+		i: 0,
+	})
 }
