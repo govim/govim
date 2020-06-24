@@ -186,7 +186,7 @@ func tempModFile(modFh, sumFH source.FileHandle) (tmpURI span.URI, cleanup func(
 	defer tmpMod.Close()
 
 	tmpURI = span.URIFromPath(tmpMod.Name())
-	tmpSumName := tmpURI.Filename()[:len(tmpURI.Filename())-len("mod")] + "sum"
+	tmpSumName := sumFilename(tmpURI)
 
 	content, err := modFh.Read()
 	if err != nil {
@@ -280,9 +280,9 @@ func (v *View) BuiltinPackage(ctx context.Context) (source.BuiltinPackage, error
 	if v.builtin == nil {
 		return nil, errors.Errorf("no builtin package for view %s", v.name)
 	}
-	data := v.builtin.handle.Get(ctx)
-	if ctx.Err() != nil {
-		return nil, ctx.Err()
+	data, err := v.builtin.handle.Get(ctx)
+	if err != nil {
+		return nil, err
 	}
 	if data == nil {
 		return nil, errors.Errorf("unexpected nil builtin package")
@@ -308,7 +308,7 @@ func (v *View) buildBuiltinPackage(ctx context.Context, goFiles []string) error 
 
 	// Get the FileHandle through the cache to avoid adding it to the snapshot
 	// and to get the file content from disk.
-	fh, err := v.session.cache.GetFile(ctx, uri)
+	fh, err := v.session.cache.getFile(ctx, uri)
 	if err != nil {
 		return err
 	}
@@ -376,12 +376,12 @@ func (v *View) RunProcessEnvFunc(ctx context.Context, fn func(*imports.Options) 
 		// Use temporary go.mod files, but always go to disk for the contents.
 		// Rebuilding the cache is expensive, and we don't want to do it for
 		// transient changes.
-		modFH, err = v.session.cache.GetFile(ctx, v.modURI)
+		modFH, err = v.session.cache.getFile(ctx, v.modURI)
 		if err != nil {
 			return err
 		}
 		if v.sumURI != "" {
-			sumFH, err = v.session.cache.GetFile(ctx, v.sumURI)
+			sumFH, err = v.session.cache.getFile(ctx, v.sumURI)
 			if err != nil {
 				return err
 			}
@@ -396,7 +396,7 @@ func (v *View) RunProcessEnvFunc(ctx context.Context, fn func(*imports.Options) 
 
 	// If the go.mod file has changed, clear the cache.
 	if v.modURI != "" {
-		modFH, err := v.session.cache.GetFile(ctx, v.modURI)
+		modFH, err := v.session.cache.getFile(ctx, v.modURI)
 		if err != nil {
 			return err
 		}
@@ -639,6 +639,42 @@ func (v *View) BackgroundContext() context.Context {
 	defer v.mu.Unlock()
 
 	return v.backgroundCtx
+}
+
+func (v *View) IgnoredFile(uri span.URI) bool {
+	filename := uri.Filename()
+	var prefixes []string
+	if v.modURI == "" {
+		for _, entry := range filepath.SplitList(v.gopath) {
+			prefixes = append(prefixes, filepath.Join(entry, "src"))
+		}
+	} else {
+		mainMod := filepath.Dir(v.modURI.Filename())
+		modCache := filepath.Join(filepath.SplitList(v.gopath)[0], "/pkg/mod")
+		prefixes = []string{mainMod, modCache}
+	}
+
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(filename, prefix) {
+			return checkIgnored(filename[len(prefix):])
+		}
+	}
+	return false
+}
+
+// checkIgnored implements go list's exclusion rules. go help list:
+// 		Directory and file names that begin with "." or "_" are ignored
+// 		by the go tool, as are directories named "testdata".
+func checkIgnored(suffix string) bool {
+	for _, component := range strings.Split(suffix, string(filepath.Separator)) {
+		if len(component) == 0 {
+			continue
+		}
+		if component[0] == '.' || component[0] == '_' || component == "testdata" {
+			return true
+		}
+	}
+	return false
 }
 
 func (v *View) Snapshot() source.Snapshot {
