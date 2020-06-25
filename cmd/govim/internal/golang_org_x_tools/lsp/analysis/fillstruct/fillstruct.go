@@ -11,8 +11,12 @@ import (
 	"fmt"
 	"go/ast"
 	"go/format"
+	"go/printer"
 	"go/token"
 	"go/types"
+	"log"
+	"strings"
+	"unicode"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -96,33 +100,50 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			return
 		}
 
-		// Don't mutate the existing token.File. Instead, create a copy that we can use to modify
-		// position information.
-		original := pass.Fset.File(expr.Lbrace)
-		fset := token.NewFileSet()
-		tok := fset.AddFile(original.Name(), -1, original.Size())
+		var name string
+		switch typ := expr.Type.(type) {
+		case *ast.Ident:
+			name = typ.Name
+		case *ast.SelectorExpr:
+			name = fmt.Sprintf("%s.%s", typ.X, typ.Sel.Name)
+		default:
+			log.Printf("anonymous structs are not yet supported: %v (%T)", expr.Type, expr.Type)
+			return
+		}
 
-		pos := token.Pos(1)
+		// Use a new fileset to build up a token.File for the new composite
+		// literal. We need one line for foo{, one line for }, and one line for
+		// each field we're going to set. format.Node only cares about line
+		// numbers, so we don't need to set columns, and each line can be
+		// 1 byte long.
+		fset := token.NewFileSet()
+		tok := fset.AddFile("", -1, fieldCount+2)
+
 		var elts []ast.Expr
 		for i := 0; i < fieldCount; i++ {
 			field := obj.Field(i)
+
 			// Ignore fields that are not accessible in the current package.
 			if field.Pkg() != nil && field.Pkg() != pass.Pkg && !field.Exported() {
 				continue
 			}
 
-			value := analysisinternal.ZeroValue(pass.Fset, file, pass.Pkg, field.Type())
+			value := populateValue(pass.Fset, file, pass.Pkg, field.Type())
 			if value == nil {
 				continue
 			}
-			pos = nextLinePos(tok, pos)
+
+			line := i + 2      // account for 1-based lines and the left brace
+			tok.AddLine(i + 1) // add 1 byte per line
+			pos := tok.LineStart(line)
+
 			kv := &ast.KeyValueExpr{
 				Key: &ast.Ident{
 					NamePos: pos,
 					Name:    field.Name(),
 				},
 				Colon: pos,
-				Value: value, // 'value' has no position. fomat.Node corrects for AST nodes with no position.
+				Value: value,
 			}
 			elts = append(elts, kv)
 		}
@@ -132,32 +153,61 @@ func run(pass *analysis.Pass) (interface{}, error) {
 			return
 		}
 
-		cl := ast.CompositeLit{
-			Type:   expr.Type, // Don't adjust the expr.Type's position.
-			Lbrace: token.Pos(1),
+		// Add the final line for the right brace. Offset is the number of
+		// bytes already added plus 1.
+		tok.AddLine(len(elts) + 1)
+
+		cl := &ast.CompositeLit{
+			Type:   expr.Type,
+			Lbrace: tok.LineStart(1),
 			Elts:   elts,
-			Rbrace: nextLinePos(tok, elts[len(elts)-1].Pos()),
+			Rbrace: tok.LineStart(len(elts) + 2),
 		}
 
-		var buf bytes.Buffer
-		if err := format.Node(&buf, fset, &cl); err != nil {
+		// Print the AST to get the the original source code.
+		var b bytes.Buffer
+		if err := printer.Fprint(&b, pass.Fset, file); err != nil {
+			log.Printf("failed to print original file: %s", err)
 			return
 		}
 
-		msg := "Fill struct with default values"
-		if name, ok := expr.Type.(*ast.Ident); ok {
-			msg = fmt.Sprintf("Fill %s with default values", name)
-		}
+		// Find the line on which the composite literal is declared.
+		split := strings.Split(b.String(), "\n")
+		lineNumber := pass.Fset.Position(expr.Type.Pos()).Line
+		line := split[lineNumber-1] // lines are 1-indexed
 
+		// Trim the whitespace from the left of the line, and use the index
+		// to get the amount of whitespace on the left.
+		trimmed := strings.TrimLeftFunc(line, unicode.IsSpace)
+		i := strings.Index(line, trimmed)
+		whitespace := line[:i]
+
+		var newExpr bytes.Buffer
+		if err := format.Node(&newExpr, fset, cl); err != nil {
+			log.Printf("failed to format %s: %v", cl.Type, err)
+			return
+		}
+		split = strings.Split(newExpr.String(), "\n")
+		var newText strings.Builder
+		for i, s := range split {
+			// Don't add the extra indentation to the first line.
+			if i != 0 {
+				newText.WriteString(whitespace)
+			}
+			newText.WriteString(s)
+			if i < len(split)-1 {
+				newText.WriteByte('\n')
+			}
+		}
 		pass.Report(analysis.Diagnostic{
 			Pos: expr.Lbrace,
 			End: expr.Rbrace,
 			SuggestedFixes: []analysis.SuggestedFix{{
-				Message: msg,
+				Message: fmt.Sprintf("Fill %s with default values", name),
 				TextEdits: []analysis.TextEdit{{
 					Pos:     expr.Pos(),
 					End:     expr.End(),
-					NewText: buf.Bytes(),
+					NewText: []byte(newText.String()),
 				}},
 			}},
 		})
@@ -165,10 +215,135 @@ func run(pass *analysis.Pass) (interface{}, error) {
 	return nil, nil
 }
 
-func nextLinePos(tok *token.File, pos token.Pos) token.Pos {
-	line := tok.Line(pos)
-	if line+1 > tok.LineCount() {
-		tok.AddLine(tok.Offset(pos) + 1)
+// populateValue constructs an expression to fill the value of a struct field.
+//
+// When the type of a struct field is a basic literal or interface, we return
+// default values. For other types, such as maps, slices, and channels, we create
+// expressions rather than using default values.
+//
+// The reasoning here is that users will call fillstruct with the intention of
+// initializing the struct, in which case setting these fields to nil has no effect.
+func populateValue(fset *token.FileSet, f *ast.File, pkg *types.Package, typ types.Type) ast.Expr {
+	under := typ
+	if n, ok := typ.(*types.Named); ok {
+		under = n.Underlying()
 	}
-	return tok.LineStart(line + 1)
+	switch u := under.(type) {
+	case *types.Basic:
+		switch {
+		case u.Info()&types.IsNumeric != 0:
+			return &ast.BasicLit{Kind: token.INT, Value: "0"}
+		case u.Info()&types.IsBoolean != 0:
+			return &ast.Ident{Name: "false"}
+		case u.Info()&types.IsString != 0:
+			return &ast.BasicLit{Kind: token.STRING, Value: `""`}
+		default:
+			panic("unknown basic type")
+		}
+	case *types.Map:
+		k := analysisinternal.TypeExpr(fset, f, pkg, u.Key())
+		v := analysisinternal.TypeExpr(fset, f, pkg, u.Elem())
+		if k == nil || v == nil {
+			return nil
+		}
+		return &ast.CompositeLit{
+			Type: &ast.MapType{
+				Key:   k,
+				Value: v,
+			},
+		}
+	case *types.Slice:
+		s := analysisinternal.TypeExpr(fset, f, pkg, u.Elem())
+		if s == nil {
+			return nil
+		}
+		return &ast.CompositeLit{
+			Type: &ast.ArrayType{
+				Elt: s,
+			},
+		}
+	case *types.Array:
+		a := analysisinternal.TypeExpr(fset, f, pkg, u.Elem())
+		if a == nil {
+			return nil
+		}
+		return &ast.CompositeLit{
+			Type: &ast.ArrayType{
+				Elt: a,
+				Len: &ast.BasicLit{
+					Kind: token.INT, Value: fmt.Sprintf("%v", u.Len())},
+			},
+		}
+	case *types.Chan:
+		v := analysisinternal.TypeExpr(fset, f, pkg, u.Elem())
+		if v == nil {
+			return nil
+		}
+		dir := ast.ChanDir(u.Dir())
+		if u.Dir() == types.SendRecv {
+			dir = ast.SEND | ast.RECV
+		}
+		return &ast.CallExpr{
+			Fun: ast.NewIdent("make"),
+			Args: []ast.Expr{
+				&ast.ChanType{
+					Dir:   dir,
+					Value: v,
+				},
+			},
+		}
+	case *types.Struct:
+		s := analysisinternal.TypeExpr(fset, f, pkg, typ)
+		if s == nil {
+			return nil
+		}
+		return &ast.CompositeLit{
+			Type: s,
+		}
+	case *types.Signature:
+		var params []*ast.Field
+		for i := 0; i < u.Params().Len(); i++ {
+			p := analysisinternal.TypeExpr(fset, f, pkg, u.Params().At(i).Type())
+			if p == nil {
+				return nil
+			}
+			params = append(params, &ast.Field{
+				Type: p,
+				Names: []*ast.Ident{
+					{
+						Name: u.Params().At(i).Name(),
+					},
+				},
+			})
+		}
+		var returns []*ast.Field
+		for i := 0; i < u.Results().Len(); i++ {
+			r := analysisinternal.TypeExpr(fset, f, pkg, u.Results().At(i).Type())
+			if r == nil {
+				return nil
+			}
+			returns = append(returns, &ast.Field{
+				Type: r,
+			})
+		}
+		return &ast.FuncLit{
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{
+					List: params,
+				},
+				Results: &ast.FieldList{
+					List: returns,
+				},
+			},
+			Body: &ast.BlockStmt{},
+		}
+	case *types.Pointer:
+		return &ast.UnaryExpr{
+			Op: token.AND,
+			X:  populateValue(fset, f, pkg, u.Elem()),
+		}
+	case *types.Interface:
+		return ast.NewIdent("nil")
+	}
+	return nil
 }
