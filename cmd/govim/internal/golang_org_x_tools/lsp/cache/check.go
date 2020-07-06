@@ -92,8 +92,10 @@ func (s *snapshot) buildPackageHandle(ctx context.Context, id packageID, mode so
 				dep.check(ctx)
 			}(dep)
 		}
+
 		data := &packageData{}
 		data.pkg, data.err = typeCheck(ctx, fset, m, mode, goFiles, compiledGoFiles, deps)
+
 		return data
 	})
 	ph.handle = h
@@ -276,6 +278,7 @@ func typeCheck(ctx context.Context, fset *token.FileSet, m *metadata, mode sourc
 
 	pkg := &pkg{
 		id:              m.id,
+		name:            m.name,
 		pkgPath:         m.pkgPath,
 		mode:            mode,
 		goFiles:         goFiles,
@@ -352,7 +355,7 @@ func typeCheck(ctx context.Context, fset *token.FileSet, m *metadata, mode sourc
 	} else if len(files) == 0 { // not the unsafe package, no parsed files
 		return nil, errors.Errorf("no parsed files for package %s, expected: %s, errors: %v, list errors: %v", pkg.pkgPath, pkg.compiledGoFiles, actualErrors, rawErrors)
 	} else {
-		pkg.types = types.NewPackage(string(m.pkgPath), m.name)
+		pkg.types = types.NewPackage(string(m.pkgPath), string(m.name))
 	}
 
 	cfg := &types.Config{
@@ -412,6 +415,7 @@ func typeCheck(ctx context.Context, fset *token.FileSet, m *metadata, mode sourc
 			}
 		}
 	}
+
 	return pkg, nil
 }
 

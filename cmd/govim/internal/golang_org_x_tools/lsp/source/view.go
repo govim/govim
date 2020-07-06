@@ -177,6 +177,10 @@ type View interface {
 	// IgnoredFile reports if a file would be ignored by a `go list` of the whole
 	// workspace.
 	IgnoredFile(uri span.URI) bool
+
+	// WorkspaceDirectories returns any directory known by the view. For views
+	// within a module, this is the module root and any replace targets.
+	WorkspaceDirectories(ctx context.Context) ([]string, error)
 }
 
 type BuiltinPackage interface {
@@ -299,6 +303,17 @@ type ParseGoHandle interface {
 
 	// Cached returns the AST for this handle, if it has already been stored.
 	Cached() (file *ast.File, src []byte, m *protocol.ColumnMapper, parseErr error, err error)
+
+	// PosToField is a cache of *ast.Fields by token.Pos. This allows us
+	// to quickly find corresponding *ast.Field node given a *types.Var.
+	// We must refer to the AST to render type aliases properly when
+	// formatting signatures and other types.
+	PosToField(context.Context) (map[token.Pos]*ast.Field, error)
+
+	// PosToDecl maps certain objects' positions to their surrounding
+	// ast.Decl. This mapping is used when building the documentation
+	// string for the objects.
+	PosToDecl(context.Context) (map[token.Pos]ast.Decl, error)
 }
 
 type ParseModHandle interface {
@@ -436,6 +451,7 @@ func (a Analyzer) Enabled(snapshot Snapshot) bool {
 // only the relevant fields of a *go/packages.Package.
 type Package interface {
 	ID() string
+	Name() string
 	PkgPath() string
 	CompiledGoFiles() []ParseGoHandle
 	File(uri span.URI) (ParseGoHandle, error)

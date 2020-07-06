@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
@@ -112,10 +113,11 @@ func readFile(ctx context.Context, uri span.URI, origTime time.Time) *fileHandle
 func (c *Cache) NewSession(ctx context.Context) *Session {
 	index := atomic.AddInt64(&sessionIndex, 1)
 	s := &Session{
-		cache:    c,
-		id:       strconv.FormatInt(index, 10),
-		options:  source.DefaultOptions(),
-		overlays: make(map[span.URI]*overlay),
+		cache:       c,
+		id:          strconv.FormatInt(index, 10),
+		options:     source.DefaultOptions(),
+		overlays:    make(map[span.URI]*overlay),
+		gocmdRunner: &gocommand.Runner{},
 	}
 	event.Log(ctx, "New session", KeyCreateSession.Of(s))
 	return s
@@ -176,11 +178,21 @@ func (c *Cache) PackageStats(withNames bool) template.HTML {
 		switch k.(type) {
 		case packageHandleKey:
 			v := v.(*packageData)
+			if v.pkg == nil {
+				break
+			}
+			var typsCost, typInfoCost int64
+			if v.pkg.types != nil {
+				typsCost = typesCost(v.pkg.types.Scope())
+			}
+			if v.pkg.typesInfo != nil {
+				typInfoCost = typesInfoCost(v.pkg.typesInfo)
+			}
 			stat := packageStat{
 				id:        v.pkg.id,
 				mode:      v.pkg.mode,
-				types:     typesCost(v.pkg.types.Scope()),
-				typesInfo: typesInfoCost(v.pkg.typesInfo),
+				types:     typsCost,
+				typesInfo: typInfoCost,
 			}
 			for _, f := range v.pkg.compiledGoFiles {
 				fvi := f.handle.Cached()
