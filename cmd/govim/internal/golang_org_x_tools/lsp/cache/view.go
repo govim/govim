@@ -118,9 +118,6 @@ type View struct {
 	gocache, gomodcache, gopath, goprivate string
 
 	goEnv map[string]string
-
-	// gocmdRunner guards go command calls from concurrency errors.
-	gocmdRunner *gocommand.Runner
 }
 
 type builtinPackageHandle struct {
@@ -353,7 +350,7 @@ func (v *View) WriteEnv(ctx context.Context, w io.Writer) error {
 	}
 	// Don't go through runGoCommand, as we don't need a temporary go.mod to
 	// run `go env`.
-	stdout, err := v.gocmdRunner.Run(ctx, inv)
+	stdout, err := v.session.gocmdRunner.Run(ctx, inv)
 	if err != nil {
 		return err
 	}
@@ -472,7 +469,7 @@ func (v *View) populateProcessEnv(ctx context.Context, modFH, sumFH source.FileH
 
 	pe := v.processEnv
 	pe.LocalPrefix = localPrefix
-	pe.GocmdRunner = v.gocmdRunner
+	pe.GocmdRunner = v.session.gocmdRunner
 	pe.BuildFlags = buildFlags
 	pe.Env = v.goEnv
 	pe.WorkingDir = v.folder.Filename()
@@ -517,6 +514,36 @@ func (v *View) mapFile(uri span.URI, f *fileBase) {
 
 func basename(filename string) string {
 	return strings.ToLower(filepath.Base(filename))
+}
+
+func (v *View) WorkspaceDirectories(ctx context.Context) ([]string, error) {
+	// If the view does not have a go.mod file, only the root directory
+	// is known. In GOPATH mode, we should really watch the entire GOPATH,
+	// but that's probably too expensive.
+	// TODO(rstambler): Figure out a better approach in the future.
+	if v.modURI == "" {
+		return []string{v.folder.Filename()}, nil
+	}
+	// Anything inside of the module root is known.
+	dirs := []string{filepath.Dir(v.modURI.Filename())}
+
+	// Keep track of any directories mentioned in replace targets.
+	fh, err := v.session.GetFile(ctx, v.modURI)
+	if err != nil {
+		return nil, err
+	}
+	pmh, err := v.Snapshot().ParseModHandle(ctx, fh)
+	if err != nil {
+		return nil, err
+	}
+	parsed, _, _, err := pmh.Parse(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, replace := range parsed.Replace {
+		dirs = append(dirs, replace.New.Path)
+	}
+	return dirs, nil
 }
 
 func (v *View) relevantChange(c source.FileModification) bool {
@@ -813,7 +840,7 @@ func (v *View) setGoEnv(ctx context.Context, configEnv []string) (string, error)
 	}
 	// Don't go through runGoCommand, as we don't need a temporary -modfile to
 	// run `go env`.
-	stdout, err := v.gocmdRunner.Run(ctx, inv)
+	stdout, err := v.session.gocmdRunner.Run(ctx, inv)
 	if err != nil {
 		return "", err
 	}
@@ -895,7 +922,7 @@ func (v *View) modfileFlagExists(ctx context.Context, env []string) (bool, error
 		Env:        append(env, "GO111MODULE=off"),
 		WorkingDir: v.Folder().Filename(),
 	}
-	stdout, err := v.gocmdRunner.Run(ctx, inv)
+	stdout, err := v.session.gocmdRunner.Run(ctx, inv)
 	if err != nil {
 		return false, err
 	}

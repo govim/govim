@@ -132,7 +132,7 @@ func DefaultOptions() Options {
 		},
 		Hooks: Hooks{
 			ComputeEdits:         myers.ComputeEdits,
-			URLRegexp:            regexp.MustCompile(`(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?`),
+			URLRegexp:            urlRegexp(),
 			DefaultAnalyzers:     defaultAnalyzers(),
 			TypeErrorAnalyzers:   typeErrorAnalyzers(),
 			ConvenienceAnalyzers: convenienceAnalyzers(),
@@ -214,6 +214,10 @@ type UserOptions struct {
 
 	// SymbolMatcher specifies the type of matcher to use for symbol requests.
 	SymbolMatcher SymbolMatcher
+
+	// SymbolStyle specifies what style of symbols to return in symbol requests
+	// (package qualified, fully qualified, etc).
+	SymbolStyle SymbolStyle
 
 	// DeepCompletion allows completion to perform nested searches through
 	// possible candidates.
@@ -301,6 +305,14 @@ const (
 	SymbolFuzzy = SymbolMatcher(iota)
 	SymbolCaseInsensitive
 	SymbolCaseSensitive
+)
+
+type SymbolStyle int
+
+const (
+	PackageQualifiedSymbols = SymbolStyle(iota)
+	FullyQualifiedSymbols
+	DynamicSymbols
 )
 
 type HoverKind int
@@ -447,6 +459,20 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 			o.SymbolMatcher = SymbolCaseSensitive
 		default:
 			o.SymbolMatcher = SymbolCaseInsensitive
+		}
+
+	case "symbolStyle":
+		style, ok := result.asString()
+		if !ok {
+			break
+		}
+		switch style {
+		case "full":
+			o.SymbolStyle = FullyQualifiedSymbols
+		case "dynamic":
+			o.SymbolStyle = DynamicSymbols
+		default:
+			o.SymbolStyle = PackageQualifiedSymbols
 		}
 
 	case "hoverKind":
@@ -675,4 +701,11 @@ func defaultAnalyzers() map[string]Analyzer {
 		simplifyrange.Analyzer.Name:        {Analyzer: simplifyrange.Analyzer, enabled: true, HighConfidence: true},
 		simplifyslice.Analyzer.Name:        {Analyzer: simplifyslice.Analyzer, enabled: true, HighConfidence: true},
 	}
+}
+
+func urlRegexp() *regexp.Regexp {
+	// Ensure links are matched as full words, not anywhere.
+	re := regexp.MustCompile(`\b(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?\b`)
+	re.Longest()
+	return re
 }
