@@ -29,7 +29,7 @@ func (g *govimplugin) startGopls() error {
 
 	g.ChannelExf("let s:gopls_logfile=%q", logfile.Name())
 
-	goplsArgs := []string{"serve", "-rpc.trace", "-logfile", logfile.Name()}
+	goplsArgs := []string{"-rpc.trace", "-logfile", logfile.Name()}
 	if flags, err := util.Split(os.Getenv(string(config.EnvVarGoplsFlags))); err != nil {
 		g.Logf("invalid env var %s: %v", config.EnvVarGoplsFlags, err)
 	} else {
