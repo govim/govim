@@ -44,14 +44,14 @@ endfunction
 
 function! s:validBool(v)
   if type(a:v) != 0  && type(a:v) != 6
-    return [v:false, "must be of type number or bool"
+    return [v:false, "must be of type number or bool"]
   endif
   return [v:true, ""]
 endfunction
 
 function! s:validString(v)
   if type(a:v) != 1
-    return [v:false, "must be of type string"
+    return [v:false, "must be of type string"]
   endif
   return [v:true, ""]
 endfunction
@@ -120,6 +120,19 @@ function! s:validGoplsEnv(v)
   return [v:true, ""]
 endfunction
 
+function! s:validAnalyses(v)
+  if type(a:v) != 4
+    return [v:false, "must be of type dict"]
+  endif
+  for [key, value] in items(a:v)
+      if type(value) != 0 && type(value) != 6
+          return [v:false, "value for key ".key." must be number or bool"]
+      endif
+  endfor
+  return [v:true, ""]
+endfunction
+
+
 function! s:validExperimentalAutoreadLoadedBuffers(v)
   return s:validBool(a:v)
 endfunction
@@ -161,6 +174,7 @@ let s:validators = {
       \ "CompletionBudget": function("s:validCompletionBudget"),
       \ "TempModfile": function("s:validTempModfile"),
       \ "GoplsEnv": function("s:validGoplsEnv"),
+      \ "Analyses": function("s:validAnalyses"),
       \ "ExperimentalAutoreadLoadedBuffers": function("s:validExperimentalAutoreadLoadedBuffers"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),

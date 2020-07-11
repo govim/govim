@@ -26,6 +26,7 @@ const (
 	goplsTempModfile          = "tempModfile"
 	goplsVerboseOutput        = "verboseOutput"
 	goplsEnv                  = "env"
+	goplsAnalyses             = "analyses"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -135,6 +136,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if os.Getenv(string(config.EnvVarGoplsVerbose)) == "true" {
 		goplsConfig[goplsVerboseOutput] = true
+	}
+	if conf.Analyses != nil {
+		goplsConfig[goplsAnalyses] = *conf.Analyses
 	}
 	if g.vimstate.config.GoplsEnv != nil {
 		// It is safe not to copy the map here because a new config setting from
