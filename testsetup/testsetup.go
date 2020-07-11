@@ -1,6 +1,5 @@
 // Package testsetup defines some test-based constants that are common to
 // tests and CI setup
-
 package testsetup
 
 import (
@@ -79,7 +78,7 @@ func (c Command) BuildCommand(args ...string) *exec.Cmd {
 }
 
 var (
-	GoVersions = []string{"go1.13.12", "go1.14.4"}
+	GoVersions = []string{"go1.13.12", "go1.14.4", "go1.15beta1"}
 
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{
