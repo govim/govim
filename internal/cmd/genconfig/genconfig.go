@@ -312,6 +312,7 @@ jobs:
       uses: actions/checkout@v2
     - uses: actions/setup-go@v2
       with:
+        stable: 'false'
         go-version: ${{ matrix.go-version }}
     - name: Run master tests
       run: ./_scripts/testVimMaster.sh
