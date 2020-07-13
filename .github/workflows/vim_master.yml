@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        go-version: ["1.15beta1"]
+        go-version: ["1.15.0-beta1"]
     runs-on: ${{ matrix.os }}
     env:
       VIM_FLAVOR: vim
