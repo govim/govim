@@ -25,15 +25,27 @@ type ModificationSource int
 const (
 	// FromDidOpen is a file modification caused by opening a file.
 	FromDidOpen = ModificationSource(iota)
+
 	// FromDidChange is a file modification caused by changing a file.
 	FromDidChange
-	// FromDidChangeWatchedFiles is a file modification caused by a change to a watched file.
+
+	// FromDidChangeWatchedFiles is a file modification caused by a change to a
+	// watched file.
 	FromDidChangeWatchedFiles
+
 	// FromDidSave is a file modification caused by a file save.
 	FromDidSave
+
 	// FromDidClose is a file modification caused by closing a file.
 	FromDidClose
+
+	// FromRegenerateCgo refers to file modifications caused by regenerating
+	// the cgo sources for the workspace.
 	FromRegenerateCgo
+
+	// FromInitialWorkspaceLoad refers to the loading of all packages in the
+	// workspace when the view is first created.
+	FromInitialWorkspaceLoad
 )
 
 func (m ModificationSource) String() string {
@@ -46,8 +58,12 @@ func (m ModificationSource) String() string {
 		return "files changed on disk"
 	case FromDidSave:
 		return "saved files"
+	case FromDidClose:
+		return "close files"
 	case FromRegenerateCgo:
 		return "regenerate cgo"
+	case FromInitialWorkspaceLoad:
+		return "initial workspace load"
 	default:
 		return "unknown file modification"
 	}
@@ -221,7 +237,10 @@ func (s *Server) didClose(ctx context.Context, params *protocol.DidCloseTextDocu
 	if snapshot == nil {
 		return errors.Errorf("no snapshot for %s", uri)
 	}
-	fh, err := snapshot.GetFile(ctx, uri)
+	// Check if the file exists on disk after it has been closed. Calling
+	// snapshot.GetFile will add it back to the snapshot even if it doesn't
+	// exist, which will cause problems.
+	fh, err := snapshot.View().Session().Cache().GetFile(ctx, uri)
 	if err != nil {
 		return err
 	}

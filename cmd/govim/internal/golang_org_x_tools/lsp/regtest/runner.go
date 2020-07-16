@@ -56,6 +56,8 @@ type Runner struct {
 	Timeout                  time.Duration
 	GoplsPath                string
 	PrintGoroutinesOnFailure bool
+	TempDir                  string
+	SkipCleanup              bool
 
 	mu        sync.Mutex
 	ts        *servertest.TCPServer
@@ -70,7 +72,6 @@ type runConfig struct {
 	modes                   Mode
 	proxyTxt                string
 	timeout                 time.Duration
-	skipCleanup             bool
 	gopath                  bool
 	withoutWorkspaceFolders bool
 }
@@ -139,18 +140,12 @@ func InGOPATH() RunOption {
 	})
 }
 
-// SkipCleanup is used only for debugging: is skips cleaning up the tests state
-// after completion.
-func SkipCleanup() RunOption {
-	return optionSetter(func(opts *runConfig) {
-		opts.skipCleanup = true
-	})
-}
+type TestFunc func(t *testing.T, env *Env)
 
 // Run executes the test function in the default configured gopls execution
 // modes. For each a test run, a new workspace is created containing the
 // un-txtared files specified by filedata.
-func (r *Runner) Run(t *testing.T, filedata string, test func(t *testing.T, e *Env), opts ...RunOption) {
+func (r *Runner) Run(t *testing.T, filedata string, test TestFunc, opts ...RunOption) {
 	t.Helper()
 	config := r.defaultConfig()
 	for _, opt := range opts {
@@ -173,12 +168,16 @@ func (r *Runner) Run(t *testing.T, filedata string, test func(t *testing.T, e *E
 			continue
 		}
 		t.Run(tc.name, func(t *testing.T) {
-			t.Helper()
 			ctx, cancel := context.WithTimeout(context.Background(), config.timeout)
 			defer cancel()
 			ctx = debug.WithInstance(ctx, "", "")
 
-			sandbox, err := fake.NewSandbox("regtest", filedata, config.proxyTxt, config.gopath, config.withoutWorkspaceFolders)
+			tempDir := filepath.Join(r.TempDir, filepath.FromSlash(t.Name()))
+			if err := os.MkdirAll(tempDir, 0755); err != nil {
+				t.Fatal(err)
+			}
+
+			sandbox, err := fake.NewSandbox(tempDir, filedata, config.proxyTxt, config.gopath, config.withoutWorkspaceFolders)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -188,13 +187,7 @@ func (r *Runner) Run(t *testing.T, filedata string, test func(t *testing.T, e *E
 			// Windows. This may still be flaky however, and in the future we need a
 			// better solution to ensure that all Go processes started by gopls have
 			// exited before we clean up.
-			if config.skipCleanup {
-				defer func() {
-					t.Logf("Skipping workspace cleanup: running in %s", sandbox.Workdir.RootURI())
-				}()
-			} else {
-				r.AddCloser(sandbox)
-			}
+			r.AddCloser(sandbox)
 			ss := tc.getServer(ctx, t)
 			ls := &loggingFramer{}
 			framer := ls.framer(jsonrpc2.NewRawStream)
@@ -244,7 +237,7 @@ func (s *loggingFramer) printBuffers(testname string, w io.Writer) {
 }
 
 func singletonServer(ctx context.Context, t *testing.T) jsonrpc2.StreamServer {
-	return lsprpc.NewStreamServer(cache.New(ctx, nil))
+	return lsprpc.NewStreamServer(cache.New(ctx, nil), false)
 }
 
 func (r *Runner) forwardedServer(ctx context.Context, t *testing.T) jsonrpc2.StreamServer {
@@ -252,15 +245,15 @@ func (r *Runner) forwardedServer(ctx context.Context, t *testing.T) jsonrpc2.Str
 	return lsprpc.NewForwarder("tcp", ts.Addr)
 }
 
-// getTestServer gets the test server instance to connect to, or creates one if
-// it doesn't exist.
+// getTestServer gets the shared test server instance to connect to, or creates
+// one if it doesn't exist.
 func (r *Runner) getTestServer() *servertest.TCPServer {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.ts == nil {
 		ctx := context.Background()
 		ctx = debug.WithInstance(ctx, "", "")
-		ss := lsprpc.NewStreamServer(cache.New(ctx, nil))
+		ss := lsprpc.NewStreamServer(cache.New(ctx, nil), false)
 		r.ts = servertest.NewTCPServer(ctx, ss, nil)
 	}
 	return r.ts
@@ -291,7 +284,7 @@ func (r *Runner) getRemoteSocket(t *testing.T) string {
 		t.Fatal("cannot run tests with a separate process unless a path to a gopls binary is configured")
 	}
 	var err error
-	r.socketDir, err = ioutil.TempDir("", "gopls-regtests")
+	r.socketDir, err = ioutil.TempDir(r.TempDir, "gopls-regtest-socket")
 	if err != nil {
 		t.Fatalf("creating tempdir: %v", err)
 	}
@@ -333,8 +326,13 @@ func (r *Runner) Close() error {
 			errmsgs = append(errmsgs, err.Error())
 		}
 	}
-	for _, closer := range r.closers {
-		if err := closer.Close(); err != nil {
+	if !r.SkipCleanup {
+		for _, closer := range r.closers {
+			if err := closer.Close(); err != nil {
+				errmsgs = append(errmsgs, err.Error())
+			}
+		}
+		if err := os.RemoveAll(r.TempDir); err != nil {
 			errmsgs = append(errmsgs, err.Error())
 		}
 	}

@@ -46,7 +46,7 @@ func main() {
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "example.com/blah is not in your go.mod file.",
+    "text": "example.com/blah is not in your go.mod file",
     "type": "",
     "valid": 1,
     "vcol": 0

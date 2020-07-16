@@ -60,6 +60,10 @@ type fileHandle struct {
 	err   error
 }
 
+func (c *Cache) GetFile(ctx context.Context, uri span.URI) (source.FileHandle, error) {
+	return c.getFile(ctx, uri)
+}
+
 func (c *Cache) getFile(ctx context.Context, uri span.URI) (*fileHandle, error) {
 	var modTime time.Time
 	if fi, err := os.Stat(uri.Filename()); err == nil {
@@ -236,6 +240,9 @@ func (c *Cache) PackageStats(withNames bool) template.HTML {
 }
 
 func astCost(f *ast.File) int64 {
+	if f == nil {
+		return 0
+	}
 	var count int64
 	ast.Inspect(f, func(n ast.Node) bool {
 		count += 32 // nodes are pretty small.

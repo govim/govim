@@ -285,6 +285,9 @@ type Cache interface {
 	// FileSet returns the shared fileset used by all files in the system.
 	FileSet() *token.FileSet
 
+	// GetFile returns a file handle for the given URI.
+	GetFile(ctx context.Context, uri span.URI) (FileHandle, error)
+
 	// ParseGoHandle returns a ParseGoHandle for the given file handle.
 	ParseGoHandle(ctx context.Context, fh FileHandle, mode ParseMode) ParseGoHandle
 }
@@ -342,7 +345,7 @@ type ModWhyHandle interface {
 
 type ModTidyHandle interface {
 	// Tidy returns the results of `go mod tidy` for the module.
-	Tidy(ctx context.Context) (map[string]*modfile.Require, []Error, error)
+	Tidy(ctx context.Context) ([]Error, error)
 }
 
 var ErrTmpModfileUnsupported = errors.New("-modfile is unsupported for this Go version")
@@ -484,6 +487,7 @@ const (
 	ListError
 	ParseError
 	TypeError
+	ModTidyError
 	Analysis
 )
 

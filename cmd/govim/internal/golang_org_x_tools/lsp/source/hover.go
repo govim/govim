@@ -381,7 +381,7 @@ func FormatHover(h *HoverInformation, options Options) (string, error) {
 	switch options.HoverKind {
 	case SynopsisDocumentation:
 		doc := formatDoc(h.Synopsis, options)
-		return formatHover(options, doc, link, signature), nil
+		return formatHover(options, signature, link, doc), nil
 	case FullDocumentation:
 		doc := formatDoc(h.FullDocumentation, options)
 		return formatHover(options, signature, link, doc), nil
@@ -390,7 +390,7 @@ func FormatHover(h *HoverInformation, options Options) (string, error) {
 }
 
 func formatLink(h *HoverInformation, options Options) string {
-	if options.LinkTarget == "" || h.Link == "" {
+	if !options.LinksInHover || options.LinkTarget == "" || h.Link == "" {
 		return ""
 	}
 	plainLink := fmt.Sprintf("https://%s/%s", options.LinkTarget, h.Link)
@@ -403,6 +403,7 @@ func formatLink(h *HoverInformation, options Options) string {
 		return plainLink
 	}
 }
+
 func formatDoc(doc string, options Options) string {
 	if options.PreferredContentFormat == protocol.Markdown {
 		return CommentToMarkdown(doc)
