@@ -151,6 +151,18 @@ type Config struct {
 	// GOFLAGS=-modfile=go.local.mod in order to use an alternative go.mod file.
 	GoplsEnv *map[string]string `json:",omitempty"`
 
+	// Analyses is a map of booleans (0 or 1 in VimScript) used to enable/disable
+	// specific analyses in gopls. Entries in the map are used to override
+	// defaults specified by gopls. A list of analyzers with their default value
+	// can be found in the gopls documentation (e.g.
+	// https://cs.opensource.google/go/tools/+/master:gopls/doc/analyzers.md for
+	// master).
+	//
+	// Example: govim#config#Set("Analyses", {"fillstruct": 1, "unreachable": 0})
+	//
+	// Default: nil
+	Analyses *map[string]bool `json:",omitempty"`
+
 	// ExperimentalAutoreadLoadedBuffers is used to reload buffers that are
 	// changed outside vim even when they are loaded (e.g. running two vim
 	// sessions in the same workspace). This is achieved by running "checktime"

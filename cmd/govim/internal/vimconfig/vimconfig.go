@@ -21,6 +21,7 @@ type VimConfig struct {
 	CompletionBudget                             *string
 	TempModfile                                  *int
 	GoplsEnv                                     *map[string]string
+	Analyses                                     *map[string]int
 	ExperimentalAutoreadLoadedBuffers            *int
 	ExperimentalMouseTriggeredHoverPopupOptions  *map[string]interface{}
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
@@ -43,6 +44,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		CompletionBudget:                  stringVal(c.CompletionBudget, d.CompletionBudget),
 		TempModfile:                       boolVal(c.TempModfile, d.TempModfile),
 		GoplsEnv:                          copyStringValMap(c.GoplsEnv, d.GoplsEnv),
+		Analyses:                          mergeBoolValMap(c.Analyses, d.Analyses),
 		ExperimentalAutoreadLoadedBuffers: boolVal(c.ExperimentalAutoreadLoadedBuffers, d.ExperimentalAutoreadLoadedBuffers),
 		ExperimentalMouseTriggeredHoverPopupOptions:  copyMap(c.ExperimentalMouseTriggeredHoverPopupOptions, d.ExperimentalMouseTriggeredHoverPopupOptions),
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),
@@ -83,6 +85,25 @@ func copyStringValMap(i, j *map[string]string) *map[string]string {
 	res := make(map[string]string)
 	for ck, cv := range *toCopy {
 		res[ck] = cv
+	}
+	return &res
+}
+
+// mergeBoolValMap returns the union of i and j where conflicting keys use
+// the value from i.
+func mergeBoolValMap(i *map[string]int, j *map[string]bool) *map[string]bool {
+	res := make(map[string]bool)
+
+	if j != nil {
+		for ck, cv := range *j {
+			res[ck] = cv
+		}
+	}
+
+	if i != nil {
+		for ck, cv := range *i {
+			res[ck] = cv != 0
+		}
 	}
 	return &res
 }

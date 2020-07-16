@@ -43,6 +43,9 @@ func (r *Config) Apply(v *Config) {
 	if v.GoplsEnv != nil {
 		r.GoplsEnv = v.GoplsEnv
 	}
+	if v.Analyses != nil {
+		r.Analyses = v.Analyses
+	}
 	if v.ExperimentalAutoreadLoadedBuffers != nil {
 		r.ExperimentalAutoreadLoadedBuffers = v.ExperimentalAutoreadLoadedBuffers
 	}
