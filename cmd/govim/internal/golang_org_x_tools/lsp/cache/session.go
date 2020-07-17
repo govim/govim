@@ -13,6 +13,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
@@ -158,6 +159,13 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 	// Set the module-specific information.
 	if err := v.setBuildInformation(ctx, folder, options.Env, v.options.TempModfile); err != nil {
 		return nil, nil, err
+	}
+
+	// We have v.goEnv now.
+	v.processEnv = &imports.ProcessEnv{
+		GocmdRunner: s.gocmdRunner,
+		WorkingDir:  folder.Filename(),
+		Env:         v.goEnv,
 	}
 
 	// Initialize the view without blocking.

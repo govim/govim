@@ -217,6 +217,7 @@ func DefaultOptions() source.Options {
 			protocol.SourceOrganizeImports: true,
 			protocol.QuickFix:              true,
 			protocol.RefactorRewrite:       true,
+			protocol.RefactorExtract:       true,
 			protocol.SourceFixAll:          true,
 		},
 		source.Mod: {
@@ -819,7 +820,7 @@ func checkData(t *testing.T, data *Data) {
 	}))
 	got := buf.String()
 	if want != got {
-		t.Errorf("test summary does not match: %v", Diff(want, got))
+		t.Errorf("test summary does not match:\n%s", Diff(want, got))
 	}
 }
 

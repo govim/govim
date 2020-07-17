@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"sync"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
@@ -170,7 +171,7 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 					Method: "workspace/didChangeWatchedFiles",
 					RegisterOptions: protocol.DidChangeWatchedFilesRegistrationOptions{
 						Watchers: []protocol.FileSystemWatcher{{
-							GlobPattern: fmt.Sprintf("%s/**.go", dir),
+							GlobPattern: fmt.Sprintf("%s/**.{go,mod,sum}", dir),
 							Kind:        float64(protocol.WatchChange + protocol.WatchDelete + protocol.WatchCreate),
 						}},
 					},
@@ -190,6 +191,16 @@ func (s *Server) addFolders(ctx context.Context, folders []protocol.WorkspaceFol
 	originalViews := len(s.session.Views())
 	viewErrors := make(map[span.URI]error)
 
+	var wg sync.WaitGroup
+	if s.session.Options().VerboseWorkDoneProgress {
+		work := s.StartWork(ctx, DiagnosticWorkTitle(FromInitialWorkspaceLoad), "Calculating diagnostics for initial workspace load...", nil)
+		defer func() {
+			go func() {
+				wg.Wait()
+				work.End(ctx, "Done.")
+			}()
+		}()
+	}
 	for _, folder := range folders {
 		uri := span.URIFromURI(folder.URI)
 		view, snapshot, err := s.addView(ctx, folder.Name, uri)
@@ -206,7 +217,11 @@ func (s *Server) addFolders(ctx context.Context, folders []protocol.WorkspaceFol
 		event.Log(ctx, buf.String())
 
 		// Diagnose the newly created view.
-		go s.diagnoseDetached(snapshot)
+		wg.Add(1)
+		go func() {
+			s.diagnoseDetached(snapshot)
+			wg.Done()
+		}()
 	}
 	if len(viewErrors) > 0 {
 		errMsg := fmt.Sprintf("Error loading workspace folders (expected %v, got %v)\n", len(folders), len(s.session.Views())-originalViews)

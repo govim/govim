@@ -7,12 +7,13 @@ package lsp
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
@@ -51,7 +52,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 	switch fh.Kind() {
 	case source.Mod:
 		if diagnostics := params.Context.Diagnostics; len(diagnostics) > 0 {
-			modFixes, err := mod.SuggestedFixes(ctx, snapshot, fh, diagnostics)
+			modFixes, err := mod.SuggestedFixes(ctx, snapshot, diagnostics)
 			if err != nil {
 				return nil, err
 			}
@@ -81,7 +82,7 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 		if wantQuickFixes := wanted[protocol.QuickFix] && len(diagnostics) > 0; wantQuickFixes || wanted[protocol.SourceOrganizeImports] {
 			importEdits, importEditsPerFix, err := source.AllImportsFixes(ctx, snapshot, fh)
 			if err != nil {
-				return nil, err
+				event.Error(ctx, "imports fixes", err, tag.File.Of(fh.URI().Filename()))
 			}
 			// Separate this into a set of codeActions per diagnostic, where
 			// each action is the addition, removal, or renaming of one import.
@@ -135,9 +136,10 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 
 				// If there are any diagnostics relating to the go.mod file,
 				// add their corresponding quick fixes.
-				moduleQuickFixes, err := getModuleQuickFixes(ctx, snapshot, diagnostics)
+				moduleQuickFixes, err := mod.SuggestedFixes(ctx, snapshot, diagnostics)
 				if err != nil {
-					return nil, err
+					// Not a fatal error.
+					event.Error(ctx, "module suggested fixes failed", err, tag.Directory.Of(snapshot.View().Folder()))
 				}
 				codeActions = append(codeActions, moduleQuickFixes...)
 			}
@@ -162,50 +164,16 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 			}
 			codeActions = append(codeActions, fixes...)
 		}
+		if wanted[protocol.RefactorExtract] {
+			fixes, err := extractionFixes(ctx, snapshot, ph, uri, params.Range)
+			if err != nil {
+				return nil, err
+			}
+			codeActions = append(codeActions, fixes...)
+		}
 	default:
 		// Unsupported file kind for a code action.
 		return nil, nil
-	}
-	return codeActions, nil
-}
-
-var missingRequirementRe = regexp.MustCompile(`(.+) is not in your go.mod file`)
-
-func getModuleQuickFixes(ctx context.Context, snapshot source.Snapshot, diagnostics []protocol.Diagnostic) ([]protocol.CodeAction, error) {
-	// Don't bother getting quick fixes if we have no relevant diagnostics.
-	var missingDeps map[string]protocol.Diagnostic
-	for _, diagnostic := range diagnostics {
-		matches := missingRequirementRe.FindStringSubmatch(diagnostic.Message)
-		if len(matches) != 2 {
-			continue
-		}
-		if missingDeps == nil {
-			missingDeps = make(map[string]protocol.Diagnostic)
-		}
-		missingDeps[matches[1]] = diagnostic
-	}
-	if len(missingDeps) == 0 {
-		return nil, nil
-	}
-	// Get suggested fixes for each missing dependency.
-	edits, err := mod.SuggestedGoFixes(ctx, snapshot)
-	if err != nil {
-		return nil, err
-	}
-	var codeActions []protocol.CodeAction
-	for dep, diagnostic := range missingDeps {
-		edit, ok := edits[dep]
-		if !ok {
-			continue
-		}
-		codeActions = append(codeActions, protocol.CodeAction{
-			Title:       fmt.Sprintf("Add %s to go.mod", dep),
-			Diagnostics: []protocol.Diagnostic{diagnostic},
-			Edit: protocol.WorkspaceEdit{
-				DocumentChanges: []protocol.TextDocumentEdit{edit},
-			},
-			Kind: protocol.QuickFix,
-		})
 	}
 	return codeActions, nil
 }
@@ -349,6 +317,9 @@ func findSourceError(ctx context.Context, snapshot source.Snapshot, pkgID string
 func convenienceFixes(ctx context.Context, snapshot source.Snapshot, ph source.PackageHandle, uri span.URI, rng protocol.Range) ([]protocol.CodeAction, error) {
 	var analyzers []*analysis.Analyzer
 	for _, a := range snapshot.View().Options().ConvenienceAnalyzers {
+		if !a.Enabled(snapshot) {
+			continue
+		}
 		analyzers = append(analyzers, a.Analyzer)
 	}
 	diagnostics, err := snapshot.Analyze(ctx, ph.ID(), analyzers...)
@@ -383,6 +354,29 @@ func convenienceFixes(ctx context.Context, snapshot source.Snapshot, ph source.P
 		}
 	}
 	return codeActions, nil
+}
+
+func extractionFixes(ctx context.Context, snapshot source.Snapshot, ph source.PackageHandle, uri span.URI, rng protocol.Range) ([]protocol.CodeAction, error) {
+	fh, err := snapshot.GetFile(ctx, uri)
+	if err != nil {
+		return nil, nil
+	}
+	edits, err := source.ExtractVariable(ctx, snapshot, fh, rng)
+	if err != nil {
+		return nil, err
+	}
+	if len(edits) == 0 {
+		return nil, nil
+	}
+	return []protocol.CodeAction{
+		{
+			Title: "Extract to variable",
+			Kind:  protocol.RefactorExtract,
+			Edit: protocol.WorkspaceEdit{
+				DocumentChanges: documentChanges(fh, edits),
+			},
+		},
+	}, nil
 }
 
 func documentChanges(fh source.FileHandle, edits []protocol.TextEdit) []protocol.TextDocumentEdit {
