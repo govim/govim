@@ -1,10 +1,7 @@
-# Test that code action "fill struct" works
-
-skip 'Temporary disabled until gopls support filling multiple structs on one row'
+# Temporary test case that only tests the most basic case of fill struct
+# Remove as soon as the ordinary fillstruct test is enabled.
 
 vim ex 'e main.go'
-vim ex 'call cursor(14,1)'
-vim ex 'call execute(\"GOVIMFillStruct\")'
 vim ex 'call cursor(12,10)'
 vim ex 'call execute(\"GOVIMFillStruct\")'
 vim ex 'w'
@@ -52,13 +49,5 @@ func main() {
 		i: 0,
 	}
 
-	fn(foo{
-		b: false,
-		s: "",
-		i: 0,
-	}, foo{
-		b: false,
-		s: "",
-		i: 0,
-	})
+	fn(foo{}, foo{})
 }

@@ -190,6 +190,13 @@ type govimplugin struct {
 	cancelDocHighlight     context.CancelFunc
 	cancelDocHighlightLock sync.Mutex
 
+	// applyEditsCh is used to pass incoming edit requests (ApplyEdit) to the main thread.
+	// Incoming ApplyEdit calls will use this channel if set (not nil) instead of schedule
+	// edits directly. It is used to allow process edits during a blocking call on the vim
+	// thread. Setting and unsetting this channel is protected by applyEditsLock.
+	applyEditsCh   chan applyEditCall
+	applyEditsLock sync.Mutex
+
 	bufferUpdates chan *bufferUpdate
 
 	// inShutdown is closed when govim is told to Shutdown
