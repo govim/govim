@@ -3,7 +3,7 @@ description: 'Setup Vim in your workflow'
 inputs:
   version:
     description: >
-      Version of Vim to install. Valid values are git refs (e.g. 'master', a branch name or commit hash)
+      Version of Vim to install. Valid values are git refs (e.g. 'main', a branch name or commit hash)
       or version tags (e.g. 'v8.2.0126')
     required: false
     default: 'master'

@@ -3,7 +3,7 @@
 source "${BASH_SOURCE%/*}/common.bash"
 
 # Update the :latest tag for govim images. By default only runs on CI whilst
-# building against the master branch. This isn't totally foolproof, but good
+# building against the main branch. This isn't totally foolproof, but good
 # enough for what we need
 #
 # Usage:
@@ -11,7 +11,7 @@ source "${BASH_SOURCE%/*}/common.bash"
 #   _scripts/tagDockerLatest.sh [-f]
 #
 # The -f flag forces the update of latest, even when we aren't running on CI
-# against the master branch
+# against the main branch
 
 # Only run for the build matrix entry that corresponds to
 # the tag we are going to create
@@ -24,14 +24,14 @@ fi
 # If we are not on CI, then only run if -f is supplied
 if [[ "${CI:-}" != "true" ]] && [[ "${1:-}" != "-f" ]]
 then
-	echo "Cowardly refusing to tag :latest; not on CI building master branch, and no -f supplied"
+	echo "Cowardly refusing to tag :latest; not on CI building main branch, and no -f supplied"
 	exit 1
 fi
 
-# If we are on CI, only tag if we are on the master branch
-if [[ "${CI:-}" == "true" ]] && [[ "${GITHUB_REF:-}" != "refs/heads/master" ]]
+# If we are on CI, only tag if we are on the main branch
+if [[ "${CI:-}" == "true" ]] && [[ "${GITHUB_REF:-}" != "refs/heads/main" ]]
 then
-	echo "Skipping tagging of :latest docker image; we are not building master branch"
+	echo "Skipping tagging of :latest docker image; we are not building main branch"
 	exit 0
 fi
 

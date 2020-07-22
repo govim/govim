@@ -5,14 +5,14 @@ source "${BASH_SOURCE%/*}/common.bash"
 # This ensures that GitHub Actions properly runs the after_failure script
 trap 'set +ev' EXIT
 
-# We run race builds/tests on master branch. We also define that the RACE_BUILD
+# We run race builds/tests on main branch. We also define that the RACE_BUILD
 # environment variable be a comma-separated list of PR numbers (just the
 # number, no '#'), and if the CI build in question is a PR build whose number
 # is present in RACE_BUILD we also run race builds/tests.
 runRace=false
 if [[ "${CI:-}" == "true" ]]
 then
-	if [[ "${GITHUB_REF:-}" == "refs/heads/master" ]]
+	if [[ "${GITHUB_REF:-}" == "refs/heads/main" ]]
 	then
 		runRace=true
 	elif [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]
