@@ -3,7 +3,7 @@ on:
   schedule:
     - cron: '0 9 * * *'
 
-name: Vim Master Test
+name: Vim Main Test
 jobs:
   test:
     strategy:
@@ -21,5 +21,5 @@ jobs:
       with:
         stable: 'false'
         go-version: ${{ matrix.go-version }}
-    - name: Run master tests
-      run: ./_scripts/testVimMaster.sh
+    - name: Run main tests
+      run: ./_scripts/testVimMain.sh
