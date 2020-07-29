@@ -151,9 +151,37 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	return res, nil
 }
 
-func (g *govimplugin) ApplyEdit(context.Context, *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {
+func (g *govimplugin) ApplyEdit(ctxt context.Context, params *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {
 	defer absorbShutdownErr()
-	panic("ApplyEdit not implemented yet")
+	g.logGoplsClientf("ApplyEdit: %v", pretty.Sprint(params))
+
+	var err error
+	var res *protocol.ApplyWorkspaceEditResponse
+	g.applyEditsLock.Lock()
+	if g.applyEditsCh == nil {
+		// ApplyEdit wasn't send by another blocking call so it's fine to just schedule the edits here
+		g.applyEditsLock.Unlock()
+		done := make(chan struct{})
+		g.Schedule(func(govim.Govim) error {
+			v := g.vimstate
+			res, err = v.applyWorkspaceEdit(params)
+			close(done)
+			return nil
+		})
+		<-done
+	} else {
+		// There is an ongoing call that can apply edits on the vim thread. A Schedule here would deadlock so
+		// pass the edits to the vim thread instead.
+		e := applyEditCall{params: params, responseCh: make(chan applyEditResponse)}
+		g.applyEditsCh <- e
+		aer := <-e.responseCh
+		g.applyEditsLock.Unlock()
+		res = aer.res
+		err = aer.err
+	}
+
+	g.logGoplsClientf("ApplyEdit response: %v", pretty.Sprint(res))
+	return res, err
 }
 
 func (g *govimplugin) Event(context.Context, *interface{}) error {
