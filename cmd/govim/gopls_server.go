@@ -287,10 +287,10 @@ func (l loggingGoplsServer) Declaration(ctxt context.Context, params *protocol.D
 	return res, err
 }
 
-func (l loggingGoplsServer) LogTraceNotification(ctxt context.Context, params *protocol.LogTraceParams) error {
-	l.Logf("gopls.LogTraceNotification() call; params:\n%v", pretty.Sprint(params))
-	err := l.u.LogTraceNotification(ctxt, params)
-	l.Logf("gopls.LogTraceNotification() return; err: %v", err)
+func (l loggingGoplsServer) LogTrace(ctxt context.Context, params *protocol.LogTraceParams) error {
+	l.Logf("gopls.LogTrace() call; params:\n%v", pretty.Sprint(params))
+	err := l.u.LogTrace(ctxt, params)
+	l.Logf("gopls.LogTrace() return; err: %v", err)
 	return err
 }
 
@@ -301,10 +301,10 @@ func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol
 	return res, err
 }
 
-func (l loggingGoplsServer) SetTraceNotification(ctxt context.Context, params *protocol.SetTraceParams) error {
-	l.Logf("gopls.SetTraceNotification() call; params:\n%v", pretty.Sprint(params))
-	err := l.u.SetTraceNotification(ctxt, params)
-	l.Logf("gopls.SetTraceNotification() return; err: %v", err)
+func (l loggingGoplsServer) SetTrace(ctxt context.Context, params *protocol.SetTraceParams) error {
+	l.Logf("gopls.SetTrace() call; params:\n%v", pretty.Sprint(params))
+	err := l.u.SetTrace(ctxt, params)
+	l.Logf("gopls.SetTrace() return; err: %v", err)
 	return err
 }
 
@@ -343,17 +343,17 @@ func (l loggingGoplsServer) PrepareCallHierarchy(ctxt context.Context, params *p
 	return res, err
 }
 
-func (l loggingGoplsServer) SemanticTokens(ctxt context.Context, params *protocol.SemanticTokensParams) (*protocol.SemanticTokens, error) {
-	l.Logf("gopls.SemanticTokens() call; params:\n%v", pretty.Sprint(params))
-	res, err := l.u.SemanticTokens(ctxt, params)
-	l.Logf("gopls.SemanticTokens() return; err: %v; res\n%v", err, pretty.Sprint(res))
+func (l loggingGoplsServer) SemanticTokensFull(ctxt context.Context, params *protocol.SemanticTokensParams) (*protocol.SemanticTokens, error) {
+	l.Logf("gopls.SemanticTokensFull() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.SemanticTokensFull(ctxt, params)
+	l.Logf("gopls.SemanticTokensFull() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
-func (l loggingGoplsServer) SemanticTokensEdits(ctxt context.Context, params *protocol.SemanticTokensEditsParams) (interface{}, error) {
-	l.Logf("gopls.SemanticTokensEdits() call; params:\n%v", pretty.Sprint(params))
-	res, err := l.u.SemanticTokensEdits(ctxt, params)
-	l.Logf("gopls.SemanticTokensEdits() return; err: %v; res\n%v", err, pretty.Sprint(res))
+func (l loggingGoplsServer) SemanticTokensFullDelta(ctxt context.Context, params *protocol.SemanticTokensDeltaParams) (interface{}, error) {
+	l.Logf("gopls.SemanticTokensFullDelta() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.SemanticTokensFullDelta(ctxt, params)
+	l.Logf("gopls.SemanticTokensFullDelta() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 

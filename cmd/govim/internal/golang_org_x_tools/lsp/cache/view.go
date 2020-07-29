@@ -33,6 +33,8 @@ import (
 )
 
 type View struct {
+	memoize.Arg // allow as a memoize.Function arg
+
 	session *Session
 	id      string
 
@@ -54,11 +56,15 @@ type View struct {
 	// should be stopped.
 	cancel context.CancelFunc
 
-	// Name is the user visible name of this view.
+	// name is the user visible name of this view.
 	name string
 
-	// Folder is the root of this view.
+	// folder is the folder with which this view was constructed.
 	folder span.URI
+
+	// root is the root directory of this view. If we are in GOPATH mode, this
+	// is just the folder. If we are in module mode, this is the module root.
+	root span.URI
 
 	// importsMu guards imports-related state, particularly the ProcessEnv.
 	importsMu sync.Mutex
@@ -86,17 +92,30 @@ type View struct {
 	snapshotMu sync.Mutex
 	snapshot   *snapshot
 
-	// initialized is closed when the view has been fully initialized.
-	// On initialization, the view's workspace packages are loaded.
-	// All of the fields below are set as part of initialization.
-	// If we failed to load, we don't re-try to avoid too many go/packages calls.
-	initializeOnce sync.Once
-	initialized    chan struct{}
-	initCancel     context.CancelFunc
+	// initialized is closed when the view has been fully initialized. On
+	// initialization, the view's workspace packages are loaded. All of the
+	// fields below are set as part of initialization. If we failed to load, we
+	// only retry if the go.mod file changes, to avoid too many go/packages
+	// calls.
+	//
+	// When the view is created, initializeOnce is non-nil, initialized is
+	// open, and initCancelFirstAttempt can be used to terminate
+	// initialization. Once initialization completes, initializedErr may be set
+	// and initializeOnce becomes nil. If initializedErr is non-nil,
+	// initialization may be retried (depending on how files are changed). To
+	// indicate that initialization should be retried, initializeOnce will be
+	// set. The next time a caller requests workspace packages, the
+	// initialization will retry.
+	initialized            chan struct{}
+	initCancelFirstAttempt context.CancelFunc
 
-	// initializedErr needs no mutex, since any access to it happens after it
-	// has been set.
-	initializedErr error
+	// initializationSema is used as a mutex to guard initializeOnce and
+	// initializedErr, which will be updated after each attempt to initialize
+	// the view. We use a channel instead of a mutex to avoid blocking when a
+	// context is canceled.
+	initializationSema chan struct{}
+	initializeOnce     *sync.Once
+	initializedErr     error
 
 	// builtin pins the AST and package for builtin.go in memory.
 	builtin *builtinPackageHandle
@@ -126,14 +145,13 @@ type View struct {
 
 type builtinPackageHandle struct {
 	handle *memoize.Handle
-	file   source.ParseGoHandle
 }
 
 type builtinPackageData struct {
 	memoize.NoCopy
 
 	pkg *ast.Package
-	pgh *parseGoHandle
+	pgf *source.ParsedGoFile
 	err error
 }
 
@@ -141,8 +159,8 @@ func (d *builtinPackageData) Package() *ast.Package {
 	return d.pkg
 }
 
-func (d *builtinPackageData) ParseGoHandle() source.ParseGoHandle {
-	return d.pgh
+func (d *builtinPackageData) ParsedFile() *source.ParsedGoFile {
+	return d.pgf
 }
 
 // fileBase holds the common functionality for all files.
@@ -217,10 +235,10 @@ func tempModFile(modFh, sumFH source.FileHandle) (tmpURI span.URI, cleanup func(
 	if sumFH != nil {
 		sumContents, err := sumFH.Read()
 		if err != nil {
-			return "", nil, err
+			return "", cleanup, err
 		}
 		if err := ioutil.WriteFile(tmpSumName, sumContents, 0655); err != nil {
-			return "", nil, err
+			return "", cleanup, err
 		}
 	}
 
@@ -283,7 +301,7 @@ func (v *View) BuiltinPackage(ctx context.Context) (source.BuiltinPackage, error
 	if v.builtin == nil {
 		return nil, errors.Errorf("no builtin package for view %s", v.name)
 	}
-	data, err := v.builtin.handle.Get(ctx)
+	data, err := v.builtin.handle.Get(ctx, v)
 	if err != nil {
 		return nil, err
 	}
@@ -315,27 +333,27 @@ func (v *View) buildBuiltinPackage(ctx context.Context, goFiles []string) error 
 	if err != nil {
 		return err
 	}
-	pgh := v.session.cache.parseGoHandle(ctx, fh, source.ParseFull)
-	fset := v.session.cache.fset
-	h := v.session.cache.store.Bind(fh.Identity(), func(ctx context.Context) interface{} {
-		file, _, _, _, err := pgh.Parse(ctx)
+	h := v.session.cache.store.Bind(fh.Identity(), func(ctx context.Context, arg memoize.Arg) interface{} {
+		view := arg.(*View)
+
+		pgh := view.session.cache.parseGoHandle(ctx, fh, source.ParseFull)
+		pgf, _, err := view.parseGo(ctx, pgh)
 		if err != nil {
 			return &builtinPackageData{err: err}
 		}
-		pkg, err := ast.NewPackage(fset, map[string]*ast.File{
-			pgh.File().URI().Filename(): file,
+		pkg, err := ast.NewPackage(view.session.cache.fset, map[string]*ast.File{
+			pgf.URI.Filename(): pgf.File,
 		}, nil, nil)
 		if err != nil {
 			return &builtinPackageData{err: err}
 		}
 		return &builtinPackageData{
-			pgh: pgh,
+			pgf: pgf,
 			pkg: pkg,
 		}
 	})
 	v.builtin = &builtinPackageHandle{
 		handle: h,
-		file:   pgh,
 	}
 	return nil
 }
@@ -359,7 +377,8 @@ func (v *View) WriteEnv(ctx context.Context, w io.Writer) error {
 		}
 
 	}
-	fmt.Fprintf(w, "go env for %v\n(valid build configuration = %v)\n(build flags: %v)\n", v.folder.Filename(), v.hasValidBuildConfiguration, buildFlags)
+	fmt.Fprintf(w, "go env for %v\n(root %s)\n(valid build configuration = %v)\n(build flags: %v)\n",
+		v.folder.Filename(), v.root.Filename(), v.hasValidBuildConfiguration, buildFlags)
 	for k, v := range fullEnv {
 		fmt.Fprintf(w, "%s=%s\n", k, v)
 	}
@@ -512,7 +531,7 @@ func (v *View) envLocked() ([]string, []string) {
 }
 
 func (v *View) contains(uri span.URI) bool {
-	return strings.HasPrefix(string(uri), string(v.folder))
+	return strings.HasPrefix(string(uri), string(v.root))
 }
 
 func (v *View) mapFile(uri span.URI, f *fileBase) {
@@ -533,7 +552,7 @@ func (v *View) WorkspaceDirectories(ctx context.Context) ([]string, error) {
 	// but that's probably too expensive.
 	// TODO(rstambler): Figure out a better approach in the future.
 	if v.modURI == "" {
-		return []string{v.folder.Filename()}, nil
+		return []string{v.root.Filename()}, nil
 	}
 	// Anything inside of the module root is known.
 	dirs := []string{filepath.Dir(v.modURI.Filename())}
@@ -547,7 +566,7 @@ func (v *View) WorkspaceDirectories(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	parsed, _, _, err := pmh.Parse(ctx)
+	parsed, _, _, err := pmh.Parse(ctx, v.Snapshot())
 	if err != nil {
 		return nil, err
 	}
@@ -639,7 +658,7 @@ func (v *View) Shutdown(ctx context.Context) {
 
 func (v *View) shutdown(ctx context.Context) {
 	// Cancel the initial workspace load if it is still running.
-	v.initCancel()
+	v.initCancelFirstAttempt()
 
 	v.mu.Lock()
 	defer v.mu.Unlock()
@@ -702,25 +721,48 @@ func (v *View) getSnapshot() *snapshot {
 	return v.snapshot
 }
 
-func (v *View) initialize(ctx context.Context, s *snapshot) {
-	v.initializeOnce.Do(func() {
-		defer close(v.initialized)
+func (v *View) initialize(ctx context.Context, s *snapshot, firstAttempt bool) {
+	select {
+	case <-ctx.Done():
+		return
+	case v.initializationSema <- struct{}{}:
+	}
 
-		if err := s.load(ctx, viewLoadScope("LOAD_VIEW"), packagePath("builtin")); err != nil {
-			if ctx.Err() != nil {
-				return
+	defer func() {
+		<-v.initializationSema
+	}()
+
+	if v.initializeOnce == nil {
+		return
+	}
+	v.initializeOnce.Do(func() {
+		defer func() {
+			v.initializeOnce = nil
+			if firstAttempt {
+				close(v.initialized)
 			}
-			v.initializedErr = err
+		}()
+
+		err := s.load(ctx, viewLoadScope("LOAD_VIEW"), packagePath("builtin"))
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
 			event.Error(ctx, "initial workspace load failed", err)
 		}
+		v.initializedErr = err
 	})
 }
 
 func (v *View) awaitInitialized(ctx context.Context) {
 	select {
 	case <-ctx.Done():
+		return
 	case <-v.initialized:
 	}
+	// We typically prefer to run something as intensive as the IWL without
+	// blocking. I'm not sure if there is a way to do that here.
+	v.initialize(ctx, v.getSnapshot(), false)
 }
 
 // invalidateContent invalidates the content of a Go file,
@@ -756,6 +798,19 @@ func (v *View) cancelBackground() {
 	v.backgroundCtx, v.cancel = context.WithCancel(v.baseCtx)
 }
 
+func (v *View) maybeReinitialize() {
+	v.initializationSema <- struct{}{}
+	defer func() {
+		<-v.initializationSema
+	}()
+
+	if v.initializedErr == nil {
+		return
+	}
+	var once sync.Once
+	v.initializeOnce = &once
+}
+
 func (v *View) setBuildInformation(ctx context.Context, folder span.URI, env []string, modfileFlagEnabled bool) error {
 	if err := checkPathCase(folder.Filename()); err != nil {
 		return fmt.Errorf("invalid workspace configuration: %w", err)
@@ -773,6 +828,11 @@ func (v *View) setBuildInformation(ctx context.Context, folder span.URI, env []s
 	sumFilename := filepath.Join(filepath.Dir(modFile), "go.sum")
 	if stat, _ := os.Stat(sumFilename); stat != nil {
 		v.sumURI = span.URIFromPath(sumFilename)
+	}
+
+	v.root = v.folder
+	if v.modURI != "" {
+		v.root = span.URIFromPath(filepath.Dir(v.modURI.Filename()))
 	}
 
 	// Now that we have set all required fields,
@@ -920,8 +980,8 @@ func globsMatchPath(globs, target string) bool {
 	return false
 }
 
-// This function will return the main go.mod file for this folder if it exists and whether the -modfile
-// flag exists for this version of go.
+// This function will return the main go.mod file for this folder if it exists
+// and whether the -modfile flag exists for this version of go.
 func (v *View) modfileFlagExists(ctx context.Context, env []string) (bool, error) {
 	// Check the go version by running "go list" with modules off.
 	// Borrowed from internal/imports/mod.go:620.
@@ -931,7 +991,7 @@ func (v *View) modfileFlagExists(ctx context.Context, env []string) (bool, error
 		Verb:       "list",
 		Args:       []string{"-e", "-f", format},
 		Env:        append(env, "GO111MODULE=off"),
-		WorkingDir: v.Folder().Filename(),
+		WorkingDir: v.root.Filename(),
 	}
 	stdout, err := v.session.gocmdRunner.Run(ctx, inv)
 	if err != nil {

@@ -7,7 +7,7 @@ package cache
 import (
 	"context"
 	"fmt"
-	"go/token"
+	"go/ast"
 	"go/types"
 	"reflect"
 	"sort"
@@ -41,7 +41,7 @@ func (s *snapshot) Analyze(ctx context.Context, id string, analyzers ...*analysi
 
 	var results []*source.Error
 	for _, ah := range roots {
-		diagnostics, _, err := ah.analyze(ctx)
+		diagnostics, _, err := ah.analyze(ctx, s)
 		if err != nil {
 			return nil, err
 		}
@@ -84,16 +84,16 @@ type packageFactKey struct {
 func (s *snapshot) actionHandle(ctx context.Context, id packageID, a *analysis.Analyzer) (*actionHandle, error) {
 	ph := s.getPackage(id, source.ParseFull)
 	if ph == nil {
-		return nil, errors.Errorf("no PackageHandle for %s", id)
+		return nil, errors.Errorf("no package for %s", id)
 	}
 	act := s.getActionHandle(id, ph.mode, a)
 	if act != nil {
 		return act, nil
 	}
 	if len(ph.key) == 0 {
-		return nil, errors.Errorf("no key for PackageHandle %s", id)
+		return nil, errors.Errorf("no key for package %s", id)
 	}
-	pkg, err := ph.check(ctx)
+	pkg, err := ph.check(ctx, s)
 	if err != nil {
 		return nil, err
 	}
@@ -133,17 +133,16 @@ func (s *snapshot) actionHandle(ctx context.Context, id packageID, a *analysis.A
 		}
 	}
 
-	fset := s.view.session.cache.fset
-
-	h := s.view.session.cache.store.Bind(buildActionKey(a, ph), func(ctx context.Context) interface{} {
+	h := s.view.session.cache.store.Bind(buildActionKey(a, ph), func(ctx context.Context, arg memoize.Arg) interface{} {
+		snapshot := arg.(*snapshot)
 		// Analyze dependencies first.
-		results, err := execAll(ctx, deps)
+		results, err := execAll(ctx, snapshot, deps)
 		if err != nil {
 			return &actionData{
 				err: err,
 			}
 		}
-		return runAnalysis(ctx, fset, a, pkg, results)
+		return runAnalysis(ctx, snapshot, a, pkg, results)
 	})
 	act.handle = h
 
@@ -151,8 +150,8 @@ func (s *snapshot) actionHandle(ctx context.Context, id packageID, a *analysis.A
 	return act, nil
 }
 
-func (act *actionHandle) analyze(ctx context.Context) ([]*source.Error, interface{}, error) {
-	v, err := act.handle.Get(ctx)
+func (act *actionHandle) analyze(ctx context.Context, snapshot *snapshot) ([]*source.Error, interface{}, error) {
+	v, err := act.handle.Get(ctx, snapshot)
 	if v == nil {
 		return nil, nil, err
 	}
@@ -174,7 +173,7 @@ func (act *actionHandle) String() string {
 	return fmt.Sprintf("%s@%s", act.analyzer, act.pkg.PkgPath())
 }
 
-func execAll(ctx context.Context, actions []*actionHandle) (map[*actionHandle]*actionData, error) {
+func execAll(ctx context.Context, snapshot *snapshot, actions []*actionHandle) (map[*actionHandle]*actionData, error) {
 	var mu sync.Mutex
 	results := make(map[*actionHandle]*actionData)
 
@@ -182,7 +181,7 @@ func execAll(ctx context.Context, actions []*actionHandle) (map[*actionHandle]*a
 	for _, act := range actions {
 		act := act
 		g.Go(func() error {
-			v, err := act.handle.Get(ctx)
+			v, err := act.handle.Get(ctx, snapshot)
 			if err != nil {
 				return err
 			}
@@ -201,7 +200,7 @@ func execAll(ctx context.Context, actions []*actionHandle) (map[*actionHandle]*a
 	return results, g.Wait()
 }
 
-func runAnalysis(ctx context.Context, fset *token.FileSet, analyzer *analysis.Analyzer, pkg *pkg, deps map[*actionHandle]*actionData) (data *actionData) {
+func runAnalysis(ctx context.Context, snapshot *snapshot, analyzer *analysis.Analyzer, pkg *pkg, deps map[*actionHandle]*actionData) (data *actionData) {
 	data = &actionData{
 		objectFacts:  make(map[objectFactKey]analysis.Fact),
 		packageFacts: make(map[packageFactKey]analysis.Fact),
@@ -246,13 +245,18 @@ func runAnalysis(ctx context.Context, fset *token.FileSet, analyzer *analysis.An
 		}
 	}
 
+	var syntax []*ast.File
+	for _, cgf := range pkg.compiledGoFiles {
+		syntax = append(syntax, cgf.File)
+	}
+
 	var diagnostics []*analysis.Diagnostic
 
 	// Run the analysis.
 	pass := &analysis.Pass{
 		Analyzer:   analyzer,
-		Fset:       fset,
-		Files:      pkg.GetSyntax(),
+		Fset:       snapshot.view.session.cache.fset,
+		Files:      syntax,
 		Pkg:        pkg.GetTypes(),
 		TypesInfo:  pkg.GetTypesInfo(),
 		TypesSizes: pkg.GetTypesSizes(),
@@ -343,7 +347,7 @@ func runAnalysis(ctx context.Context, fset *token.FileSet, analyzer *analysis.An
 	}
 
 	for _, diag := range diagnostics {
-		srcErr, err := sourceError(ctx, fset, pkg, diag)
+		srcErr, err := sourceError(ctx, snapshot, pkg, diag)
 		if err != nil {
 			event.Error(ctx, "unable to compute analysis error position", err, tag.Category.Of(diag.Category), tag.Package.Of(pkg.ID()))
 			continue

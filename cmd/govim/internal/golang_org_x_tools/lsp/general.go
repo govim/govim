@@ -41,9 +41,18 @@ func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitializ
 	source.SetOptions(&options, params.InitializationOptions)
 	options.ForClientCapabilities(params.Capabilities)
 
+	// gopls only supports URIs with a file:// scheme. Any other URIs will not
+	// work, so fail to initialize. See golang/go#40272.
 	if params.RootURI != "" && !params.RootURI.SpanURI().IsFile() {
 		return nil, fmt.Errorf("unsupported URI scheme: %v (gopls only supports file URIs)", params.RootURI)
 	}
+	for _, folder := range params.WorkspaceFolders {
+		uri := span.URIFromURI(folder.URI)
+		if !uri.IsFile() {
+			return nil, fmt.Errorf("unsupported URI scheme: %q (gopls only supports file URIs)", folder.URI)
+		}
+	}
+
 	s.pendingFolders = params.WorkspaceFolders
 	if len(s.pendingFolders) == 0 {
 		if params.RootURI != "" {
@@ -171,7 +180,7 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 					Method: "workspace/didChangeWatchedFiles",
 					RegisterOptions: protocol.DidChangeWatchedFilesRegistrationOptions{
 						Watchers: []protocol.FileSystemWatcher{{
-							GlobPattern: fmt.Sprintf("%s/**.{go,mod,sum}", dir),
+							GlobPattern: fmt.Sprintf("%s/**/*.{go,mod,sum}", dir),
 							Kind:        float64(protocol.WatchChange + protocol.WatchDelete + protocol.WatchCreate),
 						}},
 					},
@@ -211,7 +220,7 @@ func (s *Server) addFolders(ctx context.Context, folders []protocol.WorkspaceFol
 		// Print each view's environment.
 		buf := &bytes.Buffer{}
 		if err := view.WriteEnv(ctx, buf); err != nil {
-			event.Error(ctx, "failed to write environment", err, tag.Directory.Of(view.Folder()))
+			event.Error(ctx, "failed to write environment", err, tag.Directory.Of(view.Folder().Filename()))
 			continue
 		}
 		event.Log(ctx, buf.String())

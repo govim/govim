@@ -105,13 +105,13 @@ type condition struct {
 
 // NewEnv creates a new test environment using the given scratch environment
 // and gopls server.
-func NewEnv(ctx context.Context, t *testing.T, scratch *fake.Sandbox, ts servertest.Connector, editorConfig fake.EditorConfig) *Env {
+func NewEnv(ctx context.Context, t *testing.T, sandbox *fake.Sandbox, ts servertest.Connector, editorConfig fake.EditorConfig, withHooks bool) *Env {
 	t.Helper()
 	conn := ts.Connect(ctx)
 	env := &Env{
 		T:       t,
 		Ctx:     ctx,
-		Sandbox: scratch,
+		Sandbox: sandbox,
 		Server:  ts,
 		state: State{
 			diagnostics:     make(map[string]*protocol.PublishDiagnosticsParams),
@@ -120,15 +120,18 @@ func NewEnv(ctx context.Context, t *testing.T, scratch *fake.Sandbox, ts servert
 		},
 		waiters: make(map[int]*condition),
 	}
-	hooks := fake.ClientHooks{
-		OnDiagnostics:            env.onDiagnostics,
-		OnLogMessage:             env.onLogMessage,
-		OnWorkDoneProgressCreate: env.onWorkDoneProgressCreate,
-		OnProgress:               env.onProgress,
-		OnShowMessage:            env.onShowMessage,
-		OnShowMessageRequest:     env.onShowMessageRequest,
+	var hooks fake.ClientHooks
+	if withHooks {
+		hooks = fake.ClientHooks{
+			OnDiagnostics:            env.onDiagnostics,
+			OnLogMessage:             env.onLogMessage,
+			OnWorkDoneProgressCreate: env.onWorkDoneProgressCreate,
+			OnProgress:               env.onProgress,
+			OnShowMessage:            env.onShowMessage,
+			OnShowMessageRequest:     env.onShowMessageRequest,
+		}
 	}
-	editor, err := fake.NewEditor(scratch, editorConfig).Connect(ctx, conn, hooks)
+	editor, err := fake.NewEditor(sandbox, editorConfig).Connect(ctx, conn, hooks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,11 +367,13 @@ func EmptyShowMessage(title string) SimpleExpectation {
 	}
 }
 
-// SomeShowMessage asserts that the editor has received a ShowMessage.
+// SomeShowMessage asserts that the editor has received a ShowMessage with the given title.
 func SomeShowMessage(title string) SimpleExpectation {
 	check := func(s State) (Verdict, interface{}) {
-		if len(s.showMessage) > 0 {
-			return Met, title
+		for _, m := range s.showMessage {
+			if strings.Contains(m.Message, title) {
+				return Met, m
+			}
 		}
 		return Unmet, nil
 	}

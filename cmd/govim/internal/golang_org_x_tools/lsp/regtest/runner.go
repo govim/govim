@@ -68,12 +68,13 @@ type Runner struct {
 }
 
 type runConfig struct {
-	editorConfig            fake.EditorConfig
-	modes                   Mode
-	proxyTxt                string
-	timeout                 time.Duration
-	gopath                  bool
-	withoutWorkspaceFolders bool
+	editor    fake.EditorConfig
+	sandbox   fake.SandboxConfig
+	modes     Mode
+	timeout   time.Duration
+	debugAddr string
+	skipLogs  bool
+	skipHooks bool
 }
 
 func (r *Runner) defaultConfig() *runConfig {
@@ -101,10 +102,10 @@ func WithTimeout(d time.Duration) RunOption {
 	})
 }
 
-// WithProxy configures a file proxy using the given txtar-encoded string.
-func WithProxy(txt string) RunOption {
+// WithProxyFiles configures a file proxy using the given txtar-encoded string.
+func WithProxyFiles(txt string) RunOption {
 	return optionSetter(func(opts *runConfig) {
-		opts.proxyTxt = txt
+		opts.sandbox.ProxyFiles = txt
 	})
 }
 
@@ -118,7 +119,7 @@ func WithModes(modes Mode) RunOption {
 // WithEditorConfig configures the editor's LSP session.
 func WithEditorConfig(config fake.EditorConfig) RunOption {
 	return optionSetter(func(opts *runConfig) {
-		opts.editorConfig = config
+		opts.editor = config
 	})
 }
 
@@ -128,7 +129,16 @@ func WithEditorConfig(config fake.EditorConfig) RunOption {
 // neither workspace folders nor a root URI.
 func WithoutWorkspaceFolders() RunOption {
 	return optionSetter(func(opts *runConfig) {
-		opts.withoutWorkspaceFolders = false
+		opts.editor.WithoutWorkspaceFolders = true
+	})
+}
+
+// WithRootPath specifies the rootURI of the workspace folder opened in the
+// editor. By default, the sandbox opens the top-level directory, but some
+// tests need to check other cases.
+func WithRootPath(path string) RunOption {
+	return optionSetter(func(opts *runConfig) {
+		opts.editor.EditorRootPath = path
 	})
 }
 
@@ -136,7 +146,51 @@ func WithoutWorkspaceFolders() RunOption {
 // than a separate working directory for use with modules.
 func InGOPATH() RunOption {
 	return optionSetter(func(opts *runConfig) {
-		opts.gopath = true
+		opts.sandbox.InGoPath = true
+	})
+}
+
+// WithDebugAddress configures a debug server bound to addr. This option is
+// currently only supported when executing in Singleton mode. It is intended to
+// be used for long-running stress tests.
+func WithDebugAddress(addr string) RunOption {
+	return optionSetter(func(opts *runConfig) {
+		opts.debugAddr = addr
+	})
+}
+
+// SkipLogs skips the buffering of logs during test execution. It is intended
+// for long-running stress tests.
+func SkipLogs() RunOption {
+	return optionSetter(func(opts *runConfig) {
+		opts.skipLogs = true
+	})
+}
+
+// InExistingDir runs the test in a pre-existing directory. If set, no initial
+// files may be passed to the runner. It is intended for long-running stress
+// tests.
+func InExistingDir(dir string) RunOption {
+	return optionSetter(func(opts *runConfig) {
+		opts.sandbox.Workdir = dir
+	})
+}
+
+// NoHooks disables the test runner's client hooks that are used for
+// instrumenting expectations (tracking diagnostics, logs, work done, etc.). It
+// is intended for performance-sensitive stress tests.
+func NoHooks() RunOption {
+	return optionSetter(func(opts *runConfig) {
+		opts.skipHooks = true
+	})
+}
+
+// WithGOPROXY configures the test environment to have an explicit proxy value.
+// This is intended for stress tests -- to ensure their isolation, regtests
+// should instead use WithProxyFiles.
+func WithGOPROXY(goproxy string) RunOption {
+	return optionSetter(func(opts *runConfig) {
+		opts.sandbox.GOPROXY = goproxy
 	})
 }
 
@@ -145,12 +199,8 @@ type TestFunc func(t *testing.T, env *Env)
 // Run executes the test function in the default configured gopls execution
 // modes. For each a test run, a new workspace is created containing the
 // un-txtared files specified by filedata.
-func (r *Runner) Run(t *testing.T, filedata string, test TestFunc, opts ...RunOption) {
+func (r *Runner) Run(t *testing.T, files string, test TestFunc, opts ...RunOption) {
 	t.Helper()
-	config := r.defaultConfig()
-	for _, opt := range opts {
-		opt.set(config)
-	}
 
 	tests := []struct {
 		name      string
@@ -164,20 +214,38 @@ func (r *Runner) Run(t *testing.T, filedata string, test TestFunc, opts ...RunOp
 
 	for _, tc := range tests {
 		tc := tc
+		config := r.defaultConfig()
+		for _, opt := range opts {
+			opt.set(config)
+		}
 		if config.modes&tc.mode == 0 {
 			continue
 		}
+		if config.debugAddr != "" && tc.mode != Singleton {
+			// Debugging is useful for running stress tests, but since the daemon has
+			// likely already been started, it would be too late to debug.
+			t.Fatalf("debugging regtest servers only works in Singleton mode, "+
+				"got debug addr %q and mode %v", config.debugAddr, tc.mode)
+		}
+
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), config.timeout)
 			defer cancel()
-			ctx = debug.WithInstance(ctx, "", "")
+			ctx = debug.WithInstance(ctx, "", "off")
+			if config.debugAddr != "" {
+				di := debug.GetInstance(ctx)
+				di.DebugAddress = config.debugAddr
+				di.Serve(ctx)
+				di.MonitorMemory(ctx)
+			}
 
 			tempDir := filepath.Join(r.TempDir, filepath.FromSlash(t.Name()))
 			if err := os.MkdirAll(tempDir, 0755); err != nil {
 				t.Fatal(err)
 			}
-
-			sandbox, err := fake.NewSandbox(tempDir, filedata, config.proxyTxt, config.gopath, config.withoutWorkspaceFolders)
+			config.sandbox.Files = files
+			config.sandbox.RootDir = tempDir
+			sandbox, err := fake.NewSandbox(&config.sandbox)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -189,10 +257,13 @@ func (r *Runner) Run(t *testing.T, filedata string, test TestFunc, opts ...RunOp
 			// exited before we clean up.
 			r.AddCloser(sandbox)
 			ss := tc.getServer(ctx, t)
+			framer := jsonrpc2.NewRawStream
 			ls := &loggingFramer{}
-			framer := ls.framer(jsonrpc2.NewRawStream)
+			if !config.skipLogs {
+				framer = ls.framer(jsonrpc2.NewRawStream)
+			}
 			ts := servertest.NewPipeServer(ctx, ss, framer)
-			env := NewEnv(ctx, t, sandbox, ts, config.editorConfig)
+			env := NewEnv(ctx, t, sandbox, ts, config.editor, !config.skipHooks)
 			defer func() {
 				if t.Failed() && r.PrintGoroutinesOnFailure {
 					pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
@@ -252,7 +323,7 @@ func (r *Runner) getTestServer() *servertest.TCPServer {
 	defer r.mu.Unlock()
 	if r.ts == nil {
 		ctx := context.Background()
-		ctx = debug.WithInstance(ctx, "", "")
+		ctx = debug.WithInstance(ctx, "", "off")
 		ss := lsprpc.NewStreamServer(cache.New(ctx, nil), false)
 		r.ts = servertest.NewTCPServer(ctx, ss, nil)
 	}

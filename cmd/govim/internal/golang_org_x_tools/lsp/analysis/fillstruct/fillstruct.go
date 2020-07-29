@@ -21,6 +21,7 @@ import (
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/ast/inspector"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/analysisinternal"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 const Doc = `note incomplete struct initializations
@@ -114,14 +115,16 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		}
 		pass.Report(analysis.Diagnostic{
 			Message: fmt.Sprintf("Fill %s with default values", name),
-			Pos:     expr.Lbrace,
-			End:     expr.Rbrace,
+			Pos:     expr.Pos(),
+			End:     expr.End(),
 		})
 	})
 	return nil, nil
 }
 
-func SuggestedFix(fset *token.FileSet, pos token.Pos, content []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
+func SuggestedFix(fset *token.FileSet, rng span.Range, content []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
+	pos := rng.Start // don't use the end
+
 	// TODO(rstambler): Using ast.Inspect would probably be more efficient than
 	// calling PathEnclosingInterval. Switch this approach.
 	path, _ := astutil.PathEnclosingInterval(file, pos, pos)

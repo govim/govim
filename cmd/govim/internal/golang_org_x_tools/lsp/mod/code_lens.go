@@ -3,7 +3,6 @@ package mod
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"golang.org/x/mod/modfile"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
@@ -15,7 +14,7 @@ import (
 
 // CodeLens computes code lens for a go.mod file.
 func CodeLens(ctx context.Context, snapshot source.Snapshot, uri span.URI) ([]protocol.CodeLens, error) {
-	if !snapshot.View().Options().EnabledCodeLens[source.CommandUpgradeDependency] {
+	if !snapshot.View().Options().EnabledCodeLens[source.CommandUpgradeDependency.Name] {
 		return nil, nil
 	}
 	ctx, done := event.Start(ctx, "mod.CodeLens", tag.URI.Of(uri))
@@ -33,7 +32,7 @@ func CodeLens(ctx context.Context, snapshot source.Snapshot, uri span.URI) ([]pr
 	if err != nil {
 		return nil, err
 	}
-	file, m, _, err := pmh.Parse(ctx)
+	file, m, _, err := pmh.Parse(ctx, snapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +40,7 @@ func CodeLens(ctx context.Context, snapshot source.Snapshot, uri span.URI) ([]pr
 	if err != nil {
 		return nil, err
 	}
-	upgrades, err := muh.Upgrades(ctx)
+	upgrades, err := muh.Upgrades(ctx, snapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -60,12 +59,16 @@ func CodeLens(ctx context.Context, snapshot source.Snapshot, uri span.URI) ([]pr
 		if err != nil {
 			return nil, err
 		}
+		jsonArgs, err := source.MarshalArgs(uri, []string{dep})
+		if err != nil {
+			return nil, err
+		}
 		codelens = append(codelens, protocol.CodeLens{
 			Range: rng,
 			Command: protocol.Command{
 				Title:     fmt.Sprintf("Upgrade dependency to %s", latest),
-				Command:   source.CommandUpgradeDependency,
-				Arguments: []interface{}{uri, dep},
+				Command:   source.CommandUpgradeDependency.Name,
+				Arguments: jsonArgs,
 			},
 		})
 		allUpgrades = append(allUpgrades, dep)
@@ -77,12 +80,16 @@ func CodeLens(ctx context.Context, snapshot source.Snapshot, uri span.URI) ([]pr
 		if err != nil {
 			return nil, err
 		}
+		jsonArgs, err := source.MarshalArgs(uri, append([]string{"-u"}, allUpgrades...))
+		if err != nil {
+			return nil, err
+		}
 		codelens = append(codelens, protocol.CodeLens{
 			Range: rng,
 			Command: protocol.Command{
 				Title:     "Upgrade all dependencies",
-				Command:   source.CommandUpgradeDependency,
-				Arguments: []interface{}{uri, strings.Join(append([]string{"-u"}, allUpgrades...), " ")},
+				Command:   source.CommandUpgradeDependency.Name,
+				Arguments: jsonArgs,
 			},
 		})
 	}

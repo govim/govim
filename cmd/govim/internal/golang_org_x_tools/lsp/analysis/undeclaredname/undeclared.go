@@ -10,12 +10,14 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
-	"go/printer"
+	"go/token"
+	"go/types"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/ast/astutil"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/analysisinternal"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 const Doc = `suggested fixes for "undeclared name: <>"
@@ -65,49 +67,60 @@ func run(pass *analysis.Pass) (interface{}, error) {
 		if _, ok := path[1].(*ast.SelectorExpr); ok {
 			continue
 		}
-		// TODO(golang.org/issue/34644): in a follow up handle call expressions
-		// with suggested fix to create function
+		// TODO(golang.org/issue/34644): Handle call expressions with suggested
+		// fixes to create a function.
 		if _, ok := path[1].(*ast.CallExpr); ok {
 			continue
 		}
-
-		// Get the place to insert the new statement.
-		insertBeforeStmt := analysisinternal.StmtToInsertVarBefore(path)
-		if insertBeforeStmt == nil {
+		tok := pass.Fset.File(file.Pos())
+		if tok == nil {
 			continue
 		}
-
-		var buf bytes.Buffer
-		if err := printer.Fprint(&buf, pass.Fset, file); err != nil {
-			continue
-		}
-		old := buf.Bytes()
-		insertBefore := pass.Fset.Position(insertBeforeStmt.Pos()).Offset
-
-		// Get the indent to add on the line after the new statement.
-		// Since this will have a parse error, we can not use format.Source().
-		contentBeforeStmt, indent := old[:insertBefore], "\n"
-		if nl := bytes.LastIndex(contentBeforeStmt, []byte("\n")); nl != -1 {
-			indent = string(contentBeforeStmt[nl:])
-		}
-		// Create the new local variable statement.
-		newStmt := fmt.Sprintf("%s := %s", ident.Name, indent)
-
+		offset := pass.Fset.Position(err.Pos).Offset
+		end := tok.Pos(offset + len(name))
 		pass.Report(analysis.Diagnostic{
 			Pos:     err.Pos,
-			End:     analysisinternal.TypeErrorEndPos(pass.Fset, old, err.Pos),
+			End:     end,
 			Message: err.Msg,
-			SuggestedFixes: []analysis.SuggestedFix{{
-				Message: fmt.Sprintf("Create variable \"%s\"", ident.Name),
-				TextEdits: []analysis.TextEdit{{
-					Pos:     insertBeforeStmt.Pos(),
-					End:     insertBeforeStmt.Pos(),
-					NewText: []byte(newStmt),
-				}},
-			}},
 		})
 	}
 	return nil, nil
+}
+
+func SuggestedFix(fset *token.FileSet, rng span.Range, content []byte, file *ast.File, _ *types.Package, _ *types.Info) (*analysis.SuggestedFix, error) {
+	pos := rng.Start // don't use the end
+	path, _ := astutil.PathEnclosingInterval(file, pos, pos)
+	if len(path) < 2 {
+		return nil, fmt.Errorf("")
+	}
+	ident, ok := path[0].(*ast.Ident)
+	if !ok {
+		return nil, fmt.Errorf("")
+	}
+	// Get the place to insert the new statement.
+	insertBeforeStmt := analysisinternal.StmtToInsertVarBefore(path)
+	if insertBeforeStmt == nil {
+		return nil, fmt.Errorf("")
+	}
+
+	insertBefore := fset.Position(insertBeforeStmt.Pos()).Offset
+
+	// Get the indent to add on the line after the new statement.
+	// Since this will have a parse error, we can not use format.Source().
+	contentBeforeStmt, indent := content[:insertBefore], "\n"
+	if nl := bytes.LastIndex(contentBeforeStmt, []byte("\n")); nl != -1 {
+		indent = string(contentBeforeStmt[nl:])
+	}
+	// Create the new local variable statement.
+	newStmt := fmt.Sprintf("%s := %s", ident.Name, indent)
+	return &analysis.SuggestedFix{
+		Message: fmt.Sprintf("Create variable \"%s\"", ident.Name),
+		TextEdits: []analysis.TextEdit{{
+			Pos:     insertBeforeStmt.Pos(),
+			End:     insertBeforeStmt.Pos(),
+			NewText: []byte(newStmt),
+		}},
+	}, nil
 }
 
 func FixesError(msg string) bool {

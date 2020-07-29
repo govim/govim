@@ -33,7 +33,7 @@ func (s *Server) documentLink(ctx context.Context, params *protocol.DocumentLink
 	case source.Mod:
 		links, err = modLinks(ctx, snapshot, fh)
 	case source.Go:
-		links, err = goLinks(ctx, snapshot.View(), fh)
+		links, err = goLinks(ctx, snapshot, fh)
 	}
 	// Don't return errors for document links.
 	if err != nil {
@@ -50,7 +50,7 @@ func modLinks(ctx context.Context, snapshot source.Snapshot, fh source.FileHandl
 	if err != nil {
 		return nil, err
 	}
-	file, m, _, err := pmh.Parse(ctx)
+	file, m, _, err := pmh.Parse(ctx, snapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -99,23 +99,23 @@ func modLinks(ctx context.Context, snapshot source.Snapshot, fh source.FileHandl
 	return links, nil
 }
 
-func goLinks(ctx context.Context, view source.View, fh source.FileHandle) ([]protocol.DocumentLink, error) {
-	phs, err := view.Snapshot().PackageHandles(ctx, fh)
+func goLinks(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle) ([]protocol.DocumentLink, error) {
+	view := snapshot.View()
+	pkgs, err := snapshot.PackagesForFile(ctx, fh.URI())
 	if err != nil {
 		return nil, err
 	}
-	ph, err := source.WidestPackageHandle(phs)
+	pkg, err := source.WidestPackage(pkgs)
 	if err != nil {
 		return nil, err
 	}
-	pgh := view.Session().Cache().ParseGoHandle(ctx, fh, source.ParseFull)
-	file, _, m, _, err := pgh.Parse(ctx)
+	pgf, err := snapshot.ParseGo(ctx, fh, source.ParseFull)
 	if err != nil {
 		return nil, err
 	}
 	var imports []*ast.ImportSpec
 	var str []*ast.BasicLit
-	ast.Inspect(file, func(node ast.Node) bool {
+	ast.Inspect(pgf.File, func(node ast.Node) bool {
 		switch n := node.(type) {
 		case *ast.ImportSpec:
 			imports = append(imports, n)
@@ -142,14 +142,14 @@ func goLinks(ctx context.Context, view source.View, fh source.FileHandle) ([]pro
 			if view.IsGoPrivatePath(target) {
 				continue
 			}
-			if mod, version, ok := moduleAtVersion(ctx, target, ph); ok && strings.ToLower(view.Options().LinkTarget) == "pkg.go.dev" {
+			if mod, version, ok := moduleAtVersion(ctx, snapshot, target, pkg); ok && strings.ToLower(view.Options().LinkTarget) == "pkg.go.dev" {
 				target = strings.Replace(target, mod, mod+"@"+version, 1)
 			}
 			// Account for the quotation marks in the positions.
 			start := imp.Path.Pos() + 1
 			end := imp.Path.End() - 1
 			target = fmt.Sprintf("https://%s/%s", view.Options().LinkTarget, target)
-			l, err := toProtocolLink(view, m, target, start, end, source.Go)
+			l, err := toProtocolLink(view, pgf.Mapper, target, start, end, source.Go)
 			if err != nil {
 				return nil, err
 			}
@@ -157,15 +157,15 @@ func goLinks(ctx context.Context, view source.View, fh source.FileHandle) ([]pro
 		}
 	}
 	for _, s := range str {
-		l, err := findLinksInString(ctx, view, s.Value, s.Pos(), m, source.Go)
+		l, err := findLinksInString(ctx, view, s.Value, s.Pos(), pgf.Mapper, source.Go)
 		if err != nil {
 			return nil, err
 		}
 		links = append(links, l...)
 	}
-	for _, commentGroup := range file.Comments {
+	for _, commentGroup := range pgf.File.Comments {
 		for _, comment := range commentGroup.List {
-			l, err := findLinksInString(ctx, view, comment.Text, comment.Pos(), m, source.Go)
+			l, err := findLinksInString(ctx, view, comment.Text, comment.Pos(), pgf.Mapper, source.Go)
 			if err != nil {
 				return nil, err
 			}
@@ -175,11 +175,7 @@ func goLinks(ctx context.Context, view source.View, fh source.FileHandle) ([]pro
 	return links, nil
 }
 
-func moduleAtVersion(ctx context.Context, target string, ph source.PackageHandle) (string, string, bool) {
-	pkg, err := ph.Check(ctx)
-	if err != nil {
-		return "", "", false
-	}
+func moduleAtVersion(ctx context.Context, snapshot source.Snapshot, target string, pkg source.Package) (string, string, bool) {
 	impPkg, err := pkg.GetImport(target)
 	if err != nil {
 		return "", "", false
