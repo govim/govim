@@ -6,6 +6,7 @@ package source
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/printer"
@@ -65,18 +66,14 @@ func (s mappedRange) URI() span.URI {
 	return s.m.URI
 }
 
-// getParsedFile is a convenience function that extracts the Package and ParseGoHandle for a File in a Snapshot.
+// getParsedFile is a convenience function that extracts the Package and ParsedGoFile for a File in a Snapshot.
 // selectPackage is typically Narrowest/WidestPackageHandle below.
-func getParsedFile(ctx context.Context, snapshot Snapshot, fh FileHandle, selectPackage PackagePolicy) (Package, ParseGoHandle, error) {
-	phs, err := snapshot.PackageHandles(ctx, fh)
+func getParsedFile(ctx context.Context, snapshot Snapshot, fh FileHandle, selectPackage PackagePolicy) (Package, *ParsedGoFile, error) {
+	phs, err := snapshot.PackagesForFile(ctx, fh.URI())
 	if err != nil {
 		return nil, nil, err
 	}
-	ph, err := selectPackage(phs)
-	if err != nil {
-		return nil, nil, err
-	}
-	pkg, err := ph.Check(ctx)
+	pkg, err := selectPackage(phs)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -84,61 +81,47 @@ func getParsedFile(ctx context.Context, snapshot Snapshot, fh FileHandle, select
 	return pkg, pgh, err
 }
 
-type PackagePolicy func([]PackageHandle) (PackageHandle, error)
+type PackagePolicy func([]Package) (Package, error)
 
-// NarrowestPackageHandle picks the "narrowest" package for a given file.
+// NarrowestPackage picks the "narrowest" package for a given file.
 //
 // By "narrowest" package, we mean the package with the fewest number of files
 // that includes the given file. This solves the problem of test variants,
 // as the test will have more files than the non-test package.
-func NarrowestPackageHandle(handles []PackageHandle) (PackageHandle, error) {
-	if len(handles) < 1 {
-		return nil, errors.Errorf("no PackageHandles")
+func NarrowestPackage(pkgs []Package) (Package, error) {
+	if len(pkgs) < 1 {
+		return nil, errors.Errorf("no packages")
 	}
-	result := handles[0]
-	for _, handle := range handles[1:] {
+	result := pkgs[0]
+	for _, handle := range pkgs[1:] {
 		if result == nil || len(handle.CompiledGoFiles()) < len(result.CompiledGoFiles()) {
 			result = handle
 		}
 	}
 	if result == nil {
-		return nil, errors.Errorf("nil PackageHandles have been returned")
+		return nil, errors.Errorf("no packages in input")
 	}
 	return result, nil
 }
 
-// WidestPackageHandle returns the PackageHandle containing the most files.
+// WidestPackage returns the Package containing the most files.
 //
 // This is useful for something like diagnostics, where we'd prefer to offer diagnostics
 // for as many files as possible.
-func WidestPackageHandle(handles []PackageHandle) (PackageHandle, error) {
-	if len(handles) < 1 {
-		return nil, errors.Errorf("no PackageHandles")
+func WidestPackage(pkgs []Package) (Package, error) {
+	if len(pkgs) < 1 {
+		return nil, errors.Errorf("no packages")
 	}
-	result := handles[0]
-	for _, handle := range handles[1:] {
+	result := pkgs[0]
+	for _, handle := range pkgs[1:] {
 		if result == nil || len(handle.CompiledGoFiles()) > len(result.CompiledGoFiles()) {
 			result = handle
 		}
 	}
 	if result == nil {
-		return nil, errors.Errorf("nil PackageHandles have been returned")
+		return nil, errors.Errorf("no packages in input")
 	}
 	return result, nil
-}
-
-// SpecificPackageHandle creates a PackagePolicy to select a
-// particular PackageHandle when you alread know the one you want.
-func SpecificPackageHandle(desiredID string) PackagePolicy {
-	return func(handles []PackageHandle) (PackageHandle, error) {
-		for _, h := range handles {
-			if h.ID() == desiredID {
-				return h, nil
-			}
-		}
-
-		return nil, fmt.Errorf("no package handle with expected id %q", desiredID)
-	}
 }
 
 func IsGenerated(ctx context.Context, snapshot Snapshot, uri span.URI) bool {
@@ -146,16 +129,15 @@ func IsGenerated(ctx context.Context, snapshot Snapshot, uri span.URI) bool {
 	if err != nil {
 		return false
 	}
-	ph := snapshot.View().Session().Cache().ParseGoHandle(ctx, fh, ParseHeader)
-	parsed, _, _, _, err := ph.Parse(ctx)
+	pgf, err := snapshot.ParseGo(ctx, fh, ParseHeader)
 	if err != nil {
 		return false
 	}
-	tok := snapshot.View().Session().Cache().FileSet().File(parsed.Pos())
+	tok := snapshot.View().Session().Cache().FileSet().File(pgf.File.Pos())
 	if tok == nil {
 		return false
 	}
-	for _, commentGroup := range parsed.Comments {
+	for _, commentGroup := range pgf.File.Comments {
 		for _, comment := range commentGroup.List {
 			if matched := generatedRx.MatchString(comment.Text); matched {
 				// Check if comment is at the beginning of the line in source.
@@ -201,7 +183,7 @@ func nameToMappedRange(v View, pkg Package, pos token.Pos, name string) (mappedR
 
 func posToMappedRange(v View, pkg Package, pos, end token.Pos) (mappedRange, error) {
 	logicalFilename := v.Session().Cache().FileSet().File(pos).Position(pos).Filename
-	m, err := findMapperInPackage(v, pkg, span.URIFromPath(logicalFilename))
+	pgf, _, err := findFileInDeps(pkg, span.URIFromPath(logicalFilename))
 	if err != nil {
 		return mappedRange{}, err
 	}
@@ -211,7 +193,7 @@ func posToMappedRange(v View, pkg Package, pos, end token.Pos) (mappedRange, err
 	if !end.IsValid() {
 		return mappedRange{}, errors.Errorf("invalid position for %v", end)
 	}
-	return newMappedRange(v.Session().Cache().FileSet(), m, pos, end), nil
+	return newMappedRange(v.Session().Cache().FileSet(), pgf.Mapper, pos, end), nil
 }
 
 // Matches cgo generated comment as well as the proposed standard:
@@ -529,34 +511,22 @@ func CompareDiagnostic(a, b *Diagnostic) int {
 	return 1
 }
 
-func findPosInPackage(v View, searchpkg Package, pos token.Pos) (ParseGoHandle, Package, error) {
+func findPosInPackage(v View, searchpkg Package, pos token.Pos) (*ParsedGoFile, Package, error) {
 	tok := v.Session().Cache().FileSet().File(pos)
 	if tok == nil {
 		return nil, nil, errors.Errorf("no file for pos in package %s", searchpkg.ID())
 	}
 	uri := span.URIFromPath(tok.Name())
 
-	ph, pkg, err := FindFileInPackage(searchpkg, uri)
+	pgf, pkg, err := findFileInDeps(searchpkg, uri)
 	if err != nil {
 		return nil, nil, err
 	}
-	return ph, pkg, nil
+	return pgf, pkg, nil
 }
 
-func findMapperInPackage(v View, searchpkg Package, uri span.URI) (*protocol.ColumnMapper, error) {
-	ph, _, err := FindFileInPackage(searchpkg, uri)
-	if err != nil {
-		return nil, err
-	}
-	_, _, m, _, err := ph.Cached()
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
-// FindFileInPackage finds uri in pkg or its dependencies.
-func FindFileInPackage(pkg Package, uri span.URI) (ParseGoHandle, Package, error) {
+// findFileInDeps finds uri in pkg or its dependencies.
+func findFileInDeps(pkg Package, uri span.URI) (*ParsedGoFile, Package, error) {
 	queue := []Package{pkg}
 	seen := make(map[string]bool)
 
@@ -565,8 +535,8 @@ func FindFileInPackage(pkg Package, uri span.URI) (ParseGoHandle, Package, error
 		queue = queue[1:]
 		seen[pkg.ID()] = true
 
-		if f, err := pkg.File(uri); err == nil {
-			return f, pkg, nil
+		if pgf, err := pkg.File(uri); err == nil {
+			return pgf, pkg, nil
 		}
 		for _, dep := range pkg.Imports() {
 			if !seen[dep.ID()] {
@@ -625,4 +595,48 @@ func formatZeroValue(T types.Type, qf types.Qualifier) string {
 	default:
 		return types.TypeString(T, qf) + "{}"
 	}
+}
+
+// MarshalArgs encodes the given arguments to json.RawMessages. This function
+// is used to construct arguments to a protocol.Command.
+//
+// Example usage:
+//
+//   jsonArgs, err := EncodeArgs(1, "hello", true, StructuredArg{42, 12.6})
+//
+func MarshalArgs(args ...interface{}) ([]json.RawMessage, error) {
+	var out []json.RawMessage
+	for _, arg := range args {
+		argJSON, err := json.Marshal(arg)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, argJSON)
+	}
+	return out, nil
+}
+
+// UnmarshalArgs decodes the given json.RawMessages to the variables provided
+// by args. Each element of args should be a pointer.
+//
+// Example usage:
+//
+//   var (
+//       num int
+//       str string
+//       bul bool
+//       structured StructuredArg
+//   )
+//   err := UnmarshalArgs(args, &num, &str, &bul, &structured)
+//
+func UnmarshalArgs(jsonArgs []json.RawMessage, args ...interface{}) error {
+	if len(args) != len(jsonArgs) {
+		return fmt.Errorf("DecodeArgs: expected %d input arguments, got %d JSON arguments", len(args), len(jsonArgs))
+	}
+	for i, arg := range args {
+		if err := json.Unmarshal(jsonArgs[i], arg); err != nil {
+			return err
+		}
+	}
+	return nil
 }

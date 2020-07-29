@@ -96,6 +96,14 @@ func HoverIdentifier(ctx context.Context, i *IdentifierInfo) (*HoverInformation,
 		}
 		h.Signature = b.String()
 	case types.Object:
+		// If the variable is implicitly declared in a type switch, we need to
+		// manually generate its object string.
+		if typ := i.Declaration.typeSwitchImplicit; typ != nil {
+			if v, ok := x.(*types.Var); ok {
+				h.Signature = fmt.Sprintf("var %s %s", v.Name(), types.TypeString(typ, i.qf))
+				break
+			}
+		}
 		h.Signature = objectString(x, i.qf)
 	}
 	if obj := i.Declaration.obj; obj != nil {
@@ -126,7 +134,7 @@ func pathLinkAndSymbolName(i *IdentifierInfo) (string, string, string) {
 	// package's API). This is true if the request originated in a test package,
 	// and if the declaration is also found in the same test package.
 	if i.pkg != nil && obj.Pkg() != nil && i.pkg.ForTest() != "" {
-		if _, pkg, _ := FindFileInPackage(i.pkg, i.Declaration.MappedRange[0].URI()); i.pkg == pkg {
+		if _, err := i.pkg.File(i.Declaration.MappedRange[0].URI()); err == nil {
 			return "", "", ""
 		}
 	}
@@ -137,12 +145,11 @@ func pathLinkAndSymbolName(i *IdentifierInfo) (string, string, string) {
 	var rTypeName string
 	switch obj := obj.(type) {
 	case *types.Var:
+		// If the object is a field, and we have an associated selector
+		// composite literal, or struct, we can determine the link.
 		if obj.IsField() {
-			// If the object is a field, and we have an associated selector
-			// composite literal, or struct, we can determine the link.
-			switch typ := i.enclosing.(type) {
-			case *types.Named:
-				rTypeName = typ.Obj().Name()
+			if named, ok := i.enclosing.(*types.Named); ok {
+				rTypeName = named.Obj().Name()
 			}
 		}
 	case *types.Func:
@@ -155,10 +162,15 @@ func pathLinkAndSymbolName(i *IdentifierInfo) (string, string, string) {
 			case *types.Struct:
 				rTypeName = r.Name()
 			case *types.Named:
-				if named, ok := i.enclosing.(*types.Named); ok {
-					rTypeName = named.Obj().Name()
-				} else if !rtyp.Obj().Exported() {
-					return "", "", ""
+				// If we have an unexported type, see if the enclosing type is
+				// exported (we may have an interface or struct we can link
+				// to). If not, don't show any link.
+				if !rtyp.Obj().Exported() {
+					if named, ok := i.enclosing.(*types.Named); ok && named.Obj().Exported() {
+						rTypeName = named.Obj().Name()
+					} else {
+						return "", "", ""
+					}
 				} else {
 					rTypeName = rtyp.Obj().Name()
 				}
@@ -237,10 +249,10 @@ func hoverInfo(pkg Package, obj types.Object, node ast.Node) (*HoverInformation,
 			}
 			// Assume that only one file will contain package documentation,
 			// so pick the first file that has a doc comment.
-			var doc *ast.CommentGroup
 			for _, file := range imp.GetSyntax() {
 				if file.Doc != nil {
-					info = &HoverInformation{source: obj, comment: doc}
+					info = &HoverInformation{source: obj, comment: file.Doc}
+					break
 				}
 			}
 		}

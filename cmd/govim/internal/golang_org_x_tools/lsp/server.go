@@ -11,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -24,10 +23,11 @@ const concurrentAnalyses = 1
 // messages on on the supplied stream.
 func NewServer(session source.Session, client protocol.Client) *Server {
 	return &Server{
-		delivered:       make(map[span.URI]sentDiagnostics),
-		session:         session,
-		client:          client,
-		diagnosticsSema: make(chan struct{}, concurrentAnalyses),
+		delivered:            make(map[span.URI]sentDiagnostics),
+		gcOptimizatonDetails: make(map[span.URI]struct{}),
+		session:              session,
+		client:               client,
+		diagnosticsSema:      make(chan struct{}, concurrentAnalyses),
 	}
 }
 
@@ -74,6 +74,12 @@ type Server struct {
 	deliveredMu sync.Mutex
 	delivered   map[span.URI]sentDiagnostics
 
+	// gcOptimizationDetails describes the packages for which we want
+	// optimization details to be included in the diagnostics. The key is the
+	// directory of the package.
+	gcOptimizationDetailsMu sync.Mutex
+	gcOptimizatonDetails    map[span.URI]struct{}
+
 	// diagnosticsSema limits the concurrency of diagnostics runs, which can be expensive.
 	diagnosticsSema chan struct{}
 
@@ -91,21 +97,6 @@ type sentDiagnostics struct {
 	sorted       []*source.Diagnostic
 	withAnalysis bool
 	snapshotID   uint64
-}
-
-func (s *Server) codeLens(ctx context.Context, params *protocol.CodeLensParams) ([]protocol.CodeLens, error) {
-	snapshot, fh, ok, err := s.beginFileRequest(ctx, params.TextDocument.URI, source.UnknownKind)
-	if !ok {
-		return nil, err
-	}
-	switch fh.Kind() {
-	case source.Mod:
-		return mod.CodeLens(ctx, snapshot, fh.URI())
-	case source.Go:
-		return source.CodeLens(ctx, snapshot, fh)
-	}
-	// Unsupported file kind for a code action.
-	return nil, nil
 }
 
 func (s *Server) nonstandardRequest(ctx context.Context, method string, params interface{}) (interface{}, error) {

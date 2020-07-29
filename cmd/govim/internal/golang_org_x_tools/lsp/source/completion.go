@@ -434,25 +434,21 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos 
 
 	startTime := time.Now()
 
-	pkg, pgh, err := getParsedFile(ctx, snapshot, fh, NarrowestPackageHandle)
+	pkg, pgf, err := getParsedFile(ctx, snapshot, fh, NarrowestPackage)
 	if err != nil {
 		return nil, nil, fmt.Errorf("getting file for Completion: %w", err)
 	}
-	file, src, m, _, err := pgh.Cached()
+	spn, err := pgf.Mapper.PointSpan(protoPos)
 	if err != nil {
 		return nil, nil, err
 	}
-	spn, err := m.PointSpan(protoPos)
-	if err != nil {
-		return nil, nil, err
-	}
-	rng, err := spn.Range(m.Converter)
+	rng, err := spn.Range(pgf.Mapper.Converter)
 	if err != nil {
 		return nil, nil, err
 	}
 	// Completion is based on what precedes the cursor.
 	// Find the path to the position before pos.
-	path, _ := astutil.PathEnclosingInterval(file, rng.Start-1, rng.Start-1)
+	path, _ := astutil.PathEnclosingInterval(pgf.File, rng.Start-1, rng.Start-1)
 	if path == nil {
 		return nil, nil, errors.Errorf("cannot find node enclosing position")
 	}
@@ -490,9 +486,9 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos 
 	c := &completer{
 		pkg:                       pkg,
 		snapshot:                  snapshot,
-		qf:                        qualifier(file, pkg.GetTypes(), pkg.GetTypesInfo()),
+		qf:                        qualifier(pgf.File, pkg.GetTypes(), pkg.GetTypesInfo()),
 		filename:                  fh.URI().Filename(),
-		file:                      file,
+		file:                      pgf.File,
 		path:                      path,
 		pos:                       pos,
 		seen:                      make(map[types.Object]bool),
@@ -511,7 +507,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos 
 		// default to a matcher that always matches
 		matcher:        prefixMatcher(""),
 		methodSetCache: make(map[methodSetKey]*types.MethodSet),
-		mapper:         m,
+		mapper:         pgf.Mapper,
 		startTime:      startTime,
 	}
 
@@ -528,7 +524,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos 
 	}
 	defer cancel()
 
-	if surrounding := c.containingIdent(src); surrounding != nil {
+	if surrounding := c.containingIdent(pgf.Src); surrounding != nil {
 		c.setSurrounding(surrounding)
 	}
 
@@ -537,7 +533,7 @@ func Completion(ctx context.Context, snapshot Snapshot, fh FileHandle, protoPos 
 	defer c.sortItems()
 
 	// If we're inside a comment return comment completions
-	for _, comment := range file.Comments {
+	for _, comment := range pgf.File.Comments {
 		if comment.Pos() < rng.Start && rng.Start <= comment.End() {
 			c.populateCommentCompletions(ctx, comment)
 			return c.items, c.getSurrounding(), nil
@@ -955,7 +951,7 @@ func (c *completer) methodsAndFields(ctx context.Context, typ types.Type, addres
 
 // lexical finds completions in the lexical environment.
 func (c *completer) lexical(ctx context.Context) error {
-	scopes := collectScopes(c.pkg, c.path, c.pos)
+	scopes := collectScopes(c.pkg.GetTypesInfo(), c.path, c.pos)
 	scopes = append(scopes, c.pkg.GetTypes().Scope(), types.Universe)
 
 	var (
@@ -1092,7 +1088,7 @@ func (c *completer) lexical(ctx context.Context) error {
 	return nil
 }
 
-func collectScopes(pkg Package, path []ast.Node, pos token.Pos) []*types.Scope {
+func collectScopes(info *types.Info, path []ast.Node, pos token.Pos) []*types.Scope {
 	// scopes[i], where i<len(path), is the possibly nil Scope of path[i].
 	var scopes []*types.Scope
 	for _, n := range path {
@@ -1107,7 +1103,7 @@ func collectScopes(pkg Package, path []ast.Node, pos token.Pos) []*types.Scope {
 				n = node.Type
 			}
 		}
-		scopes = append(scopes, pkg.GetTypesInfo().Scopes[n])
+		scopes = append(scopes, info.Scopes[n])
 	}
 	return scopes
 }

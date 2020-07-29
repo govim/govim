@@ -14,6 +14,13 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 )
 
+func (e *Env) ChangeFilesOnDisk(events []fake.FileEvent) {
+	e.T.Helper()
+	if err := e.Sandbox.Workdir.ChangeFilesOnDisk(e.Ctx, events); err != nil {
+		e.T.Fatal(err)
+	}
+}
+
 // RemoveWorkspaceFile deletes a file on disk but does nothing in the
 // editor. It calls t.Fatal on any error.
 func (e *Env) RemoveWorkspaceFile(name string) {
@@ -238,6 +245,18 @@ func (e *Env) CodeLens(path string) []protocol.CodeLens {
 	return lens
 }
 
+// ReferencesAtRegexp calls textDocument/references for the given path at the
+// position of the given regexp.
+func (e *Env) ReferencesAtRegexp(path string, re string) []protocol.Location {
+	e.T.Helper()
+	pos := e.RegexpSearch(path, re)
+	locations, err := e.Editor.References(e.Ctx, path, pos)
+	if err != nil {
+		e.T.Fatal(err)
+	}
+	return locations
+}
+
 // CodeAction calls testDocument/codeAction for the given path, and calls
 // t.Fatal if there are errors.
 func (e *Env) CodeAction(path string) []protocol.CodeAction {
@@ -252,12 +271,17 @@ func (e *Env) CodeAction(path string) []protocol.CodeAction {
 // ChangeEnv modifies the editor environment and reconfigures the LSP client.
 // TODO: extend this to "ChangeConfiguration", once we refactor the way editor
 // configuration is defined.
-func (e *Env) ChangeEnv(envvars ...string) {
+func (e *Env) ChangeEnv(overlay map[string]string) {
 	e.T.Helper()
 	// TODO: to be correct, this should probably be synchronized, but right now
 	// configuration is only ever modified synchronously in a regtest, so this
 	// correctness can wait for the previously mentioned refactoring.
-	e.Editor.Config.Env = append(e.Editor.Config.Env, envvars...)
+	if e.Editor.Config.Env == nil {
+		e.Editor.Config.Env = make(map[string]string)
+	}
+	for k, v := range overlay {
+		e.Editor.Config.Env[k] = v
+	}
 	var params protocol.DidChangeConfigurationParams
 	if err := e.Editor.Server.DidChangeConfiguration(e.Ctx, &params); err != nil {
 		e.T.Fatal(err)
