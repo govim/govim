@@ -2,9 +2,10 @@
 #
 # The scenario involves having a directory replaced dependency in go.mod.
 # When there is an error introduced into the local copy it should produce
-# a diagnostic (see https://golang.org/issues/36745).
+# a diagnostic.
 
-[golang.org/issues/36745] skip
+# Expand $WORK within our golden file
+envsubst error.golden
 
 # Open dependency via GoToDef
 vim ex 'e main.go'
@@ -50,7 +51,7 @@ const Name = "example.com/blah"
 -- error.golden --
 [
   {
-    "bufname": "p/blah.go",
+    "bufname": "$WORK/p/blah.go",
     "col": 1,
     "lnum": 4,
     "module": "",
