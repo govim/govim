@@ -8,8 +8,6 @@ vim ex 'silent noautocmd wall'
 cmp main.go main.go.banana
 cmp other.go other.go.banana
 
-[golang.org/issues/36743] skip
-
 # Rename of an identifier in another package
 vim ex 'call cursor(14,16)'
 vim ex 'call execute(\"GOVIMRename Goodbye\")'
