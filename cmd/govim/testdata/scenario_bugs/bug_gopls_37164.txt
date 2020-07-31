@@ -9,7 +9,7 @@
 # workspace load, the other is triggered by GOVIMGoToDef if the initial call has not
 # yet completed. Hence the two race to update go.mod
 
-[golang.org/issues/37164] skip
+[golang.org/issues/36880] skip
 [short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
 
 vim ex 'e '$WORK/p.go
