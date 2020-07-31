@@ -1,6 +1,8 @@
 # A simple test that verifies we get a diagnostic for imports
 # that are missing from our go.mod file
 
+[golang.org/issues/40269] skip
+
 [!go1.14] skip '-modfile only supported in Go 1.14'
 
 [short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
