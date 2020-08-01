@@ -61,7 +61,7 @@ type vimstate struct {
 	// suggestedFixesPopups is a set of suggested fixes keyed by popup ID. It represents
 	// currently defined popups (both hidden and visible) and have a lifespan of single
 	// codeAction call.
-	suggestedFixesPopups map[int][]protocol.WorkspaceEdit
+	suggestedFixesPopups map[int]struct{}
 
 	// working directory (when govim was started)
 	// TODO: handle changes to current working directory during runtime
@@ -157,26 +157,16 @@ func (v *vimstate) popupSelection(args ...json.RawMessage) (interface{}, error) 
 	v.Parse(args[0], &popupID)
 	v.Parse(args[1], &selection)
 
-	var edits []protocol.WorkspaceEdit
-	var ok bool
-	if edits, ok = v.suggestedFixesPopups[popupID]; !ok {
+	v.popupMenusLock.Lock()
+	cb, ok := v.popupMenus[popupID]
+	if !ok {
+		v.popupMenusLock.Unlock()
 		return nil, fmt.Errorf("couldn't find popup id: %d", popupID)
 	}
+	delete(v.popupMenus, popupID)
+	v.popupMenusLock.Unlock()
 
-	delete(v.suggestedFixesPopups, popupID)
-
-	for k := range v.suggestedFixesPopups {
-		v.ChannelCall("popup_close", k)
-		delete(v.suggestedFixesPopups, popupID)
-	}
-
-	if selection < 1 { // 0 = popup_close() called, -1 = ESC closed popup
-		return nil, nil
-	}
-
-	edit := edits[selection-1]
-
-	return nil, v.applyMultiBufTextedits(nil, edit.DocumentChanges)
+	return nil, cb(selection)
 }
 
 func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {

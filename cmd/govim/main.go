@@ -197,6 +197,14 @@ type govimplugin struct {
 	applyEditsCh   chan applyEditCall
 	applyEditsLock sync.Mutex
 
+	// popupMenus is a map of active popups where the user can make a selection. It is keyed
+	// by popupID and the value is a function that will be called when the popup is closed.
+	// It is either closed by selecting an item (1-indexed selection is passed as argument),
+	// by calling popup_close() (0 is passed as argument) or ESC is pressed (-1 is passed as
+	// argument. Adding and removing popups is protected by popupMenusLock.
+	popupMenus     map[int]func(selection int) error
+	popupMenusLock sync.Mutex
+
 	bufferUpdates chan *bufferUpdate
 
 	// inShutdown is closed when govim is told to Shutdown
@@ -233,6 +241,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	res := &govimplugin{
 		tmpDir:           tmpDir,
 		rawDiagnostics:   make(map[span.URI]*protocol.PublishDiagnosticsParams),
+		popupMenus:       make(map[int]func(int) error),
 		goplsEnv:         goplsEnv,
 		goplspath:        goplspath,
 		Driver:           d,
@@ -244,7 +253,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			defaultConfig:         *defaults,
 			config:                *defaults,
 			quickfixIsDiagnostics: true,
-			suggestedFixesPopups:  make(map[int][]protocol.WorkspaceEdit),
+			suggestedFixesPopups:  make(map[int]struct{}),
 		},
 	}
 	res.vimstate.govimplugin = res

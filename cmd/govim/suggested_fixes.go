@@ -120,7 +120,31 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 		}
 
 		popupID := v.ParseInt(v.ChannelCall("popup_create", alts, opts))
-		v.suggestedFixesPopups[popupID] = edits
+		v.suggestedFixesPopups[popupID] = struct{}{}
+
+		selectionCallback := func(selection int) error {
+			delete(v.suggestedFixesPopups, popupID)
+
+			for k := range v.suggestedFixesPopups {
+				v.ChannelCall("popup_close", k)
+				delete(v.suggestedFixesPopups, k)
+			}
+
+			if selection < 1 { // 0 = popup_close() called, -1 = ESC closed popup
+				return nil
+			}
+
+			edit := edits[selection-1]
+
+			if err := v.applyMultiBufTextedits(nil, edit.DocumentChanges); err != nil {
+				return err
+			}
+			return nil
+		}
+
+		v.popupMenusLock.Lock()
+		v.popupMenus[popupID] = selectionCallback
+		v.popupMenusLock.Unlock()
 	}
 
 	return nil
