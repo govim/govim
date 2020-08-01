@@ -1045,3 +1045,23 @@ func ErrLogMatch(ts *testscript.TestScript, neg bool, args []string) {
 	}
 	// we didn't find a match, but this is expected
 }
+
+// EnvSubst expands environment variable references in a file with the value of
+// the current testscript environment.
+func EnvSubst(ts *testscript.TestScript, neg bool, args []string) {
+	if neg {
+		ts.Fatalf("envsubst does not support negation of the command")
+	}
+	if len(args) == 0 {
+		ts.Fatalf("need to supply at least one filename")
+	}
+
+	for _, f := range args {
+		f = ts.MkAbs(f)
+		fc := ts.ReadFile(f)
+		fc = os.Expand(fc, func(v string) string {
+			return ts.Getenv(v)
+		})
+		ts.Check(ioutil.WriteFile(f, []byte(fc), 0666))
+	}
+}

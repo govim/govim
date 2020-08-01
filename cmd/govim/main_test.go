@@ -106,6 +106,7 @@ func TestScripts(t *testing.T) {
 				Cmds: map[string]func(ts *testscript.TestScript, neg bool, args []string){
 					"sleep":       testdriver.Sleep,
 					"errlogmatch": testdriver.ErrLogMatch,
+					"envsubst":    testdriver.EnvSubst,
 				},
 				Condition: testdriver.Condition,
 				Setup: func(e *testscript.Env) error {
