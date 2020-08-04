@@ -1,0 +1,102 @@
+# Tests CodeLens "gc_details" that, when enabled gopls will include diagnostics of information
+# severity with decisions about inlining, escapes, etc.
+
+[!go1.14] skip 'gc_details require at least Go 1.14'
+
+# Compiler details are reported using "information" severity
+vim ex 'e main.go'
+vim ex 'GOVIMGCDetails'
+[go1.14] [!go1.15] vimexprwait errors.go114.golden GOVIMTest_getqflist()
+[go1.15] vimexprwait errors.go115.golden GOVIMTest_getqflist()
+
+
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+# Test that details can be disabled
+vim ex 'GOVIMGCDetails'
+sleep $GOVIM_ERRLOGMATCH_WAIT
+vimexprwait errors.empty GOVIMTest_getqflist()
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+func main() {
+	fn()
+}
+
+func fn() {}
+-- errors.empty --
+[]
+-- errors.go114.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 6,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "canInlineFunction(cost: 2)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 4,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "inlineCall(main.fn)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 6,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "canInlineFunction(cost: 0)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go115.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 6,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "canInlineFunction(cost: 2)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 6,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "canInlineFunction(cost: 0)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

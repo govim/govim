@@ -10,6 +10,7 @@ import (
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/kr/pretty"
 )
@@ -27,6 +28,7 @@ const (
 	goplsVerboseOutput        = "verboseOutput"
 	goplsEnv                  = "env"
 	goplsAnalyses             = "analyses"
+	goplsCodeLens             = "codelens"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -139,6 +141,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if conf.Analyses != nil {
 		goplsConfig[goplsAnalyses] = *conf.Analyses
+	}
+	goplsConfig[goplsCodeLens] = map[string]bool{
+		source.CommandToggleDetails.Name: true, // gc_details
 	}
 	if g.vimstate.config.GoplsEnv != nil {
 		// It is safe not to copy the map here because a new config setting from

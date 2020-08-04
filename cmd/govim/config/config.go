@@ -311,6 +311,13 @@ const (
 	// CommandFillStruct populates fields in the struct under the cursor. Each
 	// field will get the respective zero value as value.
 	CommandFillStruct Command = "FillStruct"
+
+	// CommandGCDetails toggles go compiler annotation details for the current
+	// package. When enabled gopls will include diagnostics of information
+	// severity with decisions about inlining, escapes, etc.
+	//
+	// Note that this feature is experimental in gopls.
+	CommandGCDetails Command = "GCDetails"
 )
 
 type Function string
