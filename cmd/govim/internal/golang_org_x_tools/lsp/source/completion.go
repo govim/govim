@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"golang.org/x/tools/go/ast/astutil"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
@@ -260,7 +261,7 @@ func (c *completer) setSurrounding(ident *ast.Ident) {
 		content: ident.Name,
 		cursor:  c.pos,
 		// Overwrite the prefix only.
-		mappedRange: newMappedRange(c.snapshot.View().Session().Cache().FileSet(), c.mapper, ident.Pos(), ident.End()),
+		mappedRange: newMappedRange(c.snapshot.FileSet(), c.mapper, ident.Pos(), ident.End()),
 	}
 
 	switch c.opts.matcher {
@@ -278,7 +279,7 @@ func (c *completer) getSurrounding() *Selection {
 		c.surrounding = &Selection{
 			content:     "",
 			cursor:      c.pos,
-			mappedRange: newMappedRange(c.snapshot.View().Session().Cache().FileSet(), c.mapper, c.pos, c.pos),
+			mappedRange: newMappedRange(c.snapshot.FileSet(), c.mapper, c.pos, c.pos),
 		}
 	}
 	return c.surrounding
@@ -339,9 +340,11 @@ func (c *completer) found(ctx context.Context, cand candidate) {
 		}
 	}
 
-	// Lower score of function calls so we prefer fields and vars over calls.
+	// Lower score of method calls so we prefer fields and vars over calls.
 	if cand.expandFuncCall {
-		cand.score *= 0.9
+		if sig, ok := obj.Type().Underlying().(*types.Signature); ok && sig.Recv() != nil {
+			cand.score *= 0.9
+		}
 	}
 
 	// Prefer private objects over public ones.
@@ -652,7 +655,7 @@ func (c *completer) containingIdent(src []byte) *ast.Ident {
 
 // scanToken scans pgh's contents for the token containing pos.
 func (c *completer) scanToken(contents []byte) (token.Pos, token.Token, string) {
-	tok := c.snapshot.View().Session().Cache().FileSet().File(c.pos)
+	tok := c.snapshot.FileSet().File(c.pos)
 
 	var s scanner.Scanner
 	s.Init(tok, contents, nil, 0)
@@ -700,15 +703,13 @@ func (c *completer) emptySwitchStmt() bool {
 // populateCommentCompletions yields completions for exported
 // symbols immediately preceding comment.
 func (c *completer) populateCommentCompletions(ctx context.Context, comment *ast.CommentGroup) {
-
 	// Using the comment position find the line after
-	fset := c.snapshot.View().Session().Cache().FileSet()
-	file := fset.File(comment.Pos())
+	file := c.snapshot.FileSet().File(comment.End())
 	if file == nil {
 		return
 	}
 
-	line := file.Line(comment.Pos())
+	line := file.Line(comment.End())
 	if file.LineCount() < line+1 {
 		return
 	}
@@ -717,6 +718,9 @@ func (c *completer) populateCommentCompletions(ctx context.Context, comment *ast
 	if !nextLinePos.IsValid() {
 		return
 	}
+
+	// comment is valid, set surrounding as word boundaries around cursor
+	c.setSurroundingForComment(comment)
 
 	// Using the next line pos, grab and parse the exported symbol on that line
 	for _, n := range c.file.Decls {
@@ -769,6 +773,45 @@ func (c *completer) populateCommentCompletions(ctx context.Context, comment *ast
 			c.items = append(c.items, item)
 		}
 	}
+}
+
+// sets word boundaries surrounding a cursor for a comment
+func (c *completer) setSurroundingForComment(comments *ast.CommentGroup) {
+	var cursorComment *ast.Comment
+	for _, comment := range comments.List {
+		if c.pos >= comment.Pos() && c.pos <= comment.End() {
+			cursorComment = comment
+			break
+		}
+	}
+	// if cursor isn't in the comment
+	if cursorComment == nil {
+		return
+	}
+
+	// index of cursor in comment text
+	cursorOffset := int(c.pos - cursorComment.Pos())
+	start, end := cursorOffset, cursorOffset
+	for start > 0 && isValidIdentifierChar(cursorComment.Text[start-1]) {
+		start--
+	}
+	for end < len(cursorComment.Text) && isValidIdentifierChar(cursorComment.Text[end]) {
+		end++
+	}
+
+	c.surrounding = &Selection{
+		content: cursorComment.Text[start:end],
+		cursor:  c.pos,
+		mappedRange: newMappedRange(c.snapshot.FileSet(), c.mapper,
+			token.Pos(int(cursorComment.Slash)+start), token.Pos(int(cursorComment.Slash)+end)),
+	}
+}
+
+// isValidIdentifierChar returns true if a byte is a valid go identifier character
+// i.e unicode letter or digit or undescore
+func isValidIdentifierChar(char byte) bool {
+	charRune := rune(char)
+	return unicode.In(charRune, unicode.Letter, unicode.Digit) || char == '_'
 }
 
 func (c *completer) wantStructFieldCompletions() bool {
@@ -988,8 +1031,7 @@ func (c *completer) lexical(ctx context.Context) error {
 					node = c.path[i-1]
 				}
 				if node != nil {
-					fset := c.snapshot.View().Session().Cache().FileSet()
-					if resolved := resolveInvalid(fset, obj, node, c.pkg.GetTypesInfo()); resolved != nil {
+					if resolved := resolveInvalid(c.snapshot.FileSet(), obj, node, c.pkg.GetTypesInfo()); resolved != nil {
 						obj = resolved
 					}
 				}
@@ -1066,11 +1108,6 @@ func (c *completer) lexical(ctx context.Context) error {
 	}
 
 	if t := c.inference.objType; t != nil {
-		// Use variadic element type if we are completing variadic position.
-		if c.inference.variadicType != nil {
-			t = c.inference.variadicType
-		}
-
 		t = deref(t)
 
 		// If we have an expected type and it is _not_ a named type, see
@@ -1485,10 +1522,11 @@ type candidateInference struct {
 	// objKind is a mask of expected kinds of types such as "map", "slice", etc.
 	objKind objKind
 
-	// variadicType is the scalar variadic element type. For example,
-	// when completing "append([]T{}, <>)" objType is []T and
-	// variadicType is T.
-	variadicType types.Type
+	// variadic is true if we are completing the initial variadic
+	// parameter. For example:
+	//   append([]T{}, <>)      // objType=T variadic=true
+	//   append([]T{}, T{}, <>) // objType=T variadic=false
+	variadic bool
 
 	// modifiers are prefixes such as "*", "&" or "<-" that influence how
 	// a candidate type relates to the expected type.
@@ -1609,18 +1647,14 @@ Nodes:
 							return inf
 						}
 
-						var (
-							exprIdx         = exprAtPos(c.pos, node.Args)
-							isLastParam     = exprIdx == numParams-1
-							beyondLastParam = exprIdx >= numParams
-						)
+						exprIdx := exprAtPos(c.pos, node.Args)
 
 						// If we have one or zero arg expressions, we may be
 						// completing to a function call that returns multiple
 						// values, in turn getting passed in to the surrounding
 						// call. Record the assignees so we can favor function
 						// calls that return matching values.
-						if len(node.Args) <= 1 {
+						if len(node.Args) <= 1 && exprIdx == 0 {
 							for i := 0; i < sig.Params().Len(); i++ {
 								inf.assignees = append(inf.assignees, sig.Params().At(i).Type())
 							}
@@ -1629,30 +1663,18 @@ Nodes:
 							inf.variadicAssignees = sig.Variadic()
 						}
 
-						if sig.Variadic() {
-							variadicType := deslice(sig.Params().At(numParams - 1).Type())
-
-							// If we are beyond the last param or we are the last
-							// param w/ further expressions, we expect a single
-							// variadic item.
-							if beyondLastParam || isLastParam && len(node.Args) > numParams {
-								inf.objType = variadicType
-								break Nodes
-							}
-
-							// Otherwise if we are at the last param then we are
-							// completing the variadic positition (i.e. we expect a
-							// slice type []T or an individual item T).
-							if isLastParam {
-								inf.variadicType = variadicType
-							}
-						}
-
 						// Make sure not to run past the end of expected parameters.
-						if beyondLastParam {
+						if exprIdx >= numParams {
 							inf.objType = sig.Params().At(numParams - 1).Type()
 						} else {
 							inf.objType = sig.Params().At(exprIdx).Type()
+						}
+
+						if sig.Variadic() && exprIdx >= (numParams-1) {
+							// If we are completing a variadic param, deslice the variadic type.
+							inf.objType = deslice(inf.objType)
+							// Record whether we are completing the initial variadic param.
+							inf.variadic = exprIdx == numParams-1 && len(node.Args) <= numParams
 						}
 					}
 				}
@@ -1809,7 +1831,7 @@ func (ci candidateInference) applyTypeNameModifiers(typ types.Type) types.Type {
 // matchesVariadic returns true if we are completing a variadic
 // parameter and candType is a compatible slice type.
 func (ci candidateInference) matchesVariadic(candType types.Type) bool {
-	return ci.variadicType != nil && types.AssignableTo(candType, ci.objType)
+	return ci.variadic && ci.objType != nil && types.AssignableTo(candType, types.NewSlice(ci.objType))
 }
 
 // findSwitchStmt returns an *ast.CaseClause's corresponding *ast.SwitchStmt or
@@ -2076,9 +2098,9 @@ func (ci *candidateInference) candTypeMatches(cand *candidate) bool {
 	expTypes := make([]types.Type, 0, 2)
 	if ci.objType != nil {
 		expTypes = append(expTypes, ci.objType)
-	}
-	if ci.variadicType != nil {
-		expTypes = append(expTypes, ci.variadicType)
+		if ci.variadic {
+			expTypes = append(expTypes, types.NewSlice(ci.objType))
+		}
 	}
 
 	return cand.anyCandType(func(candType types.Type, addressable bool) bool {

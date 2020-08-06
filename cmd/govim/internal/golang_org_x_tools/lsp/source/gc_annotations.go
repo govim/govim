@@ -18,7 +18,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
-func GCOptimizationDetails(ctx context.Context, snapshot Snapshot, pkgDir span.URI) (map[FileIdentity][]*Diagnostic, error) {
+func GCOptimizationDetails(ctx context.Context, snapshot Snapshot, pkgDir span.URI) (map[VersionedFileIdentity][]*Diagnostic, error) {
 	outDir := filepath.Join(os.TempDir(), fmt.Sprintf("gopls-%d.details", os.Getpid()))
 	if err := os.MkdirAll(outDir, 0700); err != nil {
 		return nil, err
@@ -32,7 +32,8 @@ func GCOptimizationDetails(ctx context.Context, snapshot Snapshot, pkgDir span.U
 	if err != nil {
 		return nil, err
 	}
-	reports := make(map[FileIdentity][]*Diagnostic)
+	reports := make(map[VersionedFileIdentity][]*Diagnostic)
+	opts := snapshot.View().Options()
 	var parseError error
 	for _, fn := range files {
 		fname, v, err := parseDetailsFile(fn)
@@ -48,10 +49,36 @@ func GCOptimizationDetails(ctx context.Context, snapshot Snapshot, pkgDir span.U
 		if x == nil {
 			continue
 		}
-		k := x.Identity()
-		reports[k] = v
+		v = filterDiagnostics(v, &opts)
+		reports[x.VersionedFileIdentity()] = v
 	}
 	return reports, parseError
+}
+
+func filterDiagnostics(v []*Diagnostic, o *Options) []*Diagnostic {
+	var ans []*Diagnostic
+	for _, x := range v {
+		if x.Source != "go compiler" {
+			continue
+		}
+		if o.Annotations["noInline"] &&
+			(strings.HasPrefix(x.Message, "canInline") ||
+				strings.HasPrefix(x.Message, "cannotInline") ||
+				strings.HasPrefix(x.Message, "inlineCall")) {
+			continue
+		} else if o.Annotations["noEscape"] &&
+			(strings.HasPrefix(x.Message, "escape") || x.Message == "leak") {
+			continue
+		} else if o.Annotations["noNilcheck"] && strings.HasPrefix(x.Message, "nilcheck") {
+			continue
+		} else if o.Annotations["noBounds"] &&
+			(strings.HasPrefix(x.Message, "isInBounds") ||
+				strings.HasPrefix(x.Message, "isSliceInBounds")) {
+			continue
+		}
+		ans = append(ans, x)
+	}
+	return ans
 }
 
 func parseDetailsFile(fn string) (string, []*Diagnostic, error) {

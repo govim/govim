@@ -27,16 +27,10 @@ func (c *completer) literal(ctx context.Context, literalType types.Type, imp *im
 
 	expType := c.inference.objType
 
-	if c.inference.variadicType != nil {
+	if c.inference.matchesVariadic(literalType) {
 		// Don't offer literal slice candidates for variadic arguments.
 		// For example, don't offer "[]interface{}{}" in "fmt.Print(<>)".
-		if c.inference.matchesVariadic(literalType) {
-			return
-		}
-
-		// Otherwise, consider our expected type to be the variadic
-		// element type, not the slice type.
-		expType = c.inference.variadicType
+		return
 	}
 
 	// Avoid literal candidates if the expected type is an empty
@@ -115,7 +109,7 @@ func (c *completer) literal(ctx context.Context, literalType types.Type, imp *im
 				// If we are in a selector we must place the "&" before the selector.
 				// For example, "foo.B<>" must complete to "&foo.Bar{}", not
 				// "foo.&Bar{}".
-				edits, err := prependEdit(c.snapshot.View().Session().Cache().FileSet(), c.mapper, sel, "&")
+				edits, err := prependEdit(c.snapshot.FileSet(), c.mapper, sel, "&")
 				if err != nil {
 					event.Error(ctx, "error making edit for literal pointer completion", err)
 					return

@@ -152,7 +152,7 @@ func (c *Command) IsSuggestedFix() bool {
 
 // SuggestedFix applies the command's suggested fix to the given file and
 // range, returning the resulting edits.
-func (c *Command) SuggestedFix(ctx context.Context, snapshot Snapshot, fh FileHandle, pRng protocol.Range) ([]protocol.TextDocumentEdit, error) {
+func (c *Command) SuggestedFix(ctx context.Context, snapshot Snapshot, fh VersionedFileHandle, pRng protocol.Range) ([]protocol.TextDocumentEdit, error) {
 	if c.suggestedFixFn == nil {
 		return nil, fmt.Errorf("no suggested fix function for %s", c.Name)
 	}
@@ -212,6 +212,5 @@ func getAllSuggestedFixInputs(ctx context.Context, snapshot Snapshot, fh FileHan
 	if err != nil {
 		return nil, span.Range{}, nil, nil, nil, nil, nil, err
 	}
-	fset := snapshot.View().Session().Cache().FileSet()
-	return fset, rng, src, pgf.File, pgf.Mapper, pkg.GetTypes(), pkg.GetTypesInfo(), nil
+	return snapshot.FileSet(), rng, src, pgf.File, pgf.Mapper, pkg.GetTypes(), pkg.GetTypesInfo(), nil
 }

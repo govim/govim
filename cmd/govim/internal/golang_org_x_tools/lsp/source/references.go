@@ -12,6 +12,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"golang.org/x/xerrors"
 )
 
@@ -44,26 +45,29 @@ func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Posit
 
 // references is a helper function used by both References and Rename,
 // to avoid recomputing qualifiedObjsAtProtocolPos.
-func references(ctx context.Context, s Snapshot, qos []qualifiedObject, includeDeclaration bool) ([]*ReferenceInfo, error) {
+func references(ctx context.Context, snapshot Snapshot, qos []qualifiedObject, includeDeclaration bool) ([]*ReferenceInfo, error) {
 	var (
 		references []*ReferenceInfo
 		seen       = make(map[token.Position]bool)
-		fset       = s.View().Session().Cache().FileSet()
 	)
 
 	// Make sure declaration is the first item in the response.
 	if includeDeclaration {
-		rng, err := objToMappedRange(s.View(), qos[0].pkg, qos[0].obj)
+		filename := snapshot.FileSet().Position(qos[0].obj.Pos()).Filename
+		pgf, err := qos[0].pkg.File(span.URIFromPath(filename))
 		if err != nil {
 			return nil, err
 		}
-		ident, _ := qos[0].node.(*ast.Ident)
+		ident, err := findIdentifier(ctx, snapshot, qos[0].pkg, pgf.File, qos[0].obj.Pos())
+		if err != nil {
+			return nil, err
+		}
 		references = append(references, &ReferenceInfo{
-			mappedRange:   rng,
+			mappedRange:   ident.mappedRange,
 			Name:          qos[0].obj.Name(),
-			ident:         ident,
+			ident:         ident.ident,
 			obj:           qos[0].obj,
-			pkg:           qos[0].pkg,
+			pkg:           ident.pkg,
 			isDeclaration: true,
 		})
 	}
@@ -72,7 +76,7 @@ func references(ctx context.Context, s Snapshot, qos []qualifiedObject, includeD
 
 		// Only search dependents if the object is exported.
 		if qo.obj.Exported() {
-			reverseDeps, err := s.GetReverseDependencies(ctx, qo.pkg.ID())
+			reverseDeps, err := snapshot.GetReverseDependencies(ctx, qo.pkg.ID())
 			if err != nil {
 				return nil, err
 			}
@@ -85,12 +89,12 @@ func references(ctx context.Context, s Snapshot, qos []qualifiedObject, includeD
 				if obj != qo.obj {
 					continue
 				}
-				pos := fset.Position(ident.Pos())
+				pos := snapshot.FileSet().Position(ident.Pos())
 				if seen[pos] {
 					continue
 				}
 				seen[pos] = true
-				rng, err := posToMappedRange(s.View(), pkg, ident.Pos(), ident.End())
+				rng, err := posToMappedRange(snapshot, pkg, ident.Pos(), ident.End())
 				if err != nil {
 					return nil, err
 				}

@@ -84,14 +84,20 @@ func (s *snapshot) buildPackageHandle(ctx context.Context, id packageID, mode so
 		snapshot := arg.(*snapshot)
 
 		// Begin loading the direct dependencies, in parallel.
+		var wg sync.WaitGroup
 		for _, dep := range deps {
+			wg.Add(1)
 			go func(dep *packageHandle) {
 				dep.check(ctx, snapshot)
+				wg.Done()
 			}(dep)
 		}
 
 		data := &packageData{}
 		data.pkg, data.err = typeCheck(ctx, snapshot, m, mode, deps)
+		// Make sure that the workers above have finished before we return,
+		// especially in case of cancellation.
+		wg.Wait()
 
 		return data
 	})
@@ -168,7 +174,8 @@ func checkPackageKey(ctx context.Context, id packageID, pghs []*parseGoHandle, c
 		b.WriteString(string(dep))
 	}
 	for _, cgf := range pghs {
-		b.WriteString(cgf.file.Identity().String())
+		b.WriteString(string(cgf.file.URI()))
+		b.WriteString(cgf.file.FileIdentity().Hash)
 	}
 	return packageHandleKey(hashContents(b.Bytes()))
 }
@@ -231,7 +238,7 @@ func (s *snapshot) parseGoHandles(ctx context.Context, files []span.URI, mode so
 		if err != nil {
 			return nil, err
 		}
-		pghs = append(pghs, s.view.session.cache.parseGoHandle(ctx, fh, mode))
+		pghs = append(pghs, s.parseGoHandle(ctx, fh, mode))
 	}
 	return pghs, nil
 }
@@ -281,8 +288,8 @@ func typeCheck(ctx context.Context, snapshot *snapshot, m *metadata, mode source
 				actualErrors[i] = err
 				return
 			}
-			pgh := snapshot.view.session.cache.parseGoHandle(ctx, fh, mode)
-			pgf, fixed, err := snapshot.view.parseGo(ctx, pgh)
+			pgh := snapshot.parseGoHandle(ctx, fh, mode)
+			pgf, fixed, err := snapshot.parseGo(ctx, pgh)
 			if err != nil {
 				actualErrors[i] = err
 				return

@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"go/ast"
+	"go/parser"
 	"go/token"
 	"go/types"
 	"io"
@@ -28,6 +29,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typesinternal"
+	errors "golang.org/x/xerrors"
 )
 
 type snapshot struct {
@@ -35,6 +37,11 @@ type snapshot struct {
 
 	id   uint64
 	view *View
+
+	active sync.WaitGroup
+
+	// builtin pins the AST and package for builtin.go in memory.
+	builtin *builtinPackageHandle
 
 	// mu guards all of the maps in the snapshot.
 	mu sync.Mutex
@@ -52,7 +59,10 @@ type snapshot struct {
 
 	// files maps file URIs to their corresponding FileHandles.
 	// It may invalidated when a file's content changes.
-	files map[span.URI]source.FileHandle
+	files map[span.URI]source.VersionedFileHandle
+
+	// goFiles maps a parseKey to its parseGoHandle.
+	goFiles map[parseKey]*parseGoHandle
 
 	// packages maps a packageKey to a set of packageHandles to which that file belongs.
 	// It may be invalidated when a file's content changes.
@@ -98,6 +108,10 @@ func (s *snapshot) ID() uint64 {
 
 func (s *snapshot) View() source.View {
 	return s.view
+}
+
+func (s *snapshot) FileSet() *token.FileSet {
+	return s.view.session.cache.fset
 }
 
 // config returns the configuration used for the snapshot's interaction with the
@@ -218,7 +232,7 @@ func (s *snapshot) buildOverlay() map[string][]byte {
 	return overlays
 }
 
-func hashUnsavedOverlays(files map[span.URI]source.FileHandle) string {
+func hashUnsavedOverlays(files map[span.URI]source.VersionedFileHandle) string {
 	var unsaved []string
 	for uri, fh := range files {
 		if overlay, ok := fh.(*overlay); ok && !overlay.saved {
@@ -309,6 +323,22 @@ func (s *snapshot) transitiveReverseDependencies(id packageID, ids map[packageID
 	for _, parentID := range importedBy {
 		s.transitiveReverseDependencies(parentID, ids)
 	}
+}
+
+func (s *snapshot) getGoFile(key parseKey) *parseGoHandle {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.goFiles[key]
+}
+
+func (s *snapshot) addGoFile(key parseKey, pgh *parseGoHandle) *parseGoHandle {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if existing, ok := s.goFiles[key]; ok {
+		return existing
+	}
+	s.goFiles[key] = pgh
+	return pgh
 }
 
 func (s *snapshot) getModHandle(uri span.URI) *parseModHandle {
@@ -568,7 +598,7 @@ func (s *snapshot) isWorkspacePackage(id packageID) (packagePath, bool) {
 	return scope, ok
 }
 
-func (s *snapshot) FindFile(uri span.URI) source.FileHandle {
+func (s *snapshot) FindFile(uri span.URI) source.VersionedFileHandle {
 	f, err := s.view.getFile(uri)
 	if err != nil {
 		return nil
@@ -582,7 +612,7 @@ func (s *snapshot) FindFile(uri span.URI) source.FileHandle {
 
 // GetFile returns a File for the given URI. It will always succeed because it
 // adds the file to the managed set if needed.
-func (s *snapshot) GetFile(ctx context.Context, uri span.URI) (source.FileHandle, error) {
+func (s *snapshot) GetFile(ctx context.Context, uri span.URI) (source.VersionedFileHandle, error) {
 	f, err := s.view.getFile(uri)
 	if err != nil {
 		return nil, err
@@ -599,8 +629,9 @@ func (s *snapshot) GetFile(ctx context.Context, uri span.URI) (source.FileHandle
 	if err != nil {
 		return nil, err
 	}
-	s.files[f.URI()] = fh
-	return fh, nil
+	closed := &closedFile{fh}
+	s.files[f.URI()] = closed
+	return closed, nil
 }
 
 func (s *snapshot) IsOpen(uri span.URI) bool {
@@ -742,19 +773,21 @@ func contains(views []*View, view *View) bool {
 	return false
 }
 
-func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.FileHandle, forceReloadMetadata bool) *snapshot {
+func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.VersionedFileHandle, forceReloadMetadata bool) *snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	result := &snapshot{
 		id:                s.id + 1,
 		view:              s.view,
+		builtin:           s.builtin,
 		ids:               make(map[span.URI][]packageID),
 		importedBy:        make(map[packageID][]packageID),
 		metadata:          make(map[packageID]*metadata),
 		packages:          make(map[packageKey]*packageHandle),
 		actions:           make(map[actionKey]*actionHandle),
-		files:             make(map[span.URI]source.FileHandle),
+		files:             make(map[span.URI]source.VersionedFileHandle),
+		goFiles:           make(map[parseKey]*parseGoHandle),
 		workspacePackages: make(map[packageID]packagePath),
 		unloadableFiles:   make(map[span.URI]struct{}),
 		parseModHandles:   make(map[span.URI]*parseModHandle),
@@ -774,6 +807,13 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Fi
 	// Copy all of the modHandles.
 	for k, v := range s.parseModHandles {
 		result.parseModHandles[k] = v
+	}
+
+	for k, v := range s.goFiles {
+		if _, ok := withoutURIs[k.file.URI]; ok {
+			continue
+		}
+		result.goFiles[k] = v
 	}
 
 	// transitiveIDs keeps track of transitive reverse dependencies.
@@ -948,7 +988,7 @@ func (s *snapshot) shouldInvalidateMetadata(ctx context.Context, originalFH, cur
 		return currentFH.Kind() == source.Go
 	}
 	// If the file hasn't changed, there's no need to reload.
-	if originalFH.Identity().String() == currentFH.Identity().String() {
+	if originalFH.FileIdentity() == currentFH.FileIdentity() {
 		return false
 	}
 	// If a go.mod file's contents have changed, always invalidate metadata.
@@ -956,30 +996,90 @@ func (s *snapshot) shouldInvalidateMetadata(ctx context.Context, originalFH, cur
 		return originalFH.URI() == s.view.modURI
 	}
 	// Get the original and current parsed files in order to check package name and imports.
-	original, originalErr := s.ParseGo(ctx, originalFH, source.ParseHeader)
-	current, currentErr := s.ParseGo(ctx, currentFH, source.ParseHeader)
+	// Use the direct parsing API to avoid modifying the snapshot we're cloning.
+	parse := func(fh source.FileHandle) (*ast.File, error) {
+		data, err := fh.Read()
+		if err != nil {
+			return nil, err
+		}
+		fset := token.NewFileSet()
+		return parser.ParseFile(fset, fh.URI().Filename(), data, parser.ImportsOnly)
+	}
+	original, originalErr := parse(originalFH)
+	current, currentErr := parse(currentFH)
 	if originalErr != nil || currentErr != nil {
 		return (originalErr == nil) != (currentErr == nil)
 	}
 	// Check if the package's metadata has changed. The cases handled are:
 	//    1. A package's name has changed
 	//    2. A file's imports have changed
-	if original.File.Name.Name != current.File.Name.Name {
+	if original.Name.Name != current.Name.Name {
 		return true
 	}
 	// If the package's imports have increased, definitely re-run `go list`.
-	if len(original.File.Imports) < len(current.File.Imports) {
+	if len(original.Imports) < len(current.Imports) {
 		return true
 	}
 	importSet := make(map[string]struct{})
-	for _, importSpec := range original.File.Imports {
+	for _, importSpec := range original.Imports {
 		importSet[importSpec.Path.Value] = struct{}{}
 	}
 	// If any of the current imports were not in the original imports.
-	for _, importSpec := range current.File.Imports {
+	for _, importSpec := range current.Imports {
 		if _, ok := importSet[importSpec.Path.Value]; !ok {
 			return true
 		}
 	}
 	return false
+}
+
+func (s *snapshot) BuiltinPackage(ctx context.Context) (*source.BuiltinPackage, error) {
+	s.view.awaitInitialized(ctx)
+
+	if s.builtin == nil {
+		return nil, errors.Errorf("no builtin package for view %s", s.view.name)
+	}
+	d, err := s.builtin.handle.Get(ctx, s)
+	if err != nil {
+		return nil, err
+	}
+	data := d.(*builtinPackageData)
+	return data.parsed, data.err
+}
+
+func (s *snapshot) buildBuiltinPackage(ctx context.Context, goFiles []string) error {
+	if len(goFiles) != 1 {
+		return errors.Errorf("only expected 1 file, got %v", len(goFiles))
+	}
+	uri := span.URIFromPath(goFiles[0])
+
+	// Get the FileHandle through the cache to avoid adding it to the snapshot
+	// and to get the file content from disk.
+	fh, err := s.view.session.cache.getFile(ctx, uri)
+	if err != nil {
+		return err
+	}
+	h := s.view.session.cache.store.Bind(fh.FileIdentity(), func(ctx context.Context, arg memoize.Arg) interface{} {
+		snapshot := arg.(*snapshot)
+
+		pgh := snapshot.parseGoHandle(ctx, fh, source.ParseFull)
+		pgf, _, err := snapshot.parseGo(ctx, pgh)
+		if err != nil {
+			return &builtinPackageData{err: err}
+		}
+		pkg, err := ast.NewPackage(snapshot.view.session.cache.fset, map[string]*ast.File{
+			pgf.URI.Filename(): pgf.File,
+		}, nil, nil)
+		if err != nil {
+			return &builtinPackageData{err: err}
+		}
+		return &builtinPackageData{
+			parsed: &source.BuiltinPackage{
+				ParsedFile: pgf,
+				Package:    pkg,
+			},
+		}
+	})
+	s.builtin = &builtinPackageHandle{handle: h}
+	return nil
 }

@@ -21,7 +21,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
-func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.FileIdentity][]*source.Diagnostic, error) {
+func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.VersionedFileIdentity][]*source.Diagnostic, error) {
 	uri := snapshot.View().ModFile()
 	if uri == "" {
 		return nil, nil
@@ -38,8 +38,8 @@ func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.File
 	if err == source.ErrTmpModfileUnsupported {
 		return nil, nil
 	}
-	reports := map[source.FileIdentity][]*source.Diagnostic{
-		fh.Identity(): {},
+	reports := map[source.VersionedFileIdentity][]*source.Diagnostic{
+		fh.VersionedFileIdentity(): {},
 	}
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.File
 		if err != nil {
 			return nil, err
 		}
-		reports[fh.Identity()] = append(reports[fh.Identity()], diag)
+		reports[fh.VersionedFileIdentity()] = append(reports[fh.VersionedFileIdentity()], diag)
 	}
 	return reports, nil
 }
