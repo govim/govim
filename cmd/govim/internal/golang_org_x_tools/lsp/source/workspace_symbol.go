@@ -47,7 +47,9 @@ func WorkspaceSymbols(ctx context.Context, matcherType SymbolMatcher, style Symb
 	var symbols []protocol.SymbolInformation
 outer:
 	for _, view := range views {
-		knownPkgs, err := view.Snapshot().KnownPackages(ctx)
+		snapshot, release := view.Snapshot()
+		defer release() // TODO: refactor so this runs promptly instead of at the end of the function
+		knownPkgs, err := snapshot.KnownPackages(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -63,7 +65,7 @@ outer:
 			seen[pkg.PkgPath()] = struct{}{}
 			for _, pgf := range pkg.CompiledGoFiles() {
 				for _, si := range findSymbol(pgf.File.Decls, pkg.GetTypesInfo(), symbolMatcher) {
-					mrng, err := posToMappedRange(view, pkg, si.node.Pos(), si.node.End())
+					mrng, err := posToMappedRange(snapshot, pkg, si.node.Pos(), si.node.End())
 					if err != nil {
 						event.Error(ctx, "Error getting mapped range for node", err)
 						continue

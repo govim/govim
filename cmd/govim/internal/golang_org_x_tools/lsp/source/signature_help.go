@@ -74,7 +74,7 @@ FindCall:
 
 	// Handle builtin functions separately.
 	if obj, ok := obj.(*types.Builtin); ok {
-		return builtinSignature(ctx, snapshot.View(), callExpr, obj.Name(), rng.Start)
+		return builtinSignature(ctx, snapshot, callExpr, obj.Name(), rng.Start)
 	}
 
 	// Get the type information for the function being called.
@@ -99,7 +99,7 @@ FindCall:
 		if err != nil {
 			return nil, 0, err
 		}
-		rng, err := objToMappedRange(snapshot.View(), pkg, obj)
+		rng, err := objToMappedRange(snapshot, pkg, obj)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -108,7 +108,7 @@ FindCall:
 			node: node,
 		}
 		decl.MappedRange = append(decl.MappedRange, rng)
-		d, err := hover(ctx, snapshot.View().Session().Cache().FileSet(), pkg, decl)
+		d, err := hover(ctx, snapshot.FileSet(), pkg, decl)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -132,8 +132,8 @@ FindCall:
 	}, activeParam, nil
 }
 
-func builtinSignature(ctx context.Context, view View, callExpr *ast.CallExpr, name string, pos token.Pos) (*protocol.SignatureInformation, int, error) {
-	sig, err := newBuiltinSignature(ctx, view, name)
+func builtinSignature(ctx context.Context, snapshot Snapshot, callExpr *ast.CallExpr, name string, pos token.Pos) (*protocol.SignatureInformation, int, error) {
+	sig, err := newBuiltinSignature(ctx, snapshot, name)
 	if err != nil {
 		return nil, 0, err
 	}
