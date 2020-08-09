@@ -78,7 +78,7 @@ func (c Command) BuildCommand(args ...string) *exec.Cmd {
 }
 
 var (
-	GoVersions = []string{"go1.13.12", "go1.14.4", "go1.15rc1"}
+	GoVersions = []string{"go1.13.12", "go1.14.4", "go1.15rc2"}
 
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{
