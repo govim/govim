@@ -47,10 +47,14 @@ type State struct {
 	logs               []*protocol.LogMessageParams
 	showMessage        []*protocol.ShowMessageParams
 	showMessageRequest []*protocol.ShowMessageRequestParams
+
+	registrations   []*protocol.RegistrationParams
+	unregistrations []*protocol.UnregistrationParams
+
 	// outstandingWork is a map of token->work summary. All tokens are assumed to
 	// be string, though the spec allows for numeric tokens as well.  When work
 	// completes, it is deleted from this map.
-	outstandingWork map[string]*workProgress
+	outstandingWork map[protocol.ProgressToken]*workProgress
 	completedWork   map[string]int
 }
 
@@ -115,7 +119,7 @@ func NewEnv(ctx context.Context, t *testing.T, sandbox *fake.Sandbox, ts servert
 		Server:  ts,
 		state: State{
 			diagnostics:     make(map[string]*protocol.PublishDiagnosticsParams),
-			outstandingWork: make(map[string]*workProgress),
+			outstandingWork: make(map[protocol.ProgressToken]*workProgress),
 			completedWork:   make(map[string]int),
 		},
 		waiters: make(map[int]*condition),
@@ -129,6 +133,8 @@ func NewEnv(ctx context.Context, t *testing.T, sandbox *fake.Sandbox, ts servert
 			OnProgress:               env.onProgress,
 			OnShowMessage:            env.onShowMessage,
 			OnShowMessageRequest:     env.onShowMessageRequest,
+			OnRegistration:           env.onRegistration,
+			OnUnregistration:         env.onUnregistration,
 		}
 	}
 	editor, err := fake.NewEditor(sandbox, editorConfig).Connect(ctx, conn, hooks)
@@ -180,18 +186,16 @@ func (e *Env) onWorkDoneProgressCreate(_ context.Context, m *protocol.WorkDonePr
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	token := m.Token.(string)
-	e.state.outstandingWork[token] = &workProgress{}
+	e.state.outstandingWork[m.Token] = &workProgress{}
 	return nil
 }
 
 func (e *Env) onProgress(_ context.Context, m *protocol.ProgressParams) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	token := m.Token.(string)
-	work, ok := e.state.outstandingWork[token]
+	work, ok := e.state.outstandingWork[m.Token]
 	if !ok {
-		panic(fmt.Sprintf("got progress report for unknown report %s: %v", token, m))
+		panic(fmt.Sprintf("got progress report for unknown report %v: %v", m.Token, m))
 	}
 	v := m.Value.(map[string]interface{})
 	switch kind := v["kind"]; kind {
@@ -202,10 +206,28 @@ func (e *Env) onProgress(_ context.Context, m *protocol.ProgressParams) error {
 			work.percent = pct.(float64)
 		}
 	case "end":
-		title := e.state.outstandingWork[token].title
+		title := e.state.outstandingWork[m.Token].title
 		e.state.completedWork[title] = e.state.completedWork[title] + 1
-		delete(e.state.outstandingWork, token)
+		delete(e.state.outstandingWork, m.Token)
 	}
+	e.checkConditionsLocked()
+	return nil
+}
+
+func (e *Env) onRegistration(_ context.Context, m *protocol.RegistrationParams) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.state.registrations = append(e.state.registrations, m)
+	e.checkConditionsLocked()
+	return nil
+}
+
+func (e *Env) onUnregistration(_ context.Context, m *protocol.UnregistrationParams) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	e.state.unregistrations = append(e.state.unregistrations, m)
 	e.checkConditionsLocked()
 	return nil
 }
@@ -493,6 +515,86 @@ func NoLogMatching(typ protocol.MessageType, re string) LogExpectation {
 	return LogExpectation{
 		check:       check,
 		description: fmt.Sprintf("no log message matching %q", re),
+	}
+}
+
+// RegistrationExpectation is an expectation on the capability registrations
+// received by the editor from gopls.
+type RegistrationExpectation struct {
+	check       func([]*protocol.RegistrationParams) (Verdict, interface{})
+	description string
+}
+
+// Check implements the Expectation interface.
+func (e RegistrationExpectation) Check(s State) (Verdict, interface{}) {
+	return e.check(s.registrations)
+}
+
+// Description implements the Expectation interface.
+func (e RegistrationExpectation) Description() string {
+	return e.description
+}
+
+// RegistrationMatching asserts that the client has received a capability
+// registration matching the given regexp.
+func RegistrationMatching(re string) RegistrationExpectation {
+	rec, err := regexp.Compile(re)
+	if err != nil {
+		panic(err)
+	}
+	check := func(params []*protocol.RegistrationParams) (Verdict, interface{}) {
+		for _, p := range params {
+			for _, r := range p.Registrations {
+				if rec.Match([]byte(r.Method)) {
+					return Met, r
+				}
+			}
+		}
+		return Unmet, nil
+	}
+	return RegistrationExpectation{
+		check:       check,
+		description: fmt.Sprintf("registration matching %q", re),
+	}
+}
+
+// UnregistrationExpectation is an expectation on the capability
+// unregistrations received by the editor from gopls.
+type UnregistrationExpectation struct {
+	check       func([]*protocol.UnregistrationParams) (Verdict, interface{})
+	description string
+}
+
+// Check implements the Expectation interface.
+func (e UnregistrationExpectation) Check(s State) (Verdict, interface{}) {
+	return e.check(s.unregistrations)
+}
+
+// Description implements the Expectation interface.
+func (e UnregistrationExpectation) Description() string {
+	return e.description
+}
+
+// UnregistrationMatching asserts that the client has received an
+// unregistration whose ID matches the given regexp.
+func UnregistrationMatching(re string) UnregistrationExpectation {
+	rec, err := regexp.Compile(re)
+	if err != nil {
+		panic(err)
+	}
+	check := func(params []*protocol.UnregistrationParams) (Verdict, interface{}) {
+		for _, p := range params {
+			for _, r := range p.Unregisterations {
+				if rec.Match([]byte(r.Method)) {
+					return Met, r
+				}
+			}
+		}
+		return Unmet, nil
+	}
+	return UnregistrationExpectation{
+		check:       check,
+		description: fmt.Sprintf("unregistration matching %q", re),
 	}
 }
 
