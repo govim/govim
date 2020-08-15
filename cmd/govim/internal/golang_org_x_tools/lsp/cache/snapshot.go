@@ -88,13 +88,11 @@ type snapshot struct {
 	parseModHandles map[span.URI]*parseModHandle
 
 	// Preserve go.mod-related handles to avoid garbage-collecting the results
-	// of various calls to the go command.
-	//
-	// TODO(rstambler): If we end up with any more such handles, we should
-	// consider creating a struct for them.
-	modTidyHandle    *modTidyHandle
-	modWhyHandle     *modWhyHandle
-	modUpgradeHandle *modUpgradeHandle
+	// of various calls to the go command. The handles need not refer to only
+	// the view's go.mod file.
+	modTidyHandles    map[span.URI]*modTidyHandle
+	modUpgradeHandles map[span.URI]*modUpgradeHandle
+	modWhyHandles     map[span.URI]*modWhyHandle
 }
 
 type packageKey struct {
@@ -119,9 +117,18 @@ func (s *snapshot) FileSet() *token.FileSet {
 	return s.view.session.cache.fset
 }
 
-// config returns the configuration used for the snapshot's interaction with the
-// go/packages API.
+// config returns a *packages.Config with the working directory set to the
+// view's root.
 func (s *snapshot) config(ctx context.Context) *packages.Config {
+	return s.configWithDir(ctx, s.view.root.Filename())
+}
+
+// configWithDir returns the configuration used for the snapshot's interaction
+// with the go/packages API. It uses the given working directory.
+// TODO(rstambler): go/packages requires that we do not provide overlays for
+// multiple modules in on config, so buildOverlay needs to filter overlays by
+// module.
+func (s *snapshot) configWithDir(ctx context.Context, dir string) *packages.Config {
 	s.view.optionsMu.Lock()
 	env, buildFlags := s.view.envLocked()
 	verboseOutput := s.view.options.VerboseOutput
@@ -129,7 +136,7 @@ func (s *snapshot) config(ctx context.Context) *packages.Config {
 
 	cfg := &packages.Config{
 		Context:    ctx,
-		Dir:        s.view.root.Filename(),
+		Dir:        dir,
 		Env:        append([]string{}, env...),
 		BuildFlags: append([]string{}, buildFlags...),
 		Mode: packages.NeedName |
@@ -276,7 +283,7 @@ func (s *snapshot) PackagesForFile(ctx context.Context, uri span.URI) ([]source.
 	// Get the list of IDs from the snapshot again, in case it has changed.
 	var pkgs []source.Package
 	for _, id := range s.getIDsForURI(uri) {
-		pkg, err := s.checkedPackage(ctx, id, source.ParseFull)
+		pkg, err := s.checkedPackage(ctx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -285,8 +292,8 @@ func (s *snapshot) PackagesForFile(ctx context.Context, uri span.URI) ([]source.
 	return pkgs, nil
 }
 
-func (s *snapshot) checkedPackage(ctx context.Context, id packageID, mode source.ParseMode) (*pkg, error) {
-	ph, err := s.buildPackageHandle(ctx, id, mode)
+func (s *snapshot) checkedPackage(ctx context.Context, id packageID) (*pkg, error) {
+	ph, err := s.buildPackageHandle(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +312,7 @@ func (s *snapshot) GetReverseDependencies(ctx context.Context, id string) ([]sou
 
 	var pkgs []source.Package
 	for id := range ids {
-		pkg, err := s.checkedPackage(ctx, id, source.ParseFull)
+		pkg, err := s.checkedPackage(ctx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -346,28 +353,28 @@ func (s *snapshot) addGoFile(key parseKey, pgh *parseGoHandle) *parseGoHandle {
 	return pgh
 }
 
-func (s *snapshot) getModHandle(uri span.URI) *parseModHandle {
+func (s *snapshot) getParseModHandle(uri span.URI) *parseModHandle {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.parseModHandles[uri]
 }
 
-func (s *snapshot) getModWhyHandle() *modWhyHandle {
+func (s *snapshot) getModWhyHandle(uri span.URI) *modWhyHandle {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.modWhyHandle
+	return s.modWhyHandles[uri]
 }
 
-func (s *snapshot) getModUpgradeHandle() *modUpgradeHandle {
+func (s *snapshot) getModUpgradeHandle(uri span.URI) *modUpgradeHandle {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.modUpgradeHandle
+	return s.modUpgradeHandles[uri]
 }
 
-func (s *snapshot) getModTidyHandle() *modTidyHandle {
+func (s *snapshot) getModTidyHandle(uri span.URI) *modTidyHandle {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.modTidyHandle
+	return s.modTidyHandles[uri]
 }
 
 func (s *snapshot) getImportedBy(id packageID) []packageID {
@@ -441,7 +448,7 @@ func (s *snapshot) WorkspacePackages(ctx context.Context) ([]source.Package, err
 	}
 	var pkgs []source.Package
 	for _, pkgID := range s.workspacePackageIDs() {
-		pkg, err := s.checkedPackage(ctx, pkgID, source.ParseFull)
+		pkg, err := s.checkedPackage(ctx, pkgID)
 		if err != nil {
 			return nil, err
 		}
@@ -457,27 +464,19 @@ func (s *snapshot) KnownPackages(ctx context.Context) ([]source.Package, error) 
 
 	// The WorkspaceSymbols implementation relies on this function returning
 	// workspace packages first.
-	wsPackages := s.workspacePackageIDs()
-	var otherPackages []packageID
+	ids := s.workspacePackageIDs()
 	s.mu.Lock()
 	for id := range s.metadata {
 		if _, ok := s.workspacePackages[id]; ok {
 			continue
 		}
-		otherPackages = append(otherPackages, id)
+		ids = append(ids, id)
 	}
 	s.mu.Unlock()
 
 	var pkgs []source.Package
-	for _, id := range wsPackages {
-		pkg, err := s.checkedPackage(ctx, id, source.ParseFull)
-		if err != nil {
-			return nil, err
-		}
-		pkgs = append(pkgs, pkg)
-	}
-	for _, id := range otherPackages {
-		pkg, err := s.checkedPackage(ctx, id, source.ParseExported)
+	for _, id := range ids {
+		pkg, err := s.checkedPackage(ctx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -489,7 +488,7 @@ func (s *snapshot) KnownPackages(ctx context.Context) ([]source.Package, error) 
 func (s *snapshot) CachedImportPaths(ctx context.Context) (map[string]source.Package, error) {
 	// Don't reload workspace package metadata.
 	// This function is meant to only return currently cached information.
-	s.view.awaitInitialized(ctx)
+	s.view.AwaitInitialized(ctx)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -668,7 +667,7 @@ func (s *snapshot) IsSaved(uri span.URI) bool {
 
 func (s *snapshot) awaitLoaded(ctx context.Context) error {
 	// Do not return results until the snapshot's view has been initialized.
-	s.view.awaitInitialized(ctx)
+	s.view.AwaitInitialized(ctx)
 
 	if err := s.reloadWorkspace(ctx); err != nil {
 		return err
@@ -697,20 +696,24 @@ func (s *snapshot) reloadWorkspace(ctx context.Context) error {
 
 	// See which of the workspace packages are missing metadata.
 	s.mu.Lock()
-	var pkgPaths []interface{}
+	pkgPathSet := map[packagePath]struct{}{}
 	for id, pkgPath := range s.workspacePackages {
 		// Don't try to reload "command-line-arguments" directly.
 		if pkgPath == "command-line-arguments" {
 			continue
 		}
 		if s.metadata[id] == nil {
-			pkgPaths = append(pkgPaths, pkgPath)
+			pkgPathSet[pkgPath] = struct{}{}
 		}
 	}
 	s.mu.Unlock()
 
-	if len(pkgPaths) == 0 {
+	if len(pkgPathSet) == 0 {
 		return nil
+	}
+	var pkgPaths []interface{}
+	for pkgPath := range pkgPathSet {
+		pkgPaths = append(pkgPaths, pkgPath)
 	}
 	return s.load(ctx, pkgPaths...)
 }
@@ -814,9 +817,9 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Ve
 		workspacePackages:    make(map[packageID]packagePath),
 		unloadableFiles:      make(map[span.URI]struct{}),
 		parseModHandles:      make(map[span.URI]*parseModHandle),
-		modTidyHandle:        s.modTidyHandle,
-		modUpgradeHandle:     s.modUpgradeHandle,
-		modWhyHandle:         s.modWhyHandle,
+		modTidyHandles:       make(map[span.URI]*modTidyHandle),
+		modUpgradeHandles:    make(map[span.URI]*modUpgradeHandle),
+		modWhyHandles:        make(map[span.URI]*modWhyHandle),
 	}
 
 	if s.builtin != nil {
@@ -850,6 +853,27 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Ve
 		result.goFiles[k] = v
 	}
 
+	// Copy all of the go.mod-related handles. They may be invalidated later,
+	// so we inherit them at the end of the function.
+	for k, v := range s.modTidyHandles {
+		if _, ok := withoutURIs[k]; ok {
+			continue
+		}
+		result.modTidyHandles[k] = v
+	}
+	for k, v := range s.modUpgradeHandles {
+		if _, ok := withoutURIs[k]; ok {
+			continue
+		}
+		result.modUpgradeHandles[k] = v
+	}
+	for k, v := range s.modWhyHandles {
+		if _, ok := withoutURIs[k]; ok {
+			continue
+		}
+		result.modWhyHandles[k] = v
+	}
+
 	// transitiveIDs keeps track of transitive reverse dependencies.
 	// If an ID is present in the map, invalidate its types.
 	// If an ID's value is true, invalidate its metadata too.
@@ -872,9 +896,17 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Ve
 		// Invalidate the previous modTidyHandle if any of the files have been
 		// saved or if any of the metadata has been invalidated.
 		if invalidateMetadata || fileWasSaved(originalFH, currentFH) {
-			result.modTidyHandle = nil
-			result.modUpgradeHandle = nil
-			result.modWhyHandle = nil
+			// TODO(rstambler): Only delete mod handles for which the
+			// withoutURI is relevant.
+			for k := range s.modTidyHandles {
+				delete(result.modTidyHandles, k)
+			}
+			for k := range s.modUpgradeHandles {
+				delete(result.modUpgradeHandles, k)
+			}
+			for k := range s.modWhyHandles {
+				delete(result.modWhyHandles, k)
+			}
 		}
 		if currentFH.Kind() == source.Mod {
 			// If the view's go.mod file's contents have changed, invalidate the
@@ -1005,14 +1037,15 @@ copyIDs:
 		result.workspacePackages[id] = pkgPath
 	}
 
-	if result.modTidyHandle != nil {
-		newGen.Inherit(result.modTidyHandle.handle)
+	// Inherit all of the go.mod-related handles.
+	for _, v := range s.modTidyHandles {
+		newGen.Inherit(v.handle)
 	}
-	if result.modUpgradeHandle != nil {
-		newGen.Inherit(result.modUpgradeHandle.handle)
+	for _, v := range s.modUpgradeHandles {
+		newGen.Inherit(v.handle)
 	}
-	if result.modWhyHandle != nil {
-		newGen.Inherit(result.modWhyHandle.handle)
+	for _, v := range s.modWhyHandles {
+		newGen.Inherit(v.handle)
 	}
 
 	// Don't bother copying the importedBy graph,
@@ -1116,7 +1149,7 @@ func (s *snapshot) findWorkspaceDirectories(ctx context.Context, modFH source.Fi
 		return m
 	}
 	for _, r := range mod.File.Replace {
-		// We may be replacing a module with a different version. not a path
+		// We may be replacing a module with a different version, not a path
 		// on disk.
 		if r.New.Version != "" {
 			continue
@@ -1128,7 +1161,7 @@ func (s *snapshot) findWorkspaceDirectories(ctx context.Context, modFH source.Fi
 }
 
 func (s *snapshot) BuiltinPackage(ctx context.Context) (*source.BuiltinPackage, error) {
-	s.view.awaitInitialized(ctx)
+	s.view.AwaitInitialized(ctx)
 
 	if s.builtin == nil {
 		return nil, errors.Errorf("no builtin package for view %s", s.view.name)
