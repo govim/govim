@@ -12,8 +12,8 @@ require (
 	github.com/rogpeppe/go-internal v1.6.0
 	golang.org/x/mod v0.3.0
 	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
-	golang.org/x/tools v0.0.0-20200814230902-9882f1d1823d
-	golang.org/x/tools/gopls v0.0.0-20200814230902-9882f1d1823d
+	golang.org/x/tools v0.0.0-20200820180210-c8f393745106
+	golang.org/x/tools/gopls v0.0.0-20200820180210-c8f393745106
 	golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
