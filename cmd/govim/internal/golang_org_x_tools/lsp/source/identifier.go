@@ -10,6 +10,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"sort"
 	"strconv"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
@@ -57,21 +58,40 @@ func Identifier(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 	ctx, done := event.Start(ctx, "source.Identifier")
 	defer done()
 
-	pkg, pgf, err := getParsedFile(ctx, snapshot, fh, NarrowestPackage)
-	if err != nil {
-		return nil, fmt.Errorf("getting file for Identifier: %w", err)
-	}
-	spn, err := pgf.Mapper.PointSpan(pos)
+	pkgs, err := snapshot.PackagesForFile(ctx, fh.URI(), TypecheckAll)
 	if err != nil {
 		return nil, err
 	}
-	rng, err := spn.Range(pgf.Mapper.Converter)
-	if err != nil {
-		return nil, err
+	if len(pkgs) == 0 {
+		return nil, fmt.Errorf("no packages for file %v", fh.URI())
 	}
-	return findIdentifier(ctx, snapshot, pkg, pgf.File, rng.Start)
+	sort.Slice(pkgs, func(i, j int) bool {
+		return len(pkgs[i].CompiledGoFiles()) < len(pkgs[j].CompiledGoFiles())
+	})
+	var findErr error
+	for _, pkg := range pkgs {
+		pgf, err := pkg.File(fh.URI())
+		if err != nil {
+			return nil, err
+		}
+		spn, err := pgf.Mapper.PointSpan(pos)
+		if err != nil {
+			return nil, err
+		}
+		rng, err := spn.Range(pgf.Mapper.Converter)
+		if err != nil {
+			return nil, err
+		}
+		var ident *IdentifierInfo
+		ident, findErr = findIdentifier(ctx, snapshot, pkg, pgf.File, rng.Start)
+		if findErr == nil {
+			return ident, nil
+		}
+	}
+	return nil, findErr
 }
 
+// ErrNoIdentFound is error returned when no identifer is found at a particular position
 var ErrNoIdentFound = errors.New("no identifier found")
 
 func findIdentifier(ctx context.Context, snapshot Snapshot, pkg Package, file *ast.File, pos token.Pos) (*IdentifierInfo, error) {
@@ -164,7 +184,7 @@ func findIdentifier(ctx context.Context, snapshot Snapshot, pkg Package, file *a
 			result.Declaration.typeSwitchImplicit = typ
 		} else {
 			// Probably a type error.
-			return nil, errors.Errorf("no object for ident %v", result.Name)
+			return nil, errors.Errorf("%w for ident %v", errNoObjectFound, result.Name)
 		}
 	}
 

@@ -331,15 +331,8 @@ func (c *completer) found(ctx context.Context, cand candidate) {
 	if c.matchingCandidate(&cand) {
 		cand.score *= highScore
 
-		if c.seenInSwitchCase(&cand) {
-			// If this candidate matches an expression already used in a
-			// different case clause, downrank. We only downrank a little
-			// because the user could write something like:
-			//
-			//   switch foo {
-			//   case bar:
-			//   case ba<>: // they may want "bar|baz" or "bar.baz()"
-			cand.score *= 0.9
+		if p := c.penalty(&cand); p > 0 {
+			cand.score *= (1 - p)
 		}
 	} else if isTypeName(obj) {
 		// If obj is a *types.TypeName that didn't otherwise match, check
@@ -387,16 +380,17 @@ func (c *completer) found(ctx context.Context, cand candidate) {
 	c.deepSearch(ctx, cand)
 }
 
-// seenInSwitchCase reports whether cand has already been seen in
-// another switch case statement.
-func (c *completer) seenInSwitchCase(cand *candidate) bool {
-	for _, chain := range c.inference.seenSwitchCases {
-		if c.objChainMatches(cand.obj, chain) {
-			return true
+// penalty reports a score penalty for cand in the range (0, 1).
+// For example, a candidate is penalized if it has already been used
+// in another switch case statement.
+func (c *completer) penalty(cand *candidate) float64 {
+	for _, p := range c.inference.penalized {
+		if c.objChainMatches(cand.obj, p.objChain) {
+			return p.penalty
 		}
 	}
 
-	return false
+	return 0
 }
 
 // candidate represents a completion candidate.
@@ -427,6 +421,10 @@ type candidate struct {
 	// dereference is a count of how many times to dereference the candidate obj.
 	// For example, dereference=2 turns "foo" into "**foo" when formatting.
 	dereference int
+
+	// variadic is true if this candidate fills a variadic param and
+	// needs "..." appended.
+	variadic bool
 
 	// imp is the import that needs to be added to this package in order
 	// for this candidate to be valid. nil if no import needed.
@@ -1556,6 +1554,16 @@ const (
 	kindFunc
 )
 
+// penalizedObj represents an object that should be disfavored as a
+// completion candidate.
+type penalizedObj struct {
+	// objChain is the full "chain", e.g. "foo.bar().baz" becomes
+	// []types.Object{foo, bar, baz}.
+	objChain []types.Object
+	// penalty is score penalty in the range (0, 1).
+	penalty float64
+}
+
 // candidateInference holds information we have inferred about a type that can be
 // used at the current position.
 type candidateInference struct {
@@ -1602,13 +1610,12 @@ type candidateInference struct {
 	// foo(bar, baz<>) // variadicAssignees=false
 	variadicAssignees bool
 
-	// seenSwitchCases tracks the expressions already used in the
-	// containing switch statement's cases. Each expression is tracked
-	// as a slice of objects. For example, "case foo.bar().baz:" is
-	// tracked as []types.Object{foo, bar, baz}. Tracking the entire
-	// "chain" allows us to differentiate "a.foo" and "b.foo" when "a"
-	// and "b" are the same type.
-	seenSwitchCases [][]types.Object
+	// penalized holds expressions that should be disfavored as
+	// candidates. For example, it tracks expressions already used in a
+	// switch statement's other cases. Each expression is tracked using
+	// its entire object "chain" allowing differentiation between
+	// "a.foo" and "b.foo" when "a" and "b" are the same type.
+	penalized []penalizedObj
 
 	// objChain contains the chain of objects representing the
 	// surrounding *ast.SelectorExpr. For example, if we are completing
@@ -1798,7 +1805,7 @@ Nodes:
 							}
 
 							if objs := objChain(c.pkg.GetTypesInfo(), caseExpr); len(objs) > 0 {
-								inf.seenSwitchCases = append(inf.seenSwitchCases, objs)
+								inf.penalized = append(inf.penalized, penalizedObj{objChain: objs, penalty: 0.1})
 							}
 						}
 					}
@@ -2275,11 +2282,15 @@ func (c *completer) objChainMatches(cand types.Object, chain []types.Object) boo
 // candidate given the candidate inference. cand's score may be
 // mutated to downrank the candidate in certain situations.
 func (ci *candidateInference) candTypeMatches(cand *candidate) bool {
-	expTypes := make([]types.Type, 0, 2)
+	var (
+		expTypes     = make([]types.Type, 0, 2)
+		variadicType types.Type
+	)
 	if ci.objType != nil {
 		expTypes = append(expTypes, ci.objType)
 		if ci.variadic {
-			expTypes = append(expTypes, types.NewSlice(ci.objType))
+			variadicType = types.NewSlice(ci.objType)
+			expTypes = append(expTypes, variadicType)
 		}
 	}
 
@@ -2322,6 +2333,10 @@ func (ci *candidateInference) candTypeMatches(cand *candidate) bool {
 			matches, untyped := ci.typeMatches(expType, candType)
 			if !matches {
 				continue
+			}
+
+			if expType == variadicType {
+				cand.variadic = true
 			}
 
 			// Lower candidate score for untyped conversions. This avoids
