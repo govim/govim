@@ -58,4 +58,7 @@ func (r *Config) Apply(v *Config) {
 	if v.ExperimentalWorkaroundCompleteoptLongest != nil {
 		r.ExperimentalWorkaroundCompleteoptLongest = v.ExperimentalWorkaroundCompleteoptLongest
 	}
+	if v.ExperimentalProgressPopups != nil {
+		r.ExperimentalProgressPopups = v.ExperimentalProgressPopups
+	}
 }
