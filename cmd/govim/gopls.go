@@ -137,6 +137,8 @@ func (g *govimplugin) startGopls() error {
 	initParams.Capabilities.Workspace.DidChangeConfiguration.DynamicRegistration = true
 	initParams.Capabilities.Workspace.DidChangeWatchedFiles.DynamicRegistration = true
 
+	initParams.Capabilities.Window.WorkDoneProgress = true
+
 	if _, err := g.server.Initialize(context.Background(), initParams); err != nil {
 		return fmt.Errorf("failed to initialise gopls: %v", err)
 	}

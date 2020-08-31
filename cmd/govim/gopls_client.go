@@ -225,11 +225,13 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 
 func (g *govimplugin) Progress(ctxt context.Context, params *protocol.ProgressParams) error {
 	defer absorbShutdownErr()
-	panic("Progress not implemented yet")
+	g.logGoplsClientf("Progress callback: %v", pretty.Sprint(params))
+	return nil
 }
 func (g *govimplugin) WorkDoneProgressCreate(ctxt context.Context, params *protocol.WorkDoneProgressCreateParams) error {
 	defer absorbShutdownErr()
-	panic("WorkDoneProgressCreate not implemented yet")
+	g.logGoplsClientf("WorkDoneProgressCreate callback: %v", pretty.Sprint(params))
+	return nil
 }
 
 func absorbShutdownErr() {
