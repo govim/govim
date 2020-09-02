@@ -25,7 +25,7 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 	var surrounding *source.Selection
 	switch fh.Kind() {
 	case source.Go:
-		candidates, surrounding, err = source.Completion(ctx, snapshot, fh, params.Position)
+		candidates, surrounding, err = source.Completion(ctx, snapshot, fh, params.Position, params.Context.TriggerCharacter)
 	case source.Mod:
 		candidates, surrounding = nil, nil
 	}
@@ -41,6 +41,17 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 	rng, err := surrounding.Range()
 	if err != nil {
 		return nil, err
+	}
+	// Span treats an end of file as the beginning of the next line, which for
+	// a final line ending without a newline is incorrect and leads to
+	// completions being ignored. We adjust the ending in case ange end is on a
+	// different line here.
+	// This should be removed after the resolution of golang/go#41029
+	if rng.Start.Line != rng.End.Line {
+		rng.End = protocol.Position{
+			Character: rng.Start.Character + float64(len(surrounding.Content())),
+			Line:      rng.Start.Line,
+		}
 	}
 
 	// When using deep completions/fuzzy matching, report results as incomplete so

@@ -14,6 +14,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 const concurrentAnalyses = 1
@@ -63,9 +64,6 @@ type Server struct {
 	state   serverState
 
 	session source.Session
-
-	// rootURI is the root of the workspace opened in the editor (if any).
-	rootURI span.URI
 
 	// changedFiles tracks files for which there has been a textDocument/didChange.
 	changedFilesMu sync.Mutex
@@ -139,7 +137,7 @@ func (s *Server) nonstandardRequest(ctx context.Context, method string, params i
 }
 
 func notImplemented(method string) error {
-	return fmt.Errorf("%w: %q not yet implemented", jsonrpc2.ErrMethodNotFound, method)
+	return errors.Errorf("%w: %q not yet implemented", jsonrpc2.ErrMethodNotFound, method)
 }
 
 //go:generate helper/helper -d protocol/tsserver.go -o server_gen.go -u .
