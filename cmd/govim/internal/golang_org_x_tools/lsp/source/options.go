@@ -47,7 +47,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/simplifyslice"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/undeclaredname"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/unusedparams"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff/myers"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -494,8 +493,10 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 			o.SymbolStyle = FullyQualifiedSymbols
 		case "dynamic":
 			o.SymbolStyle = DynamicSymbols
-		default:
+		case "package":
 			o.SymbolStyle = PackageQualifiedSymbols
+		default:
+			result.errorf("Unsupported symbol style %q", style)
 		}
 
 	case "hoverKind":
@@ -515,7 +516,7 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 		case "Structured":
 			o.HoverKind = Structured
 		default:
-			result.errorf("Unsupported hover kind", tag.HoverKind.Of(hoverKind))
+			result.errorf("Unsupported hover kind %q", hoverKind)
 		}
 
 	case "linkTarget":

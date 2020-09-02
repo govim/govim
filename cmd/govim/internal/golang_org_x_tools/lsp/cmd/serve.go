@@ -6,7 +6,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -22,6 +21,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/lsprpc"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tool"
+	errors "golang.org/x/xerrors"
 )
 
 // Serve is a struct that exposes the configurable parts of the LSP server as

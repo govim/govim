@@ -11,9 +11,11 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"sort"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"golang.org/x/xerrors"
 )
 
 func Implementation(ctx context.Context, snapshot Snapshot, f FileHandle, pp protocol.Position) ([]protocol.Location, error) {
@@ -42,6 +44,13 @@ func Implementation(ctx context.Context, snapshot Snapshot, f FileHandle, pp pro
 			Range: pr,
 		})
 	}
+	sort.Slice(locations, func(i, j int) bool {
+		li, lj := locations[i], locations[j]
+		if li.URI == lj.URI {
+			return protocol.CompareRange(li.Range, lj.Range) < 0
+		}
+		return li.URI < lj.URI
+	})
 	return locations, nil
 }
 
@@ -195,8 +204,10 @@ type qualifiedObject struct {
 	sourcePkg Package
 }
 
-var errBuiltin = errors.New("builtin object")
-var errNoObjectFound = errors.New("no object found")
+var (
+	errBuiltin       = errors.New("builtin object")
+	errNoObjectFound = errors.New("no object found")
+)
 
 // qualifiedObjsAtProtocolPos returns info for all the type.Objects
 // referenced at the given position. An object will be returned for
@@ -229,7 +240,7 @@ func qualifiedObjsAtProtocolPos(ctx context.Context, s Snapshot, fh FileHandle, 
 			} else {
 				obj := searchpkg.GetTypesInfo().ObjectOf(leaf)
 				if obj == nil {
-					return nil, fmt.Errorf("%w for %q", errNoObjectFound, leaf.Name)
+					return nil, xerrors.Errorf("%w for %q", errNoObjectFound, leaf.Name)
 				}
 				objs = append(objs, obj)
 			}
@@ -237,7 +248,7 @@ func qualifiedObjsAtProtocolPos(ctx context.Context, s Snapshot, fh FileHandle, 
 			// Look up the implicit *types.PkgName.
 			obj := searchpkg.GetTypesInfo().Implicits[leaf]
 			if obj == nil {
-				return nil, fmt.Errorf("%w for import %q", errNoObjectFound, importPath(leaf))
+				return nil, xerrors.Errorf("%w for import %q", errNoObjectFound, importPath(leaf))
 			}
 			objs = append(objs, obj)
 		}
@@ -255,7 +266,7 @@ func qualifiedObjsAtProtocolPos(ctx context.Context, s Snapshot, fh FileHandle, 
 		addPkg(searchpkg)
 		for _, obj := range objs {
 			if obj.Parent() == types.Universe {
-				return nil, fmt.Errorf("%w %q", errBuiltin, obj.Name())
+				return nil, xerrors.Errorf("%q: %w", obj.Name(), errBuiltin)
 			}
 			pkg, ok := pkgs[obj.Pkg()]
 			if !ok {

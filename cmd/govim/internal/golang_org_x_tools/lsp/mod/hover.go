@@ -12,6 +12,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 func Hover(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle, position protocol.Position) (*protocol.Hover, error) {
@@ -28,15 +29,15 @@ func Hover(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle, 
 	// Get the position of the cursor.
 	pm, err := snapshot.ParseMod(ctx, fh)
 	if err != nil {
-		return nil, fmt.Errorf("getting modfile handle: %w", err)
+		return nil, errors.Errorf("getting modfile handle: %w", err)
 	}
 	spn, err := pm.Mapper.PointSpan(position)
 	if err != nil {
-		return nil, fmt.Errorf("computing cursor position: %w", err)
+		return nil, errors.Errorf("computing cursor position: %w", err)
 	}
 	hoverRng, err := spn.Range(pm.Mapper.Converter)
 	if err != nil {
-		return nil, fmt.Errorf("computing hover range: %w", err)
+		return nil, errors.Errorf("computing hover range: %w", err)
 	}
 
 	// Confirm that the cursor is at the position of a require statement.

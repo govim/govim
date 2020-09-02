@@ -22,13 +22,14 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitialize) (*protocol.InitializeResult, error) {
 	s.stateMu.Lock()
 	if s.state >= serverInitializing {
 		defer s.stateMu.Unlock()
-		return nil, fmt.Errorf("%w: initialize called while server in %v state", jsonrpc2.ErrInvalidRequest, s.state)
+		return nil, errors.Errorf("%w: initialize called while server in %v state", jsonrpc2.ErrInvalidRequest, s.state)
 	}
 	s.state = serverInitializing
 	s.stateMu.Unlock()
@@ -43,30 +44,26 @@ func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitializ
 	}
 	options.ForClientCapabilities(params.Capabilities)
 
-	// gopls only supports URIs with a file:// scheme. Any other URIs will not
-	// work, so fail to initialize. See golang/go#40272.
-	if params.RootURI != "" && !params.RootURI.SpanURI().IsFile() {
-		return nil, fmt.Errorf("unsupported URI scheme: %v (gopls only supports file URIs)", params.RootURI)
-	}
-	if params.RootURI != "" {
-		s.rootURI = params.RootURI.SpanURI()
-	}
-
-	for _, folder := range params.WorkspaceFolders {
-		uri := span.URIFromURI(folder.URI)
-		if !uri.IsFile() {
-			return nil, fmt.Errorf("unsupported URI scheme: %q (gopls only supports file URIs)", folder.URI)
-		}
-	}
-
-	s.pendingFolders = params.WorkspaceFolders
-	if len(s.pendingFolders) == 0 {
+	folders := params.WorkspaceFolders
+	if len(folders) == 0 {
 		if params.RootURI != "" {
-			s.pendingFolders = []protocol.WorkspaceFolder{{
+			folders = []protocol.WorkspaceFolder{{
 				URI:  string(params.RootURI),
 				Name: path.Base(params.RootURI.SpanURI().Filename()),
 			}}
 		}
+	}
+	for _, folder := range folders {
+		uri := span.URIFromURI(folder.URI)
+		if !uri.IsFile() {
+			continue
+		}
+		s.pendingFolders = append(s.pendingFolders, folder)
+	}
+	// gopls only supports URIs with a file:// scheme, so if we have no
+	// workspace folders with a supported scheme, fail to initialize.
+	if len(folders) > 0 && len(s.pendingFolders) == 0 {
+		return nil, fmt.Errorf("unsupported URI schemes: %v (gopls only supports file URIs)", folders)
 	}
 
 	var codeActionProvider interface{} = true
@@ -142,7 +139,7 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 	s.stateMu.Lock()
 	if s.state >= serverInitialized {
 		defer s.stateMu.Unlock()
-		return fmt.Errorf("%w: initalized called while server in %v state", jsonrpc2.ErrInvalidRequest, s.state)
+		return errors.Errorf("%w: initalized called while server in %v state", jsonrpc2.ErrInvalidRequest, s.state)
 	}
 	s.state = serverInitialized
 	s.stateMu.Unlock()
@@ -190,23 +187,27 @@ func (s *Server) addFolders(ctx context.Context, folders []protocol.WorkspaceFol
 		defer func() {
 			go func() {
 				wg.Wait()
-				work.end(ctx, "Done.")
+				work.end("Done.")
 			}()
 		}()
 	}
 	dirsToWatch := map[span.URI]struct{}{}
 	for _, folder := range folders {
 		uri := span.URIFromURI(folder.URI)
+		// Ignore non-file URIs.
+		if !uri.IsFile() {
+			continue
+		}
 		work := s.progress.start(ctx, "Setting up workspace", "Loading packages...", nil, nil)
 		view, snapshot, release, err := s.addView(ctx, folder.Name, uri)
 		if err != nil {
 			viewErrors[uri] = err
-			work.end(ctx, fmt.Sprintf("Error loading packages: %s", err))
+			work.end(fmt.Sprintf("Error loading packages: %s", err))
 			continue
 		}
 		go func() {
 			view.AwaitInitialized(ctx)
-			work.end(ctx, "Finished loading packages.")
+			work.end("Finished loading packages.")
 		}()
 
 		for _, dir := range snapshot.WorkspaceDirectories(ctx) {
@@ -339,10 +340,12 @@ func (s *Server) registerWatchedDirectoriesLocked(ctx context.Context, dirs map[
 	}}
 	for dir := range dirs {
 		filename := dir.Filename()
-		// If the directory is within the root URI, we're already watching it
-		// via the relative path above.
-		if isSubdirectory(s.rootURI.Filename(), filename) {
-			continue
+		// If the directory is within a workspace folder, we're already
+		// watching it via the relative path above.
+		for _, view := range s.session.Views() {
+			if isSubdirectory(view.Folder().Filename(), filename) {
+				continue
+			}
 		}
 		// If microsoft/vscode#100870 is resolved before
 		// microsoft/vscode#104387, we will need a work-around for Windows
@@ -417,14 +420,14 @@ func (s *Server) handleOptionResults(ctx context.Context, results source.OptionR
 		case source.OptionUnexpected:
 			if err := s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
 				Type:    protocol.Error,
-				Message: fmt.Sprintf("unexpected config %s", result.Name),
+				Message: fmt.Sprintf("unexpected gopls setting %q", result.Name),
 			}); err != nil {
 				return err
 			}
 		case source.OptionDeprecated:
-			msg := fmt.Sprintf("config %s is deprecated", result.Name)
+			msg := fmt.Sprintf("gopls setting %q is deprecated", result.Name)
 			if result.Replacement != "" {
-				msg = fmt.Sprintf("%s, use %s instead", msg, result.Replacement)
+				msg = fmt.Sprintf("%s, use %q instead", msg, result.Replacement)
 			}
 			if err := s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
 				Type:    protocol.Warning,

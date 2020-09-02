@@ -25,6 +25,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	errors "golang.org/x/xerrors"
 )
 
 // AutoNetwork is the pseudo network type used to signal that gopls should use
@@ -77,7 +78,7 @@ func (s *StreamServer) ServeStream(ctx context.Context, conn jsonrpc2.Conn) erro
 	ctx = protocol.WithClient(ctx, client)
 	conn.Go(ctx,
 		protocol.Handlers(
-			handshaker(session, executable,
+			handshaker(session, executable, s.logConnections,
 				protocol.ServerHandler(server,
 					jsonrpc2.MethodNotFound))))
 	if s.logConnections {
@@ -173,19 +174,19 @@ func QueryServerState(ctx context.Context, network, address string) (*ServerStat
 	if network == AutoNetwork {
 		gp, err := os.Executable()
 		if err != nil {
-			return nil, fmt.Errorf("getting gopls path: %w", err)
+			return nil, errors.Errorf("getting gopls path: %w", err)
 		}
 		network, address = autoNetworkAddress(gp, address)
 	}
 	netConn, err := net.DialTimeout(network, address, 5*time.Second)
 	if err != nil {
-		return nil, fmt.Errorf("dialing remote: %w", err)
+		return nil, errors.Errorf("dialing remote: %w", err)
 	}
 	serverConn := jsonrpc2.NewConn(jsonrpc2.NewHeaderStream(netConn))
 	serverConn.Go(ctx, jsonrpc2.MethodNotFound)
 	var state ServerState
 	if err := protocol.Call(ctx, serverConn, sessionsMethod, nil, &state); err != nil {
-		return nil, fmt.Errorf("querying server state: %w", err)
+		return nil, errors.Errorf("querying server state: %w", err)
 	}
 	return &state, nil
 }
@@ -197,7 +198,7 @@ func (f *Forwarder) ServeStream(ctx context.Context, clientConn jsonrpc2.Conn) e
 
 	netConn, err := f.connectToRemote(ctx)
 	if err != nil {
-		return fmt.Errorf("forwarder: connecting to remote: %w", err)
+		return errors.Errorf("forwarder: connecting to remote: %w", err)
 	}
 	serverConn := jsonrpc2.NewConn(jsonrpc2.NewHeaderStream(netConn))
 	server := protocol.ServerDispatcher(serverConn)
@@ -250,10 +251,13 @@ func (f *Forwarder) ServeStream(ctx context.Context, clientConn jsonrpc2.Conn) e
 		serverConn.Close()
 	}
 
-	err = serverConn.Err()
-	if err == nil {
-		err = clientConn.Err()
+	err = nil
+	if serverConn.Err() != nil {
+		err = errors.Errorf("remote disconnected: %v", err)
+	} else if clientConn.Err() != nil {
+		err = errors.Errorf("client disconnected: %v", err)
 	}
+	event.Log(ctx, fmt.Sprintf("forwarder: exited with error: %v", err))
 	return err
 }
 
@@ -320,7 +324,7 @@ func connectToRemote(ctx context.Context, inNetwork, inAddr, goplsPath string, r
 			// instances are simultaneously starting up.
 			if _, err := os.Stat(address); err == nil {
 				if err := os.Remove(address); err != nil {
-					return nil, fmt.Errorf("removing remote socket file: %w", err)
+					return nil, errors.Errorf("removing remote socket file: %w", err)
 				}
 			}
 		}
@@ -335,7 +339,7 @@ func connectToRemote(ctx context.Context, inNetwork, inAddr, goplsPath string, r
 			args = append(args, "-debug", rcfg.debug)
 		}
 		if err := startRemote(goplsPath, args...); err != nil {
-			return nil, fmt.Errorf("startRemote(%q, %v): %w", goplsPath, args, err)
+			return nil, errors.Errorf("startRemote(%q, %v): %w", goplsPath, args, err)
 		}
 	}
 
@@ -355,7 +359,7 @@ func connectToRemote(ctx context.Context, inNetwork, inAddr, goplsPath string, r
 			time.Sleep(dialTimeout - time.Since(startDial))
 		}
 	}
-	return nil, fmt.Errorf("dialing remote: %w", err)
+	return nil, errors.Errorf("dialing remote: %w", err)
 }
 
 // forwarderHandler intercepts 'exit' messages to prevent the shared gopls
@@ -497,7 +501,7 @@ const (
 	sessionsMethod  = "gopls/sessions"
 )
 
-func handshaker(session *cache.Session, goplsPath string, handler jsonrpc2.Handler) jsonrpc2.Handler {
+func handshaker(session *cache.Session, goplsPath string, logHandshakes bool, handler jsonrpc2.Handler) jsonrpc2.Handler {
 	return func(ctx context.Context, reply jsonrpc2.Replier, r jsonrpc2.Request) error {
 		switch r.Method() {
 		case handshakeMethod:
@@ -506,11 +510,15 @@ func handshaker(session *cache.Session, goplsPath string, handler jsonrpc2.Handl
 			// client.
 			var req handshakeRequest
 			if err := json.Unmarshal(r.Params(), &req); err != nil {
-				log.Printf("Error processing handshake for session %s: %v", session.ID(), err)
+				if logHandshakes {
+					log.Printf("Error processing handshake for session %s: %v", session.ID(), err)
+				}
 				sendError(ctx, reply, err)
 				return nil
 			}
-			log.Printf("Session %s: got handshake. Logfile: %q, Debug addr: %q", session.ID(), req.Logfile, req.DebugAddr)
+			if logHandshakes {
+				log.Printf("Session %s: got handshake. Logfile: %q, Debug addr: %q", session.ID(), req.Logfile, req.DebugAddr)
+			}
 			event.Log(ctx, "Handshake session update",
 				cache.KeyUpdateSession.Of(session),
 				tag.DebugAddress.Of(req.DebugAddr),
@@ -551,7 +559,7 @@ func handshaker(session *cache.Session, goplsPath string, handler jsonrpc2.Handl
 }
 
 func sendError(ctx context.Context, reply jsonrpc2.Replier, err error) {
-	err = fmt.Errorf("%w: %v", jsonrpc2.ErrParse, err)
+	err = errors.Errorf("%v: %w", err, jsonrpc2.ErrParse)
 	if err := reply(ctx, nil, err); err != nil {
 		event.Error(ctx, "", err)
 	}
