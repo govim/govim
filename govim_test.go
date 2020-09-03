@@ -214,12 +214,12 @@ func (t *testplugin) Shutdown() error {
 func (t *testpluginvim) bufRead(args ...json.RawMessage) error {
 	// we are expecting the expanded result of <afile> as our first argument
 	fn := t.ParseString(args[0])
-	t.ChannelExf(`echom "Hello from BufRead %v"`, fn)
+	t.ChannelExf(`silent echom "Hello from BufRead %v"`, fn)
 	return nil
 }
 
 func (t *testpluginvim) helloComm(flags govim.CommandFlags, args ...string) error {
-	t.ChannelExf(`echom "Hello world (%v)"`, *flags.Bang)
+	t.ChannelExf(`silent echom "Hello world (%v)"`, *flags.Bang)
 	return nil
 }
 

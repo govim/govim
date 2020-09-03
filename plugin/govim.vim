@@ -91,16 +91,24 @@ endfunction
 
 function s:schedule(id)
   call add(s:scheduleBacklog, a:id)
-  " The only state('wxc') in which it is safe to run work immediately is 'c'.
-  " Reason being, in state 's' the only active callback is the one processing
-  " the received channel message (to schedule work). Anything else is unsafe,
-  " so we must enqueue the work for later.
-  "
-  " More discussion at:
-  "
-  " https://groups.google.com/forum/#!topic/vim_dev/op_PKiE9iog
-  "
+  call timer_start(0, function("s:triggerDrain"))
+endfunction
+
+function s:triggerDrain(timer)
+  call s:drainScheduleBacklog(v:false)
+endfunction
+
+function s:drainScheduleBacklog(drop)
   if s:minVimSafeState
+    " The only state('wxc') in which it is safe to run work immediately is 'c'.
+    " Reason being, in state 's' the only active callback is the one processing
+    " the received channel message (to schedule work). Anything else is unsafe,
+    " so we must enqueue the work for later.
+    "
+    " More discussion at:
+    "
+    " https://groups.google.com/forum/#!topic/vim_dev/op_PKiE9iog
+    "
     if state('cwx') != 'c'
       call ch_log("minVimSafeState: enqueuing work because state is ".string(state()))
       if !s:waitingToDrain
@@ -110,12 +118,6 @@ function s:schedule(id)
       return
     endif
     call ch_log("minVimSafeState: running work immediately because state is ".string(state()))
-  endif
-  call s:drainScheduleBacklog(v:false)
-endfunction
-
-function s:drainScheduleBacklog(drop)
-  if s:minVimSafeState
     if a:drop
       au! govimScheduler SafeState,SafeStateAgain
     endif
@@ -126,6 +128,9 @@ function s:drainScheduleBacklog(drop)
     call ch_log("old safe state: will drain schedule backlog; no pending calls")
   endif
   while len(s:scheduleBacklog) > 0
+    if s:minVimSafeState
+      call ch_log("drainScheduleBacklog: running work from the queue with state: ".string(state()))
+    endif
     let l:args = ["schedule", s:scheduleBacklog[0]]
     let s:scheduleBacklog = s:scheduleBacklog[1:]
     let l:resp = s:ch_evalexpr(l:args)
