@@ -69,10 +69,10 @@ golang.org/x/tools v0.0.0-20191119224855-298f0cb1881e/go.mod h1:b+2E5dAYhXwXZwtn
 golang.org/x/tools v0.0.0-20191130070609-6e064ea0cf2d/go.mod h1:b+2E5dAYhXwXZwtnZ6UAqBI28+e2cm9otk0dWdXHAEo=
 golang.org/x/tools v0.0.0-20200731060945-b5fad4ed8dd6/go.mod h1:njjCfa9FT2d7l9Bc6FUM5FLjQPp3cFF28FI3qnDFljA=
 golang.org/x/tools v0.0.0-20200828161849-5deb26317202/go.mod h1:njjCfa9FT2d7l9Bc6FUM5FLjQPp3cFF28FI3qnDFljA=
-golang.org/x/tools v0.0.0-20200902012652-d1954cc86c82 h1:shxDsb9Dz27xzk3A0DxP0JuJnZMpKrdg8+E14eiUAX4=
-golang.org/x/tools v0.0.0-20200902012652-d1954cc86c82/go.mod h1:Cj7w3i3Rnn0Xh82ur9kSqwfTHTeVxaDqrfMjpcNT6bE=
-golang.org/x/tools/gopls v0.0.0-20200902012652-d1954cc86c82 h1:JA6tB1eWj2pOpUuWqulNCWtujGJYNw925vDcuT4gTU8=
-golang.org/x/tools/gopls v0.0.0-20200902012652-d1954cc86c82/go.mod h1:eKNv4RzhLN0R7Ubvb7A0+p2OQWgAoaxd9ae1dxUNcy8=
+golang.org/x/tools v0.0.0-20200908191908-acefd226e2cc h1:AthgbxZbfCZ3fy40bOPDxBoXayFbbxU6n9OEFVEUR10=
+golang.org/x/tools v0.0.0-20200908191908-acefd226e2cc/go.mod h1:Cj7w3i3Rnn0Xh82ur9kSqwfTHTeVxaDqrfMjpcNT6bE=
+golang.org/x/tools/gopls v0.0.0-20200908191908-acefd226e2cc h1:WhCIHcqvxmV30U5S+MCAjIYEN3oXlH0IrbcFk/3NftY=
+golang.org/x/tools/gopls v0.0.0-20200908191908-acefd226e2cc/go.mod h1:to4V8cun/RoQMTGywuiJ3Qbf6nnzEVCiSHytd9ooiSw=
 golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.org/x/xerrors v0.0.0-20191011141410-1b5146add898/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
