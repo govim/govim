@@ -25,6 +25,12 @@ func (r *Config) Apply(v *Config) {
 	if v.CompletionMatcher != nil {
 		r.CompletionMatcher = v.CompletionMatcher
 	}
+	if v.SymbolMatcher != nil {
+		r.SymbolMatcher = v.SymbolMatcher
+	}
+	if v.SymbolStyle != nil {
+		r.SymbolStyle = v.SymbolStyle
+	}
 	if v.Staticcheck != nil {
 		r.Staticcheck = v.Staticcheck
 	}

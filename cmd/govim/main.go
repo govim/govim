@@ -222,6 +222,8 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			HoverDiagnostics:                  vimconfig.BoolVal(true),
 			TempModfile:                       vimconfig.BoolVal(false),
 			ExperimentalAutoreadLoadedBuffers: vimconfig.BoolVal(false),
+			SymbolMatcher:                     vimconfig.SymbolMatcherVal(config.SymbolMatcherFuzzy),
+			SymbolStyle:                       vimconfig.SymbolStyleVal(config.SymbolStyleFull),
 		}
 	}
 	// Overlay the initial user values on the defaults
