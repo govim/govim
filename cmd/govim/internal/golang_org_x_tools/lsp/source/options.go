@@ -99,9 +99,11 @@ func DefaultOptions() Options {
 			CompletionDocumentation: true,
 			EnabledCodeLens: map[string]bool{
 				CommandGenerate.Name:          true,
-				CommandUpgradeDependency.Name: true,
 				CommandRegenerateCgo.Name:     true,
+				CommandTidy.Name:              true,
 				CommandToggleDetails.Name:     false,
+				CommandUpgradeDependency.Name: true,
+				CommandVendor.Name:            true,
 			},
 			ExpandWorkspaceToModule: true,
 		},
@@ -246,17 +248,6 @@ func (s ImportShortcut) ShowLinks() bool {
 
 func (s ImportShortcut) ShowDefinition() bool {
 	return s == Both || s == Definition
-}
-
-type completionOptions struct {
-	deepCompletion    bool
-	unimported        bool
-	documentation     bool
-	fullDocumentation bool
-	placeholders      bool
-	literal           bool
-	matcher           Matcher
-	budget            time.Duration
 }
 
 // Hooks contains configuration that is provided to the Gopls command by the

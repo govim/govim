@@ -18,6 +18,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff/myers"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source/completion"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -227,11 +228,11 @@ func DiffCodeLens(uri span.URI, want, got []protocol.CodeLens) string {
 	}
 	for i, w := range want {
 		g := got[i]
+		if w.Command.Command != g.Command.Command {
+			return summarizeCodeLens(i, uri, want, got, "incorrect Command Name got %v want %v", g.Command.Command, w.Command.Command)
+		}
 		if w.Command.Title != g.Command.Title {
 			return summarizeCodeLens(i, uri, want, got, "incorrect Command Title got %v want %v", g.Command.Title, w.Command.Title)
-		}
-		if w.Command.Command != g.Command.Command {
-			return summarizeCodeLens(i, uri, want, got, "incorrect Command Title got %v want %v", g.Command.Command, w.Command.Command)
 		}
 		if protocol.ComparePosition(w.Range.Start, g.Range.Start) != 0 {
 			return summarizeCodeLens(i, uri, want, got, "incorrect Start got %v want %v", g.Range.Start, w.Range.Start)
@@ -252,11 +253,11 @@ func sortCodeLens(c []protocol.CodeLens) {
 		}
 		if c[i].Command.Command < c[j].Command.Command {
 			return true
+		} else if c[i].Command.Command == c[j].Command.Command {
+			return c[i].Command.Title < c[j].Command.Title
+		} else {
+			return false
 		}
-		if c[i].Command.Command == c[j].Command.Command {
-			return true
-		}
-		return c[i].Command.Title <= c[j].Command.Title
 	})
 }
 
@@ -332,7 +333,7 @@ func DiffCallHierarchyItems(gotCalls []protocol.CallHierarchyItem, expectedCalls
 	return ""
 }
 
-func ToProtocolCompletionItems(items []source.CompletionItem) []protocol.CompletionItem {
+func ToProtocolCompletionItems(items []completion.CompletionItem) []protocol.CompletionItem {
 	var result []protocol.CompletionItem
 	for _, item := range items {
 		result = append(result, ToProtocolCompletionItem(item))
@@ -340,7 +341,7 @@ func ToProtocolCompletionItems(items []source.CompletionItem) []protocol.Complet
 	return result
 }
 
-func ToProtocolCompletionItem(item source.CompletionItem) protocol.CompletionItem {
+func ToProtocolCompletionItem(item completion.CompletionItem) protocol.CompletionItem {
 	pItem := protocol.CompletionItem{
 		Label:         item.Label,
 		Kind:          item.Kind,
@@ -463,7 +464,7 @@ func DiffSnippets(want string, got *protocol.CompletionItem) string {
 	return ""
 }
 
-func FindItem(list []protocol.CompletionItem, want source.CompletionItem) *protocol.CompletionItem {
+func FindItem(list []protocol.CompletionItem, want completion.CompletionItem) *protocol.CompletionItem {
 	for _, item := range list {
 		if item.Label == want.Label {
 			return &item
