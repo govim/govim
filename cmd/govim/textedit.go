@@ -146,6 +146,7 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 	var newContents string
 	v.Parse(newContentsRes(), &newContents)
 	b.SetContents([]byte(newContents))
+	v.triggerBufferASTUpdate(b)
 	b.Version++
 	params := &protocol.DidChangeTextDocumentParams{
 		TextDocument: protocol.VersionedTextDocumentIdentifier{
@@ -158,6 +159,7 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 			},
 		},
 	}
+
 	return v.server.DidChange(context.Background(), params)
 }
 
