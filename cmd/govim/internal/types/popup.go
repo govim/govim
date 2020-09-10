@@ -18,3 +18,12 @@ type PopupProp struct {
 	Col  int    `json:"col"`
 	Len  int    `json:"length"`
 }
+
+// ProgressPopup represents a vim popup placed in the upper right corner used
+// to show LSP progress. LinePos is used to stack multiple visible progress
+// popups.
+type ProgressPopup struct {
+	ID      int
+	Text    []string
+	LinePos int
+}

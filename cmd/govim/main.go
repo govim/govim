@@ -245,6 +245,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			config:                *defaults,
 			quickfixIsDiagnostics: true,
 			suggestedFixesPopups:  make(map[int][]protocol.WorkspaceEdit),
+			progressPopups:        make(map[protocol.ProgressToken]*types.ProgressPopup),
 		},
 	}
 	res.vimstate.govimplugin = res
@@ -287,6 +288,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandExperimentalSignatureHelp), g.vimstate.signatureHelp)
 	g.DefineCommand(string(config.CommandFillStruct), g.vimstate.fillStruct)
 	g.DefineCommand(string(config.CommandGCDetails), g.vimstate.toggleGCDetails)
+	g.DefineFunction(string(config.FunctionProgressClosed), []string{"id", "selected"}, g.vimstate.progressClosed)
 	g.defineHighlights()
 	if err := g.vimstate.signDefine(); err != nil {
 		return fmt.Errorf("failed to define signs: %v", err)

@@ -78,6 +78,12 @@ type vimstate struct {
 	// change to any file (because we can't know without requerying gopls
 	// whether the highlights are still correct/accurate/etc)
 	highlightingReferences bool
+
+	// progressPopup is a map of ongoing progresses. Before receiving the first
+	// progress, the value is nil. Added popups should use the internal
+	// ProgressClosed function as callback to ensure that entities are removed
+	// from this map when the popup closes.
+	progressPopups map[protocol.ProgressToken]*types.ProgressPopup
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
@@ -177,6 +183,26 @@ func (v *vimstate) popupSelection(args ...json.RawMessage) (interface{}, error) 
 	edit := edits[selection-1]
 
 	return nil, v.applyMultiBufTextedits(nil, edit.DocumentChanges)
+}
+
+func (v *vimstate) progressClosed(args ...json.RawMessage) (interface{}, error) {
+	var popupID int
+	v.Parse(args[0], &popupID)
+
+	var toDelete protocol.ProgressToken
+	for token, popup := range v.progressPopups {
+		if popup.ID == popupID {
+			if toDelete != nil {
+				return nil, fmt.Errorf("found multiple popups with same ID, can't handle")
+			}
+			toDelete = token
+		}
+	}
+
+	delete(v.progressPopups, toDelete)
+	v.rearrangeProgressPopups()
+
+	return nil, nil
 }
 
 func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {

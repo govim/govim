@@ -233,6 +233,17 @@ type Config struct {
 	// completeopt=menu,popup and Vim+govim will behave approximately like
 	// completeopt+=longest.
 	ExperimentalWorkaroundCompleteoptLongest *bool `json:",omitempty"`
+
+	// ExperimentalProgressPopups will, when enabled, show a notification
+	// popup when gopls run tasks that support reporting of progress.
+	// Examples of such reporting can be the initial workspace load, running
+	// tests or "go generate".
+	//
+	// This is an experimental feature that might go away in the future, be
+	// renamed etc.
+	//
+	// Default: false
+	ExperimentalProgressPopups *bool `json:",omitempty"`
 }
 
 type Command string
@@ -353,6 +364,8 @@ const (
 	FunctionSetUserBusy Function = InternalFunctionPrefix + "SetUserBusy"
 
 	FunctionPopupSelection Function = InternalFunctionPrefix + "PopupSelection"
+
+	FunctionProgressClosed Function = InternalFunctionPrefix + "ProgressClosed"
 
 	// FunctionStringFnComplete is an internal function used by govim to provide
 	// completion of arguments to CommandStringFn

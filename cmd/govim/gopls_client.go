@@ -12,6 +12,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/types"
 	"github.com/kr/pretty"
 )
 
@@ -225,11 +226,65 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 
 func (g *govimplugin) Progress(ctxt context.Context, params *protocol.ProgressParams) error {
 	defer absorbShutdownErr()
-	panic("Progress not implemented yet")
+	g.logGoplsClientf("Progress callback: %v", pretty.Sprint(params))
+
+	g.vimstate.configLock.Lock()
+	if c := g.vimstate.config.ExperimentalProgressPopups; c == nil || !*c {
+		g.vimstate.configLock.Unlock()
+		return nil
+	}
+	g.vimstate.configLock.Unlock()
+
+	var ok bool
+	var raw map[string]interface{}
+	if raw, ok = params.Value.(map[string]interface{}); !ok {
+		return fmt.Errorf("unexpected value type: %T", params.Value)
+	}
+	var kind string
+	if kind, ok = raw["kind"].(string); !ok { // required by LSP
+		return fmt.Errorf("expected required field 'kind' in progress callback")
+	}
+	message, _ := raw["message"].(string) // optional
+	message = strings.TrimSpace(message)
+
+	var title string
+	if title, ok = raw["title"].(string); !ok && kind == "begin" { // required for "begin"
+		return fmt.Errorf("expected required field 'title' not set")
+	}
+
+	g.Schedule(func(govim.Govim) error {
+		v := g.vimstate
+
+		popup, ok := v.progressPopups[params.Token]
+		if !ok {
+			return nil
+		}
+
+		return v.handleProgress(popup, kind, title, message)
+	})
+	return nil
 }
+
 func (g *govimplugin) WorkDoneProgressCreate(ctxt context.Context, params *protocol.WorkDoneProgressCreateParams) error {
 	defer absorbShutdownErr()
-	panic("WorkDoneProgressCreate not implemented yet")
+	g.logGoplsClientf("WorkDoneProgressCreate callback: %v", pretty.Sprint(params))
+
+	g.vimstate.configLock.Lock()
+	if c := g.vimstate.config.ExperimentalProgressPopups; c == nil || !*c {
+		g.vimstate.configLock.Unlock()
+		return nil
+	}
+	g.vimstate.configLock.Unlock()
+
+	g.Schedule(func(govim.Govim) error {
+		v := g.vimstate
+		if _, ok := v.progressPopups[params.Token]; ok {
+			return fmt.Errorf("WorkDoneProgressCreate received for an ongoing progress token")
+		}
+		v.progressPopups[params.Token] = &types.ProgressPopup{}
+		return nil
+	})
+	return nil
 }
 
 func absorbShutdownErr() {
