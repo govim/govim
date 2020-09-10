@@ -2,8 +2,6 @@
 # does the right thing. This will necessarily involve a number of checks
 # for the various build flags that can be set via GOFLAGS.
 
-[golang.org/issues/36789] skip
-
 [short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
 
 vim ex 'e main.go'
