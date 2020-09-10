@@ -10,6 +10,8 @@
 # the definition of DoIt to take an integer argument at which point all
 # diagnostics should disappear.
 
+[golang.org/issues/39646] skip
+
 # Create all the new files
 vim ex 'e p/p.go'
 vim ex 'r p/p.go.orig | 0d_'
