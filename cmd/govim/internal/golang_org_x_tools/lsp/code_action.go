@@ -51,6 +51,10 @@ func (s *Server) codeAction(ctx context.Context, params *protocol.CodeActionPara
 	var codeActions []protocol.CodeAction
 	switch fh.Kind() {
 	case source.Mod:
+		// TODO: Support code actions for views with multiple modules.
+		if snapshot.View().ModFile() == "" {
+			return nil, nil
+		}
 		if diagnostics := params.Context.Diagnostics; len(diagnostics) > 0 {
 			modQuickFixes, err := moduleQuickFixes(ctx, snapshot, diagnostics)
 			if err == source.ErrTmpModfileUnsupported {
@@ -316,11 +320,14 @@ func findSourceError(ctx context.Context, snapshot source.Snapshot, pkgID string
 func diagnosticToAnalyzer(snapshot source.Snapshot, src, msg string) (analyzer *source.Analyzer) {
 	// Make sure that the analyzer we found is enabled.
 	defer func() {
-		if analyzer != nil && !analyzer.Enabled(snapshot.View()) {
+		if analyzer != nil && !analyzer.IsEnabled(snapshot.View()) {
 			analyzer = nil
 		}
 	}()
 	if a, ok := snapshot.View().Options().DefaultAnalyzers[src]; ok {
+		return &a
+	}
+	if a, ok := snapshot.View().Options().StaticcheckAnalyzers[src]; ok {
 		return &a
 	}
 	if a, ok := snapshot.View().Options().ConvenienceAnalyzers[src]; ok {
@@ -345,7 +352,7 @@ func diagnosticToAnalyzer(snapshot source.Snapshot, src, msg string) (analyzer *
 func convenienceFixes(ctx context.Context, snapshot source.Snapshot, pkg source.Package, uri span.URI, rng protocol.Range) ([]protocol.CodeAction, error) {
 	var analyzers []*analysis.Analyzer
 	for _, a := range snapshot.View().Options().ConvenienceAnalyzers {
-		if !a.Enabled(snapshot.View()) {
+		if !a.IsEnabled(snapshot.View()) {
 			continue
 		}
 		if a.Command == nil {

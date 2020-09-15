@@ -364,6 +364,13 @@ func (l loggingGoplsServer) SemanticTokensRange(ctxt context.Context, params *pr
 	return res, err
 }
 
+func (l loggingGoplsServer) SemanticTokensRefresh(ctxt context.Context) error {
+	l.Logf("gopls.SemanticTokensRefresh() call\n")
+	err := l.u.SemanticTokensRefresh(ctxt)
+	l.Logf("gopls.SemanticTokensRefresh() return; err: %v", err)
+	return err
+}
+
 func (l loggingGoplsServer) WorkDoneProgressCancel(ctxt context.Context, params *protocol.WorkDoneProgressCancelParams) error {
 	l.Logf("gopls.WorkDoneProgressCancel() call; params:\n%v", pretty.Sprint(params))
 	err := l.u.WorkDoneProgressCancel(ctxt, params)

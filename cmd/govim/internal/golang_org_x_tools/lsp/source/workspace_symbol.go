@@ -16,6 +16,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/fuzzy"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 // maxSymbols defines the maximum number of symbol results that should ever be
@@ -278,13 +279,14 @@ func (sc *symbolCollector) walk(ctx context.Context, views []View) (_ []protocol
 	}
 	// Make sure we only walk files once (we might see them more than once due to
 	// build constraints).
-	seen := make(map[*ast.File]bool)
+	seen := make(map[span.URI]bool)
 	for _, pv := range toWalk {
 		sc.current = pv
 		for _, pgf := range pv.pkg.CompiledGoFiles() {
-			if seen[pgf.File] {
+			if seen[pgf.URI] {
 				continue
 			}
+			seen[pgf.URI] = true
 			sc.curFile = pgf
 			sc.walkFilesDecls(pgf.File.Decls)
 		}

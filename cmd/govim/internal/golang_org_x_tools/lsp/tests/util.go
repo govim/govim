@@ -526,22 +526,27 @@ func FormatFolderName(folder string) string {
 }
 
 func EnableAllAnalyzers(view source.View, opts *source.Options) {
-	if opts.UserEnabledAnalyses == nil {
-		opts.UserEnabledAnalyses = make(map[string]bool)
+	if opts.Analyses == nil {
+		opts.Analyses = make(map[string]bool)
 	}
 	for _, a := range opts.DefaultAnalyzers {
-		if !a.Enabled(view) {
-			opts.UserEnabledAnalyses[a.Analyzer.Name] = true
+		if !a.IsEnabled(view) {
+			opts.Analyses[a.Analyzer.Name] = true
 		}
 	}
 	for _, a := range opts.TypeErrorAnalyzers {
-		if !a.Enabled(view) {
-			opts.UserEnabledAnalyses[a.Analyzer.Name] = true
+		if !a.IsEnabled(view) {
+			opts.Analyses[a.Analyzer.Name] = true
 		}
 	}
 	for _, a := range opts.ConvenienceAnalyzers {
-		if !a.Enabled(view) {
-			opts.UserEnabledAnalyses[a.Analyzer.Name] = true
+		if !a.IsEnabled(view) {
+			opts.Analyses[a.Analyzer.Name] = true
+		}
+	}
+	for _, a := range opts.StaticcheckAnalyzers {
+		if !a.IsEnabled(view) {
+			opts.Analyses[a.Analyzer.Name] = true
 		}
 	}
 }

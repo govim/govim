@@ -500,8 +500,8 @@ func Completion(ctx context.Context, snapshot source.Snapshot, fh source.FileHan
 		// present but no package name exists.
 		items, surrounding, innerErr := packageClauseCompletions(ctx, snapshot, fh, protoPos)
 		if innerErr != nil {
-			// return the error for GetParsedFile since it's more relevant in this situation.
-			return nil, nil, errors.Errorf("getting file for Completion: %w", err)
+			// return the error for getParsedFile since it's more relevant in this situation.
+			return nil, nil, errors.Errorf("getting file for Completion: %w (package completions: %v)", err, innerErr)
 
 		}
 		return items, surrounding, nil
@@ -574,10 +574,10 @@ func Completion(ctx context.Context, snapshot source.Snapshot, fh source.FileHan
 		opts: &completionOptions{
 			matcher:           opts.Matcher,
 			deepCompletion:    opts.DeepCompletion,
-			unimported:        opts.UnimportedCompletion,
+			unimported:        opts.CompleteUnimported,
 			documentation:     opts.CompletionDocumentation,
 			fullDocumentation: opts.HoverKind == source.FullDocumentation,
-			placeholders:      opts.Placeholders,
+			placeholders:      opts.UsePlaceholders,
 			literal:           opts.LiteralCompletions && opts.InsertTextFormat == protocol.SnippetTextFormat,
 			budget:            opts.CompletionBudget,
 		},
@@ -1051,6 +1051,9 @@ func (c *completer) addFieldItems(ctx context.Context, fields *ast.FieldList) {
 				continue
 			}
 			obj := c.pkg.GetTypesInfo().ObjectOf(name)
+			if obj == nil {
+				continue
+			}
 
 			// if we're in a field comment/doc, score that field as more relevant
 			score := stdScore
