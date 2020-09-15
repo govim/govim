@@ -15,6 +15,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/browser"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 )
 
 // version implements the version command.
@@ -79,5 +80,20 @@ func (b *bug) Run(ctx context.Context, args ...string) error {
 		fmt.Print("Please file a new issue at golang.org/issue/new using this template:\n\n")
 		fmt.Print(body)
 	}
+	return nil
+}
+
+type settingsJson struct{}
+
+func (sj *settingsJson) Name() string      { return "settings-json" }
+func (sj *settingsJson) Usage() string     { return "" }
+func (sj *settingsJson) ShortHelp() string { return "print json describing gopls settings" }
+func (sj *settingsJson) DetailedHelp(f *flag.FlagSet) {
+	fmt.Fprint(f.Output(), ``)
+	f.PrintDefaults()
+}
+
+func (sj *settingsJson) Run(ctx context.Context, args ...string) error {
+	fmt.Fprintf(os.Stdout, source.OptionsJson)
 	return nil
 }
