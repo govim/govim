@@ -12,6 +12,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
@@ -153,7 +154,7 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 	if b.Version == 1 {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
-				LanguageID: "go",
+				LanguageID: source.DetectLanguage("", b.URI().Filename()).String(),
 				URI:        protocol.DocumentURI(b.URI()),
 				Version:    float64(b.Version),
 				Text:       string(b.Contents()),
