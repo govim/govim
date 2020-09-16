@@ -83,13 +83,38 @@ func (g *govimplugin) Telemetry(context.Context, interface{}) error {
 
 func (g *govimplugin) RegisterCapability(ctxt context.Context, params *protocol.RegistrationParams) error {
 	defer absorbShutdownErr()
+	for _, r := range params.Registrations {
+		switch r.Method {
+		case "workspace/didChangeConfiguration":
+			// For now ignore per #949
+		case "workspace/didChangeWorkspaceFolders":
+			// For now ignore per #172
+		case "workspace/didChangeWatchedFiles":
+			// For now ignore per #950
+		default:
+			panic(fmt.Errorf("RegisterCapability called with unknown method: %v", pretty.Sprint(params)))
+		}
+	}
 	g.logGoplsClientf("RegisterCapability: %v", pretty.Sprint(params))
 	return nil
 }
 
-func (g *govimplugin) UnregisterCapability(context.Context, *protocol.UnregistrationParams) error {
+func (g *govimplugin) UnregisterCapability(ctxt context.Context, params *protocol.UnregistrationParams) error {
 	defer absorbShutdownErr()
-	panic("UnregisterCapability not implemented yet")
+	for _, u := range params.Unregisterations {
+		switch u.Method {
+		case "workspace/didChangeConfiguration":
+			// For now ignore per #949
+		case "workspace/didChangeWorkspaceFolders":
+			// For now ignore per #172
+		case "workspace/didChangeWatchedFiles":
+		// 	// For now ignore per #950
+		default:
+			panic(fmt.Errorf("UnregisterCapability called with unknown method: %v", pretty.Sprint(params)))
+		}
+	}
+	g.logGoplsClientf("UnregisterCapability: %v", pretty.Sprint(params))
+	return nil
 }
 
 func (g *govimplugin) WorkspaceFolders(context.Context) ([]protocol.WorkspaceFolder, error) {
