@@ -27,7 +27,7 @@ type Session struct {
 	cache *Cache
 	id    string
 
-	options source.Options
+	options *source.Options
 
 	viewMu  sync.Mutex
 	views   []*View
@@ -117,11 +117,11 @@ func (c *closedFile) Version() float64 {
 func (s *Session) ID() string     { return s.id }
 func (s *Session) String() string { return s.id }
 
-func (s *Session) Options() source.Options {
+func (s *Session) Options() *source.Options {
 	return s.options
 }
 
-func (s *Session) SetOptions(options source.Options) {
+func (s *Session) SetOptions(options *source.Options) {
 	s.options = options
 }
 
@@ -140,7 +140,7 @@ func (s *Session) Cache() interface{} {
 	return s.cache
 }
 
-func (s *Session) NewView(ctx context.Context, name string, folder span.URI, options source.Options) (source.View, source.Snapshot, func(), error) {
+func (s *Session) NewView(ctx context.Context, name string, folder span.URI, options *source.Options) (source.View, source.Snapshot, func(), error) {
 	s.viewMu.Lock()
 	defer s.viewMu.Unlock()
 	view, snapshot, release, err := s.createView(ctx, name, folder, options, 0)
@@ -153,7 +153,7 @@ func (s *Session) NewView(ctx context.Context, name string, folder span.URI, opt
 	return view, snapshot, release, nil
 }
 
-func (s *Session) createView(ctx context.Context, name string, folder span.URI, options source.Options, snapshotID uint64) (*View, *snapshot, func(), error) {
+func (s *Session) createView(ctx context.Context, name string, folder span.URI, options *source.Options, snapshotID uint64) (*View, *snapshot, func(), error) {
 	index := atomic.AddInt64(&viewIndex, 1)
 	// We want a true background context and not a detached context here
 	// the spans need to be unrelated and no tag values should pollute it.
@@ -197,7 +197,7 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 	}
 
 	if v.session.cache.options != nil {
-		v.session.cache.options(&v.options)
+		v.session.cache.options(v.options)
 	}
 
 	// Set the module-specific information.
@@ -239,12 +239,13 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 	// Initialize the view without blocking.
 	initCtx, initCancel := context.WithCancel(xcontext.Detach(ctx))
 	v.initCancelFirstAttempt = initCancel
+	snapshot := v.snapshot
+	release := snapshot.generation.Acquire(initCtx)
 	go func() {
-		release := v.snapshot.generation.Acquire(initCtx)
-		v.initialize(initCtx, v.snapshot, true)
+		v.initialize(initCtx, snapshot, true)
 		release()
 	}()
-	return v, v.snapshot, v.snapshot.generation.Acquire(ctx), nil
+	return v, snapshot, snapshot.generation.Acquire(ctx), nil
 }
 
 // findWorkspaceModules walks the view's root folder, looking for go.mod files.
@@ -253,7 +254,7 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 //
 // It assumes that the caller has not yet created the view, and therefore does
 // not lock any of the internal data structures before accessing them.
-func (v *View) findWorkspaceModules(ctx context.Context, options source.Options) error {
+func (v *View) findWorkspaceModules(ctx context.Context, options *source.Options) error {
 	// If the user is intentionally limiting their workspace scope, add their
 	// folder to the roots and return early.
 	if !options.ExpandWorkspaceToModule {
@@ -431,7 +432,7 @@ func (s *Session) removeView(ctx context.Context, view *View) error {
 	return nil
 }
 
-func (s *Session) updateView(ctx context.Context, view *View, options source.Options) (*View, error) {
+func (s *Session) updateView(ctx context.Context, view *View, options *source.Options) (*View, error) {
 	s.viewMu.Lock()
 	defer s.viewMu.Unlock()
 	i, err := s.dropView(ctx, view)

@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"go/build"
 	"io"
 	"io/ioutil"
 	"os"
@@ -41,7 +40,7 @@ type View struct {
 	id      string
 
 	optionsMu sync.Mutex
-	options   source.Options
+	options   *source.Options
 
 	// mu protects most mutable state of the view.
 	mu sync.Mutex
@@ -279,13 +278,13 @@ func (v *View) Folder() span.URI {
 	return v.folder
 }
 
-func (v *View) Options() source.Options {
+func (v *View) Options() *source.Options {
 	v.optionsMu.Lock()
 	defer v.optionsMu.Unlock()
 	return v.options
 }
 
-func minorOptionsChange(a, b source.Options) bool {
+func minorOptionsChange(a, b *source.Options) bool {
 	// Check if any of the settings that modify our understanding of files have been changed
 	mapEnv := func(env []string) map[string]string {
 		m := make(map[string]string, len(env))
@@ -316,7 +315,7 @@ func minorOptionsChange(a, b source.Options) bool {
 	return true
 }
 
-func (v *View) SetOptions(ctx context.Context, options source.Options) (source.View, error) {
+func (v *View) SetOptions(ctx context.Context, options *source.Options) (source.View, error) {
 	// no need to rebuild the view if the options were not materially changed
 	v.optionsMu.Lock()
 	if minorOptionsChange(v.options, options) {
@@ -678,15 +677,9 @@ func checkIgnored(suffix string) bool {
 }
 
 func (v *View) Snapshot(ctx context.Context) (source.Snapshot, func()) {
-	s := v.getSnapshot()
-	return s, s.generation.Acquire(ctx)
-}
-
-func (v *View) getSnapshot() *snapshot {
 	v.snapshotMu.Lock()
 	defer v.snapshotMu.Unlock()
-
-	return v.snapshot
+	return v.snapshot, v.snapshot.generation.Acquire(ctx)
 }
 
 func (v *View) initialize(ctx context.Context, s *snapshot, firstAttempt bool) {
@@ -744,18 +737,6 @@ func (v *View) initialize(ctx context.Context, s *snapshot, firstAttempt bool) {
 	})
 }
 
-// AwaitInitialized waits until a view is initialized
-func (v *View) AwaitInitialized(ctx context.Context) {
-	select {
-	case <-ctx.Done():
-		return
-	case <-v.initialized:
-	}
-	// We typically prefer to run something as intensive as the IWL without
-	// blocking. I'm not sure if there is a way to do that here.
-	v.initialize(ctx, v.getSnapshot(), false)
-}
-
 // invalidateContent invalidates the content of a Go file,
 // including any position and type information that depends on it.
 // It returns true if we were already tracking the given file, false otherwise.
@@ -768,7 +749,7 @@ func (v *View) invalidateContent(ctx context.Context, uris map[span.URI]source.V
 	v.cancelBackground()
 
 	// Do not clone a snapshot until its view has finished initializing.
-	v.AwaitInitialized(ctx)
+	v.snapshot.AwaitInitialized(ctx)
 
 	// This should be the only time we hold the view's snapshot lock for any period of time.
 	v.snapshotMu.Lock()
@@ -805,7 +786,7 @@ func (v *View) maybeReinitialize() {
 	v.initializeOnce = &once
 }
 
-func (v *View) setBuildInformation(ctx context.Context, options source.Options) error {
+func (v *View) setBuildInformation(ctx context.Context, options *source.Options) error {
 	if err := checkPathCase(v.Folder().Filename()); err != nil {
 		return errors.Errorf("invalid workspace configuration: %w", err)
 	}
@@ -1012,7 +993,7 @@ func (v *View) goVersion(ctx context.Context, env []string) (int, error) {
 	tags := strings.Fields(stdout[1 : len(stdout)-2])
 	for i := len(tags) - 1; i >= 0; i-- {
 		var version int
-		if _, err := fmt.Sscanf(build.Default.ReleaseTags[i], "go1.%d", &version); err != nil {
+		if _, err := fmt.Sscanf(tags[i], "go1.%d", &version); err != nil {
 			continue
 		}
 		return version, nil
