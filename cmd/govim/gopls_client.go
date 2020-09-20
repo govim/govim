@@ -30,6 +30,8 @@ const (
 	goplsEnv                  = "env"
 	goplsAnalyses             = "analyses"
 	goplsCodeLens             = "codelens"
+	goplsSymbolMatcher        = "symbolMatcher"
+	goplsSymbolStyle          = "symbolStyle"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)

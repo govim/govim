@@ -15,6 +15,8 @@ type VimConfig struct {
 	HoverDiagnostics                             *int
 	CompletionDeepCompletions                    *int
 	CompletionMatcher                            *config.CompletionMatcher
+	SymbolMatcher                                *config.SymbolMatcher
+	SymbolStyle                                  *config.SymbolStyle
 	Staticcheck                                  *int
 	CompleteUnimported                           *int
 	GoImportsLocalPrefix                         *string
@@ -39,6 +41,8 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		HoverDiagnostics:                  boolVal(c.HoverDiagnostics, d.HoverDiagnostics),
 		CompletionDeepCompletions:         boolVal(c.CompletionDeepCompletions, d.CompletionDeepCompletions),
 		CompletionMatcher:                 c.CompletionMatcher,
+		SymbolMatcher:                     c.SymbolMatcher,
+		SymbolStyle:                       c.SymbolStyle,
 		Staticcheck:                       boolVal(c.Staticcheck, d.Staticcheck),
 		CompleteUnimported:                boolVal(c.CompleteUnimported, d.CompleteUnimported),
 		GoImportsLocalPrefix:              stringVal(c.GoImportsLocalPrefix, d.GoImportsLocalPrefix),
@@ -57,6 +61,12 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 	}
 	if v.CompletionMatcher == nil {
 		v.CompletionMatcher = d.CompletionMatcher
+	}
+	if v.SymbolMatcher == nil {
+		v.SymbolMatcher = d.SymbolMatcher
+	}
+	if v.SymbolStyle == nil {
+		v.SymbolStyle = d.SymbolStyle
 	}
 	return v
 }
@@ -123,6 +133,14 @@ func copyMap(i, j *map[string]interface{}) *map[string]interface{} {
 		res[ck] = cv
 	}
 	return &res
+}
+
+func SymbolMatcherVal(v config.SymbolMatcher) *config.SymbolMatcher {
+	return &v
+}
+
+func SymbolStyleVal(v config.SymbolStyle) *config.SymbolStyle {
+	return &v
 }
 
 func FormatOnSaveVal(v config.FormatOnSave) *config.FormatOnSave {

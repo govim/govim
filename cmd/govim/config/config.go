@@ -108,6 +108,18 @@ type Config struct {
 	// Default: CompletionMatcherFuzzy
 	CompletionMatcher *CompletionMatcher `json:",omitempty"`
 
+	// SymbolMatcher is a string value that tells gopls which matcher
+	// to use when computing workspace symbol candidates.
+	//
+	// Default: SymbolMatcherFuzzy
+	SymbolMatcher *SymbolMatcher `json:",omitempty"`
+
+	// SymbolStyle is a string value that tells gopls which qualification style
+	// to use when computing workspace symbol candidates.
+	//
+	// Default: SymbolStyleFull
+	SymbolStyle *SymbolStyle `json:",omitempty"`
+
 	// Staticcheck enables staticcheck analyses in gopls
 	//
 	// Default: false
@@ -414,6 +426,42 @@ const (
 	// CompletionMatcherCaseInsensitive specifies that gopls should use
 	// case-sensitive matching when computing completion candidates
 	CompletionMatcherCaseInsensitive CompletionMatcher = "caseInsensitive"
+)
+
+// SymbolMatcher typed constants define the set of valid values that
+// Config.SymbolMatcher can take
+type SymbolMatcher string
+
+const (
+	// SymbolMatcherFuzzy specifies that gopls should use fuzzy matching
+	// when computing workspace symbol candidates
+	SymbolMatcherFuzzy SymbolMatcher = "fuzzy"
+
+	// SymbolMatcherCaseSensitive specifies that gopls should use case sensitive
+	// matching when computing workspace symbol candidates
+	SymbolMatcherCaseSensitive SymbolMatcher = "caseSensitive"
+
+	// SymbolMatcherCaseInsensitive specifies that gopls should use case
+	// insensitive matching when computing workspace symbol candidates
+	SymbolMatcherCaseInsensitive SymbolMatcher = "caseInsensitive"
+)
+
+// SymbolStyle typed constants define the set of valid values that
+// Config.SymbolStyle can take
+type SymbolStyle string
+
+const (
+	// SymbolStyleFull specifies that gopls should fully qualify workspace
+	// symbol candidates
+	SymbolStyleFull SymbolStyle = "full"
+
+	// SymbolStylePackage specifies that gopls should package name-qualify
+	// workspace symbol candidates
+	SymbolStylePackage SymbolStyle = "package"
+
+	// SymbolStyleDynamic specifies that gopls should dynamic name-qualify
+	// workspace symbol candidates
+	SymbolStyleDynamic SymbolStyle = "dynamic"
 )
 
 // Highlight typed constants define the different highlight groups used by govim.

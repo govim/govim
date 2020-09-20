@@ -88,6 +88,22 @@ function! s:validCompletionMatcher(v)
   return [v:true, ""]
 endfunction
 
+function! s:validSymbolMatcher(v)
+  let valid = ["caseInsensitive", "caseSensitive", "fuzzy"]
+  if index(valid, a:v) < 0
+    return [v:false, "must be one of: ".string(valid)]
+  endif
+  return [v:true, ""]
+endfunction
+
+function! s:validSymbolStyle(v)
+  let valid = ["package", "dynamic", "full"]
+  if index(valid, a:v) < 0
+    return [v:false, "must be one of: ".string(valid)]
+  endif
+  return [v:true, ""]
+endfunction
+
 function! s:validStaticcheck(v)
   return s:validBool(a:v)
 endfunction
@@ -168,6 +184,8 @@ let s:validators = {
       \ "QuickfixAutoDiagnostics": function("s:validQuickfixAutoDiagnostics"),
       \ "CompletionDeepCompletions": function("s:validCompletionDeepCompletions"),
       \ "CompletionMatcher": function("s:validCompletionMatcher"),
+      \ "SymbolMatcher": function("s:validSymbolMatcher"),
+      \ "SymbolStyle": function("s:validSymbolStyle"),
       \ "QuickfixSigns": function("s:validQuickfixSigns"),
       \ "HighlightDiagnostics": function("s:validHighlightDiagnostics"),
       \ "HighlightReferences": function("s:validHighlightReferences"),

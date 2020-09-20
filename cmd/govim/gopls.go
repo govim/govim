@@ -139,6 +139,24 @@ func (g *govimplugin) startGopls() error {
 
 	initParams.Capabilities.Window.WorkDoneProgress = true
 
+	// Session-level config should be able to be set post initialize, but that
+	// is not currently supported by gopls. So for now a restart is required
+	// in order to change symbol matcher/style config
+	//
+	// TODO: clarify whether this method is in fact running as part of the vimstate
+	// "thread" and hence whether this lock is required
+	g.vimstate.configLock.Lock()
+	conf := g.vimstate.config
+	defer g.vimstate.configLock.Unlock()
+	goplsConfig := make(map[string]interface{})
+	if conf.SymbolMatcher != nil {
+		goplsConfig[goplsSymbolMatcher] = *conf.SymbolMatcher
+	}
+	if conf.SymbolStyle != nil {
+		goplsConfig[goplsSymbolStyle] = *conf.SymbolStyle
+	}
+	initParams.InitializationOptions = goplsConfig
+
 	if _, err := g.server.Initialize(context.Background(), initParams); err != nil {
 		return fmt.Errorf("failed to initialise gopls: %v", err)
 	}
