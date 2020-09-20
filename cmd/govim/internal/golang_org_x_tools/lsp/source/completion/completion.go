@@ -8,6 +8,7 @@ package completion
 
 import (
 	"context"
+	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/scanner"
@@ -89,7 +90,6 @@ type CompletionItem struct {
 
 // completionOptions holds completion specific configuration.
 type completionOptions struct {
-	deepCompletion    bool
 	unimported        bool
 	documentation     bool
 	fullDocumentation bool
@@ -318,114 +318,6 @@ func (c *completer) getSurrounding() *Selection {
 	return c.surrounding
 }
 
-// found adds a candidate completion. We will also search through the object's
-// members for more candidates.
-func (c *completer) found(ctx context.Context, cand candidate) {
-	obj := cand.obj
-
-	if obj.Pkg() != nil && obj.Pkg() != c.pkg.GetTypes() && !obj.Exported() {
-		// obj is not accessible because it lives in another package and is not
-		// exported. Don't treat it as a completion candidate.
-		return
-	}
-
-	if c.inDeepCompletion() {
-		// When searching deep, just make sure we don't have a cycle in our chain.
-		// We don't dedupe by object because we want to allow both "foo.Baz" and
-		// "bar.Baz" even though "Baz" is represented the same types.Object in both.
-		for _, seenObj := range c.deepState.chain {
-			if seenObj == obj {
-				return
-			}
-		}
-	} else {
-		// At the top level, dedupe by object.
-		if c.seen[obj] {
-			return
-		}
-		c.seen[obj] = true
-	}
-
-	// If we are running out of budgeted time we must limit our search for deep
-	// completion candidates.
-	if c.shouldPrune() {
-		return
-	}
-
-	// If we know we want a type name, don't offer non-type name
-	// candidates. However, do offer package names since they can
-	// contain type names, and do offer any candidate without a type
-	// since we aren't sure if it is a type name or not (i.e. unimported
-	// candidate).
-	if c.wantTypeName() && obj.Type() != nil && !isTypeName(obj) && !isPkgName(obj) {
-		return
-	}
-
-	if c.matchingCandidate(&cand) {
-		cand.score *= highScore
-
-		if p := c.penalty(&cand); p > 0 {
-			cand.score *= (1 - p)
-		}
-	} else if isTypeName(obj) {
-		// If obj is a *types.TypeName that didn't otherwise match, check
-		// if a literal object of this type makes a good candidate.
-
-		// We only care about named types (i.e. don't want builtin types).
-		if _, isNamed := obj.Type().(*types.Named); isNamed {
-			c.literal(ctx, obj.Type(), cand.imp)
-		}
-	}
-
-	// Lower score of method calls so we prefer fields and vars over calls.
-	if cand.expandFuncCall {
-		if sig, ok := obj.Type().Underlying().(*types.Signature); ok && sig.Recv() != nil {
-			cand.score *= 0.9
-		}
-	}
-
-	// Prefer private objects over public ones.
-	if !obj.Exported() && obj.Parent() != types.Universe {
-		cand.score *= 1.1
-	}
-
-	// Favor shallow matches by lowering score according to depth.
-	cand.score -= cand.score * c.deepState.scorePenalty()
-
-	if cand.score < 0 {
-		cand.score = 0
-	}
-
-	cand.name = c.deepState.chainString(obj.Name())
-	matchScore := c.matcher.Score(cand.name)
-	if matchScore > 0 {
-		cand.score *= float64(matchScore)
-
-		// Avoid calling c.item() for deep candidates that wouldn't be in the top
-		// MaxDeepCompletions anyway.
-		if !c.inDeepCompletion() || c.deepState.isHighScore(cand.score) {
-			if item, err := c.item(ctx, cand); err == nil {
-				c.items = append(c.items, item)
-			}
-		}
-	}
-
-	c.deepSearch(ctx, cand)
-}
-
-// penalty reports a score penalty for cand in the range (0, 1).
-// For example, a candidate is penalized if it has already been used
-// in another switch case statement.
-func (c *completer) penalty(cand *candidate) float64 {
-	for _, p := range c.inference.penalized {
-		if c.objChainMatches(cand.obj, p.objChain) {
-			return p.penalty
-		}
-	}
-
-	return 0
-}
-
 // candidate represents a completion candidate.
 type candidate struct {
 	// obj is the types.Object to complete to.
@@ -486,7 +378,7 @@ func (e ErrIsDefinition) Error() string {
 // the client to score the quality of the completion. For instance, some clients
 // may tolerate imperfect matches as valid completion results, since users may make typos.
 func Completion(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle, protoPos protocol.Position, triggerCharacter string) ([]CompletionItem, *Selection, error) {
-	ctx, done := event.Start(ctx, "source.Completion")
+	ctx, done := event.Start(ctx, "completion.Completion")
 	defer done()
 
 	startTime := time.Now()
@@ -571,9 +463,12 @@ func Completion(ctx context.Context, snapshot source.Snapshot, fh source.FileHan
 		seen:                      make(map[types.Object]bool),
 		enclosingFunc:             enclosingFunction(path, pkg.GetTypesInfo()),
 		enclosingCompositeLiteral: enclosingCompositeLiteral(path, rng.Start, pkg.GetTypesInfo()),
+		deepState: deepCompletionState{
+			enabled: opts.DeepCompletion,
+			curPath: &searchPath{},
+		},
 		opts: &completionOptions{
 			matcher:           opts.Matcher,
-			deepCompletion:    opts.DeepCompletion,
 			unimported:        opts.CompleteUnimported,
 			documentation:     opts.CompletionDocumentation,
 			fullDocumentation: opts.HoverKind == source.FullDocumentation,
@@ -586,11 +481,6 @@ func Completion(ctx context.Context, snapshot source.Snapshot, fh source.FileHan
 		methodSetCache: make(map[methodSetKey]*types.MethodSet),
 		mapper:         pgf.Mapper,
 		startTime:      startTime,
-	}
-
-	if c.opts.deepCompletion {
-		// Initialize max search depth to unlimited.
-		c.deepState.maxDepth = -1
 	}
 
 	var cancel context.CancelFunc
@@ -623,9 +513,9 @@ func Completion(ctx context.Context, snapshot source.Snapshot, fh source.FileHan
 	// Inside comments, offer completions for the name of the relevant symbol.
 	for _, comment := range pgf.File.Comments {
 		if comment.Pos() < rng.Start && rng.Start <= comment.End() {
-			// deep completion doesn't work properly in comments since we don't
-			// have a type object to complete further
-			c.deepState.maxDepth = 0
+			// Deep completion doesn't work properly in comments since we don't
+			// have a type object to complete further.
+			c.deepState.enabled = false
 			c.populateCommentCompletions(ctx, comment)
 			return c.items, c.getSurrounding(), nil
 		}
@@ -633,6 +523,11 @@ func Completion(ctx context.Context, snapshot source.Snapshot, fh source.FileHan
 
 	// Struct literals are handled entirely separately.
 	if c.wantStructFieldCompletions() {
+		// If we are definitely completing a struct field name, deep completions
+		// don't make sense.
+		if c.enclosingCompositeLiteral.inKey {
+			c.deepState.enabled = false
+		}
 		if err := c.structLiteralFieldName(ctx); err != nil {
 			return nil, nil, err
 		}
@@ -789,32 +684,65 @@ func (c *completer) emptySwitchStmt() bool {
 // (i.e. "golang.org/x/"). The user is meant to accept completion suggestions
 // until they reach a complete import path.
 func (c *completer) populateImportCompletions(ctx context.Context, searchImport *ast.ImportSpec) error {
-	c.surrounding = &Selection{
-		content:     searchImport.Path.Value,
-		cursor:      c.pos,
-		MappedRange: source.NewMappedRange(c.snapshot.FileSet(), c.mapper, searchImport.Path.Pos(), searchImport.Path.End()),
-	}
+	importPath := searchImport.Path.Value
 
-	seenImports := make(map[string]struct{})
-	for _, importSpec := range c.file.Imports {
-		if importSpec.Path.Value == searchImport.Path.Value {
-			continue
-		}
-		importPath, err := strconv.Unquote(importSpec.Path.Value)
-		if err != nil {
-			return err
-		}
-		seenImports[importPath] = struct{}{}
-	}
-
-	prefixEnd := c.pos - searchImport.Path.ValuePos
 	// Extract the text between the quotes (if any) in an import spec.
 	// prefix is the part of import path before the cursor.
-	prefix := strings.Trim(searchImport.Path.Value[:prefixEnd], `"`)
+	prefixEnd := c.pos - searchImport.Path.Pos()
+	prefix := strings.Trim(importPath[:prefixEnd], `"`)
 
 	// The number of directories in the import path gives us the depth at
 	// which to search.
 	depth := len(strings.Split(prefix, "/")) - 1
+
+	content := importPath
+	start, end := searchImport.Path.Pos(), searchImport.Path.End()
+	namePrefix, nameSuffix := `"`, `"`
+	// If a starting quote is present, adjust surrounding to either after the
+	// cursor or after the first slash (/), except if cursor is at the starting
+	// quote. Otherwise we provide a completion including the starting quote.
+	if strings.HasPrefix(importPath, `"`) && c.pos > searchImport.Path.Pos() {
+		content = content[1:]
+		start++
+		if depth > 0 {
+			// Adjust textEdit start to replacement range. For ex: if current
+			// path was "golang.or/x/to<>ols/internal/", where <> is the cursor
+			// position, start of the replacement range would be after
+			// "golang.org/x/".
+			path := strings.SplitAfter(prefix, "/")
+			numChars := len(strings.Join(path[:len(path)-1], ""))
+			content = content[numChars:]
+			start += token.Pos(numChars)
+		}
+		namePrefix = ""
+	}
+
+	// We won't provide an ending quote if one is already present, except if
+	// cursor is after the ending quote but still in import spec. This is
+	// because cursor has to be in our textEdit range.
+	if strings.HasSuffix(importPath, `"`) && c.pos < searchImport.Path.End() {
+		end--
+		content = content[:len(content)-1]
+		nameSuffix = ""
+	}
+
+	c.surrounding = &Selection{
+		content:     content,
+		cursor:      c.pos,
+		MappedRange: source.NewMappedRange(c.snapshot.FileSet(), c.mapper, start, end),
+	}
+
+	seenImports := make(map[string]struct{})
+	for _, importSpec := range c.file.Imports {
+		if importSpec.Path.Value == importPath {
+			continue
+		}
+		seenImportPath, err := strconv.Unquote(importSpec.Path.Value)
+		if err != nil {
+			return err
+		}
+		seenImports[seenImportPath] = struct{}{}
+	}
 
 	var mu sync.Mutex // guard c.items locally, since searchImports is called in parallel
 	seen := make(map[string]struct{})
@@ -832,12 +760,20 @@ func (c *completer) populateImportCompletions(ctx context.Context, searchImport 
 		}
 		pkgToConsider := strings.Join(pkgDirList[:depth+1], "/")
 
+		name := pkgDirList[depth]
+		// if we're adding an opening quote to completion too, set name to full
+		// package path since we'll need to overwrite that range.
+		if namePrefix == `"` {
+			name = pkgToConsider
+		}
+
 		score := float64(pkg.Relevance)
 		if len(pkgDirList)-1 == depth {
 			score *= highScore
 		} else {
 			// For incomplete package paths, add a terminal slash to indicate that the
 			// user should keep triggering completions.
+			name += "/"
 			pkgToConsider += "/"
 		}
 
@@ -850,11 +786,11 @@ func (c *completer) populateImportCompletions(ctx context.Context, searchImport 
 		defer mu.Unlock()
 
 		obj := types.NewPkgName(0, nil, pkg.IdentName, types.NewPackage(pkgToConsider, pkg.IdentName))
-		// Running goimports logic in completions is expensive, and the
-		// (*completer).found method imposes a 100ms budget. Work-around this
-		// by adding to c.items directly.
-		cand := candidate{obj: obj, name: `"` + pkgToConsider + `"`, score: score}
+		cand := candidate{obj: obj, name: namePrefix + name + nameSuffix, score: score}
+		// We use c.item here to be able to manually update the detail for a
+		// candidate. c.found doesn't give us access to the completion item.
 		if item, err := c.item(ctx, cand); err == nil {
+			item.Detail = fmt.Sprintf("%q", pkgToConsider)
 			c.items = append(c.items, item)
 		}
 	}
@@ -1104,7 +1040,10 @@ func (c *completer) selector(ctx context.Context, sel *ast.SelectorExpr) error {
 	// Is sel a qualified identifier?
 	if id, ok := sel.X.(*ast.Ident); ok {
 		if pkgName, ok := c.pkg.GetTypesInfo().Uses[id].(*types.PkgName); ok {
-			c.packageMembers(ctx, pkgName.Imported(), stdScore, nil)
+			candidates := c.packageMembers(ctx, pkgName.Imported(), stdScore, nil)
+			for _, cand := range candidates {
+				c.found(ctx, cand)
+			}
 			return nil
 		}
 	}
@@ -1112,7 +1051,11 @@ func (c *completer) selector(ctx context.Context, sel *ast.SelectorExpr) error {
 	// Invariant: sel is a true selector.
 	tv, ok := c.pkg.GetTypesInfo().Types[sel.X]
 	if ok {
-		return c.methodsAndFields(ctx, tv.Type, tv.Addressable(), nil)
+		candidates := c.methodsAndFields(ctx, tv.Type, tv.Addressable(), nil)
+		for _, cand := range candidates {
+			c.found(ctx, cand)
+		}
+		return nil
 	}
 
 	// Try unimported packages.
@@ -1165,7 +1108,10 @@ func (c *completer) unimportedMembers(ctx context.Context, id *ast.Ident) error 
 		if imports.ImportPathToAssumedName(path) != pkg.GetTypes().Name() {
 			imp.name = pkg.GetTypes().Name()
 		}
-		c.packageMembers(ctx, pkg.GetTypes(), unimportedScore(relevances[path]), imp)
+		candidates := c.packageMembers(ctx, pkg.GetTypes(), unimportedScore(relevances[path]), imp)
+		for _, cand := range candidates {
+			c.found(ctx, cand)
+		}
 		if len(c.items) >= unimportedMemberTarget {
 			return nil
 		}
@@ -1210,20 +1156,22 @@ func unimportedScore(relevance int) float64 {
 	return (stdScore + .1*float64(relevance)) / 2
 }
 
-func (c *completer) packageMembers(ctx context.Context, pkg *types.Package, score float64, imp *importInfo) {
+func (c *completer) packageMembers(ctx context.Context, pkg *types.Package, score float64, imp *importInfo) []candidate {
+	var candidates []candidate
 	scope := pkg.Scope()
 	for _, name := range scope.Names() {
 		obj := scope.Lookup(name)
-		c.found(ctx, candidate{
+		candidates = append(candidates, candidate{
 			obj:         obj,
 			score:       score,
 			imp:         imp,
 			addressable: isVar(obj),
 		})
 	}
+	return candidates
 }
 
-func (c *completer) methodsAndFields(ctx context.Context, typ types.Type, addressable bool, imp *importInfo) error {
+func (c *completer) methodsAndFields(ctx context.Context, typ types.Type, addressable bool, imp *importInfo) []candidate {
 	mset := c.methodSetCache[methodSetKey{typ, addressable}]
 	if mset == nil {
 		if addressable && !types.IsInterface(typ) && !isPointer(typ) {
@@ -1236,8 +1184,9 @@ func (c *completer) methodsAndFields(ctx context.Context, typ types.Type, addres
 		c.methodSetCache[methodSetKey{typ, addressable}] = mset
 	}
 
+	var candidates []candidate
 	for i := 0; i < mset.Len(); i++ {
-		c.found(ctx, candidate{
+		candidates = append(candidates, candidate{
 			obj:         mset.At(i).Obj(),
 			score:       stdScore,
 			imp:         imp,
@@ -1247,7 +1196,7 @@ func (c *completer) methodsAndFields(ctx context.Context, typ types.Type, addres
 
 	// Add fields of T.
 	eachField(typ, func(v *types.Var) {
-		c.found(ctx, candidate{
+		candidates = append(candidates, candidate{
 			obj:         v,
 			score:       stdScore - 0.01,
 			imp:         imp,
@@ -1255,7 +1204,7 @@ func (c *completer) methodsAndFields(ctx context.Context, typ types.Type, addres
 		})
 	})
 
-	return nil
+	return candidates
 }
 
 // lexical finds completions in the lexical environment.
@@ -2472,40 +2421,6 @@ func (c *completer) matchingCandidate(cand *candidate) bool {
 	cand.expandFuncCall = isFunc(cand.obj)
 
 	return false
-}
-
-// objChainMatches reports whether cand combined with the surrounding
-// object prefix matches chain.
-func (c *completer) objChainMatches(cand types.Object, chain []types.Object) bool {
-	// For example, when completing:
-	//
-	//   foo.ba<>
-	//
-	// If we are considering the deep candidate "bar.baz", cand is baz,
-	// objChain is [foo] and deepChain is [bar]. We would match the
-	// chain [foo, bar, baz].
-
-	if len(chain) != len(c.inference.objChain)+len(c.deepState.chain)+1 {
-		return false
-	}
-
-	if chain[len(chain)-1] != cand {
-		return false
-	}
-
-	for i, o := range c.inference.objChain {
-		if chain[i] != o {
-			return false
-		}
-	}
-
-	for i, o := range c.deepState.chain {
-		if chain[i+len(c.inference.objChain)] != o {
-			return false
-		}
-	}
-
-	return true
 }
 
 // candTypeMatches reports whether cand makes a good completion

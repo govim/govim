@@ -67,16 +67,6 @@ type View struct {
 	// is just the folder. If we are in module mode, this is the module root.
 	root span.URI
 
-	// TODO: The modules and workspaceModule fields should probably be moved to
-	// the snapshot and invalidated on file changes.
-
-	// modules is the set of modules currently in this workspace.
-	modules map[span.URI]*moduleRoot
-
-	// workspaceModule is an in-memory representation of the go.mod file for
-	// the workspace module.
-	workspaceModule *modfile.File
-
 	// importsMu guards imports-related state, particularly the ProcessEnv.
 	importsMu sync.Mutex
 
@@ -149,6 +139,9 @@ type View struct {
 
 	// `go env` variables that need to be tracked by gopls.
 	gocache, gomodcache, gopath, goprivate string
+
+	// The value of GO111MODULE we want to run with.
+	go111module string
 
 	// goEnv is the `go env` output collected when a view is created.
 	// It includes the values of the environment variables above.
@@ -492,6 +485,8 @@ func (v *View) populateProcessEnv(ctx context.Context, modFH, sumFH source.FileH
 	for k, v := range v.goEnv {
 		pe.Env[k] = v
 	}
+	pe.Env["GO111MODULE"] = v.go111module
+
 	modmod, err := v.needsModEqualsMod(ctx, modFH)
 	if err != nil {
 		return cleanup, err
@@ -682,42 +677,42 @@ func (v *View) Snapshot(ctx context.Context) (source.Snapshot, func()) {
 	return v.snapshot, v.snapshot.generation.Acquire(ctx)
 }
 
-func (v *View) initialize(ctx context.Context, s *snapshot, firstAttempt bool) {
+func (s *snapshot) initialize(ctx context.Context, firstAttempt bool) {
 	select {
 	case <-ctx.Done():
 		return
-	case v.initializationSema <- struct{}{}:
+	case s.view.initializationSema <- struct{}{}:
 	}
 
 	defer func() {
-		<-v.initializationSema
+		<-s.view.initializationSema
 	}()
 
-	if v.initializeOnce == nil {
+	if s.view.initializeOnce == nil {
 		return
 	}
-	v.initializeOnce.Do(func() {
+	s.view.initializeOnce.Do(func() {
 		defer func() {
-			v.initializeOnce = nil
+			s.view.initializeOnce = nil
 			if firstAttempt {
-				close(v.initialized)
+				close(s.view.initialized)
 			}
 		}()
 
 		// If we have multiple modules, we need to load them by paths.
 		var scopes []interface{}
-		if len(v.modules) > 0 {
+		if len(s.modules) > 0 {
 			// TODO(rstambler): Retry the initial workspace load for whichever
 			// modules we failed to load.
-			for _, mod := range v.modules {
+			for _, mod := range s.modules {
 				fh, err := s.GetFile(ctx, mod.modURI)
 				if err != nil {
-					v.initializedErr = err
+					s.view.initializedErr = err
 					continue
 				}
 				parsed, err := s.ParseMod(ctx, fh)
 				if err != nil {
-					v.initializedErr = err
+					s.view.initializedErr = err
 					continue
 				}
 				path := parsed.File.Module.Mod.Path
@@ -733,7 +728,7 @@ func (v *View) initialize(ctx context.Context, s *snapshot, firstAttempt bool) {
 		if err != nil {
 			event.Error(ctx, "initial workspace load failed", err)
 		}
-		v.initializedErr = err
+		s.view.initializedErr = err
 	})
 }
 
@@ -774,12 +769,20 @@ func (v *View) cancelBackground() {
 }
 
 func (v *View) maybeReinitialize() {
+	v.reinitialize(false)
+}
+
+func (v *View) definitelyReinitialize() {
+	v.reinitialize(true)
+}
+
+func (v *View) reinitialize(force bool) {
 	v.initializationSema <- struct{}{}
 	defer func() {
 		<-v.initializationSema
 	}()
 
-	if v.initializedErr == nil {
+	if !force && v.initializedErr == nil {
 		return
 	}
 	var once sync.Once
@@ -795,8 +798,25 @@ func (v *View) setBuildInformation(ctx context.Context, options *source.Options)
 	if err != nil {
 		return err
 	}
+
+	v.go111module = os.Getenv("GO111MODULE")
+	for _, kv := range options.Env {
+		split := strings.SplitN(kv, "=", 2)
+		if len(split) != 2 {
+			continue
+		}
+		if split[0] == "GO111MODULE" {
+			v.go111module = split[1]
+		}
+	}
+	// If using 1.16, change the default back to auto. The primary effect of
+	// GO111MODULE=on is to break GOPATH, which we aren't too interested in.
+	if v.goversion >= 16 && v.go111module == "" {
+		v.go111module = "auto"
+	}
+
 	// Make sure to get the `go env` before continuing with initialization.
-	modFile, err := v.setGoEnv(ctx, options.Env)
+	modFile, err := v.setGoEnv(ctx, append(options.Env, "GO111MODULE="+v.go111module))
 	if err != nil {
 		return err
 	}
@@ -834,6 +854,38 @@ func defaultCheckPathCase(path string) error {
 	return nil
 }
 
+func (v *View) determineWorkspaceModuleLocked() bool {
+	// If the user is intentionally limiting their workspace scope, add their
+	// folder to the roots and return early.
+	if !v.options.ExpandWorkspaceToModule {
+		return false
+	}
+	// The workspace module has been disabled by the user.
+	if !v.options.ExperimentalWorkspaceModule {
+		return false
+	}
+	// If the view has an invalid configuration, don't build the workspace
+	// module.
+	if !v.hasValidBuildConfiguration {
+		return false
+	}
+	// If the view is not in a module and contains no modules, but still has a
+	// valid workspace configuration, do not create the workspace module.
+	// It could be using GOPATH or a different build system entirely.
+	if v.modURI == "" && len(v.snapshot.modules) == 0 && v.hasValidBuildConfiguration {
+		return false
+	}
+
+	// Don't default to multi-workspace mode if one of the modules contains a
+	// vendor directory. We still have to decide how to handle vendoring.
+	for _, mod := range v.snapshot.modules {
+		if info, _ := os.Stat(filepath.Join(mod.rootURI.Filename(), "vendor")); info != nil {
+			return false
+		}
+	}
+	return true
+}
+
 func (v *View) setBuildConfiguration() (isValid bool) {
 	defer func() {
 		v.hasValidBuildConfiguration = isValid
@@ -848,7 +900,7 @@ func (v *View) setBuildConfiguration() (isValid bool) {
 	if v.modURI != "" {
 		return true
 	}
-	if len(v.modules) > 0 {
+	if len(v.snapshot.modules) > 0 {
 		return true
 	}
 	// The user may have a multiple directories in their GOPATH.
