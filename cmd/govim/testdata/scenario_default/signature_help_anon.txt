@@ -1,0 +1,29 @@
+# Test case that verifies signature help in anonymous functions
+
+# Open main.go
+vim ex 'e main.go'
+
+# Move cursor to anonymous function
+vim ex 'call cursor(5,3)'
+
+# Trigger signature help
+vim ex ':GOVIMExperimentalSignatureHelp'
+
+# Trivial check to see if a popup is created
+errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\{.*\"text\":\"func\(foo bool\)\"'
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+func main() {
+	go func(foo bool) {
+	}(true)
+}
