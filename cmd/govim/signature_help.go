@@ -90,7 +90,7 @@ FindCall:
 	// hence we need to adjust accordingly
 	var placePos token.Pos
 	switch f := callExpr.Fun.(type) {
-	case *ast.Ident:
+	case *ast.Ident, *ast.FuncLit:
 		placePos = callExpr.Pos()
 	case *ast.SelectorExpr:
 		placePos = f.Sel.Pos()
