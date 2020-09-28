@@ -5,13 +5,13 @@
 package source
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"io"
+	"strings"
 
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/module"
@@ -69,15 +69,14 @@ type Snapshot interface {
 
 	// RunGoCommandPiped runs the given `go` command in the view, using the
 	// provided stdout and stderr. It will use the -modfile flag, if possible.
-	RunGoCommandPiped(ctx context.Context, verb string, args []string, stdout, stderr io.Writer) error
-
-	// RunGoCommand runs the given `go` command in the view. It will use the
-	// -modfile flag, if possible.
-	RunGoCommand(ctx context.Context, verb string, args []string) (*bytes.Buffer, error)
+	// If the provided working directory is empty, the snapshot's root folder
+	// will be used as the working directory.
+	RunGoCommandPiped(ctx context.Context, wd, verb string, args []string, stdout, stderr io.Writer) error
 
 	// RunGoCommandDirect runs the given `go` command, never using the
-	// -modfile flag.
-	RunGoCommandDirect(ctx context.Context, verb string, args []string) error
+	// -modfile flag. If the provided working directory is empty, the
+	// snapshot's root folder will be used as the working directory.
+	RunGoCommandDirect(ctx context.Context, wd, verb string, args []string) error
 
 	// ParseMod is used to parse go.mod files.
 	ParseMod(ctx context.Context, fh FileHandle) (*ParsedModule, error)
@@ -94,12 +93,23 @@ type Snapshot interface {
 	// the given go.mod file.
 	ModTidy(ctx context.Context, fh FileHandle) (*TidiedModule, error)
 
+	// GoModForFile returns the go.mod file handle for the given Go file.
+	GoModForFile(ctx context.Context, fh FileHandle) (VersionedFileHandle, error)
+
+	// BuildWorkspaceModFile builds the contents of mod file to be used for
+	// multi-module workspace.
+	BuildWorkspaceModFile(ctx context.Context) (*modfile.File, error)
+
 	// BuiltinPackage returns information about the special builtin package.
 	BuiltinPackage(ctx context.Context) (*BuiltinPackage, error)
 
 	// PackagesForFile returns the packages that this file belongs to, checked
 	// in mode.
 	PackagesForFile(ctx context.Context, uri span.URI, mode TypecheckMode) ([]Package, error)
+
+	// PackageForFile returns a single package that this file belongs to,
+	// checked in mode and filtered by the package policy.
+	PackageForFile(ctx context.Context, uri span.URI, mode TypecheckMode, selectPackage PackageFilter) (Package, error)
 
 	// GetActiveReverseDeps returns the active files belonging to the reverse
 	// dependencies of this file's package, checked in TypecheckWorkspace mode.
@@ -122,6 +132,23 @@ type Snapshot interface {
 	WorkspaceDirectories(ctx context.Context) []span.URI
 }
 
+// PackageFilter sets how a package is filtered out from a set of packages
+// containing a given file.
+type PackageFilter int
+
+const (
+	// NarrowestPackage picks the "narrowest" package for a given file.
+	// By "narrowest" package, we mean the package with the fewest number of
+	// files that includes the given file. This solves the problem of test
+	// variants, as the test will have more files than the non-test package.
+	NarrowestPackage PackageFilter = iota
+
+	// WidestPackage returns the Package containing the most files.
+	// This is useful for something like diagnostics, where we'd prefer to
+	// offer diagnostics for as many files as possible.
+	WidestPackage
+)
+
 // View represents a single workspace.
 // This is the level at which we maintain configuration like working directory
 // and build tags.
@@ -132,11 +159,11 @@ type View interface {
 	// Name returns the name this view was constructed with.
 	Name() string
 
-	// Folder returns the root folder for this view.
+	// Folder returns the folder with which this view was created.
 	Folder() span.URI
 
-	// ModFile is the go.mod file at the root of this view. It may not exist.
-	ModFile() span.URI
+	// ModFiles is the go.mod file at the root of this view. It may not exist.
+	ModFiles() []span.URI
 
 	// BackgroundContext returns a context used for all background processing
 	// on behalf of this view.
@@ -478,6 +505,17 @@ type Package interface {
 	MissingDependencies() []string
 	Imports() []Package
 	Version() *module.Version
+}
+
+type ErrorList []*Error
+
+func (err *ErrorList) Error() string {
+	var b strings.Builder
+	b.WriteString("source error list:")
+	for _, e := range *err {
+		b.WriteString(fmt.Sprintf("\n\t%s", e))
+	}
+	return b.String()
 }
 
 type Error struct {

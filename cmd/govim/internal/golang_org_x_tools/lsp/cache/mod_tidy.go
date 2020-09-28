@@ -75,7 +75,7 @@ func (s *snapshot) ModTidy(ctx context.Context, fh source.FileHandle) (*source.T
 	s.mu.Unlock()
 
 	// Make sure to use the module root in the configuration.
-	cfg := s.configWithDir(ctx, filepath.Dir(fh.URI().Filename()))
+	cfg := s.config(ctx, filepath.Dir(fh.URI().Filename()))
 	key := modTidyKey{
 		sessionID:       s.view.session.id,
 		view:            s.view.folder.Filename(),
@@ -106,6 +106,9 @@ func (s *snapshot) ModTidy(ctx context.Context, fh source.FileHandle) (*source.T
 				err: err,
 			}
 		}
+		// Get a new config to avoid races, since it may be modified by
+		// goCommandInvocation.
+		cfg := s.config(ctx, filepath.Dir(fh.URI().Filename()))
 		tmpURI, runner, inv, cleanup, err := snapshot.goCommandInvocation(ctx, cfg, true, "mod", []string{"tidy"})
 		if err != nil {
 			return &modTidyData{err: err}

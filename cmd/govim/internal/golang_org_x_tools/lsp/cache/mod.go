@@ -206,12 +206,12 @@ func (s *snapshot) ModWhy(ctx context.Context, fh source.FileHandle) (map[string
 		return handle.why(ctx, s)
 	}
 	// Make sure to use the module root as the working directory.
-	cfg := s.configWithDir(ctx, filepath.Dir(fh.URI().Filename()))
+	cfg := s.config(ctx, filepath.Dir(fh.URI().Filename()))
 	key := modKey{
 		sessionID: s.view.session.id,
 		cfg:       hashConfig(cfg),
 		mod:       fh.FileIdentity(),
-		view:      s.view.root.Filename(),
+		view:      s.view.rootURI.Filename(),
 		verb:      why,
 	}
 	h := s.generation.Bind(key, func(ctx context.Context, arg memoize.Arg) interface{} {
@@ -298,12 +298,12 @@ func (s *snapshot) ModUpgrade(ctx context.Context, fh source.FileHandle) (map[st
 		return handle.upgrades(ctx, s)
 	}
 	// Use the module root as the working directory.
-	cfg := s.configWithDir(ctx, filepath.Dir(fh.URI().Filename()))
+	cfg := s.config(ctx, filepath.Dir(fh.URI().Filename()))
 	key := modKey{
 		sessionID: s.view.session.id,
 		cfg:       hashConfig(cfg),
 		mod:       fh.FileIdentity(),
-		view:      s.view.root.Filename(),
+		view:      s.view.rootURI.Filename(),
 		verb:      upgrade,
 	}
 	h := s.generation.Bind(key, func(ctx context.Context, arg memoize.Arg) interface{} {
