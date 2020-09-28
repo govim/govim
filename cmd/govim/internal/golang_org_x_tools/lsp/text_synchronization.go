@@ -11,9 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -256,7 +254,7 @@ func (s *Server) didModifyFiles(ctx context.Context, modifications []source.File
 		// If a modification comes in for the view's go.mod file and the view
 		// was never properly initialized, or the view does not have
 		// a go.mod file, try to recreate the associated view.
-		if modfile := snapshot.View().ModFile(); modfile == "" {
+		if len(snapshot.View().ModFiles()) == 0 {
 			for _, uri := range uris {
 				// Don't rebuild the view until the go.mod is on disk.
 				if !snapshot.IsSaved(uri) {
@@ -282,13 +280,6 @@ func (s *Server) didModifyFiles(ctx context.Context, modifications []source.File
 		go func(snapshot source.Snapshot, uris []span.URI) {
 			defer diagnosticWG.Done()
 			s.diagnoseSnapshot(snapshot)
-
-			// If files have been newly opened, check if we found packages for
-			// them. If not, notify this user that the file may be excluded
-			// because of build tags.
-			if cause == FromDidOpen {
-				s.checkForOrphanedFile(ctx, snapshot, uris)
-			}
 		}(snapshot, uris)
 	}
 
@@ -311,41 +302,6 @@ func (s *Server) didModifyFiles(ctx context.Context, modifications []source.File
 // file change originating from the given cause.
 func DiagnosticWorkTitle(cause ModificationSource) string {
 	return fmt.Sprintf("diagnosing %v", cause)
-}
-
-// checkForOrphanedFile checks that the given URIs can be mapped to packages.
-// If they cannot and the workspace is not otherwise unloaded, it also surfaces
-// a warning, suggesting that the user check the file for build tags.
-func (s *Server) checkForOrphanedFile(ctx context.Context, snapshot source.Snapshot, uris []span.URI) {
-	// Only show the error message if we have packages in the workspace,
-	// but no package for the file.
-	if pkgs, err := snapshot.WorkspacePackages(ctx); err != nil || len(pkgs) == 0 {
-		return
-	}
-	for _, uri := range uris {
-		fh, err := snapshot.GetFile(ctx, uri)
-		if err != nil {
-			continue
-		}
-		if fh.Kind() != source.Go {
-			continue
-		}
-		pkgs, err := snapshot.PackagesForFile(ctx, uri, source.TypecheckWorkspace)
-		if len(pkgs) > 0 || err == nil {
-			return
-		}
-		// TODO(rstambler): We should be able to parse the build tags in the
-		// file and show a more specific error message.
-		if err := s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
-			Type: protocol.Error,
-			Message: fmt.Sprintf(`No packages found for open file %s: %v.
-If this file contains build tags, try adding "-tags=<build tag>" to your gopls "buildFlag" configuration (see (https://github.com/golang/tools/blob/master/gopls/doc/settings.md#buildflags-string).
-Otherwise, see the troubleshooting guidelines for help investigating (https://github.com/golang/tools/blob/master/gopls/doc/troubleshooting.md).
-`, uri.Filename(), err),
-		}); err != nil {
-			event.Error(ctx, "warnAboutBuildTags: failed to show message", err, tag.URI.Of(uri))
-		}
-	}
 }
 
 func (s *Server) wasFirstChange(uri span.URI) bool {
