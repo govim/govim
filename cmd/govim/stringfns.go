@@ -32,12 +32,12 @@ func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {
 		var pos struct {
 			BuffNr int    `json:"buffnr"`
 			Mode   string `json:"mode"`
-			Start  []int  `json:"start"`
-			End    []int  `json:"end"`
+			Start  []int  `json:"start"` // [bufnr, line, col, off]
+			End    []int  `json:"end"`   // [bufnr, line, col, off]
 		}
 		v.Parse(v.ChannelExpr(`{"buffnr": bufnr(""), "mode": visualmode(), "start": getpos("'<"), "end": getpos("'>")}`), &pos)
 
-		if pos.Mode == "\x16" {
+		if pos.Mode == "\x16" { // <CTRL-V>, block-wise
 			return fmt.Errorf("cannot use %v in visual block mode", config.CommandStringFn)
 		}
 
@@ -51,16 +51,26 @@ func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {
 		if err != nil {
 			return fmt.Errorf("failed to get start position of range: %v", err)
 		}
-		if pos.Mode == "V" {
-			// we have already parsed start so we can mutate here
-			pos.End = pos.Start
-			pos.End[1]++
-		}
-		end, err = types.PointFromVim(b, pos.End[1], pos.End[2])
-		if err != nil {
-			return fmt.Errorf("failed to get end position of range: %v", err)
-		}
-		if pos.Mode == "v" {
+
+		switch pos.Mode {
+		case "V": // line-wise
+			// Since the end col will be "a large value" we need to evaluate
+			// the real col by getting the offset for the first column on the
+			// "next line" and subtract 1 (the newline).
+			var nl types.Point
+			nl, err = types.PointFromVim(b, pos.End[1]+1, 1)
+			if err != nil {
+				return fmt.Errorf("failed to get point from line after end line: %v", err)
+			}
+			end, err = types.PointFromOffset(b, nl.Offset()-1)
+			if err != nil {
+				return fmt.Errorf("failed to get end position of range: %v", err)
+			}
+		case "v": // character-wise
+			end, err = types.PointFromVim(b, pos.End[1], pos.End[2])
+			if err != nil {
+				return fmt.Errorf("failed to get end position of range: %v", err)
+			}
 			// we need to move past the end of the selection
 			rem := b.Contents()[end.Offset():]
 			if len(rem) > 0 {
