@@ -166,7 +166,7 @@ func (m *modWatcher) watch() {
 }
 
 func ofInterest(path string) bool {
-	return filepath.Ext(path) == ".go" || filepath.Base(path) == "go.mod"
+	return filepath.Ext(path) == ".go" || filepath.Base(path) == "go.mod" || filepath.Base(path) == "go.sum"
 }
 
 func (v *vimstate) handleEvent(event fswatcher.Event) error {
