@@ -2,17 +2,19 @@ package main
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
 func (v *vimstate) handleProgress(popup *types.ProgressPopup, kind, title, message string) error {
+	text := strings.Split(message, "\n")
 	switch kind {
 	case "begin":
 		w := v.ParseInt(v.ChannelCall("winwidth", 0))
 
-		popup.Text = []string{message}
+		popup.Text = text
 		popup.LinePos = 1
 		opts := map[string]interface{}{
 			"pos":      "topright",
@@ -30,10 +32,10 @@ func (v *vimstate) handleProgress(popup *types.ProgressPopup, kind, title, messa
 		}
 		popup.ID = v.ParseInt(v.ChannelCall("popup_create", popup.Text, opts))
 	case "report":
-		popup.Text = append(popup.Text, message)
+		popup.Text = append(popup.Text, text...)
 		v.ChannelCall("popup_settext", popup.ID, popup.Text)
 	case "end":
-		popup.Text = append(popup.Text, message)
+		popup.Text = append(popup.Text, text...)
 		v.BatchStart()
 		v.BatchChannelCall("popup_settext", popup.ID, popup.Text)
 		v.BatchChannelCall("popup_setoptions", popup.ID, map[string]interface{}{
