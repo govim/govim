@@ -400,7 +400,7 @@ func diagnosticToCommandCodeAction(ctx context.Context, snapshot source.Snapshot
 		Kind:        kind,
 		Diagnostics: diagnostics,
 		Command: &protocol.Command{
-			Command:   analyzer.Command.Name,
+			Command:   analyzer.Command.ID(),
 			Title:     e.Message,
 			Arguments: jsonArgs,
 		},
@@ -431,7 +431,7 @@ func extractionFixes(ctx context.Context, snapshot source.Snapshot, pkg source.P
 			Title: command.Title,
 			Kind:  protocol.RefactorExtract,
 			Command: &protocol.Command{
-				Command:   command.Name,
+				Command:   command.ID(),
 				Arguments: jsonArgs,
 			},
 		})
@@ -459,8 +459,12 @@ func moduleQuickFixes(ctx context.Context, snapshot source.Snapshot, fh source.V
 	case source.Mod:
 		modFH = fh
 	case source.Go:
+		modURI := snapshot.GoModForFile(ctx, fh.URI())
+		if modURI == "" {
+			return nil, nil
+		}
 		var err error
-		modFH, err = snapshot.GoModForFile(ctx, fh)
+		modFH, err = snapshot.GetFile(ctx, modURI)
 		if err != nil {
 			return nil, err
 		}

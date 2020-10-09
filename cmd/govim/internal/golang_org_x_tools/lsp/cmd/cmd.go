@@ -170,7 +170,7 @@ func (app *Application) mainCommands() []tool.Application {
 		&app.Serve,
 		&version{app: app},
 		&bug{},
-		&settingsJson{},
+		&apiJSON{},
 	}
 }
 
@@ -263,7 +263,7 @@ func (app *Application) connectRemote(ctx context.Context, remote string) (*conn
 var matcherString = map[source.SymbolMatcher]string{
 	source.SymbolFuzzy:           "fuzzy",
 	source.SymbolCaseSensitive:   "caseSensitive",
-	source.SymbolCaseInsensitive: "default",
+	source.SymbolCaseInsensitive: "caseInsensitive",
 }
 
 func (c *connection) initialize(ctx context.Context, options func(*source.Options)) error {
