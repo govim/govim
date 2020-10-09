@@ -47,18 +47,19 @@ func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {
 			return fmt.Errorf("failed to derive buffer")
 		}
 
-		start, err = types.PointFromVim(b, pos.Start[1], pos.Start[2])
-		if err != nil {
-			return fmt.Errorf("failed to get start position of range: %v", err)
-		}
-
-		switch pos.Mode {
-		case "V": // line-wise
+		if pos.Mode == "V" || pos.Mode == "" {
+			// There are a couple of different ways to execute range command,
+			// for example :%GOVIMFooBar that doesn't set any markers (<','>).
+			// Use Line1/Line2 over pos.Start/pos.End to support them.
+			start, err = types.PointFromVim(b, *flags.Line1, 1)
+			if err != nil {
+				return fmt.Errorf("failed to get start position of range: %v", err)
+			}
 			// Since the end col will be "a large value" we need to evaluate
 			// the real col by getting the offset for the first column on the
 			// "next line" and subtract 1 (the newline).
 			var nl types.Point
-			nl, err = types.PointFromVim(b, pos.End[1]+1, 1)
+			nl, err = types.PointFromVim(b, *flags.Line2+1, 1)
 			if err != nil {
 				return fmt.Errorf("failed to get point from line after end line: %v", err)
 			}
@@ -66,7 +67,11 @@ func (v *vimstate) stringfns(flags govim.CommandFlags, args ...string) error {
 			if err != nil {
 				return fmt.Errorf("failed to get end position of range: %v", err)
 			}
-		case "v": // character-wise
+		} else if pos.Mode == "v" {
+			start, err = types.PointFromVim(b, pos.Start[1], pos.Start[2])
+			if err != nil {
+				return fmt.Errorf("failed to get start position of range: %v", err)
+			}
 			end, err = types.PointFromVim(b, pos.End[1], pos.End[2])
 			if err != nil {
 				return fmt.Errorf("failed to get end position of range: %v", err)
