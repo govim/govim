@@ -24,7 +24,7 @@ import (
 func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCommandParams) (interface{}, error) {
 	var command *source.Command
 	for _, c := range source.Commands {
-		if c.Name == params.Command {
+		if c.ID() == params.Command {
 			command = c
 			break
 		}
@@ -40,7 +40,7 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 		}
 	}
 	if !match {
-		return nil, fmt.Errorf("%s is not a supported command", command.Name)
+		return nil, fmt.Errorf("%s is not a supported command", command.ID())
 	}
 	title := command.Title
 	if title == "" {
@@ -57,7 +57,7 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 	}
 	if unsaved {
 		switch params.Command {
-		case source.CommandTest.Name, source.CommandGenerate.Name, source.CommandToggleDetails.Name:
+		case source.CommandTest.ID(), source.CommandGenerate.ID(), source.CommandToggleDetails.ID():
 			// TODO(PJW): for Toggle, not an error if it is being disabled
 			err := errors.New("unsaved files in the view")
 			s.showCommandError(ctx, title, err)
@@ -95,7 +95,7 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 			// message is typically dismissed immediately by LSP clients.
 			s.showCommandError(ctx, title, err)
 		default:
-			work.end(command.Name + ": completed")
+			work.end(command.ID() + ": completed")
 		}
 	}()
 	return nil, nil
@@ -217,7 +217,7 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 		}
 		snapshot, release := sv.Snapshot(ctx)
 		defer release()
-		s.diagnoseSnapshot(snapshot)
+		s.diagnoseSnapshot(snapshot, nil)
 	case source.CommandGenerateGoplsMod:
 		var v source.View
 		if len(args) == 0 {
@@ -252,7 +252,7 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 			return errors.Errorf("writing mod file: %w", err)
 		}
 	default:
-		return fmt.Errorf("unsupported command: %s", command.Name)
+		return fmt.Errorf("unsupported command: %s", command.ID())
 	}
 	return nil
 }
@@ -339,7 +339,7 @@ func (s *Server) runTests(ctx context.Context, snapshot source.Snapshot, uri pro
 	})
 }
 
-func (s *Server) runGoGenerate(ctx context.Context, snapshot source.Snapshot, uri span.URI, recursive bool, work *workDone) error {
+func (s *Server) runGoGenerate(ctx context.Context, snapshot source.Snapshot, dir span.URI, recursive bool, work *workDone) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -353,7 +353,7 @@ func (s *Server) runGoGenerate(ctx context.Context, snapshot source.Snapshot, ur
 
 	stderr := io.MultiWriter(er, workDoneWriter{work})
 
-	if err := snapshot.RunGoCommandPiped(ctx, uri.Filename(), "generate", args, er, stderr); err != nil {
+	if err := snapshot.RunGoCommandPiped(ctx, dir.Filename(), "generate", args, er, stderr); err != nil {
 		return err
 	}
 	return nil

@@ -27,7 +27,7 @@ func (v *vimstate) toggleGCDetails(flags govim.CommandFlags, args ...string) err
 	var cmd *protocol.Command
 	for i := range res {
 		cl := res[i]
-		if cl.Command.Command != source.CommandToggleDetails.Name {
+		if cl.Command.Command != source.CommandToggleDetails.ID() {
 			continue
 		}
 		if cmd != nil {

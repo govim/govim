@@ -59,7 +59,7 @@ var (
 	defaultOptions *Options
 )
 
-//go:generate go run github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source/genopts -output options_json.go
+//go:generate go run github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source/genapijson -output api_json.go
 
 // DefaultOptions is the options that are used for Gopls execution independent
 // of any externally provided configuration (LSP initialization, command
@@ -101,8 +101,7 @@ func DefaultOptions() *Options {
 				LinkTarget: "pkg.go.dev",
 			},
 			DebuggingOptions: DebuggingOptions{
-				CompletionBudget:   100 * time.Millisecond,
-				LiteralCompletions: true,
+				CompletionBudget: 100 * time.Millisecond,
 			},
 			ExperimentalOptions: ExperimentalOptions{
 				TempModfile:             true,
@@ -123,6 +122,7 @@ func DefaultOptions() *Options {
 				Matcher:                 Fuzzy,
 				SymbolMatcher:           SymbolFuzzy,
 				SymbolStyle:             PackageQualifiedSymbols,
+				LiteralCompletions:      true,
 			},
 			Hooks: Hooks{
 				ComputeEdits:         myers.ComputeEdits,
@@ -235,20 +235,15 @@ type ExperimentalOptions struct {
 	// ```
 	Analyses map[string]bool
 
-	// Overrides the enabled/disabled state of various code lenses. Currently, we
-	// support several code lenses:
-	//
-	// * `generate`: run `go generate` as specified by a `//go:generate` directive.
-	// * `upgrade_dependency`: upgrade a dependency listed in a `go.mod` file.
-	// * `test`: run `go test -run` for a test func.
-	// * `gc_details`: Show the gc compiler's choices for inline analysis and escaping.
+	// Codelens overrides the enabled/disabled state of code lenses. See the "Code Lenses"
+	// section of settings.md for the list of supported lenses.
 	//
 	// Example Usage:
 	// ```json5
 	// "gopls": {
 	// ...
 	//   "codelens": {
-	//     "generate": false,  // Don't run `go generate`.
+	//     "generate": false,  // Don't show the `go generate` lens.
 	//     "gc_details": true  // Show a code lens toggling the display of gc's choices.
 	//   }
 	// ...
@@ -262,7 +257,7 @@ type ExperimentalOptions struct {
 	// CompleteUnimported enables completion for packages that you do not currently import.
 	CompleteUnimported bool
 
-	// DeepCompletion If true, this turns on the ability to return completions from deep inside relevant entities, rather than just the locally accessible ones.
+	// DeepCompletion enables the ability to return completions from deep inside relevant entities, rather than just the locally accessible ones.
 	//
 	// Consider this example:
 	//
@@ -301,7 +296,16 @@ type ExperimentalOptions struct {
 	// SymbolMatcher sets the algorithm that is used when finding workspace symbols.
 	SymbolMatcher SymbolMatcher
 
-	// SymbolStyle specifies what style of symbols to return in symbol requests.
+	// SymbolStyle controls how symbols are qualified in symbol responses.
+	//
+	// Example Usage:
+	// ```json5
+	// "gopls": {
+	// ...
+	//   "symbolStyle": "dynamic",
+	// ...
+	// }
+	// ```
 	SymbolStyle SymbolStyle
 
 	// LinksInHover toggles the presence of links to documentation in hover.
@@ -318,6 +322,10 @@ type ExperimentalOptions struct {
 	// progress reports for all work done outside the scope of an RPC.
 	VerboseWorkDoneProgress bool
 
+	// SemanticTokens controls whether the LSP server will send
+	// semantic tokens to the client.
+	SemanticTokens bool
+
 	// ExpandWorkspaceToModule instructs `gopls` to expand the scope of the workspace to include the
 	// modules containing the workspace folders. Set this to false to avoid loading
 	// your entire module. This is particularly useful for those working in a monorepo.
@@ -326,6 +334,28 @@ type ExperimentalOptions struct {
 	// ExperimentalWorkspaceModule opts a user into the experimental support
 	// for multi-module workspaces.
 	ExperimentalWorkspaceModule bool
+
+	// LiteralCompletions controls whether literal candidates such as
+	// "&someStruct{}" are offered. Tests disable this flag to simplify
+	// their expected values.
+	LiteralCompletions bool
+
+	// ExperimentalDiagnosticsDelay controls the amount of time that gopls waits
+	// after the most recent file modification before computing deep diagnostics.
+	// Simple diagnostics (parsing and type-checking) are always run immediately
+	// on recently modified packages.
+	//
+	// This option must be set to a valid duration string, for example `"250ms"`.
+	ExperimentalDiagnosticsDelay time.Duration
+
+	// ExperimentalPackageCacheKey controls whether to use a coarser cache key
+	// for package type information to increase cache hits. This setting removes
+	// the user's environment, build flags, and working directory from the cache
+	// key, which should be a safe change as all relevant inputs into the type
+	// checking pass are already hashed into the key. This is temporarily guarded
+	// by an experiment because caching behavior is subtle and difficult to
+	// comprehensively test.
+	ExperimentalPackageCacheKey bool
 }
 
 // DebuggingOptions should not affect the logical execution of Gopls, but may
@@ -340,11 +370,6 @@ type DebuggingOptions struct {
 	// dynamically reduce the search scope to ensure we return timely
 	// results. Zero means unlimited.
 	CompletionBudget time.Duration
-
-	// LiteralCompletions controls whether literal candidates such as
-	// "&someStruct{}" are offered. Tests disable this flag to simplify
-	// their expected values.
-	LiteralCompletions bool
 }
 
 type ImportShortcut string
@@ -382,9 +407,17 @@ const (
 type SymbolStyle string
 
 const (
+	// PackageQualifiedSymbols is package qualified symbols i.e.
+	// "pkg.Foo.Field".
 	PackageQualifiedSymbols SymbolStyle = "Package"
-	FullyQualifiedSymbols   SymbolStyle = "Full"
-	DynamicSymbols          SymbolStyle = "Dynamic"
+	// FullyQualifiedSymbols is fully qualified symbols, i.e.
+	// "path/to/pkg.Foo.Field".
+	FullyQualifiedSymbols SymbolStyle = "Full"
+	// DynamicSymbols uses whichever qualifier results in the highest scoring
+	// match for the given symbol query. Here a "qualifier" is any "/" or "."
+	// delimited suffix of the fully qualified symbol. i.e. "to/pkg.Foo.Field" or
+	// just "Foo.Field".
+	DynamicSymbols SymbolStyle = "Dynamic"
 )
 
 type HoverKind string
@@ -429,6 +462,13 @@ func SetOptions(options *Options, opts interface{}) OptionResults {
 	switch opts := opts.(type) {
 	case nil:
 	case map[string]interface{}:
+		// If the user's settings contains "allExperiments", set that first,
+		// and then let them override individual settings independently.
+		for name, value := range opts {
+			if b, ok := value.(bool); name == "allExperiments" && ok && b {
+				options.enableAllExperiments()
+			}
+		}
 		for name, value := range opts {
 			results = append(results, options.set(name, value))
 		}
@@ -511,8 +551,21 @@ func (o *Options) Clone() *Options {
 	return result
 }
 
-func (options *Options) AddStaticcheckAnalyzer(a *analysis.Analyzer) {
-	options.StaticcheckAnalyzers[a.Name] = Analyzer{Analyzer: a, Enabled: true}
+func (o *Options) AddStaticcheckAnalyzer(a *analysis.Analyzer) {
+	o.StaticcheckAnalyzers[a.Name] = Analyzer{Analyzer: a, Enabled: true}
+}
+
+// enableAllExperiments turns on all of the experimental "off-by-default"
+// features offered by gopls.
+func (o *Options) enableAllExperiments() {
+	o.ExperimentalDiagnosticsDelay = 200 * time.Millisecond
+	o.ExperimentalWorkspaceModule = true
+	o.ExperimentalPackageCacheKey = true
+	o.Staticcheck = true
+	o.Gofumpt = true
+	o.SymbolStyle = DynamicSymbols
+	o.Codelens[CommandToggleDetails.Name] = true
+	o.Analyses[unusedparams.Analyzer.Name] = true
 }
 
 func (o *Options) set(name string, value interface{}) OptionResult {
@@ -549,77 +602,43 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 	case "completeUnimported":
 		result.setBool(&o.CompleteUnimported)
 	case "completionBudget":
-		if v, ok := result.asString(); ok {
-			d, err := time.ParseDuration(v)
-			if err != nil {
-				result.errorf("failed to parse duration %q: %v", v, err)
-				break
-			}
-			o.CompletionBudget = d
-		}
-
+		result.setDuration(&o.CompletionBudget)
 	case "matcher":
-		matcher, ok := result.asString()
-		if !ok {
-			break
-		}
-		switch strings.ToLower(matcher) {
-		case "fuzzy":
-			o.Matcher = Fuzzy
-		case "casesensitive":
-			o.Matcher = CaseSensitive
-		default:
-			o.Matcher = CaseInsensitive
+		if s, ok := result.asOneOf(
+			string(Fuzzy),
+			string(CaseSensitive),
+			string(CaseInsensitive),
+		); ok {
+			o.Matcher = Matcher(s)
 		}
 
 	case "symbolMatcher":
-		matcher, ok := result.asString()
-		if !ok {
-			break
-		}
-		switch strings.ToLower(matcher) {
-		case "fuzzy":
-			o.SymbolMatcher = SymbolFuzzy
-		case "casesensitive":
-			o.SymbolMatcher = SymbolCaseSensitive
-		default:
-			o.SymbolMatcher = SymbolCaseInsensitive
+		if s, ok := result.asOneOf(
+			string(SymbolFuzzy),
+			string(SymbolCaseInsensitive),
+			string(SymbolCaseSensitive),
+		); ok {
+			o.SymbolMatcher = SymbolMatcher(s)
 		}
 
 	case "symbolStyle":
-		style, ok := result.asString()
-		if !ok {
-			break
-		}
-		switch strings.ToLower(style) {
-		case "full":
-			o.SymbolStyle = FullyQualifiedSymbols
-		case "dynamic":
-			o.SymbolStyle = DynamicSymbols
-		case "package":
-			o.SymbolStyle = PackageQualifiedSymbols
-		default:
-			result.errorf("Unsupported symbol style %q", style)
+		if s, ok := result.asOneOf(
+			string(FullyQualifiedSymbols),
+			string(PackageQualifiedSymbols),
+			string(DynamicSymbols),
+		); ok {
+			o.SymbolStyle = SymbolStyle(s)
 		}
 
 	case "hoverKind":
-		hoverKind, ok := result.asString()
-		if !ok {
-			break
-		}
-		switch strings.ToLower(hoverKind) {
-		case "nodocumentation":
-			o.HoverKind = NoDocumentation
-		case "singleline":
-			o.HoverKind = SingleLine
-		case "synopsisdocumentation":
-			o.HoverKind = SynopsisDocumentation
-		case "fulldocumentation":
-			o.HoverKind = FullDocumentation
-		case "structured":
-			o.HoverKind = Structured
-		default:
-			result.errorf("Unsupported hover kind %q", hoverKind)
+		if s, ok := result.asOneOf(
+			string(NoDocumentation),
+			string(SingleLine),
+			string(SynopsisDocumentation),
+			string(FullDocumentation),
+			string(Structured),
+		); ok {
+			o.HoverKind = HoverKind(s)
 		}
 
 	case "linkTarget":
@@ -629,15 +648,8 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 		result.setBool(&o.LinksInHover)
 
 	case "importShortcut":
-		var s string
-		result.setString(&s)
-		switch strings.ToLower(s) {
-		case "both":
-			o.ImportShortcut = Both
-		case "link":
-			o.ImportShortcut = Link
-		case "definition":
-			o.ImportShortcut = Definition
+		if s, ok := result.asOneOf(string(Both), string(Link), string(Definition)); ok {
+			o.ImportShortcut = ImportShortcut(s)
 		}
 
 	case "analyses":
@@ -685,11 +697,21 @@ func (o *Options) set(name string, value interface{}) OptionResult {
 	case "gofumpt":
 		result.setBool(&o.Gofumpt)
 
+	case "semantictokens":
+		result.setBool(&o.SemanticTokens)
+
 	case "expandWorkspaceToModule":
 		result.setBool(&o.ExpandWorkspaceToModule)
 
 	case "experimentalWorkspaceModule":
 		result.setBool(&o.ExperimentalWorkspaceModule)
+
+	case "experimentalDiagnosticsDelay":
+		result.setDuration(&o.ExperimentalDiagnosticsDelay)
+
+	case "allExperiments":
+		// This setting should be handled before all of the other options are
+		// processed, so do nothing here.
 
 	// Replaced settings.
 	case "experimentalDisabledAnalyses":
@@ -758,6 +780,17 @@ func (r *OptionResult) setBool(b *bool) {
 	}
 }
 
+func (r *OptionResult) setDuration(d *time.Duration) {
+	if v, ok := r.asString(); ok {
+		parsed, err := time.ParseDuration(v)
+		if err != nil {
+			r.errorf("failed to parse duration %q: %v", v, err)
+			return
+		}
+		*d = parsed
+	}
+}
+
 func (r *OptionResult) setBoolMap(bm *map[string]bool) {
 	all, ok := r.Value.(map[string]interface{})
 	if !ok {
@@ -783,6 +816,21 @@ func (r *OptionResult) asString() (string, bool) {
 		return "", false
 	}
 	return b, true
+}
+
+func (r *OptionResult) asOneOf(options ...string) (string, bool) {
+	s, ok := r.asString()
+	if !ok {
+		return "", false
+	}
+	lower := strings.ToLower(s)
+	for _, opt := range options {
+		if strings.ToLower(opt) == lower {
+			return opt, true
+		}
+	}
+	r.errorf("Invalid option %q for enum %q", r.Value, r.Name)
+	return "", false
 }
 
 func (r *OptionResult) setString(s *string) {
@@ -899,4 +947,35 @@ func urlRegexp() *regexp.Regexp {
 	re := regexp.MustCompile(`\b(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?\b`)
 	re.Longest()
 	return re
+}
+
+type APIJSON struct {
+	Options  map[string][]*OptionJSON
+	Commands []*CommandJSON
+	Lenses   []*LensJSON
+}
+
+type OptionJSON struct {
+	Name       string
+	Type       string
+	Doc        string
+	EnumValues []EnumValue
+	Default    string
+}
+
+type EnumValue struct {
+	Value string
+	Doc   string
+}
+
+type CommandJSON struct {
+	Command string
+	Title   string
+	Doc     string
+}
+
+type LensJSON struct {
+	Lens  string
+	Title string
+	Doc   string
 }

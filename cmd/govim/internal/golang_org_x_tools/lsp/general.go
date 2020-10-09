@@ -18,7 +18,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -86,7 +85,7 @@ func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitializ
 	goplsVer := &bytes.Buffer{}
 	debug.PrintVersionInfo(ctx, goplsVer, true, debug.PlainText)
 
-	return &protocol.InitializeResult{
+	ans := &protocol.InitializeResult{
 		Capabilities: protocol.ServerCapabilities{
 			CallHierarchyProvider: true,
 			CodeActionProvider:    codeActionProvider,
@@ -132,7 +131,25 @@ func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitializ
 			Name:    "gopls",
 			Version: goplsVer.String(),
 		},
-	}, nil
+	}
+
+	st := params.Capabilities.TextDocument.SemanticTokens
+	if st != nil {
+		tokTypes, tokModifiers := rememberToks(st.TokenTypes, st.TokenModifiers)
+		// check that st.TokenFormat is "relative"
+		v := &protocol.SemanticTokensOptions{
+			Legend: protocol.SemanticTokensLegend{
+				// TODO(pjw): trim these to what we use (and an unused one
+				// at position 0 of TokTypes, to catch typos)
+				TokenTypes:     tokTypes,
+				TokenModifiers: tokModifiers,
+			},
+			Range: true,
+			Full:  true,
+		}
+		ans.Capabilities.SemanticTokensProvider = v
+	}
+	return ans, nil
 }
 
 func (s *Server) initialized(ctx context.Context, params *protocol.InitializedParams) error {
@@ -146,12 +163,6 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 
 	options := s.session.Options()
 	defer func() { s.session.SetOptions(options) }()
-
-	// TODO: this event logging may be unnecessary.
-	// The version info is included in the initialize response.
-	buf := &bytes.Buffer{}
-	debug.PrintVersionInfo(ctx, buf, true, debug.PlainText)
-	event.Log(ctx, buf.String())
 
 	if err := s.addFolders(ctx, s.pendingFolders); err != nil {
 		return err
@@ -199,7 +210,7 @@ func (s *Server) addFolders(ctx context.Context, folders []protocol.WorkspaceFol
 			continue
 		}
 		work := s.progress.start(ctx, "Setting up workspace", "Loading packages...", nil, nil)
-		view, snapshot, release, err := s.addView(ctx, folder.Name, uri)
+		snapshot, release, err := s.addView(ctx, folder.Name, uri)
 		if err != nil {
 			viewErrors[uri] = err
 			work.end(fmt.Sprintf("Error loading packages: %s", err))
@@ -219,8 +230,8 @@ func (s *Server) addFolders(ctx context.Context, folders []protocol.WorkspaceFol
 
 		// Print each view's environment.
 		buf := &bytes.Buffer{}
-		if err := view.WriteEnv(ctx, buf); err != nil {
-			event.Error(ctx, "failed to write environment", err, tag.Directory.Of(view.Folder().Filename()))
+		if err := snapshot.WriteEnv(ctx, buf); err != nil {
+			viewErrors[uri] = err
 			continue
 		}
 		event.Log(ctx, buf.String())
@@ -258,7 +269,7 @@ func (s *Server) addFolders(ctx context.Context, folders []protocol.WorkspaceFol
 // with the previously registered set of directories. If the set of directories
 // has changed, we unregister and re-register for file watching notifications.
 // updatedSnapshots is the set of snapshots that have been updated.
-func (s *Server) updateWatchedDirectories(ctx context.Context, updatedSnapshots []source.Snapshot) error {
+func (s *Server) updateWatchedDirectories(ctx context.Context, updatedSnapshots map[source.View]source.Snapshot) error {
 	dirsToWatch := map[span.URI]struct{}{}
 	seenViews := map[source.View]struct{}{}
 

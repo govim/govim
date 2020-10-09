@@ -167,13 +167,11 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 	}
 
 	// If workspace module mode is enabled, find all of the modules in the
-	// workspace.
+	// workspace. By default, we just find the root module.
 	var modules map[span.URI]*moduleRoot
-	if options.ExperimentalWorkspaceModule {
-		modules, err = findWorkspaceModules(ctx, ws.rootURI, options)
-		if err != nil {
-			return nil, nil, func() {}, err
-		}
+	modules, err = findWorkspaceModules(ctx, ws.rootURI, options)
+	if err != nil {
+		return nil, nil, func() {}, err
 	}
 
 	// Now that we have set all required fields,
@@ -187,27 +185,30 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 	backgroundCtx, cancel := context.WithCancel(baseCtx)
 
 	v := &View{
-		session:                    s,
-		initialized:                make(chan struct{}),
-		initializationSema:         make(chan struct{}, 1),
-		initializeOnce:             &sync.Once{},
-		id:                         strconv.FormatInt(index, 10),
-		options:                    options,
-		baseCtx:                    baseCtx,
-		backgroundCtx:              backgroundCtx,
-		cancel:                     cancel,
-		name:                       name,
-		folder:                     folder,
-		filesByURI:                 make(map[span.URI]*fileBase),
-		filesByBase:                make(map[string][]*fileBase),
-		hasValidBuildConfiguration: validBuildConfiguration,
+		session:              s,
+		initialized:          make(chan struct{}),
+		initializationSema:   make(chan struct{}, 1),
+		initializeOnce:       &sync.Once{},
+		id:                   strconv.FormatInt(index, 10),
+		options:              options,
+		baseCtx:              baseCtx,
+		backgroundCtx:        backgroundCtx,
+		cancel:               cancel,
+		name:                 name,
+		folder:               folder,
+		filesByURI:           make(map[span.URI]*fileBase),
+		filesByBase:          make(map[string][]*fileBase),
+		workspaceMode:        mode,
+		workspaceInformation: *ws,
+	}
+	v.importsState = &importsState{
+		view: v,
+		ctx:  backgroundCtx,
 		processEnv: &imports.ProcessEnv{
 			GocmdRunner: s.gocmdRunner,
 			WorkingDir:  folder.Filename(),
 			Env:         ws.goEnv,
 		},
-		workspaceMode:        mode,
-		workspaceInformation: *ws,
 	}
 	v.snapshot = &snapshot{
 		id:                snapshotID,
@@ -229,14 +230,7 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 		modules:           modules,
 	}
 
-	// TODO(rstambler): Change this function to work without a snapshot.
-	// Set the first snapshot's workspace directories. The view's modURI was
-	// set by setBuildInformation.
-	var fh source.FileHandle
-	if v.modURI != "" {
-		fh, _ = s.GetFile(ctx, v.modURI)
-	}
-	v.snapshot.workspaceDirectories = v.snapshot.findWorkspaceDirectories(ctx, fh)
+	v.snapshot.workspaceDirectories = v.snapshot.findWorkspaceDirectories(ctx)
 
 	// Initialize the view without blocking.
 	initCtx, initCancel := context.WithCancel(xcontext.Detach(ctx))
@@ -256,9 +250,20 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 //
 // It assumes that the caller has not yet created the view, and therefore does
 // not lock any of the internal data structures before accessing them.
+//
+// TODO(rstambler): Check overlays for go.mod files.
 func findWorkspaceModules(ctx context.Context, root span.URI, options *source.Options) (map[span.URI]*moduleRoot, error) {
 	// Walk the view's folder to find all modules in the view.
 	modules := make(map[span.URI]*moduleRoot)
+	if !options.ExperimentalWorkspaceModule {
+		path := filepath.Join(root.Filename(), "go.mod")
+		if info, _ := os.Stat(path); info != nil {
+			if m := getViewModule(ctx, root, span.URIFromPath(path), options); m != nil {
+				modules[m.rootURI] = m
+			}
+		}
+		return modules, nil
+	}
 	return modules, filepath.Walk(root.Filename(), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// Probably a permission error. Keep looking.
@@ -276,17 +281,10 @@ func findWorkspaceModules(ctx context.Context, root span.URI, options *source.Op
 			}
 		}
 		// We're only interested in go.mod files.
-		if filepath.Base(path) != "go.mod" {
-			return nil
-		}
-		// At this point, we definitely have a go.mod file in the workspace,
-		// so add it to the view.
-		modURI := span.URIFromPath(path)
-		rootURI := span.URIFromPath(filepath.Dir(path))
-		modules[rootURI] = &moduleRoot{
-			rootURI: rootURI,
-			modURI:  modURI,
-			sumURI:  span.URIFromPath(sumFilename(modURI)),
+		if filepath.Base(path) == "go.mod" {
+			if m := getViewModule(ctx, root, span.URIFromPath(path), options); m != nil {
+				modules[m.rootURI] = m
+			}
 		}
 		return nil
 	})
@@ -436,16 +434,16 @@ func (s *Session) dropView(ctx context.Context, v *View) (int, error) {
 }
 
 func (s *Session) ModifyFiles(ctx context.Context, changes []source.FileModification) error {
-	_, releases, _, err := s.DidModifyFiles(ctx, changes)
+	_, _, releases, _, err := s.DidModifyFiles(ctx, changes)
 	for _, release := range releases {
 		release()
 	}
 	return err
 }
 
-func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModification) ([]source.Snapshot, []func(), []span.URI, error) {
+func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModification) (map[span.URI]source.View, map[source.View]source.Snapshot, []func(), []span.URI, error) {
 	views := make(map[*View]map[span.URI]source.VersionedFileHandle)
-
+	bestViews := map[span.URI]source.View{}
 	// Keep track of deleted files so that we can clear their diagnostics.
 	// A file might be re-created after deletion, so only mark files that
 	// have truly been deleted.
@@ -453,7 +451,7 @@ func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModif
 
 	overlays, err := s.updateOverlays(ctx, changes)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 	var forceReloadMetadata bool
 	for _, c := range changes {
@@ -461,17 +459,32 @@ func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModif
 			forceReloadMetadata = true
 		}
 
-		// Look through all of the session's views, invalidating the file for
-		// all of the views to which it is known.
+		// Build the list of affected views.
+		bestView, err := s.viewOf(c.URI)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		bestViews[c.URI] = bestView
+
+		var changedViews []*View
 		for _, view := range s.views {
 			// Don't propagate changes that are outside of the view's scope
 			// or knowledge.
 			if !view.relevantChange(c) {
 				continue
 			}
+			changedViews = append(changedViews, view)
+		}
+		// If no view matched the change, assign it to the best view.
+		if len(changedViews) == 0 {
+			changedViews = append(changedViews, bestView)
+		}
+
+		// Apply the changes to all affected views.
+		for _, view := range changedViews {
 			// Make sure that the file is added to the view.
 			if _, err := view.getFile(c.URI); err != nil {
-				return nil, nil, nil, err
+				return nil, nil, nil, nil, err
 			}
 			if _, ok := views[view]; !ok {
 				views[view] = make(map[span.URI]source.VersionedFileHandle)
@@ -486,7 +499,7 @@ func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModif
 			} else {
 				fsFile, err := s.cache.getFile(ctx, c.URI)
 				if err != nil {
-					return nil, nil, nil, err
+					return nil, nil, nil, nil, err
 				}
 				fh = &closedFile{fsFile}
 				views[view][c.URI] = fh
@@ -494,35 +507,21 @@ func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModif
 					deletions[c.URI] = struct{}{}
 				}
 			}
-			// If the file change is to a go.mod file, and initialization for
-			// the view has previously failed, we should attempt to retry.
-			// TODO(rstambler): We can use unsaved contents with -modfile, so
-			// maybe we should do that and retry on any change?
-			if fh.Kind() == source.Mod && (c.OnDisk || c.Action == source.Save) {
-				view.maybeReinitialize()
-			}
 		}
 	}
-	var snapshots []source.Snapshot
+
+	snapshots := map[source.View]source.Snapshot{}
 	var releases []func()
 	for view, uris := range views {
 		snapshot, release := view.invalidateContent(ctx, uris, forceReloadMetadata)
-		snapshots = append(snapshots, snapshot)
+		snapshots[view] = snapshot
 		releases = append(releases, release)
 	}
 	var deletionsSlice []span.URI
 	for uri := range deletions {
 		deletionsSlice = append(deletionsSlice, uri)
 	}
-	return snapshots, releases, deletionsSlice, nil
-}
-
-func (s *Session) isOpen(uri span.URI) bool {
-	s.overlayMu.Lock()
-	defer s.overlayMu.Unlock()
-
-	_, open := s.overlays[uri]
-	return open
+	return bestViews, snapshots, releases, deletionsSlice, nil
 }
 
 func (s *Session) updateOverlays(ctx context.Context, changes []source.FileModification) (map[span.URI]*overlay, error) {

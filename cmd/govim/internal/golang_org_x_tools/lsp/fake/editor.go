@@ -58,7 +58,8 @@ func (b buffer) text() string {
 //
 // The zero value for EditorConfig should correspond to its defaults.
 type EditorConfig struct {
-	Env map[string]string
+	Env        map[string]string
+	BuildFlags []string
 
 	// CodeLens is a map defining whether codelens are enabled, keyed by the
 	// codeLens command. CodeLens which are not present in this map are left in
@@ -84,6 +85,10 @@ type EditorConfig struct {
 
 	// EnableStaticcheck enables staticcheck analyzers.
 	EnableStaticcheck bool
+
+	// AllExperiments sets the "allExperiments" configuration, which enables
+	// all of gopls's opt-in settings.
+	AllExperiments bool
 }
 
 // NewEditor Creates a new Editor.
@@ -181,6 +186,10 @@ func (e *Editor) configuration() map[string]interface{} {
 		"completionBudget":        "10s",
 	}
 
+	if e.Config.BuildFlags != nil {
+		config["buildFlags"] = e.Config.BuildFlags
+	}
+
 	if e.Config.CodeLens != nil {
 		config["codelens"] = e.Config.CodeLens
 	}
@@ -193,9 +202,15 @@ func (e *Editor) configuration() map[string]interface{} {
 	if e.Config.EnableStaticcheck {
 		config["staticcheck"] = true
 	}
-	// Default to using the experimental workspace module mode.
-	config["experimentalWorkspaceModule"] = true
+	if e.Config.AllExperiments {
+		config["allExperiments"] = true
+	}
 
+	// TODO(rFindley): uncomment this if/when diagnostics delay is on by
+	// default... and probably change to the new settings name.
+	// config["experimentalDiagnosticsDelay"] = "10ms"
+
+	// ExperimentalWorkspaceModule is only set as a mode, not a configuration.
 	return config
 }
 
@@ -767,7 +782,7 @@ func (e *Editor) RunGenerate(ctx context.Context, dir string) error {
 		return err
 	}
 	params := &protocol.ExecuteCommandParams{
-		Command:   source.CommandGenerate.Name,
+		Command:   source.CommandGenerate.ID(),
 		Arguments: jsonArgs,
 	}
 	if _, err := e.Server.ExecuteCommand(ctx, params); err != nil {
