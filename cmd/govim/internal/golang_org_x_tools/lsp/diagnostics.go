@@ -165,7 +165,7 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, alwaysA
 		return nil, nil
 	}
 	if modErr != nil {
-		event.Error(ctx, "warning: diagnose go.mod", modErr, tag.Directory.Of(snapshot.View().Folder().Filename()))
+		event.Error(ctx, "warning: diagnose go.mod", modErr, tag.Directory.Of(snapshot.View().Folder().Filename()), tag.Snapshot.Of(snapshot.ID()))
 	}
 	for id, diags := range modReports {
 		if id.URI == "" {
@@ -512,30 +512,6 @@ See https://github.com/golang/go/issues/39164 for more detail on this issue.`,
 			}
 		}
 		return true
-	}
-	// If there is a go.mod-related error, as well as a workspace load error,
-	// there is likely an issue with the go.mod file. Try to parse the error
-	// message and create a diagnostic.
-	if modErr == nil {
-		return false
-	}
-	if errors.Is(loadErr, source.PackagesLoadError) {
-		// TODO(rstambler): Construct the diagnostics in internal/lsp/cache
-		// so that we can avoid this here.
-		reports := new(reportSet)
-		for _, uri := range snapshot.ModFiles() {
-			fh, err := snapshot.GetFile(ctx, uri)
-			if err != nil {
-				return false
-			}
-			diag, err := mod.ExtractGoCommandError(ctx, snapshot, fh, loadErr)
-			if err != nil {
-				return false
-			}
-			reports.add(fh.VersionedFileIdentity(), false, diag)
-			s.publishReports(ctx, snapshot, reports)
-			return true
-		}
 	}
 	return false
 }
