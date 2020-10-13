@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/govim/govim/cmd/govim/config"
@@ -84,6 +85,10 @@ type vimstate struct {
 	// ProgressClosed function as callback to ensure that entities are removed
 	// from this map when the popup closes.
 	progressPopups map[protocol.ProgressToken]*types.ProgressPopup
+
+	// lastProgressText points to the text in the most recently created progress
+	// popup.
+	lastProgressText *strings.Builder
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {

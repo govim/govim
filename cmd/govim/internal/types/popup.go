@@ -1,5 +1,7 @@
 package types
 
+import "strings"
+
 // PopupLine is the internal representation of a single text line with text
 // propertiesin a vim popup. When creating popups using popup_create, the
 // first arg can be either a buffer number, a string, a list of strings or
@@ -24,6 +26,6 @@ type PopupProp struct {
 // popups.
 type ProgressPopup struct {
 	ID      int
-	Text    []string
+	Text    strings.Builder
 	LinePos int
 }

@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/govim/govim"
+	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/types"
@@ -183,4 +187,75 @@ func (v *vimstate) populateQuickfix(locs []protocol.Location, shift bool) {
 
 func (v *vimstate) parentCommand(args ...json.RawMessage) (interface{}, error) {
 	return v.parentCallArgs, nil
+}
+
+func (v *vimstate) rangeFromFlags(b *types.Buffer, flags govim.CommandFlags) (start, end types.Point, err error) {
+	switch *flags.Range {
+	case 2:
+		// we have a range
+		var pos struct {
+			Mode  string `json:"mode"`
+			Start []int  `json:"start"` // [bufnr, line, col, off]
+			End   []int  `json:"end"`   // [bufnr, line, col, off]
+		}
+		v.Parse(v.ChannelExpr(`{"buffnr": bufnr(""), "mode": visualmode(), "start": getpos("'<"), "end": getpos("'>")}`), &pos)
+
+		if pos.Mode == "\x16" { // <CTRL-V>, block-wise
+			return start, end, fmt.Errorf("cannot use %v in visual block mode", config.CommandStringFn)
+		}
+
+		if pos.Mode == "V" || pos.Mode == "" {
+			// There are a couple of different ways to execute range command,
+			// for example :%GOVIMFooBar that doesn't set any markers (<','>).
+			// Use Line1/Line2 over pos.Start/pos.End to support them.
+			start, err = types.PointFromVim(b, *flags.Line1, 1)
+			if err != nil {
+				return start, end, fmt.Errorf("failed to get start position of range: %v", err)
+			}
+			// Since the end col will be "a large value" we need to evaluate
+			// the real col by getting the offset for the first column on the
+			// "next line" and subtract 1 (the newline).
+			var nl types.Point
+			nl, err = types.PointFromVim(b, *flags.Line2+1, 1)
+			if err != nil {
+				return start, end, fmt.Errorf("failed to get point from line after end line: %v", err)
+			}
+			end, err = types.PointFromOffset(b, nl.Offset()-1)
+			if err != nil {
+				return start, end, fmt.Errorf("failed to get end position of range: %v", err)
+			}
+		} else if pos.Mode == "v" {
+			start, err = types.PointFromVim(b, pos.Start[1], pos.Start[2])
+			if err != nil {
+				return start, end, fmt.Errorf("failed to get start position of range: %v", err)
+			}
+			end, err = types.PointFromVim(b, pos.End[1], pos.End[2])
+			if err != nil {
+				return start, end, fmt.Errorf("failed to get end position of range: %v", err)
+			}
+			// we need to move past the end of the selection
+			rem := b.Contents()[end.Offset():]
+			if len(rem) > 0 {
+				_, adj := utf8.DecodeRune(rem)
+				end, err = types.PointFromVim(b, pos.End[1], pos.End[2]+adj)
+				if err != nil {
+					return start, end, fmt.Errorf("failed to get adjusted end position: %v", err)
+				}
+			}
+		}
+	case 0:
+		// current line
+		start, err = types.PointFromVim(b, *flags.Line1, 1)
+		if err != nil {
+			return start, end, fmt.Errorf("failed to derive start position from cursor position on line %v: %v", *flags.Line1, err)
+		}
+		lines := bytes.Split(b.Contents(), []byte("\n"))
+		end, err = types.PointFromVim(b, *flags.Line1, len(lines[*flags.Line1-1])+1)
+		if err != nil {
+			return start, end, fmt.Errorf("failed to derive end position from cursor position on line %v: %v", *flags.Line1, err)
+		}
+	default:
+		return start, end, fmt.Errorf("unknown range indicator %v", *flags.Range)
+	}
+	return start, end, nil
 }
