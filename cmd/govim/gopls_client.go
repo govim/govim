@@ -38,7 +38,7 @@ var _ protocol.Client = (*govimplugin)(nil)
 
 func (g *govimplugin) ShowMessage(ctxt context.Context, params *protocol.ShowMessageParams) error {
 	defer absorbShutdownErr()
-	g.logGoplsClientf("ShowMessage callback: %v", params.Message)
+	g.logGoplsClientf("ShowMessage callback: %v", pretty.Sprint(params))
 
 	var hl string
 	switch params.Type {
