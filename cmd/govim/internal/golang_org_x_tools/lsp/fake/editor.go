@@ -277,26 +277,7 @@ func (e *Editor) OpenFile(ctx context.Context, path string) error {
 	if err != nil {
 		return err
 	}
-	return e.OpenFileWithContent(ctx, path, content)
-}
-
-// OpenFileWithContent creates a buffer for the given workdir-relative file
-// with the given contents.
-func (e *Editor) OpenFileWithContent(ctx context.Context, path, content string) error {
-	buf := newBuffer(path, content)
-	e.mu.Lock()
-	e.buffers[path] = buf
-	item := textDocumentItem(e.sandbox.Workdir, buf)
-	e.mu.Unlock()
-
-	if e.Server != nil {
-		if err := e.Server.DidOpen(ctx, &protocol.DidOpenTextDocumentParams{
-			TextDocument: item,
-		}); err != nil {
-			return errors.Errorf("DidOpen: %w", err)
-		}
-	}
-	return nil
+	return e.CreateBuffer(ctx, path, content)
 }
 
 func newBuffer(path, content string) buffer {
@@ -713,7 +694,7 @@ func (e *Editor) codeAction(ctx context.Context, path string, rng *protocol.Rang
 		// Execute any commands. The specification says that commands are
 		// executed after edits are applied.
 		if action.Command != nil {
-			if _, err := e.Server.ExecuteCommand(ctx, &protocol.ExecuteCommandParams{
+			if _, err := e.ExecuteCommand(ctx, &protocol.ExecuteCommandParams{
 				Command:   action.Command.Command,
 				Arguments: action.Command.Arguments,
 			}); err != nil {
@@ -722,6 +703,24 @@ func (e *Editor) codeAction(ctx context.Context, path string, rng *protocol.Rang
 		}
 	}
 	return nil
+}
+
+func (e *Editor) ExecuteCommand(ctx context.Context, params *protocol.ExecuteCommandParams) (interface{}, error) {
+	if e.Server == nil {
+		return nil, nil
+	}
+	var match bool
+	// Ensure that this command was actually listed as a supported command.
+	for _, command := range e.serverCapabilities.ExecuteCommandProvider.Commands {
+		if command == params.Command {
+			match = true
+			break
+		}
+	}
+	if !match {
+		return nil, fmt.Errorf("unsupported command %q", params.Command)
+	}
+	return e.Server.ExecuteCommand(ctx, params)
 }
 
 func convertEdits(protocolEdits []protocol.TextEdit) []Edit {
@@ -785,7 +784,7 @@ func (e *Editor) RunGenerate(ctx context.Context, dir string) error {
 		Command:   source.CommandGenerate.ID(),
 		Arguments: jsonArgs,
 	}
-	if _, err := e.Server.ExecuteCommand(ctx, params); err != nil {
+	if _, err := e.ExecuteCommand(ctx, params); err != nil {
 		return fmt.Errorf("running generate: %v", err)
 	}
 	// Unfortunately we can't simply poll the workdir for file changes here,
