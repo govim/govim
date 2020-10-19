@@ -255,13 +255,14 @@ func (s *snapshot) RunGoCommandPiped(ctx context.Context, wd, verb string, args 
 func (s *snapshot) goCommandInvocation(ctx context.Context, cfg *packages.Config, allowTempModfile bool, verb string, args []string) (tmpURI span.URI, runner *gocommand.Runner, inv *gocommand.Invocation, cleanup func(), err error) {
 	cleanup = func() {} // fallback
 	modURI := s.GoModForFile(ctx, span.URIFromPath(cfg.Dir))
-	var buildFlags []string
-	// `go mod`, `go env`, and `go version` don't take build flags.
-	switch verb {
-	case "mod", "env", "version":
-	default:
-		buildFlags = append(cfg.BuildFlags, buildFlags...)
+
+	inv = &gocommand.Invocation{
+		Verb:       verb,
+		Args:       args,
+		Env:        cfg.Env,
+		WorkingDir: cfg.Dir,
 	}
+
 	if allowTempModfile && s.workspaceMode()&tempModfile != 0 {
 		if modURI == "" {
 			return "", nil, nil, cleanup, fmt.Errorf("no go.mod file found in %s", cfg.Dir)
@@ -277,40 +278,30 @@ func (s *snapshot) goCommandInvocation(ctx context.Context, cfg *packages.Config
 		if err != nil {
 			return "", nil, nil, cleanup, err
 		}
-		buildFlags = append(buildFlags, fmt.Sprintf("-modfile=%s", tmpURI.Filename()))
+		inv.ModFile = tmpURI.Filename()
 	}
-	// TODO(rstambler): Remove this when golang/go#41826 is resolved.
-	// Don't add -mod=mod for `go mod` or `go get`.
-	switch verb {
-	case "mod", "get":
-	default:
-		var modContent []byte
-		if modURI != "" {
-			modFH, err := s.GetFile(ctx, modURI)
-			if err != nil {
-				return "", nil, nil, cleanup, err
-			}
-			modContent, err = modFH.Read()
-			if err != nil {
-				return "", nil, nil, nil, err
-			}
-		}
-		modMod, err := s.needsModEqualsMod(ctx, modURI, modContent)
+
+	var modContent []byte
+	if modURI != "" {
+		modFH, err := s.GetFile(ctx, modURI)
 		if err != nil {
 			return "", nil, nil, cleanup, err
 		}
-		if modMod {
-			buildFlags = append([]string{"-mod=mod"}, buildFlags...)
+		modContent, err = modFH.Read()
+		if err != nil {
+			return "", nil, nil, nil, err
 		}
 	}
+	modMod, err := s.needsModEqualsMod(ctx, modURI, modContent)
+	if err != nil {
+		return "", nil, nil, cleanup, err
+	}
+	if modMod {
+		inv.ModFlag = "mod"
+	}
+
 	runner = packagesinternal.GetGoCmdRunner(cfg)
-	return tmpURI, runner, &gocommand.Invocation{
-		Verb:       verb,
-		Args:       args,
-		Env:        cfg.Env,
-		BuildFlags: buildFlags,
-		WorkingDir: cfg.Dir,
-	}, cleanup, nil
+	return tmpURI, runner, inv, cleanup, nil
 }
 
 func (s *snapshot) buildOverlay() map[string][]byte {
@@ -791,12 +782,12 @@ func (s *snapshot) FindFile(uri span.URI) source.VersionedFileHandle {
 	return s.files[f.URI()]
 }
 
-// GetFile returns a File for the given URI. If the file is unknown it is added
-// to the managed set.
+// GetVersionedFile returns a File for the given URI. If the file is unknown it
+// is added to the managed set.
 //
 // GetFile succeeds even if the file does not exist. A non-nil error return
 // indicates some type of internal error, for example if ctx is cancelled.
-func (s *snapshot) GetFile(ctx context.Context, uri span.URI) (source.VersionedFileHandle, error) {
+func (s *snapshot) GetVersionedFile(ctx context.Context, uri span.URI) (source.VersionedFileHandle, error) {
 	f, err := s.view.getFile(uri)
 	if err != nil {
 		return nil, err
@@ -805,6 +796,11 @@ func (s *snapshot) GetFile(ctx context.Context, uri span.URI) (source.VersionedF
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.getFileLocked(ctx, f)
+}
+
+// GetFile implements the fileSource interface by wrapping GetVersionedFile.
+func (s *snapshot) GetFile(ctx context.Context, uri span.URI) (source.FileHandle, error) {
+	return s.GetVersionedFile(ctx, uri)
 }
 
 func (s *snapshot) getFileLocked(ctx context.Context, f *fileBase) (source.VersionedFileHandle, error) {
@@ -827,14 +823,6 @@ func (s *snapshot) IsOpen(uri span.URI) bool {
 
 	_, open := s.files[uri].(*overlay)
 	return open
-}
-
-func (s *snapshot) IsSaved(uri span.URI) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	ovl, open := s.files[uri].(*overlay)
-	return !open || ovl.saved
 }
 
 func (s *snapshot) awaitLoaded(ctx context.Context) error {
@@ -1065,24 +1053,24 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Ve
 
 	var modulesChanged, shouldReinitializeView bool
 
-	// transitiveIDs keeps track of transitive reverse dependencies.
-	// If an ID is present in the map, invalidate its types.
-	// If an ID's value is true, invalidate its metadata too.
-	transitiveIDs := make(map[packageID]bool)
+	// directIDs keeps track of package IDs that have directly changed.
+	// It maps id->invalidateMetadata.
+	directIDs := map[packageID]bool{}
 	for withoutURI, currentFH := range withoutURIs {
-		directIDs := map[packageID]struct{}{}
 
-		// Collect all of the package IDs that correspond to the given file.
-		// TODO: if the file has moved into a new package, we should invalidate that too.
-		for _, id := range s.ids[withoutURI] {
-			directIDs[id] = struct{}{}
-		}
 		// The original FileHandle for this URI is cached on the snapshot.
 		originalFH := s.files[withoutURI]
 
 		// Check if the file's package name or imports have changed,
 		// and if so, invalidate this file's packages' metadata.
 		invalidateMetadata := forceReloadMetadata || s.shouldInvalidateMetadata(ctx, result, originalFH, currentFH)
+
+		// Mark all of the package IDs containing the given file.
+		// TODO: if the file has moved into a new package, we should invalidate that too.
+		filePackages := guessPackagesForURI(withoutURI, s.ids)
+		for _, id := range filePackages {
+			directIDs[id] = directIDs[id] || invalidateMetadata
+		}
 
 		// Invalidate the previous modTidyHandle if any of the files have been
 		// saved or if any of the metadata has been invalidated.
@@ -1114,7 +1102,7 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Ve
 			// the metadata for every known package in the snapshot.
 			if invalidateMetadata {
 				for k := range s.metadata {
-					directIDs[k] = struct{}{}
+					directIDs[k] = true
 				}
 				// If a go.mod file in the workspace has changed, we need to
 				// rebuild the workspace module.
@@ -1160,46 +1148,6 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Ve
 			}
 		}
 
-		// If this is a file we don't yet know about,
-		// then we do not yet know what packages it should belong to.
-		// Make a rough estimate of what metadata to invalidate by finding the package IDs
-		// of all of the files in the same directory as this one.
-		// TODO(rstambler): Speed this up by mapping directories to filenames.
-		if len(directIDs) == 0 {
-			if dirStat, err := os.Stat(filepath.Dir(withoutURI.Filename())); err == nil {
-				for uri := range s.files {
-					if fdirStat, err := os.Stat(filepath.Dir(uri.Filename())); err == nil {
-						if os.SameFile(dirStat, fdirStat) {
-							for _, id := range s.ids[uri] {
-								directIDs[id] = struct{}{}
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// Invalidate reverse dependencies too.
-		// TODO(heschi): figure out the locking model and use transitiveReverseDeps?
-		var addRevDeps func(packageID)
-		addRevDeps = func(id packageID) {
-			current, seen := transitiveIDs[id]
-			newInvalidateMetadata := current || invalidateMetadata
-
-			// If we've already seen this ID, and the value of invalidate
-			// metadata has not changed, we can return early.
-			if seen && current == newInvalidateMetadata {
-				return
-			}
-			transitiveIDs[id] = newInvalidateMetadata
-			for _, rid := range s.getImportedByLocked(id) {
-				addRevDeps(rid)
-			}
-		}
-		for id := range directIDs {
-			addRevDeps(id)
-		}
-
 		// Handle the invalidated file; it may have new contents or not exist.
 		if !currentExists {
 			delete(result.files, withoutURI)
@@ -1208,6 +1156,31 @@ func (s *snapshot) clone(ctx context.Context, withoutURIs map[span.URI]source.Ve
 		}
 		// Make sure to remove the changed file from the unloadable set.
 		delete(result.unloadableFiles, withoutURI)
+	}
+
+	// Invalidate reverse dependencies too.
+	// TODO(heschi): figure out the locking model and use transitiveReverseDeps?
+	// transitiveIDs keeps track of transitive reverse dependencies.
+	// If an ID is present in the map, invalidate its types.
+	// If an ID's value is true, invalidate its metadata too.
+	transitiveIDs := make(map[packageID]bool)
+	var addRevDeps func(packageID, bool)
+	addRevDeps = func(id packageID, invalidateMetadata bool) {
+		current, seen := transitiveIDs[id]
+		newInvalidateMetadata := current || invalidateMetadata
+
+		// If we've already seen this ID, and the value of invalidate
+		// metadata has not changed, we can return early.
+		if seen && current == newInvalidateMetadata {
+			return
+		}
+		transitiveIDs[id] = newInvalidateMetadata
+		for _, rid := range s.getImportedByLocked(id) {
+			addRevDeps(rid, invalidateMetadata)
+		}
+	}
+	for id, invalidateMetadata := range directIDs {
+		addRevDeps(id, invalidateMetadata)
 	}
 
 	// When modules change, we need to recompute their workspace directories,
@@ -1314,6 +1287,56 @@ copyIDs:
 		result.workspacePackages = map[packageID]packagePath{}
 	}
 	return result, reinitialize
+}
+
+// guessPackagesForURI returns all packages related to uri. If we haven't seen this
+// URI before, we guess based on files in the same directory. This is of course
+// incorrect in build systems where packages are not organized by directory.
+func guessPackagesForURI(uri span.URI, known map[span.URI][]packageID) []packageID {
+	packages := known[uri]
+	if len(packages) > 0 {
+		// We've seen this file before.
+		return packages
+	}
+	// This is a file we don't yet know about. Guess relevant packages by
+	// considering files in the same directory.
+
+	// Cache of FileInfo to avoid unnecessary stats for multiple files in the
+	// same directory.
+	stats := make(map[string]struct {
+		os.FileInfo
+		error
+	})
+	getInfo := func(dir string) (os.FileInfo, error) {
+		if res, ok := stats[dir]; ok {
+			return res.FileInfo, res.error
+		}
+		fi, err := os.Stat(dir)
+		stats[dir] = struct {
+			os.FileInfo
+			error
+		}{fi, err}
+		return fi, err
+	}
+	dir := filepath.Dir(uri.Filename())
+	fi, err := getInfo(dir)
+	if err != nil {
+		return nil
+	}
+
+	// Aggregate all possibly relevant package IDs.
+	var found []packageID
+	for knownURI, ids := range known {
+		knownDir := filepath.Dir(knownURI.Filename())
+		knownFI, err := getInfo(knownDir)
+		if err != nil {
+			continue
+		}
+		if os.SameFile(fi, knownFI) {
+			found = append(found, ids...)
+		}
+	}
+	return found
 }
 
 type reinitializeView int

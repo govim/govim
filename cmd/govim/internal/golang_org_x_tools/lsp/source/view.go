@@ -44,18 +44,19 @@ type Snapshot interface {
 	// in the given snapshot.
 	FindFile(uri span.URI) VersionedFileHandle
 
-	// GetFile returns the FileHandle for a given URI, initializing it
-	// if it is not already part of the snapshot.
-	GetFile(ctx context.Context, uri span.URI) (VersionedFileHandle, error)
+	// GetVersionedFile returns the VersionedFileHandle for a given URI,
+	// initializing it if it is not already part of the snapshot.
+	GetVersionedFile(ctx context.Context, uri span.URI) (VersionedFileHandle, error)
+
+	// GetFile returns the FileHandle for a given URI, initializing it if it is
+	// not already part of the snapshot.
+	GetFile(ctx context.Context, uri span.URI) (FileHandle, error)
 
 	// AwaitInitialized waits until the snapshot's view is initialized.
 	AwaitInitialized(ctx context.Context)
 
 	// IsOpen returns whether the editor currently has a file open.
 	IsOpen(uri span.URI) bool
-
-	// IsSaved returns whether the contents are saved on disk or not.
-	IsSaved(uri span.URI) bool
 
 	// IgnoredFile reports if a file would be ignored by a `go list` of the whole
 	// workspace.
@@ -204,6 +205,14 @@ type View interface {
 	// IsGoPrivatePath reports whether target is a private import path, as identified
 	// by the GOPRIVATE environment variable.
 	IsGoPrivatePath(path string) bool
+}
+
+// A FileSource maps uris to FileHandles. This abstraction exists both for
+// testability, and so that algorithms can be run equally on session and
+// snapshot files.
+type FileSource interface {
+	// GetFile returns the FileHandle for a given URI.
+	GetFile(ctx context.Context, uri span.URI) (FileHandle, error)
 }
 
 type BuiltinPackage struct {

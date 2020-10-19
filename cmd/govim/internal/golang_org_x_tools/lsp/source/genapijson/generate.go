@@ -17,6 +17,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"time"
 
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/packages"
@@ -92,6 +93,12 @@ func generate() ([]byte, error) {
 		return nil, err
 	}
 	api.Lenses = loadLenses(api.Commands)
+	// Command names need to be prefixed with "gopls_".
+	// TODO: figure out a better way.
+	for _, c := range api.Commands {
+		c.Command = "gopls_" + c.Command
+	}
+
 	marshaled, err := json.Marshal(api)
 	if err != nil {
 		return nil, err
@@ -140,13 +147,17 @@ func loadOptions(category reflect.Value, pkg *packages.Package) ([]*source.Optio
 		}
 
 		// Format the default value. VSCode exposes settings as JSON, so showing them as JSON is reasonable.
-		// Nil values format as "null" so print them as hardcoded empty values.
 		def := reflectField.Interface()
+		// Durations marshal as nanoseconds, but we want the stringy versions, e.g. "100ms".
+		if t, ok := def.(time.Duration); ok {
+			def = t.String()
+		}
 		defBytes, err := json.Marshal(def)
 		if err != nil {
 			return nil, err
 		}
 
+		// Nil values format as "null" so print them as hardcoded empty values.
 		switch reflectField.Type().Kind() {
 		case reflect.Map:
 			if reflectField.IsNil() {
