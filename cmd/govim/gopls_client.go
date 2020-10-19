@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"unicode"
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
@@ -272,7 +273,7 @@ func (g *govimplugin) Progress(ctxt context.Context, params *protocol.ProgressPa
 		return fmt.Errorf("expected required field 'kind' in progress callback")
 	}
 	message, _ := raw["message"].(string) // optional
-	message = strings.TrimSpace(message)
+	message = strings.TrimRightFunc(message, unicode.IsSpace)
 
 	var title string
 	if title, ok = raw["title"].(string); !ok && kind == "begin" { // required for "begin"

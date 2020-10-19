@@ -75,7 +75,7 @@ func (v *vimstate) rearrangeProgressPopups() {
 				map[string]interface{}{"line": popups[i].LinePos},
 			)
 		}
-		line += len(popups[i].Text) + 1 // title + lines
+		line += len(popups[i].Text) + 2 // lines + top & bottom border
 	}
 	v.MustBatchEnd()
 }
