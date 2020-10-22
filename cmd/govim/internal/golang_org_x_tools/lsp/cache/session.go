@@ -27,7 +27,8 @@ type Session struct {
 	cache *Cache
 	id    string
 
-	options *source.Options
+	optionsMu sync.Mutex
+	options   *source.Options
 
 	viewMu  sync.Mutex
 	views   []*View
@@ -118,10 +119,14 @@ func (s *Session) ID() string     { return s.id }
 func (s *Session) String() string { return s.id }
 
 func (s *Session) Options() *source.Options {
+	s.optionsMu.Lock()
+	defer s.optionsMu.Unlock()
 	return s.options
 }
 
 func (s *Session) SetOptions(options *source.Options) {
+	s.optionsMu.Lock()
+	defer s.optionsMu.Unlock()
 	s.options = options
 }
 
@@ -644,35 +649,4 @@ func (s *Session) Overlays() []source.Overlay {
 		overlays = append(overlays, overlay)
 	}
 	return overlays
-}
-
-// goVersion returns the Go version in use for the given session.
-func (s *Session) goVersion(ctx context.Context, folder string, env []string) (int, error) {
-	// Check the go version by running "go list" with modules off.
-	// Borrowed from internal/imports/mod.go:620.
-	const format = `{{context.ReleaseTags}}`
-	inv := gocommand.Invocation{
-		Verb:       "list",
-		Args:       []string{"-e", "-f", format},
-		Env:        append(env, "GO111MODULE=off"),
-		WorkingDir: folder,
-	}
-	stdoutBytes, err := s.gocmdRunner.Run(ctx, inv)
-	if err != nil {
-		return 0, err
-	}
-	stdout := stdoutBytes.String()
-	if len(stdout) < 3 {
-		return 0, fmt.Errorf("bad ReleaseTags output: %q", stdout)
-	}
-	// Split up "[go1.1 go1.15]"
-	tags := strings.Fields(stdout[1 : len(stdout)-2])
-	for i := len(tags) - 1; i >= 0; i-- {
-		var version int
-		if _, err := fmt.Sscanf(tags[i], "go1.%d", &version); err != nil {
-			continue
-		}
-		return version, nil
-	}
-	return 0, fmt.Errorf("no parseable ReleaseTags in %v", tags)
 }
