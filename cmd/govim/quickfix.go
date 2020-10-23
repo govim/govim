@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path"
 	"path/filepath"
 
 	"github.com/govim/govim"
@@ -75,19 +76,45 @@ func (v *vimstate) updateQuickfixWithDiagnostics(force bool, wasPrevNotDiagnosti
 	if !wasPrevNotDiagnostics && len(v.lastQuickFixDiagnostics) > 0 {
 		var want qflistWant
 		v.Parse(v.ChannelExpr(`getqflist({"idx":0})`), &want)
-		if want.Idx == 0 {
+		if want.Idx == 1 {
+			// Don't guess selection if position is 1
 			goto NewIndexSet
 		}
 		wantIdx := want.Idx - 1
 		if len(v.lastQuickFixDiagnostics) <= wantIdx {
 			goto NewIndexSet
 		}
-		currFix := v.lastQuickFixDiagnostics[want.Idx-1]
+		currFix := v.lastQuickFixDiagnostics[wantIdx]
+		var fileNextIdx, fileLastIdx, dirFirstIdx int
 		for i, f := range fixes {
+			if f.Filename == currFix.Filename {
+				// Track index of the last entry of currFix file
+				fileLastIdx = i + 1
+				if fileNextIdx == 0 && f.Lnum >= currFix.Lnum {
+					// Track index of next entry of currFix file
+					fileNextIdx = i + 1
+				}
+			}
+			if dirFirstIdx == 0 && path.Dir(f.Filename) == path.Dir(currFix.Filename) {
+				// Track index of the first entry of currFix directory
+				dirFirstIdx = i + 1
+			}
 			if currFix.equalModuloBuffer(f) {
 				newIdx = i + 1
 				break
 			}
+		}
+		if newIdx == 0 {
+			// If currFix isn't found, set index to the next entry from the same file
+			newIdx = fileNextIdx
+		}
+		if newIdx == 0 {
+			// If fileNextIdx isn't set, set index to the last entry from the same file
+			newIdx = fileLastIdx
+		}
+		if newIdx == 0 {
+			// If fileLastIdx isn't set, set index to the first entry from the same directory
+			newIdx = dirFirstIdx
 		}
 	}
 NewIndexSet:
