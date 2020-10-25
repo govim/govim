@@ -82,9 +82,6 @@ func (v *vimstate) updateQuickfixWithDiagnostics(force bool, wasPrevNotDiagnosti
 			goto NewIndexSet
 		}
 		wantIdx := want.Idx - 1
-		if len(v.lastQuickFixDiagnostics) <= wantIdx {
-			goto NewIndexSet
-		}
 		currFix := v.lastQuickFixDiagnostics[wantIdx]
 		var fileNextIdx, fileLastIdx, dirFirstIdx int
 		for i, f := range fixes {
