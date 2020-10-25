@@ -76,8 +76,9 @@ func (v *vimstate) updateQuickfixWithDiagnostics(force bool, wasPrevNotDiagnosti
 	if !wasPrevNotDiagnostics && len(v.lastQuickFixDiagnostics) > 0 {
 		var want qflistWant
 		v.Parse(v.ChannelExpr(`getqflist({"idx":0})`), &want)
-		if want.Idx == 1 {
-			// Don't guess selection if position is 1
+		if want.Idx == 0 {
+			// NOTE: this should never happen since idx == 0 only if the qf is empty
+			// and we just tested it isn't.
 			goto NewIndexSet
 		}
 		wantIdx := want.Idx - 1
