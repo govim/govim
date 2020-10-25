@@ -1,0 +1,132 @@
+# Test that the quickfix window logic fallbacks to last entry of the previous
+# selected entry file, if this one isn't found and if there's no next entry.
+
+vim ex 'e main.go'
+vimexprwait errors.golden.orig GOVIMTest_getqflist()
+
+# Verify we have the first entry selected
+vim expr 'getqflist({\"idx\": 0})'
+stdout '{"idx":1}'
+! stderr .+
+
+# Now move to error 'err4' and check the position
+vim expr 'setqflist([], \"r\", {\"idx\": 4})'
+vim expr 'getqflist({\"idx\": 0})'
+stdout '{"idx":4}'
+! stderr .+
+
+# Now fix selected error and assert the index points to the last entry of the file
+vim ex 'call cursor(7,1)'
+vim normal dd
+vimexprwait errors.golden.updated GOVIMTest_getqflist()
+vim expr 'getqflist({\"idx\": 0})'
+stdout '{"idx":3}'
+! stderr .+
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+func main() {
+	err1
+	err2
+	err3
+	err4
+}
+-- errors.golden.orig --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: err1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: err2",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: err3",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: err4",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.golden.updated --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: err1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: err2",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: err3",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

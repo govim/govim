@@ -1,0 +1,135 @@
+# Test that the quickfix window logic fallbacks to first error of the selected
+# entry directory, if this one is not found in the new quickfix list and if
+# there's no other errors in this entry file.
+
+vim ex 'e charly.go'
+vimexprwait errors.golden.orig GOVIMTest_getqflist()
+
+# Now move to error 'errc' and check the position
+vim expr 'setqflist([], \"r\", {\"idx\": 3})'
+vim expr 'getqflist({\"idx\": 0})'
+stdout '{"idx":3}'
+! stderr .+
+
+# Now fix selected error and assert the index points to the first file of the directory
+vim ex 'call cursor(3,1)'
+vim normal dd
+vimexprwait errors.golden.updated GOVIMTest_getqflist()
+vim expr 'getqflist({\"idx\": 0})'
+stdout '{"idx":2}'
+! stderr .+
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- alice/alice.go --
+package alice
+
+erralice
+-- bob.go --
+package main
+
+errbob
+-- charly.go --
+package main
+
+errcharly
+-- dave.go --
+package main
+
+errdave
+-- errors.golden.orig --
+[
+  {
+    "bufname": "alice/alice.go",
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found erralice",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "bob.go",
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found errbob",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "charly.go",
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found errcharly",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "dave.go",
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found errdave",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.golden.updated --
+[
+  {
+    "bufname": "alice/alice.go",
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found erralice",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "bob.go",
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found errbob",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "dave.go",
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found errdave",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
