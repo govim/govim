@@ -377,3 +377,17 @@ func (l loggingGoplsServer) WorkDoneProgressCancel(ctxt context.Context, params 
 	l.Logf("gopls.WorkDoneProgressCancel() return; err: %v\n", err)
 	return err
 }
+
+func (l loggingGoplsServer) Moniker(ctxt context.Context, params *protocol.MonikerParams) ([]protocol.Moniker /*Moniker[] | null*/, error) {
+	l.Logf("gopls.Moniker() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.Moniker(ctxt, params)
+	l.Logf("gopls.Moniker() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) ResolveCodeAction(ctxt context.Context, params *protocol.CodeAction) (*protocol.CodeAction, error) {
+	l.Logf("gopls.ResolveCodeAction() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.ResolveCodeAction(ctxt, params)
+	l.Logf("gopls.ResolveCodeAction() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
