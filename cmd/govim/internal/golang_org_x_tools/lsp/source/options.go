@@ -162,6 +162,8 @@ type ClientOptions struct {
 	PreferredContentFormat            protocol.MarkupKind
 	LineFoldingOnly                   bool
 	HierarchicalDocumentSymbolSupport bool
+	SemanticTypes                     []string
+	SemanticMods                      []string
 }
 
 // ServerOptions holds LSP-specific configuration that is provided by the
@@ -535,6 +537,12 @@ func (o *Options) ForClientCapabilities(caps protocol.ClientCapabilities) {
 	o.LineFoldingOnly = fr.LineFoldingOnly
 	// Check if the client supports hierarchical document symbols.
 	o.HierarchicalDocumentSymbolSupport = caps.TextDocument.DocumentSymbol.HierarchicalDocumentSymbolSupport
+	// Check if the client supports semantic tokens
+	o.SemanticTypes = caps.TextDocument.SemanticTokens.TokenTypes
+	o.SemanticMods = caps.TextDocument.SemanticTokens.TokenModifiers
+	// we don't need Requests, as we support full functionality
+	// we don't need Formats, as there is only one, for now
+
 }
 
 func (o *Options) Clone() *Options {
