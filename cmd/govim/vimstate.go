@@ -46,8 +46,8 @@ type vimstate struct {
 	// calls GOVIMQuickfixDiagnostics, which sets the flag to true.
 	quickfixIsDiagnostics bool
 
-	// popupWinId is the id of the window currently being used for a hover-based popup
-	popupWinId int
+	// popupWinID is the id of the window currently being used for a hover-based popup
+	popupWinID int
 
 	// currBatch represents the batch we are collecting
 	currBatch *batch

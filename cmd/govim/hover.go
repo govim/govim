@@ -45,9 +45,9 @@ func (v *vimstate) hoverMsgAt(pos types.Point, tdi protocol.TextDocumentIdentifi
 }
 
 func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOpts *map[string]interface{}) (interface{}, error) {
-	if v.popupWinId > 0 {
-		v.ChannelCall("popup_close", v.popupWinId)
-		v.popupWinId = 0
+	if v.popupWinID > 0 {
+		v.ChannelCall("popup_close", v.popupWinID)
+		v.popupWinID = 0
 		v.ChannelRedraw(false)
 	}
 	var vpos struct {
@@ -136,7 +136,7 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 		opts["wrap"] = false
 		opts["close"] = "click"
 	}
-	v.popupWinId = v.ParseInt(v.ChannelCall("popup_create", lines, opts))
+	v.popupWinID = v.ParseInt(v.ChannelCall("popup_create", lines, opts))
 	v.ChannelRedraw(false)
 	return "", nil
 }
