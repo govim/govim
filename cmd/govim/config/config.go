@@ -385,6 +385,11 @@ const (
 
 	// FunctionMotion moves the cursor according to the arguments provided.
 	FunctionMotion Function = "Motion"
+
+	// FunctionParentCommand returns a []string that represents the command that
+	// should be run to create a "child" instance of govim to communicate with
+	// its "parent" (the instance which responded to this function call)
+	FunctionParentCommand Function = "ParentCommand"
 )
 
 // FormatOnSave typed constants define the set of valid values that

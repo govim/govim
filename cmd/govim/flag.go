@@ -9,6 +9,7 @@ import (
 var (
 	flagSet = flag.NewFlagSet("govim", flag.ContinueOnError)
 	fTail   = flagSet.Bool("tail", false, "whether to also log output to stdout")
+	fParent = flagSet.String("parent", "", "the Unix Domain Socket on which a parent instance can be contacted")
 )
 
 func init() { flagSet.Usage = usage }
@@ -17,10 +18,16 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `
 Usage of govim:
 
-	govim [-tail] /path/to/gopls
+	govim [-tail] [-parent /path/to/uds] gopls ...
 
 `[1:])
 	flagSet.PrintDefaults()
+}
+
+type exitErr int
+
+func (e exitErr) Error() string {
+	return fmt.Sprintf("exit code: %v", int(e))
 }
 
 type usageErr string
@@ -43,6 +50,8 @@ func main1() int {
 		fmt.Fprintln(os.Stderr, err)
 		flagSet.Usage()
 		return 2
+	case exitErr:
+		return int(err)
 	case flagErr:
 		return 2
 	}
