@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/mod/modfile"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -27,7 +28,7 @@ import (
 
 type modTidyKey struct {
 	sessionID       string
-	cfg             string
+	env             string
 	gomod           source.FileIdentity
 	imports         string
 	unsavedOverlays string
@@ -56,9 +57,6 @@ func (s *snapshot) ModTidy(ctx context.Context, fh source.FileHandle) (*source.T
 	if fh.Kind() != source.Mod {
 		return nil, fmt.Errorf("%s is not a go.mod file", fh.URI())
 	}
-	if s.workspaceMode()&tempModfile == 0 {
-		return nil, source.ErrTmpModfileUnsupported
-	}
 	if handle := s.getModTidyHandle(fh.URI()); handle != nil {
 		return handle.tidy(ctx, s)
 	}
@@ -82,15 +80,13 @@ func (s *snapshot) ModTidy(ctx context.Context, fh source.FileHandle) (*source.T
 	overlayHash := hashUnsavedOverlays(s.files)
 	s.mu.Unlock()
 
-	// Make sure to use the module root in the configuration.
-	cfg := s.config(ctx, filepath.Dir(fh.URI().Filename()))
 	key := modTidyKey{
 		sessionID:       s.view.session.id,
 		view:            s.view.folder.Filename(),
 		imports:         importHash,
 		unsavedOverlays: overlayHash,
 		gomod:           fh.FileIdentity(),
-		cfg:             hashConfig(cfg),
+		env:             hashEnv(s),
 	}
 	h := s.generation.Bind(key, func(ctx context.Context, arg memoize.Arg) interface{} {
 		ctx, done := event.Start(ctx, "cache.ModTidyHandle", tag.URI.Of(fh.URI()))
@@ -114,17 +110,19 @@ func (s *snapshot) ModTidy(ctx context.Context, fh source.FileHandle) (*source.T
 				err: err,
 			}
 		}
-		// Get a new config to avoid races, since it may be modified by
-		// goCommandInvocation.
-		cfg := s.config(ctx, filepath.Dir(fh.URI().Filename()))
-		tmpURI, runner, inv, cleanup, err := snapshot.goCommandInvocation(ctx, cfg, true, "mod", []string{"tidy"})
+		inv := &gocommand.Invocation{
+			Verb:       "mod",
+			Args:       []string{"tidy"},
+			WorkingDir: filepath.Dir(fh.URI().Filename()),
+		}
+		tmpURI, inv, cleanup, err := snapshot.goCommandInvocation(ctx, source.WriteTemporaryModFile, inv)
 		if err != nil {
 			return &modTidyData{err: err}
 		}
 		// Keep the temporary go.mod file around long enough to parse it.
 		defer cleanup()
 
-		if _, err := runner.Run(ctx, *inv); err != nil {
+		if _, err := s.view.session.gocmdRunner.Run(ctx, *inv); err != nil {
 			return &modTidyData{err: err}
 		}
 		// Go directly to disk to get the temporary mod file, since it is
@@ -308,7 +306,7 @@ func unusedError(m *protocol.ColumnMapper, req *modfile.Require, computeEdits di
 	if err != nil {
 		return source.Error{}, err
 	}
-	edits, err := dropDependency(req, m, computeEdits)
+	args, err := source.MarshalArgs(m.URI, []string{req.Mod.Path + "@none"})
 	if err != nil {
 		return source.Error{}, err
 	}
@@ -319,8 +317,10 @@ func unusedError(m *protocol.ColumnMapper, req *modfile.Require, computeEdits di
 		URI:      m.URI,
 		SuggestedFixes: []source.SuggestedFix{{
 			Title: fmt.Sprintf("Remove dependency: %s", req.Mod.Path),
-			Edits: map[span.URI][]protocol.TextEdit{
-				m.URI: edits,
+			Command: &protocol.Command{
+				Title:     source.CommandRemoveDependency.Title,
+				Command:   source.CommandRemoveDependency.ID(),
+				Arguments: args,
 			},
 		}},
 	}, nil
@@ -373,46 +373,25 @@ func missingModuleError(snapshot source.Snapshot, pm *source.ParsedModule, req *
 	if err != nil {
 		return source.Error{}, err
 	}
-	edits, err := addRequireFix(pm.Mapper, req, snapshot.View().Options().ComputeEdits)
+	args, err := source.MarshalArgs(pm.Mapper.URI, []string{req.Mod.Path + "@" + req.Mod.Version})
 	if err != nil {
 		return source.Error{}, err
 	}
-	fix := &source.SuggestedFix{
-		Title: fmt.Sprintf("Add %s to your go.mod file", req.Mod.Path),
-		Edits: map[span.URI][]protocol.TextEdit{
-			pm.Mapper.URI: edits,
-		},
-	}
 	return source.Error{
-		URI:            pm.Mapper.URI,
-		Range:          rng,
-		Message:        fmt.Sprintf("%s is not in your go.mod file", req.Mod.Path),
-		Category:       source.GoModTidy,
-		Kind:           source.ModTidyError,
-		SuggestedFixes: []source.SuggestedFix{*fix},
+		URI:      pm.Mapper.URI,
+		Range:    rng,
+		Message:  fmt.Sprintf("%s is not in your go.mod file", req.Mod.Path),
+		Category: source.GoModTidy,
+		Kind:     source.ModTidyError,
+		SuggestedFixes: []source.SuggestedFix{{
+			Title: fmt.Sprintf("Add %s to your go.mod file", req.Mod.Path),
+			Command: &protocol.Command{
+				Title:     source.CommandAddDependency.Title,
+				Command:   source.CommandAddDependency.ID(),
+				Arguments: args,
+			},
+		}},
 	}, nil
-}
-
-// dropDependency returns the edits to remove the given require from the go.mod
-// file.
-func dropDependency(req *modfile.Require, m *protocol.ColumnMapper, computeEdits diff.ComputeEdits) ([]protocol.TextEdit, error) {
-	// We need a private copy of the parsed go.mod file, since we're going to
-	// modify it.
-	copied, err := modfile.Parse("", m.Content, nil)
-	if err != nil {
-		return nil, err
-	}
-	if err := copied.DropRequire(req.Mod.Path); err != nil {
-		return nil, err
-	}
-	copied.Cleanup()
-	newContent, err := copied.Format()
-	if err != nil {
-		return nil, err
-	}
-	// Calculate the edits to be made due to the change.
-	diff := computeEdits(m.URI, string(m.Content), string(newContent))
-	return source.ToProtocolEdits(m, diff)
 }
 
 // switchDirectness gets the edits needed to change an indirect dependency to
@@ -470,28 +449,6 @@ func missingModuleForImport(snapshot source.Snapshot, m *protocol.ColumnMapper, 
 		Kind:           source.ModTidyError,
 		SuggestedFixes: fixes,
 	}, nil
-}
-
-// addRequireFix creates edits for adding a given require to a go.mod file.
-func addRequireFix(m *protocol.ColumnMapper, req *modfile.Require, computeEdits diff.ComputeEdits) ([]protocol.TextEdit, error) {
-	// We need a private copy of the parsed go.mod file, since we're going to
-	// modify it.
-	copied, err := modfile.Parse("", m.Content, nil)
-	if err != nil {
-		return nil, err
-	}
-	// Calculate the quick fix edits that need to be made to the go.mod file.
-	if err := copied.AddRequire(req.Mod.Path, req.Mod.Version); err != nil {
-		return nil, err
-	}
-	copied.SortBlocks()
-	newContents, err := copied.Format()
-	if err != nil {
-		return nil, err
-	}
-	// Calculate the edits to be made due to the change.
-	diff := computeEdits(m.URI, string(m.Content), string(newContents))
-	return source.ToProtocolEdits(m, diff)
 }
 
 func rangeFromPositions(m *protocol.ColumnMapper, s, e modfile.Position) (protocol.Range, error) {

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -53,36 +54,34 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 	}
 	if unsaved {
 		switch params.Command {
-		case source.CommandTest.ID(), source.CommandGenerate.ID(), source.CommandToggleDetails.ID():
+		case source.CommandTest.ID(), source.CommandGenerate.ID(), source.CommandToggleDetails.ID(),
+			source.CommandAddDependency.ID(), source.CommandUpgradeDependency.ID(), source.CommandRemoveDependency.ID():
 			// TODO(PJW): for Toggle, not an error if it is being disabled
-			err := errors.New("unsaved files in the view")
+			err := errors.New("all files must be saved first")
 			s.showCommandError(ctx, command.Title, err)
 			return nil, err
 		}
 	}
-	// If the command has a suggested fix function available, use it and apply
-	// the edits to the workspace.
-	if command.IsSuggestedFix() {
-		err := s.runSuggestedFixCommand(ctx, command, params.Arguments)
-		if err != nil {
-			s.showCommandError(ctx, command.Title, err)
-		}
-		return nil, err
-	}
 	ctx, cancel := context.WithCancel(xcontext.Detach(ctx))
-	// Start progress prior to spinning off a goroutine specifically so that
-	// clients are aware of the work item before the command completes. This
-	// matters for regtests, where having a continuous thread of work is
-	// convenient for assertions.
-	work := s.progress.start(ctx, command.Title, "Running...", params.WorkDoneToken, cancel)
-	if command.Synchronous {
-		return nil, s.runCommand(ctx, work, command, params.Arguments)
+
+	var work *workDone
+	// Don't show progress for suggested fixes. They should be quick.
+	if !command.IsSuggestedFix() {
+		// Start progress prior to spinning off a goroutine specifically so that
+		// clients are aware of the work item before the command completes. This
+		// matters for regtests, where having a continuous thread of work is
+		// convenient for assertions.
+		work = s.progress.start(ctx, command.Title, "Running...", params.WorkDoneToken, cancel)
 	}
-	go func() {
-		defer cancel()
-		s.runCommand(ctx, work, command, params.Arguments)
-	}()
-	return nil, nil
+	if command.Async {
+		go func() {
+			defer cancel()
+			s.runCommand(ctx, work, command, params.Arguments)
+		}()
+		return nil, nil
+	}
+	defer cancel()
+	return nil, s.runCommand(ctx, work, command, params.Arguments)
 }
 
 func (s *Server) runSuggestedFixCommand(ctx context.Context, command *source.Command, args []json.RawMessage) error {
@@ -140,6 +139,11 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 			work.end(command.ID() + ": completed")
 		}
 	}()
+	// If the command has a suggested fix function available, use it and apply
+	// the edits to the workspace.
+	if command.IsSuggestedFix() {
+		return s.runSuggestedFixCommand(ctx, command, args)
+	}
 	switch command {
 	case source.CommandTest:
 		var uri protocol.DocumentURI
@@ -186,14 +190,23 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 		if command == source.CommandVendor {
 			a = "vendor"
 		}
-		return s.directGoModCommand(ctx, uri, "mod", []string{a}...)
-	case source.CommandUpgradeDependency:
+		return s.directGoModCommand(ctx, uri, "mod", a)
+	case source.CommandAddDependency, source.CommandUpgradeDependency, source.CommandRemoveDependency:
 		var uri protocol.DocumentURI
 		var goCmdArgs []string
 		if err := source.UnmarshalArgs(args, &uri, &goCmdArgs); err != nil {
 			return err
 		}
-		return s.directGoModCommand(ctx, uri, "get", goCmdArgs...)
+		if command == source.CommandAddDependency {
+			// Using go get to create a new dependency results in an
+			// `// indirect` comment we don't want. The only way to avoid it is
+			// to add the require as direct first. Then we can use go get to
+			// update go.sum and tidy up.
+			if err := s.directGoModCommand(ctx, uri, "mod", append([]string{"edit", "-require"}, goCmdArgs...)...); err != nil {
+				return err
+			}
+		}
+		return s.directGoModCommand(ctx, uri, "get", append([]string{"-d"}, goCmdArgs...)...)
 	case source.CommandToggleDetails:
 		var fileURI span.URI
 		if err := source.UnmarshalArgs(args, &fileURI); err != nil {
@@ -201,10 +214,10 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 		}
 		pkgDir := span.URIFromPath(filepath.Dir(fileURI.Filename()))
 		s.gcOptimizationDetailsMu.Lock()
-		if _, ok := s.gcOptimizatonDetails[pkgDir]; ok {
-			delete(s.gcOptimizatonDetails, pkgDir)
+		if _, ok := s.gcOptimizationDetails[pkgDir]; ok {
+			delete(s.gcOptimizationDetails, pkgDir)
 		} else {
-			s.gcOptimizatonDetails[pkgDir] = struct{}{}
+			s.gcOptimizationDetails[pkgDir] = struct{}{}
 		}
 		s.gcOptimizationDetailsMu.Unlock()
 		// need to recompute diagnostics.
@@ -260,10 +273,14 @@ func (s *Server) directGoModCommand(ctx context.Context, uri protocol.DocumentUR
 	if err != nil {
 		return err
 	}
-	wdir := filepath.Dir(uri.SpanURI().Filename())
 	snapshot, release := view.Snapshot(ctx)
 	defer release()
-	return snapshot.RunGoCommandDirect(ctx, wdir, verb, args)
+	_, err = snapshot.RunGoCommandDirect(ctx, source.UpdateUserModFile, &gocommand.Invocation{
+		Verb:       verb,
+		Args:       args,
+		WorkingDir: filepath.Dir(uri.SpanURI().Filename()),
+	})
+	return err
 }
 
 func (s *Server) runTests(ctx context.Context, snapshot source.Snapshot, uri protocol.DocumentURI, work *workDone, tests, benchmarks []string) error {
@@ -281,13 +298,15 @@ func (s *Server) runTests(ctx context.Context, snapshot source.Snapshot, uri pro
 	ew := &eventWriter{ctx: ctx, operation: "test"}
 	out := io.MultiWriter(ew, workDoneWriter{work}, buf)
 
-	wdir := filepath.Dir(uri.SpanURI().Filename())
-
 	// Run `go test -run Func` on each test.
 	var failedTests int
 	for _, funcName := range tests {
-		args := []string{pkgPath, "-v", "-count=1", "-run", fmt.Sprintf("^%s$", funcName)}
-		if err := snapshot.RunGoCommandPiped(ctx, wdir, "test", args, out, out); err != nil {
+		inv := &gocommand.Invocation{
+			Verb:       "test",
+			Args:       []string{pkgPath, "-v", "-count=1", "-run", fmt.Sprintf("^%s$", funcName)},
+			WorkingDir: filepath.Dir(uri.SpanURI().Filename()),
+		}
+		if err := snapshot.RunGoCommandPiped(ctx, source.Normal, inv, out, out); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return err
 			}
@@ -298,8 +317,12 @@ func (s *Server) runTests(ctx context.Context, snapshot source.Snapshot, uri pro
 	// Run `go test -run=^$ -bench Func` on each test.
 	var failedBenchmarks int
 	for _, funcName := range benchmarks {
-		args := []string{pkgPath, "-v", "-run=^$", "-bench", fmt.Sprintf("^%s$", funcName)}
-		if err := snapshot.RunGoCommandPiped(ctx, wdir, "test", args, out, out); err != nil {
+		inv := &gocommand.Invocation{
+			Verb:       "test",
+			Args:       []string{pkgPath, "-v", "-run=^$", "-bench", fmt.Sprintf("^%s$", funcName)},
+			WorkingDir: filepath.Dir(uri.SpanURI().Filename()),
+		}
+		if err := snapshot.RunGoCommandPiped(ctx, source.Normal, inv, out, out); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return err
 			}
@@ -342,16 +365,19 @@ func (s *Server) runGoGenerate(ctx context.Context, snapshot source.Snapshot, di
 	defer cancel()
 
 	er := &eventWriter{ctx: ctx, operation: "generate"}
-	args := []string{"-x"}
+
 	pattern := "."
 	if recursive {
 		pattern = "..."
 	}
-	args = append(args, pattern)
 
+	inv := &gocommand.Invocation{
+		Verb:       "generate",
+		Args:       []string{"-x", pattern},
+		WorkingDir: dir.Filename(),
+	}
 	stderr := io.MultiWriter(er, workDoneWriter{work})
-
-	if err := snapshot.RunGoCommandPiped(ctx, dir.Filename(), "generate", args, er, stderr); err != nil {
+	if err := snapshot.RunGoCommandPiped(ctx, source.Normal, inv, er, stderr); err != nil {
 		return err
 	}
 	return nil
