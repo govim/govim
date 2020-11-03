@@ -13,12 +13,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	errors "golang.org/x/xerrors"
@@ -91,14 +93,19 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 	ctx, done := event.Start(ctx, "cache.view.load", tag.Query.Of(query))
 	defer done()
 
-	cleanup := func() {}
-
 	_, inv, cleanup, err := s.goCommandInvocation(ctx, source.ForTypeChecking, &gocommand.Invocation{
 		WorkingDir: s.view.rootURI.Filename(),
 	})
 	if err != nil {
 		return err
 	}
+
+	// Set a last resort deadline on packages.Load since it calls the go
+	// command, which may hang indefinitely if it has a bug. golang/go#42132
+	// and golang/go#42255 have more context.
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
+
 	cfg := s.config(ctx, inv)
 	pkgs, err := packages.Load(cfg, query...)
 	cleanup()
@@ -110,11 +117,6 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 		return ctx.Err()
 	}
 	if err != nil {
-		// Match on common error messages. This is really hacky, but I'm not sure
-		// of any better way. This can be removed when golang/go#39164 is resolved.
-		if strings.Contains(err.Error(), "inconsistent vendoring") {
-			return source.InconsistentVendoring
-		}
 		event.Error(ctx, "go/packages.Load", err, tag.Snapshot.Of(s.ID()), tag.Directory.Of(cfg.Dir), tag.Query.Of(query), tag.PackageCount.Of(len(pkgs)))
 	} else {
 		event.Log(ctx, "go/packages.Load", tag.Snapshot.Of(s.ID()), tag.Directory.Of(cfg.Dir), tag.Query.Of(query), tag.PackageCount.Of(len(pkgs)))
@@ -184,40 +186,62 @@ func (s *snapshot) parseLoadError(ctx context.Context, loadErr error) *source.Er
 	return srcErrs
 }
 
-// tempWorkspaceModule creates a temporary directory for use with
-// packages.Loads that occur from within the workspace module.
-func (s *snapshot) tempWorkspaceModule(ctx context.Context) (_ span.URI, cleanup func(), err error) {
-	cleanup = func() {}
-	if s.workspaceMode()&usesWorkspaceModule == 0 {
-		return "", cleanup, nil
+type workspaceDirKey string
+
+type workspaceDirData struct {
+	dir string
+	err error
+}
+
+// getWorkspaceDir gets the URI for the workspace directory associated with
+// this snapshot. The workspace directory is a temp directory containing the
+// go.mod file computed from all active modules.
+func (s *snapshot) getWorkspaceDir(ctx context.Context) (span.URI, error) {
+	s.mu.Lock()
+	h := s.workspaceDirHandle
+	s.mu.Unlock()
+	if h != nil {
+		return getWorkspaceDir(ctx, h, s.generation)
 	}
-	wsModuleHandle, err := s.getWorkspaceModuleHandle(ctx)
+	file, err := s.workspace.modFile(ctx, s)
 	if err != nil {
-		return "", nil, err
-	}
-	file, err := wsModuleHandle.build(ctx, s)
-	if err != nil {
-		return "", nil, err
+		return "", err
 	}
 	content, err := file.Format()
 	if err != nil {
-		return "", cleanup, err
+		return "", err
 	}
-	// Create a temporary working directory for the go command that contains
-	// the workspace module file.
-	name, err := ioutil.TempDir("", "gopls-mod")
+	key := workspaceDirKey(hashContents(content))
+	s.mu.Lock()
+	s.workspaceDirHandle = s.generation.Bind(key, func(context.Context, memoize.Arg) interface{} {
+		tmpdir, err := ioutil.TempDir("", "gopls-workspace-mod")
+		if err != nil {
+			return &workspaceDirData{err: err}
+		}
+		filename := filepath.Join(tmpdir, "go.mod")
+		if err := ioutil.WriteFile(filename, content, 0644); err != nil {
+			os.RemoveAll(tmpdir)
+			return &workspaceDirData{err: err}
+		}
+		return &workspaceDirData{dir: tmpdir}
+	}, func(v interface{}) {
+		d := v.(*workspaceDirData)
+		if d.dir != "" {
+			if err := os.RemoveAll(d.dir); err != nil {
+				event.Error(context.Background(), "cleaning workspace dir", err)
+			}
+		}
+	})
+	s.mu.Unlock()
+	return getWorkspaceDir(ctx, s.workspaceDirHandle, s.generation)
+}
+
+func getWorkspaceDir(ctx context.Context, h *memoize.Handle, g *memoize.Generation) (span.URI, error) {
+	v, err := h.Get(ctx, g, nil)
 	if err != nil {
-		return "", cleanup, err
+		return "", err
 	}
-	cleanup = func() {
-		os.RemoveAll(name)
-	}
-	filename := filepath.Join(name, "go.mod")
-	if err := ioutil.WriteFile(filename, content, 0644); err != nil {
-		cleanup()
-		return "", cleanup, err
-	}
-	return span.URIFromPath(filepath.Dir(filename)), cleanup, nil
+	return span.URIFromPath(v.(*workspaceDirData).dir), nil
 }
 
 // setMetadata extracts metadata from pkg and records it in s. It
