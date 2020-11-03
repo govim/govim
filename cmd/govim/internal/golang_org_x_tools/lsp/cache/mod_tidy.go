@@ -69,6 +69,9 @@ func (s *snapshot) ModTidy(ctx context.Context, fh source.FileHandle) (*source.T
 	}
 	workspacePkgs, err := s.WorkspacePackages(ctx)
 	if err != nil {
+		if tm, ok := s.parseModErrors(ctx, fh, err); ok {
+			return tm, nil
+		}
 		return nil, err
 	}
 	importHash, err := hashImports(ctx, workspacePkgs)
@@ -150,7 +153,7 @@ func (s *snapshot) ModTidy(ctx context.Context, fh source.FileHandle) (*source.T
 				TidiedContent: tempContents,
 			},
 		}
-	})
+	}, nil)
 
 	mth := &modTidyHandle{handle: h}
 	s.mu.Lock()
@@ -158,6 +161,50 @@ func (s *snapshot) ModTidy(ctx context.Context, fh source.FileHandle) (*source.T
 	s.mu.Unlock()
 
 	return mth.tidy(ctx, s)
+}
+
+func (s *snapshot) parseModErrors(ctx context.Context, fh source.FileHandle, err error) (*source.TidiedModule, bool) {
+	if err == nil {
+		return nil, false
+	}
+	switch {
+	// Match on common error messages. This is really hacky, but I'm not sure
+	// of any better way. This can be removed when golang/go#39164 is resolved.
+	case strings.Contains(err.Error(), "inconsistent vendoring"):
+		pmf, err := s.ParseMod(ctx, fh)
+		if err != nil {
+			return nil, false
+		}
+		if pmf.File.Module == nil || pmf.File.Module.Syntax == nil {
+			return nil, false
+		}
+		rng, err := rangeFromPositions(pmf.Mapper, pmf.File.Module.Syntax.Start, pmf.File.Module.Syntax.End)
+		if err != nil {
+			return nil, false
+		}
+		args, err := source.MarshalArgs(protocol.URIFromSpanURI(fh.URI()))
+		if err != nil {
+			return nil, false
+		}
+		return &source.TidiedModule{
+			Parsed: pmf,
+			Errors: []source.Error{{
+				URI:   fh.URI(),
+				Range: rng,
+				Kind:  source.ListError,
+				Message: `Inconsistent vendoring detected. Please re-run "go mod vendor".
+See https://github.com/golang/go/issues/39164 for more detail on this issue.`,
+				SuggestedFixes: []source.SuggestedFix{{
+					Command: &protocol.Command{
+						Command:   source.CommandVendor.ID(),
+						Title:     source.CommandVendor.Title,
+						Arguments: args,
+					},
+				}},
+			}},
+		}, true
+	}
+	return nil, false
 }
 
 func hashImports(ctx context.Context, wsPackages []source.Package) (string, error) {
@@ -368,10 +415,15 @@ func directnessError(m *protocol.ColumnMapper, req *modfile.Require, computeEdit
 }
 
 func missingModuleError(snapshot source.Snapshot, pm *source.ParsedModule, req *modfile.Require) (source.Error, error) {
-	start, end := pm.File.Module.Syntax.Span()
-	rng, err := rangeFromPositions(pm.Mapper, start, end)
-	if err != nil {
-		return source.Error{}, err
+	var rng protocol.Range
+	// Default to the start of the file if there is no module declaration.
+	if pm.File != nil && pm.File.Module != nil && pm.File.Module.Syntax != nil {
+		start, end := pm.File.Module.Syntax.Span()
+		var err error
+		rng, err = rangeFromPositions(pm.Mapper, start, end)
+		if err != nil {
+			return source.Error{}, err
+		}
 	}
 	args, err := source.MarshalArgs(pm.Mapper.URI, []string{req.Mod.Path + "@" + req.Mod.Version})
 	if err != nil {

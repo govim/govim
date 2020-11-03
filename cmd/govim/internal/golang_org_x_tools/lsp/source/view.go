@@ -116,10 +116,6 @@ type Snapshot interface {
 	// GoModForFile returns the URI of the go.mod file for the given URI.
 	GoModForFile(ctx context.Context, uri span.URI) span.URI
 
-	// BuildWorkspaceModFile builds the contents of mod file to be used for
-	// multi-module workspace.
-	BuildWorkspaceModFile(ctx context.Context) (*modfile.File, error)
-
 	// BuiltinPackage returns information about the special builtin package.
 	BuiltinPackage(ctx context.Context) (*BuiltinPackage, error)
 
@@ -580,8 +576,7 @@ func (e *Error) Error() string {
 }
 
 var (
-	InconsistentVendoring = errors.New("inconsistent vendoring")
-	PackagesLoadError     = errors.New("packages.Load error")
+	PackagesLoadError = errors.New("packages.Load error")
 )
 
 // WorkspaceModuleVersion is the nonexistent pseudoversion suffix used in the

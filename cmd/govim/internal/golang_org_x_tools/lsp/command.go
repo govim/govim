@@ -15,6 +15,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -54,8 +55,13 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 	}
 	if unsaved {
 		switch params.Command {
-		case source.CommandTest.ID(), source.CommandGenerate.ID(), source.CommandToggleDetails.ID(),
-			source.CommandAddDependency.ID(), source.CommandUpgradeDependency.ID(), source.CommandRemoveDependency.ID():
+		case source.CommandTest.ID(),
+			source.CommandGenerate.ID(),
+			source.CommandToggleDetails.ID(),
+			source.CommandAddDependency.ID(),
+			source.CommandUpgradeDependency.ID(),
+			source.CommandRemoveDependency.ID(),
+			source.CommandVendor.ID():
 			// TODO(PJW): for Toggle, not an error if it is being disabled
 			err := errors.New("all files must be saved first")
 			s.showCommandError(ctx, command.Title, err)
@@ -250,7 +256,7 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 		}
 		snapshot, release := v.Snapshot(ctx)
 		defer release()
-		modFile, err := snapshot.BuildWorkspaceModFile(ctx)
+		modFile, err := cache.BuildGoplsMod(ctx, v.Folder(), snapshot)
 		if err != nil {
 			return errors.Errorf("getting workspace mod file: %w", err)
 		}

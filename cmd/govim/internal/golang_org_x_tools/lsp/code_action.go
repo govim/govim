@@ -14,6 +14,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -486,12 +487,12 @@ func moduleQuickFixes(ctx context.Context, snapshot source.Snapshot, fh source.V
 			return nil, err
 		}
 	}
-	tidied, err := snapshot.ModTidy(ctx, modFH)
+	errors, err := mod.ErrorsForMod(ctx, snapshot, modFH)
 	if err != nil {
 		return nil, err
 	}
 	var quickFixes []protocol.CodeAction
-	for _, e := range tidied.Errors {
+	for _, e := range errors {
 		var diag *protocol.Diagnostic
 		for _, d := range diagnostics {
 			if sameDiagnostic(d, e) {
@@ -523,6 +524,13 @@ func moduleQuickFixes(ctx context.Context, snapshot source.Snapshot, fh source.V
 					},
 					Edits: edits,
 				})
+			}
+			if fix.Command != nil {
+				action.Command = &protocol.Command{
+					Command:   fix.Command.Command,
+					Title:     fix.Command.Title,
+					Arguments: fix.Command.Arguments,
+				}
 			}
 			quickFixes = append(quickFixes, action)
 		}

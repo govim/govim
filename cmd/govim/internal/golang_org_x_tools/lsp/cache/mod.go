@@ -88,7 +88,7 @@ func (s *snapshot) ParseMod(ctx context.Context, modFH source.FileHandle) (*sour
 			}
 		}
 		return data
-	})
+	}, nil)
 
 	pmh := &parseModHandle{handle: h}
 	s.mu.Lock()
@@ -98,24 +98,26 @@ func (s *snapshot) ParseMod(ctx context.Context, modFH source.FileHandle) (*sour
 	return pmh.parse(ctx, s)
 }
 
-func (s *snapshot) sumFH(ctx context.Context, modFH source.FileHandle) (source.FileHandle, error) {
+// goSum reads the go.sum file for the go.mod file at modURI, if it exists. If
+// it doesn't exist, it returns nil.
+func (s *snapshot) goSum(ctx context.Context, modURI span.URI) []byte {
 	// Get the go.sum file, either from the snapshot or directly from the
 	// cache. Avoid (*snapshot).GetFile here, as we don't want to add
 	// nonexistent file handles to the snapshot if the file does not exist.
-	sumURI := span.URIFromPath(sumFilename(modFH.URI()))
+	sumURI := span.URIFromPath(sumFilename(modURI))
 	var sumFH source.FileHandle = s.FindFile(sumURI)
 	if sumFH == nil {
 		var err error
 		sumFH, err = s.view.session.cache.getFile(ctx, sumURI)
 		if err != nil {
-			return nil, err
+			return nil
 		}
 	}
-	_, err := sumFH.Read()
+	content, err := sumFH.Read()
 	if err != nil {
-		return nil, err
+		return nil
 	}
-	return sumFH, nil
+	return content
 }
 
 func sumFilename(modURI span.URI) string {
@@ -250,7 +252,7 @@ func (s *snapshot) ModWhy(ctx context.Context, fh source.FileHandle) (map[string
 			why[req.Mod.Path] = whyList[i]
 		}
 		return &modWhyData{why: why}
-	})
+	}, nil)
 
 	mwh := &modWhyHandle{handle: h}
 	s.mu.Lock()
@@ -358,7 +360,7 @@ func (s *snapshot) ModUpgrade(ctx context.Context, fh source.FileHandle) (map[st
 		return &modUpgradeData{
 			upgrades: upgrades,
 		}
-	})
+	}, nil)
 	muh := &modUpgradeHandle{handle: h}
 	s.mu.Lock()
 	s.modUpgradeHandles[fh.URI()] = muh
