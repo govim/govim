@@ -16,4 +16,4 @@ tidyUp $ARTEFACTS
 # step in CI only runs after tidyUp, since it isn't
 # possible (at least currently) to check the status
 # of this job step alone.
-echo "::set-env name=CI_UPLOAD_ARTIFACTS::true"
+echo "CI_UPLOAD_ARTIFACTS=true" >> $GITHUB_ENV

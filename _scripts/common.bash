@@ -39,6 +39,6 @@ function doBranchCheck {
 		return
 	fi
 	echo "Skipping build for ${VIM_FLAVOR}_${VIM_VERSION}_${GO_VERSION}"
-	echo "::set-env name=CI_SKIP_JOB::true"
+	echo "CI_SKIP_JOB=true" >> $GITHUB_ENV
 	exit 0
 }
