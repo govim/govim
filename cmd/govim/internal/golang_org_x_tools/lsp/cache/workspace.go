@@ -258,7 +258,7 @@ func (wm *workspace) invalidate(ctx context.Context, changes map[span.URI]*fileC
 				// Legacy mode only considers a module a workspace root.
 				continue
 			}
-			if !inDir(wm.root.Filename(), uri.Filename()) {
+			if !source.InDir(wm.root.Filename(), uri.Filename()) {
 				// Otherwise, the module must be contained within the workspace root.
 				continue
 			}
@@ -306,11 +306,6 @@ func modURI(root span.URI) span.URI {
 // isGoMod reports if uri is a go.mod file.
 func isGoMod(uri span.URI) bool {
 	return filepath.Base(uri.Filename()) == "go.mod"
-}
-
-// isGoMod reports if uri is a go.sum file.
-func isGoSum(uri span.URI) bool {
-	return filepath.Base(uri.Filename()) == "go.sum"
 }
 
 // fileExists reports if the file uri exists within source.
