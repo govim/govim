@@ -312,7 +312,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-18.04]
         go_version: {{{ .GoVersions }}}
         vim_flavor: {{{ .VimFlavors }}}
         vim_version: {{{ .VimVersions }}}
@@ -351,7 +351,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-18.04]
         go-version: ["{{{.MaxRealGoVersion}}}"]
     runs-on: ${{ matrix.os }}
     env:
