@@ -171,8 +171,7 @@ func (s *Server) initialized(ctx context.Context, params *protocol.InitializedPa
 			},
 		}
 		if options.SemanticTokens {
-			registrations = append(registrations, semanticTokenRegistrations()...)
-
+			registrations = append(registrations, semanticTokenRegistration())
 		}
 		if err := s.client.RegisterCapability(ctx, &protocol.RegistrationParams{
 			Registrations: registrations,
@@ -412,18 +411,14 @@ func (s *Server) fetchConfig(ctx context.Context, name string, folder span.URI, 
 	if !s.session.Options().ConfigurationSupported {
 		return nil
 	}
-	v := protocol.ParamConfiguration{
+	configs, err := s.client.Configuration(ctx, &protocol.ParamConfiguration{
 		ConfigurationParams: protocol.ConfigurationParams{
 			Items: []protocol.ConfigurationItem{{
 				ScopeURI: string(folder),
 				Section:  "gopls",
-			}, {
-				ScopeURI: string(folder),
-				Section:  fmt.Sprintf("gopls-%s", name),
 			}},
 		},
-	}
-	configs, err := s.client.Configuration(ctx, &v)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to get workspace configuration from client (%s): %v", folder, err)
 	}

@@ -132,7 +132,7 @@ func TestDoIt(t *testing.T) {
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "cannot use 5 (untyped int constant) as string value in argument to p.DoIt: cannot convert 5 (untyped int constant) to string",
+    "text": "cannot use 5 (untyped int constant) as string value in argument to p.DoIt",
     "type": "",
     "valid": 1,
     "vcol": 0
@@ -144,7 +144,7 @@ func TestDoIt(t *testing.T) {
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "cannot use 5 (untyped int constant) as string value in argument to DoIt: cannot convert 5 (untyped int constant) to string",
+    "text": "cannot use 5 (untyped int constant) as string value in argument to DoIt",
     "type": "",
     "valid": 1,
     "vcol": 0
@@ -156,7 +156,7 @@ func TestDoIt(t *testing.T) {
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "cannot use 5 (untyped int constant) as string value in argument to p.DoIt: cannot convert 5 (untyped int constant) to string",
+    "text": "cannot use 5 (untyped int constant) as string value in argument to p.DoIt",
     "type": "",
     "valid": 1,
     "vcol": 0
