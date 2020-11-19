@@ -341,6 +341,19 @@ const (
 	//
 	// Note that this feature is experimental in gopls.
 	CommandGCDetails Command = "GCDetails"
+
+	// CommandGoTest executes the test / benchmark under the cursor. It also
+	// supports ranged requests, e.g. calling ":'<,'>GOVIMGoTest" will execute
+	// all tests selected in visual mode.
+	//
+	// Calling "%GOVIMGoTest" will execute all tests in the current file.
+	//
+	// Enable progress popups to see the test progress.
+	CommandGoTest Command = "GoTest"
+
+	// Open a new buffer that contain the current output from the most recently
+	// created progress popup. Useful for looking at a failed test for example.
+	CommandLastProgress Command = "LastProgress"
 )
 
 type Function string

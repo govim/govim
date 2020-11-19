@@ -1,45 +1,66 @@
 package main
 
 import (
+	"fmt"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
+const progressMaxHeight = 10
+
 func (v *vimstate) handleProgress(popup *types.ProgressPopup, kind, title, message string) error {
-	text := strings.Split(message, "\n")
+	popup.Text.WriteString(message + "\n")
+	lines := strings.Split(popup.Text.String(), "\n")
+
+	// To achive automatic scrolling in popups we use the "firstline" option to specify the
+	// first line to show.
+	firstline := len(lines) - progressMaxHeight
+	if firstline < 1 {
+		firstline = 1
+	}
 	switch kind {
 	case "begin":
 		w := v.ParseInt(v.ChannelCall("winwidth", 0))
 
-		popup.Text = text
 		popup.LinePos = 1
 		opts := map[string]interface{}{
-			"pos":      "topright",
-			"line":     popup.LinePos,
-			"col":      w,
-			"padding":  []int{0, 1, 0, 1},
-			"wrap":     false,
-			"close":    "click",
-			"title":    title,
-			"zindex":   300, // same as popup_notification()
-			"mapping":  0,
-			"border":   []string{},
-			"minwidth": 20, // same as popup_notification()
-			"callback": "GOVIM" + config.FunctionProgressClosed,
+			"pos":       "topright",
+			"line":      popup.LinePos,
+			"col":       w,
+			"padding":   []int{0, 1, 0, 1},
+			"wrap":      false,
+			"close":     "click",
+			"title":     title,
+			"zindex":    300, // same as popup_notification()
+			"mapping":   0,
+			"border":    []string{},
+			"minwidth":  40,
+			"maxwidth":  40,
+			"maxheight": progressMaxHeight,
+			"firstline": firstline,
+			"scrollbar": false,
+			"callback":  "GOVIM" + config.FunctionProgressClosed,
 		}
-		popup.ID = v.ParseInt(v.ChannelCall("popup_create", popup.Text, opts))
+		popup.ID = v.ParseInt(v.ChannelCall("popup_create", lines, opts))
+		v.lastProgressText = &popup.Text
 	case "report":
-		popup.Text = append(popup.Text, text...)
-		v.ChannelCall("popup_settext", popup.ID, popup.Text)
-	case "end":
-		popup.Text = append(popup.Text, text...)
 		v.BatchStart()
-		v.BatchChannelCall("popup_settext", popup.ID, popup.Text)
+		v.BatchChannelCall("popup_settext", popup.ID, lines)
 		v.BatchChannelCall("popup_setoptions", popup.ID, map[string]interface{}{
-			"time": 3000, // close after 3 seconds, as popup_notification()
+			"firstline": firstline,
+		})
+		v.MustBatchEnd()
+	case "end":
+		v.BatchStart()
+		v.BatchChannelCall("popup_settext", popup.ID, lines)
+		v.BatchChannelCall("popup_setoptions", popup.ID, map[string]interface{}{
+			"time":      3000, // close after 3 seconds, as popup_notification()
+			"firstline": firstline,
 		})
 		v.MustBatchEnd()
 	}
@@ -66,16 +87,38 @@ func (v *vimstate) rearrangeProgressPopups() {
 	})
 
 	v.BatchStart()
-	line := 1
+	linePos := 1
 	for i := range popups {
-		if popups[i].LinePos != line {
-			popups[i].LinePos = line
+		if popups[i].LinePos != linePos {
+			popups[i].LinePos = linePos
 			v.BatchChannelCall("popup_setoptions",
 				popups[i].ID,
 				map[string]interface{}{"line": popups[i].LinePos},
 			)
 		}
-		line += len(popups[i].Text) + 2 // lines + top & bottom border
+		lines := len(strings.Split(popups[i].Text.String(), "\n"))
+		if lines > progressMaxHeight {
+			lines = progressMaxHeight
+		}
+		linePos += lines + 2 // lines + top & bottom border
 	}
 	v.MustBatchEnd()
+}
+
+func (v *vimstate) openLastProgress(flags govim.CommandFlags, args ...string) error {
+	if v.lastProgressText == nil {
+		return nil
+	}
+
+	bufName := fmt.Sprintf("gopls-progress-%s", time.Now().Format("20060102_150405000"))
+	bufNr := v.ParseInt(v.ChannelCall("bufadd", bufName))
+	v.ChannelExf("silent call bufload(%d)", bufNr)
+	v.BatchStart()
+	v.BatchChannelCall("setbufvar", bufNr, "&buftype", "nofile")
+	v.BatchChannelCall("setbufvar", bufNr, "&swapfile", 0)
+	v.BatchChannelCall("setbufvar", bufNr, "&buflisted", 1)
+	v.BatchChannelCall("setbufline", bufNr, 1, strings.Split(v.lastProgressText.String(), "\n"))
+	v.MustBatchEnd()
+	v.ChannelExf("e %s", bufName)
+	return nil
 }
