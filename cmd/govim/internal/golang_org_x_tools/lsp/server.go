@@ -23,7 +23,7 @@ const concurrentAnalyses = 1
 // messages on on the supplied stream.
 func NewServer(session source.Session, client protocol.Client) *Server {
 	return &Server{
-		diagnostics:           map[span.URI]*fileReports{},
+		delivered:             make(map[span.URI]sentDiagnostics),
 		gcOptimizationDetails: make(map[span.URI]struct{}),
 		watchedDirectories:    make(map[span.URI]struct{}),
 		changedFiles:          make(map[span.URI]struct{}),
@@ -86,8 +86,9 @@ type Server struct {
 	watchedDirectories     map[span.URI]struct{}
 	watchRegistrationCount uint64
 
-	diagnosticsMu sync.Mutex
-	diagnostics   map[span.URI]*fileReports
+	// delivered is a cache of the diagnostics that the server has sent.
+	deliveredMu sync.Mutex
+	delivered   map[span.URI]sentDiagnostics
 
 	// gcOptimizationDetails describes the packages for which we want
 	// optimization details to be included in the diagnostics. The key is the
@@ -108,6 +109,14 @@ type Server struct {
 	// report with an error message.
 	criticalErrorStatusMu sync.Mutex
 	criticalErrorStatus   *workDone
+}
+
+// sentDiagnostics is used to cache diagnostics that have been sent for a given file.
+type sentDiagnostics struct {
+	id              source.VersionedFileIdentity
+	sorted          []*source.Diagnostic
+	includeAnalysis bool
+	snapshotID      uint64
 }
 
 func (s *Server) workDoneProgressCancel(ctx context.Context, params *protocol.WorkDoneProgressCancelParams) error {

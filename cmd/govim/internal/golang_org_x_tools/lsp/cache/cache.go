@@ -59,10 +59,6 @@ type fileHandle struct {
 	err     error
 }
 
-func (h *fileHandle) Saved() bool {
-	return true
-}
-
 func (c *Cache) GetFile(ctx context.Context, uri span.URI) (source.FileHandle, error) {
 	return c.getFile(ctx, uri)
 }

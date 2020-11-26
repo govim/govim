@@ -93,7 +93,7 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 	ctx, done := event.Start(ctx, "cache.view.load", tag.Query.Of(query))
 	defer done()
 
-	_, inv, cleanup, err := s.goCommandInvocation(ctx, source.LoadWorkspace, &gocommand.Invocation{
+	_, inv, cleanup, err := s.goCommandInvocation(ctx, source.ForTypeChecking, &gocommand.Invocation{
 		WorkingDir: s.view.rootURI.Filename(),
 	})
 	if err != nil {
@@ -167,21 +167,21 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 	return nil
 }
 
-func (s *snapshot) parseLoadError(ctx context.Context, loadErr error) source.ErrorList {
-	var srcErrs source.ErrorList
+func (s *snapshot) parseLoadError(ctx context.Context, loadErr error) *source.ErrorList {
+	var srcErrs *source.ErrorList
 	for _, uri := range s.ModFiles() {
 		fh, err := s.GetFile(ctx, uri)
 		if err != nil {
 			continue
 		}
-		srcErr := s.extractGoCommandError(ctx, s, fh, loadErr.Error())
+		srcErr := extractGoCommandError(ctx, s, fh, loadErr)
 		if srcErr == nil {
 			continue
 		}
 		if srcErrs == nil {
-			srcErrs = source.ErrorList{}
+			srcErrs = &source.ErrorList{}
 		}
-		srcErrs = append(srcErrs, srcErr)
+		*srcErrs = append(*srcErrs, srcErr)
 	}
 	return srcErrs
 }

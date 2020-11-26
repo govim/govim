@@ -6,12 +6,15 @@ package source
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 type Diagnostic struct {
@@ -36,15 +39,32 @@ type RelatedInformation struct {
 	Message string
 }
 
-func GetTypeCheckDiagnostics(ctx context.Context, snapshot Snapshot, pkg Package) TypeCheckDiagnostics {
+func Diagnostics(ctx context.Context, snapshot Snapshot, pkg Package, withAnalysis bool) (map[VersionedFileIdentity][]*Diagnostic, bool, error) {
 	onlyIgnoredFiles := true
 	for _, pgf := range pkg.CompiledGoFiles() {
 		onlyIgnoredFiles = onlyIgnoredFiles && snapshot.IgnoredFile(pgf.URI)
 	}
 	if onlyIgnoredFiles {
-		return TypeCheckDiagnostics{}
+		return nil, false, nil
 	}
 
+	// If we are missing dependencies, it may because the user's workspace is
+	// not correctly configured. Report errors, if possible.
+	var warn bool
+	if len(pkg.MissingDependencies()) > 0 {
+		warn = true
+	}
+	// If we have a package with a single file and errors about "undeclared" symbols,
+	// we may have an ad-hoc package with multiple files. Show a warning message.
+	// TODO(golang/go#36416): Remove this when golang.org/cl/202277 is merged.
+	if len(pkg.CompiledGoFiles()) == 1 && hasUndeclaredErrors(pkg) {
+		warn = true
+	}
+	// Prepare the reports we will send for the files in this package.
+	reports := make(map[VersionedFileIdentity][]*Diagnostic)
+	for _, pgf := range pkg.CompiledGoFiles() {
+		clearReports(snapshot, reports, pgf.URI)
+	}
 	// Prepare any additional reports for the errors in this package.
 	for _, e := range pkg.GetErrors() {
 		// We only need to handle lower-level errors.
@@ -59,82 +79,51 @@ func GetTypeCheckDiagnostics(ctx context.Context, snapshot Snapshot, pkg Package
 				}
 			}
 		}
+		clearReports(snapshot, reports, e.URI)
 	}
-	return typeCheckDiagnostics(ctx, snapshot, pkg)
-}
-
-func Analyze(ctx context.Context, snapshot Snapshot, pkg Package, typeCheckResult TypeCheckDiagnostics) (map[span.URI][]*Diagnostic, error) {
+	// Run diagnostics for the package that this URI belongs to.
+	hadDiagnostics, hadTypeErrors, err := diagnostics(ctx, snapshot, reports, pkg, len(pkg.MissingDependencies()) > 0)
+	if err != nil {
+		return nil, warn, err
+	}
+	if hadDiagnostics || !withAnalysis {
+		return reports, warn, nil
+	}
 	// Exit early if the context has been canceled. This also protects us
 	// from a race on Options, see golang/go#36699.
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return nil, warn, ctx.Err()
 	}
 	// If we don't have any list or parse errors, run analyses.
-	analyzers := pickAnalyzers(snapshot, typeCheckResult.HasTypeErrors)
-	analysisErrors, err := snapshot.Analyze(ctx, pkg.ID(), analyzers...)
-	if err != nil {
-		return nil, err
-	}
-
-	reports := emptyDiagnostics(pkg)
-	// Report diagnostics and errors from root analyzers.
-	for _, e := range analysisErrors {
-		// If the diagnostic comes from a "convenience" analyzer, it is not
-		// meant to provide diagnostics, but rather only suggested fixes.
-		// Skip these types of errors in diagnostics; we will use their
-		// suggested fixes when providing code actions.
-		if isConvenienceAnalyzer(e.Category) {
-			continue
-		}
-		// This is a bit of a hack, but clients > 3.15 will be able to grey out unnecessary code.
-		// If we are deleting code as part of all of our suggested fixes, assume that this is dead code.
-		// TODO(golang/go#34508): Return these codes from the diagnostics themselves.
-		var tags []protocol.DiagnosticTag
-		if onlyDeletions(e.SuggestedFixes) {
-			tags = append(tags, protocol.Unnecessary)
-		}
-		// Type error analyzers only alter the tags for existing type errors.
-		if _, ok := snapshot.View().Options().TypeErrorAnalyzers[e.Category]; ok {
-			existingDiagnostics := typeCheckResult.Diagnostics[e.URI]
-			for _, d := range existingDiagnostics {
-				if r := protocol.CompareRange(e.Range, d.Range); r != 0 {
-					continue
-				}
-				if e.Message != d.Message {
-					continue
-				}
-				d.Tags = append(d.Tags, tags...)
-			}
-		} else {
-			reports[e.URI] = append(reports[e.URI], &Diagnostic{
-				Range:    e.Range,
-				Message:  e.Message,
-				Source:   e.Category,
-				Severity: protocol.SeverityWarning,
-				Tags:     tags,
-				Related:  e.Related,
-			})
+	analyzers := pickAnalyzers(snapshot, hadTypeErrors)
+	if err := analyses(ctx, snapshot, reports, pkg, analyzers); err != nil {
+		event.Error(ctx, "analyses failed", err, tag.Snapshot.Of(snapshot.ID()), tag.Package.Of(pkg.ID()))
+		if ctx.Err() != nil {
+			return nil, warn, ctx.Err()
 		}
 	}
-	return reports, nil
+	return reports, warn, nil
 }
 
-func pickAnalyzers(snapshot Snapshot, hadTypeErrors bool) []*analysis.Analyzer {
+func pickAnalyzers(snapshot Snapshot, hadTypeErrors bool) map[string]Analyzer {
+	analyzers := make(map[string]Analyzer)
+
 	// Always run convenience analyzers.
-	categories := []map[string]Analyzer{snapshot.View().Options().ConvenienceAnalyzers}
+	for k, v := range snapshot.View().Options().ConvenienceAnalyzers {
+		analyzers[k] = v
+	}
 	// If we had type errors, only run type error analyzers.
 	if hadTypeErrors {
-		categories = append(categories, snapshot.View().Options().TypeErrorAnalyzers)
-	} else {
-		categories = append(categories, snapshot.View().Options().DefaultAnalyzers, snapshot.View().Options().StaticcheckAnalyzers)
-	}
-	var analyzers []*analysis.Analyzer
-	for _, m := range categories {
-		for _, a := range m {
-			if a.IsEnabled(snapshot.View()) {
-				analyzers = append(analyzers, a.Analyzer)
-			}
+		for k, v := range snapshot.View().Options().TypeErrorAnalyzers {
+			analyzers[k] = v
 		}
+		return analyzers
+	}
+	for k, v := range snapshot.View().Options().DefaultAnalyzers {
+		analyzers[k] = v
+	}
+	for k, v := range snapshot.View().Options().StaticcheckAnalyzers {
+		analyzers[k] = v
 	}
 	return analyzers
 }
@@ -148,29 +137,22 @@ func FileDiagnostics(ctx context.Context, snapshot Snapshot, uri span.URI) (Vers
 	if err != nil {
 		return VersionedFileIdentity{}, nil, err
 	}
-	typeCheckResults := GetTypeCheckDiagnostics(ctx, snapshot, pkg)
-	diagnostics := typeCheckResults.Diagnostics[fh.URI()]
-	if !typeCheckResults.HasParseOrListErrors {
-		reports, err := Analyze(ctx, snapshot, pkg, typeCheckResults)
-		if err != nil {
-			return VersionedFileIdentity{}, nil, err
-		}
-		diagnostics = append(diagnostics, reports[fh.URI()]...)
+	reports, _, err := Diagnostics(ctx, snapshot, pkg, true)
+	if err != nil {
+		return VersionedFileIdentity{}, nil, err
+	}
+	diagnostics, ok := reports[fh.VersionedFileIdentity()]
+	if !ok {
+		return VersionedFileIdentity{}, nil, errors.Errorf("no diagnostics for %s", uri)
 	}
 	return fh.VersionedFileIdentity(), diagnostics, nil
-}
-
-type TypeCheckDiagnostics struct {
-	HasTypeErrors        bool
-	HasParseOrListErrors bool
-	Diagnostics          map[span.URI][]*Diagnostic
 }
 
 type diagnosticSet struct {
 	listErrors, parseErrors, typeErrors []*Diagnostic
 }
 
-func typeCheckDiagnostics(ctx context.Context, snapshot Snapshot, pkg Package) TypeCheckDiagnostics {
+func diagnostics(ctx context.Context, snapshot Snapshot, reports map[VersionedFileIdentity][]*Diagnostic, pkg Package, hasMissingDeps bool) (bool, bool, error) {
 	ctx, done := event.Start(ctx, "source.diagnostics", tag.Package.Of(pkg.ID()))
 	_ = ctx // circumvent SA4006
 	defer done()
@@ -200,37 +182,104 @@ func typeCheckDiagnostics(ctx context.Context, snapshot Snapshot, pkg Package) T
 			diag.Source = "go list"
 		}
 	}
-	typecheck := TypeCheckDiagnostics{
-		Diagnostics: emptyDiagnostics(pkg),
-	}
+	var nonEmptyDiagnostics, hasTypeErrors bool // track if we actually send non-empty diagnostics
 	for uri, set := range diagSets {
 		// Don't report type errors if there are parse errors or list errors.
 		diags := set.typeErrors
-		switch {
-		case len(set.parseErrors) > 0:
-			typecheck.HasParseOrListErrors = true
-			diags = set.parseErrors
-		case len(set.listErrors) > 0:
-			typecheck.HasParseOrListErrors = true
-			if len(pkg.MissingDependencies()) > 0 {
-				diags = set.listErrors
+		if len(set.parseErrors) > 0 {
+			diags, nonEmptyDiagnostics = set.parseErrors, true
+		} else if len(set.listErrors) > 0 {
+			// Only show list errors if the package has missing dependencies.
+			if hasMissingDeps {
+				diags, nonEmptyDiagnostics = set.listErrors, true
 			}
-		case len(set.typeErrors) > 0:
-			typecheck.HasTypeErrors = true
+		} else if len(set.typeErrors) > 0 {
+			hasTypeErrors = true
 		}
-		typecheck.Diagnostics[uri] = diags
+		if err := addReports(snapshot, reports, uri, diags...); err != nil {
+			return false, false, err
+		}
 	}
-	return typecheck
+	return nonEmptyDiagnostics, hasTypeErrors, nil
 }
 
-func emptyDiagnostics(pkg Package) map[span.URI][]*Diagnostic {
-	diags := map[span.URI][]*Diagnostic{}
-	for _, pgf := range pkg.CompiledGoFiles() {
-		if _, ok := diags[pgf.URI]; !ok {
-			diags[pgf.URI] = nil
+func analyses(ctx context.Context, snapshot Snapshot, reports map[VersionedFileIdentity][]*Diagnostic, pkg Package, analyses map[string]Analyzer) error {
+	var analyzers []*analysis.Analyzer
+	for _, a := range analyses {
+		if !a.IsEnabled(snapshot.View()) {
+			continue
+		}
+		analyzers = append(analyzers, a.Analyzer)
+	}
+	analysisErrors, err := snapshot.Analyze(ctx, pkg.ID(), analyzers...)
+	if err != nil {
+		return err
+	}
+
+	// Report diagnostics and errors from root analyzers.
+	for _, e := range analysisErrors {
+		// If the diagnostic comes from a "convenience" analyzer, it is not
+		// meant to provide diagnostics, but rather only suggested fixes.
+		// Skip these types of errors in diagnostics; we will use their
+		// suggested fixes when providing code actions.
+		if isConvenienceAnalyzer(e.Category) {
+			continue
+		}
+		// This is a bit of a hack, but clients > 3.15 will be able to grey out unnecessary code.
+		// If we are deleting code as part of all of our suggested fixes, assume that this is dead code.
+		// TODO(golang/go#34508): Return these codes from the diagnostics themselves.
+		var tags []protocol.DiagnosticTag
+		if onlyDeletions(e.SuggestedFixes) {
+			tags = append(tags, protocol.Unnecessary)
+		}
+		if err := addReports(snapshot, reports, e.URI, &Diagnostic{
+			Range:    e.Range,
+			Message:  e.Message,
+			Source:   e.Category,
+			Severity: protocol.SeverityWarning,
+			Tags:     tags,
+			Related:  e.Related,
+		}); err != nil {
+			return err
 		}
 	}
-	return diags
+	return nil
+}
+
+func clearReports(snapshot Snapshot, reports map[VersionedFileIdentity][]*Diagnostic, uri span.URI) {
+	fh := snapshot.FindFile(uri)
+	if fh == nil {
+		return
+	}
+	reports[fh.VersionedFileIdentity()] = []*Diagnostic{}
+}
+
+func addReports(snapshot Snapshot, reports map[VersionedFileIdentity][]*Diagnostic, uri span.URI, diagnostics ...*Diagnostic) error {
+	fh := snapshot.FindFile(uri)
+	if fh == nil {
+		return nil
+	}
+	existingDiagnostics, ok := reports[fh.VersionedFileIdentity()]
+	if !ok {
+		return fmt.Errorf("diagnostics for unexpected file %s", uri)
+	}
+	if len(diagnostics) == 1 {
+		d1 := diagnostics[0]
+		if _, ok := snapshot.View().Options().TypeErrorAnalyzers[d1.Source]; ok {
+			for i, d2 := range existingDiagnostics {
+				if r := protocol.CompareRange(d1.Range, d2.Range); r != 0 {
+					continue
+				}
+				if d1.Message != d2.Message {
+					continue
+				}
+				reports[fh.VersionedFileIdentity()][i].Tags = append(reports[fh.VersionedFileIdentity()][i].Tags, d1.Tags...)
+			}
+			return nil
+		}
+	}
+	reports[fh.VersionedFileIdentity()] = append(reports[fh.VersionedFileIdentity()], diagnostics...)
+	return nil
 }
 
 // onlyDeletions returns true if all of the suggested fixes are deletions.
@@ -248,6 +297,20 @@ func onlyDeletions(fixes []SuggestedFix) bool {
 		}
 	}
 	return len(fixes) > 0
+}
+
+// hasUndeclaredErrors returns true if a package has a type error
+// about an undeclared symbol.
+func hasUndeclaredErrors(pkg Package) bool {
+	for _, err := range pkg.GetErrors() {
+		if err.Kind != TypeError {
+			continue
+		}
+		if strings.Contains(err.Message, "undeclared name:") {
+			return true
+		}
+	}
+	return false
 }
 
 func isConvenienceAnalyzer(category string) bool {
