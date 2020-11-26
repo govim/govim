@@ -196,7 +196,7 @@ func (e *encoded) strStack() string {
 	if len(e.stack) > 0 {
 		loc := e.stack[len(e.stack)-1].Pos()
 		add := e.pgf.Tok.PositionFor(loc, false)
-		msg = append(msg, fmt.Sprintf("(line:%d,col:%d)", add.Line, add.Column))
+		msg = append(msg, fmt.Sprintf("(%d:%d)", add.Line, add.Column))
 	}
 	msg = append(msg, "]")
 	return strings.Join(msg, " ")
@@ -372,8 +372,25 @@ func (e *encoded) ident(x *ast.Ident) {
 	case *types.Const:
 		mods := []string{"readonly"}
 		tt := y.Type()
-		if _, ok := tt.(*types.Basic); ok {
-			e.token(x.Pos(), len(x.String()), tokVariable, mods)
+		if ttx, ok := tt.(*types.Basic); ok {
+			switch bi := ttx.Info(); {
+			case bi&types.IsNumeric != 0:
+				me := tokVariable
+				if x.String() == "iota" {
+					me = tokKeyword
+					mods = []string{}
+				}
+				e.token(x.Pos(), len(x.String()), me, mods)
+			case bi&types.IsString != 0:
+				e.token(x.Pos(), len(x.String()), tokString, mods)
+			case bi&types.IsBoolean != 0:
+				e.token(x.Pos(), len(x.Name), tokKeyword, nil)
+			case bi == 0:
+				e.token(x.Pos(), len(x.String()), tokVariable, mods)
+			default:
+				msg := fmt.Sprintf("unexpected %x at %s", bi, e.pgf.Tok.PositionFor(x.Pos(), false))
+				e.unexpected(msg)
+			}
 			break
 		}
 		if ttx, ok := tt.(*types.Named); ok {
@@ -394,7 +411,7 @@ func (e *encoded) ident(x *ast.Ident) {
 		// nothing to map it to
 	case *types.Nil:
 		// nil is a predeclared identifier
-		e.token(x.Pos(), len("nil"), tokVariable, []string{"readonly"})
+		e.token(x.Pos(), len("nil"), tokKeyword, []string{"readonly"})
 	case *types.PkgName:
 		e.token(x.Pos(), len(x.Name), tokNamespace, nil)
 	case *types.TypeName:

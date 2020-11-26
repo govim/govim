@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -24,11 +25,11 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	errors "golang.org/x/xerrors"
 )
 
 const (
-	SyntaxError    = "syntax"
-	GoCommandError = "go command"
+	SyntaxError = "syntax"
 )
 
 type parseModHandle struct {
@@ -68,24 +69,25 @@ func (s *snapshot) ParseMod(ctx context.Context, modFH source.FileHandle) (*sour
 			Converter: span.NewContentConverter(modFH.URI().Filename(), contents),
 			Content:   contents,
 		}
-		file, err := modfile.Parse(modFH.URI().Filename(), contents, nil)
-
-		// Attempt to convert the error to a standardized parse error.
-		var parseErrors []*source.Error
-		if err != nil {
-			if parseErr, extractErr := extractErrorWithPosition(ctx, err.Error(), s); extractErr == nil {
-				parseErrors = []*source.Error{parseErr}
+		data := &parseModData{
+			parsed: &source.ParsedModule{
+				Mapper: m,
+			},
+		}
+		data.parsed.File, data.err = modfile.Parse(modFH.URI().Filename(), contents, nil)
+		if data.err != nil {
+			// Attempt to convert the error to a standardized parse error.
+			if parseErr, extractErr := extractModParseErrors(modFH.URI(), m, data.err, contents); extractErr == nil {
+				data.parsed.ParseErrors = []source.Error{*parseErr}
+			}
+			// If the file was still parsed, we don't want to treat this as a
+			// fatal error. Note: This currently cannot happen as modfile.Parse
+			// always returns an error when the file is nil.
+			if data.parsed.File != nil {
+				data.err = nil
 			}
 		}
-		return &parseModData{
-			parsed: &source.ParsedModule{
-				URI:         modFH.URI(),
-				Mapper:      m,
-				File:        file,
-				ParseErrors: parseErrors,
-			},
-			err: err,
-		}
+		return data
 	}, nil)
 
 	pmh := &parseModHandle{handle: h}
@@ -120,6 +122,46 @@ func (s *snapshot) goSum(ctx context.Context, modURI span.URI) []byte {
 
 func sumFilename(modURI span.URI) string {
 	return strings.TrimSuffix(modURI.Filename(), ".mod") + ".sum"
+}
+
+// extractModParseErrors processes the raw errors returned by modfile.Parse,
+// extracting the filenames and line numbers that correspond to the errors.
+func extractModParseErrors(uri span.URI, m *protocol.ColumnMapper, parseErr error, content []byte) (*source.Error, error) {
+	re := regexp.MustCompile(`.*:([\d]+): (.+)`)
+	matches := re.FindStringSubmatch(strings.TrimSpace(parseErr.Error()))
+	if len(matches) < 3 {
+		return nil, errors.Errorf("could not parse go.mod error message: %s", parseErr)
+	}
+	line, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(content), "\n")
+	if line > len(lines) {
+		return nil, errors.Errorf("could not parse go.mod error message %q, line number %v out of range", content, line)
+	}
+	// The error returned from the modfile package only returns a line number,
+	// so we assume that the diagnostic should be for the entire line.
+	endOfLine := len(lines[line-1])
+	sOffset, err := m.Converter.ToOffset(line, 0)
+	if err != nil {
+		return nil, err
+	}
+	eOffset, err := m.Converter.ToOffset(line, endOfLine)
+	if err != nil {
+		return nil, err
+	}
+	spn := span.New(uri, span.NewPoint(line, 0, sOffset), span.NewPoint(line, endOfLine, eOffset))
+	rng, err := m.Range(spn)
+	if err != nil {
+		return nil, err
+	}
+	return &source.Error{
+		Category: SyntaxError,
+		Message:  matches[2],
+		Range:    rng,
+		URI:      uri,
+	}, nil
 }
 
 // modKey is uniquely identifies cached data for `go mod why` or dependencies
@@ -339,14 +381,9 @@ func containsVendor(modURI span.URI) bool {
 
 var moduleAtVersionRe = regexp.MustCompile(`^(?P<module>.*)@(?P<version>.*)$`)
 
-// extractGoCommandError tries to parse errors that come from the go command
+// ExtractGoCommandError tries to parse errors that come from the go command
 // and shape them into go.mod diagnostics.
-func (s *snapshot) extractGoCommandError(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle, goCmdError string) *source.Error {
-	// If the error message contains a position, use that. Don't pass a file
-	// handle in, as it might not be the file associated with the error.
-	if srcErr, err := extractErrorWithPosition(ctx, goCmdError, s); err == nil {
-		return srcErr
-	}
+func extractGoCommandError(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle, loadErr error) *source.Error {
 	// We try to match module versions in error messages. Some examples:
 	//
 	//  example.com@v1.2.2: reading example.com/@v/v1.2.2.mod: no such file or directory
@@ -357,7 +394,7 @@ func (s *snapshot) extractGoCommandError(ctx context.Context, snapshot source.Sn
 	// that matches module@version. If we're able to find a match, we try to
 	// find anything that matches it in the go.mod file.
 	var v module.Version
-	fields := strings.FieldsFunc(goCmdError, func(r rune) bool {
+	fields := strings.FieldsFunc(loadErr.Error(), func(r rune) bool {
 		return unicode.IsSpace(r) || r == ':'
 	})
 	for _, s := range fields {
@@ -388,7 +425,7 @@ func (s *snapshot) extractGoCommandError(ctx context.Context, snapshot source.Sn
 			return nil
 		}
 		return &source.Error{
-			Message: goCmdError,
+			Message: loadErr.Error(),
 			Range:   rng,
 			URI:     fh.URI(),
 		}
@@ -419,56 +456,4 @@ func (s *snapshot) extractGoCommandError(ctx context.Context, snapshot source.Sn
 		return nil
 	}
 	return toSourceError(pm.File.Module.Syntax)
-}
-
-// errorPositionRe matches errors messages of the form <filename>:<line>:<col>,
-// where the <col> is optional.
-var errorPositionRe = regexp.MustCompile(`(?P<pos>.*:([\d]+)(:([\d]+))?): (?P<msg>.+)`)
-
-// extractErrorWithPosition returns a structured error with position
-// information for the given unstructured error. If a file handle is provided,
-// the error position will be on that file. This is useful for parse errors,
-// where we already know the file with the error.
-func extractErrorWithPosition(ctx context.Context, goCmdError string, src source.FileSource) (*source.Error, error) {
-	matches := errorPositionRe.FindStringSubmatch(strings.TrimSpace(goCmdError))
-	if len(matches) == 0 {
-		return nil, fmt.Errorf("error message doesn't contain a position")
-	}
-	var pos, msg string
-	for i, name := range errorPositionRe.SubexpNames() {
-		if name == "pos" {
-			pos = matches[i]
-		}
-		if name == "msg" {
-			msg = matches[i]
-		}
-	}
-	spn := span.Parse(pos)
-	fh, err := src.GetFile(ctx, spn.URI())
-	if err != nil {
-		return nil, err
-	}
-	content, err := fh.Read()
-	if err != nil {
-		return nil, err
-	}
-	m := &protocol.ColumnMapper{
-		URI:       spn.URI(),
-		Converter: span.NewContentConverter(spn.URI().Filename(), content),
-		Content:   content,
-	}
-	rng, err := m.Range(spn)
-	if err != nil {
-		return nil, err
-	}
-	category := GoCommandError
-	if fh != nil {
-		category = SyntaxError
-	}
-	return &source.Error{
-		Category: category,
-		Message:  msg,
-		Range:    rng,
-		URI:      spn.URI(),
-	}, nil
 }

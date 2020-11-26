@@ -63,9 +63,9 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 			source.CommandRemoveDependency.ID(),
 			source.CommandVendor.ID():
 			// TODO(PJW): for Toggle, not an error if it is being disabled
-			err := errors.New("All files must be saved first")
+			err := errors.New("all files must be saved first")
 			s.showCommandError(ctx, command.Title, err)
-			return nil, nil
+			return nil, err
 		}
 	}
 	ctx, cancel := context.WithCancel(xcontext.Detach(ctx))
@@ -79,31 +79,15 @@ func (s *Server) executeCommand(ctx context.Context, params *protocol.ExecuteCom
 		// convenient for assertions.
 		work = s.progress.start(ctx, command.Title, "Running...", params.WorkDoneToken, cancel)
 	}
-
-	run := func() {
-		defer cancel()
-		err := s.runCommand(ctx, work, command, params.Arguments)
-		switch {
-		case errors.Is(err, context.Canceled):
-			work.end(command.Title + ": canceled")
-		case err != nil:
-			event.Error(ctx, fmt.Sprintf("%s: command error", command.Title), err)
-			work.end(command.Title + ": failed")
-			// Show a message when work completes with error, because the progress end
-			// message is typically dismissed immediately by LSP clients.
-			s.showCommandError(ctx, command.Title, err)
-		default:
-			work.end(command.ID() + ": completed")
-		}
-	}
 	if command.Async {
-		go run()
-	} else {
-		run()
+		go func() {
+			defer cancel()
+			s.runCommand(ctx, work, command, params.Arguments)
+		}()
+		return nil, nil
 	}
-	// Errors running the command are displayed to the user above, so don't
-	// return them.
-	return nil, nil
+	defer cancel()
+	return nil, s.runCommand(ctx, work, command, params.Arguments)
 }
 
 func (s *Server) runSuggestedFixCommand(ctx context.Context, command *source.Command, args []json.RawMessage) error {
@@ -147,6 +131,20 @@ func (s *Server) showCommandError(ctx context.Context, title string, err error) 
 }
 
 func (s *Server) runCommand(ctx context.Context, work *workDone, command *source.Command, args []json.RawMessage) (err error) {
+	defer func() {
+		switch {
+		case errors.Is(err, context.Canceled):
+			work.end(command.Title + ": canceled")
+		case err != nil:
+			event.Error(ctx, fmt.Sprintf("%s: command error", command.Title), err)
+			work.end(command.Title + ": failed")
+			// Show a message when work completes with error, because the progress end
+			// message is typically dismissed immediately by LSP clients.
+			s.showCommandError(ctx, command.Title, err)
+		default:
+			work.end(command.ID() + ": completed")
+		}
+	}()
 	// If the command has a suggested fix function available, use it and apply
 	// the edits to the workspace.
 	if command.IsSuggestedFix() {
@@ -194,16 +192,11 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 		}
 		// The flow for `go mod tidy` and `go mod vendor` is almost identical,
 		// so we combine them into one case for convenience.
-		action := "tidy"
+		a := "tidy"
 		if command == source.CommandVendor {
-			action = "vendor"
+			a = "vendor"
 		}
-		snapshot, _, ok, release, err := s.beginFileRequest(ctx, uri, source.UnknownKind)
-		defer release()
-		if !ok {
-			return err
-		}
-		return runSimpleGoCommand(ctx, snapshot, source.UpdateUserModFile, uri.SpanURI(), "mod", []string{action})
+		return s.directGoModCommand(ctx, uri, "mod", a)
 	case source.CommandAddDependency, source.CommandUpgradeDependency, source.CommandRemoveDependency:
 		var uri protocol.DocumentURI
 		var goCmdArgs []string
@@ -211,33 +204,37 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 		if err := source.UnmarshalArgs(args, &uri, &addRequire, &goCmdArgs); err != nil {
 			return err
 		}
-		snapshot, _, ok, release, err := s.beginFileRequest(ctx, uri, source.UnknownKind)
-		defer release()
-		if !ok {
-			return err
+		if addRequire {
+			// Using go get to create a new dependency results in an
+			// `// indirect` comment we may not want. The only way to avoid it
+			// is to add the require as direct first. Then we can use go get to
+			// update go.sum and tidy up.
+			if err := s.directGoModCommand(ctx, uri, "mod", append([]string{"edit", "-require"}, goCmdArgs...)...); err != nil {
+				return err
+			}
 		}
-		return s.runGoGetModule(ctx, snapshot, uri.SpanURI(), addRequire, goCmdArgs)
+		return s.directGoModCommand(ctx, uri, "get", append([]string{"-d"}, goCmdArgs...)...)
 	case source.CommandToggleDetails:
-		var fileURI protocol.DocumentURI
+		var fileURI span.URI
 		if err := source.UnmarshalArgs(args, &fileURI); err != nil {
 			return err
 		}
-		pkgDir := span.URIFromPath(filepath.Dir(fileURI.SpanURI().Filename()))
+		pkgDir := span.URIFromPath(filepath.Dir(fileURI.Filename()))
 		s.gcOptimizationDetailsMu.Lock()
 		if _, ok := s.gcOptimizationDetails[pkgDir]; ok {
 			delete(s.gcOptimizationDetails, pkgDir)
-			s.clearDiagnosticSource(gcDetailsSource)
 		} else {
 			s.gcOptimizationDetails[pkgDir] = struct{}{}
 		}
 		s.gcOptimizationDetailsMu.Unlock()
 		// need to recompute diagnostics.
 		// so find the snapshot
-		snapshot, _, ok, release, err := s.beginFileRequest(ctx, fileURI, source.UnknownKind)
-		defer release()
-		if !ok {
+		sv, err := s.session.ViewOf(fileURI)
+		if err != nil {
 			return err
 		}
+		snapshot, release := sv.Snapshot(ctx)
+		defer release()
 		s.diagnoseSnapshot(snapshot, nil, false)
 	case source.CommandGenerateGoplsMod:
 		var v source.View
@@ -276,6 +273,21 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 		return fmt.Errorf("unsupported command: %s", command.ID())
 	}
 	return nil
+}
+
+func (s *Server) directGoModCommand(ctx context.Context, uri protocol.DocumentURI, verb string, args ...string) error {
+	view, err := s.session.ViewOf(uri.SpanURI())
+	if err != nil {
+		return err
+	}
+	snapshot, release := view.Snapshot(ctx)
+	defer release()
+	_, err = snapshot.RunGoCommandDirect(ctx, source.UpdateUserModFile, &gocommand.Invocation{
+		Verb:       verb,
+		Args:       args,
+		WorkingDir: filepath.Dir(uri.SpanURI().Filename()),
+	})
+	return err
 }
 
 func (s *Server) runTests(ctx context.Context, snapshot source.Snapshot, uri protocol.DocumentURI, work *workDone, tests, benchmarks []string) error {
@@ -374,26 +386,4 @@ func (s *Server) runGoGenerate(ctx context.Context, snapshot source.Snapshot, di
 		return err
 	}
 	return nil
-}
-
-func (s *Server) runGoGetModule(ctx context.Context, snapshot source.Snapshot, uri span.URI, addRequire bool, args []string) error {
-	if addRequire {
-		// Using go get to create a new dependency results in an
-		// `// indirect` comment we may not want. The only way to avoid it
-		// is to add the require as direct first. Then we can use go get to
-		// update go.sum and tidy up.
-		if err := runSimpleGoCommand(ctx, snapshot, source.UpdateUserModFile, uri, "mod", append([]string{"edit", "-require"}, args...)); err != nil {
-			return err
-		}
-	}
-	return runSimpleGoCommand(ctx, snapshot, source.UpdateUserModFile, uri, "get", append([]string{"-d"}, args...))
-}
-
-func runSimpleGoCommand(ctx context.Context, snapshot source.Snapshot, mode source.InvocationMode, uri span.URI, verb string, args []string) error {
-	_, err := snapshot.RunGoCommandDirect(ctx, mode, &gocommand.Invocation{
-		Verb:       verb,
-		Args:       args,
-		WorkingDir: filepath.Dir(uri.Filename()),
-	})
-	return err
 }

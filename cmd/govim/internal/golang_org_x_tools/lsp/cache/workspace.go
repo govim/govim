@@ -101,7 +101,7 @@ func newWorkspace(ctx context.Context, root span.URI, fs source.FileSource, expe
 			moduleSource: goplsModWorkspace,
 		}, nil
 	}
-	modFiles, err := findModules(ctx, root, 0, 0)
+	modFiles, err := findAllModules(ctx, root)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +234,7 @@ func (wm *workspace) invalidate(ctx context.Context, changes map[span.URI]*fileC
 			} else {
 				// gopls.mod is deleted. search for modules again.
 				moduleSource = fileSystemWorkspace
-				modFiles, err = findModules(ctx, wm.root, 0, 0)
+				modFiles, err = findAllModules(ctx, wm.root)
 				// the modFile is no longer valid.
 				if err != nil {
 					event.Error(ctx, "finding file system modules", err)
@@ -372,21 +372,13 @@ func parseGoplsMod(root, uri span.URI, contents []byte) (*modfile.File, map[span
 	return modFile, modFiles, nil
 }
 
-// errExhausted is returned by findModules if the file scan limit is reached.
-var errExhausted = errors.New("exhausted")
-
-// findModules recursively walks the root directory looking for go.mod files,
-// returning the set of modules it discovers. If modLimit is non-zero,
-// searching stops once modLimit modules have been found. If fileLimit is
-// non-zero, searching stops once fileLimit files have been checked.
+// findAllModules recursively walks the root directory looking for go.mod
+// files, returning the set of modules it discovers.
 // TODO(rfindley): consider overlays.
-func findModules(ctx context.Context, root span.URI, modLimit, fileLimit int) (map[span.URI]struct{}, error) {
+func findAllModules(ctx context.Context, root span.URI) (map[span.URI]struct{}, error) {
 	// Walk the view's folder to find all modules in the view.
 	modFiles := make(map[span.URI]struct{})
-	searched := 0
-
-	errDone := errors.New("done")
-	err := filepath.Walk(root.Filename(), func(path string, info os.FileInfo, err error) error {
+	return modFiles, filepath.Walk(root.Filename(), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// Probably a permission error. Keep looking.
 			return filepath.SkipDir
@@ -407,17 +399,6 @@ func findModules(ctx context.Context, root span.URI, modLimit, fileLimit int) (m
 		if isGoMod(uri) {
 			modFiles[uri] = struct{}{}
 		}
-		if modLimit > 0 && len(modFiles) >= modLimit {
-			return errDone
-		}
-		searched++
-		if fileLimit > 0 && searched >= fileLimit {
-			return errExhausted
-		}
 		return nil
 	})
-	if err == errDone {
-		return modFiles, nil
-	}
-	return modFiles, err
 }

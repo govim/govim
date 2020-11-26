@@ -12,7 +12,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/label"
 )
 
-// Event holds the information about an event of note that occurred.
+// Event holds the information about an event of note that ocurred.
 type Event struct {
 	at time.Time
 

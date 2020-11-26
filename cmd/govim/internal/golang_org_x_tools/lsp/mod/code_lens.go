@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"golang.org/x/mod/modfile"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -22,46 +23,93 @@ func LensFuncs() map[string]source.LensFunc {
 
 func upgradeLens(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle) ([]protocol.CodeLens, error) {
 	pm, err := snapshot.ParseMod(ctx, fh)
-	if err != nil || pm.File == nil {
+	if err != nil {
 		return nil, err
 	}
-	if len(pm.File.Require) == 0 {
-		// Nothing to upgrade.
+	module := pm.File.Module
+	if module == nil || module.Syntax == nil {
 		return nil, nil
 	}
-	upgradeDepArgs, err := source.MarshalArgs(fh.URI(), false, []string{"-u", "all"})
+	upgrades, err := snapshot.ModUpgrade(ctx, fh)
 	if err != nil {
 		return nil, err
 	}
-	rng, err := moduleStmtRange(fh, pm)
-	if err != nil {
-		return nil, err
+	var (
+		codelenses  []protocol.CodeLens
+		allUpgrades []string
+	)
+	for _, req := range pm.File.Require {
+		dep := req.Mod.Path
+		latest, ok := upgrades[dep]
+		if !ok {
+			continue
+		}
+		if req.Syntax == nil {
+			continue
+		}
+		// Get the range of the require directive.
+		rng, err := positionsToRange(fh.URI(), pm.Mapper, req.Syntax.Start, req.Syntax.End)
+		if err != nil {
+			return nil, err
+		}
+		upgradeDepArgs, err := source.MarshalArgs(fh.URI(), false, []string{dep})
+		if err != nil {
+			return nil, err
+		}
+		codelenses = append(codelenses, protocol.CodeLens{
+			Range: rng,
+			Command: protocol.Command{
+				Title:     fmt.Sprintf("Upgrade dependency to %s", latest),
+				Command:   source.CommandUpgradeDependency.ID(),
+				Arguments: upgradeDepArgs,
+			},
+		})
+		allUpgrades = append(allUpgrades, dep)
 	}
-	return []protocol.CodeLens{{
-		Range: rng,
-		Command: protocol.Command{
-			Title:     "Upgrade all dependencies",
-			Command:   source.CommandUpgradeDependency.ID(),
-			Arguments: upgradeDepArgs,
-		},
-	}}, nil
-
+	// If there is at least 1 upgrade, add "Upgrade all dependencies" to
+	// the module statement.
+	if len(allUpgrades) > 0 {
+		upgradeDepArgs, err := source.MarshalArgs(fh.URI(), false, append([]string{"-u"}, allUpgrades...))
+		if err != nil {
+			return nil, err
+		}
+		// Get the range of the module directive.
+		moduleRng, err := positionsToRange(pm.Mapper.URI, pm.Mapper, module.Syntax.Start, module.Syntax.End)
+		if err != nil {
+			return nil, err
+		}
+		codelenses = append(codelenses, protocol.CodeLens{
+			Range: moduleRng,
+			Command: protocol.Command{
+				Title:     "Upgrade all dependencies",
+				Command:   source.CommandUpgradeDependency.ID(),
+				Arguments: upgradeDepArgs,
+			},
+		})
+	}
+	return codelenses, err
 }
 
 func tidyLens(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle) ([]protocol.CodeLens, error) {
-	pm, err := snapshot.ParseMod(ctx, fh)
-	if err != nil || pm.File == nil {
-		return nil, err
-	}
-	if len(pm.File.Require) == 0 {
-		// Nothing to vendor.
-		return nil, nil
-	}
 	goModArgs, err := source.MarshalArgs(fh.URI())
 	if err != nil {
 		return nil, err
 	}
-	rng, err := moduleStmtRange(fh, pm)
+	tidied, err := snapshot.ModTidy(ctx, fh)
+	if err != nil {
+		return nil, err
+	}
+	if len(tidied.Errors) == 0 {
+		return nil, nil
+	}
+	pm, err := snapshot.ParseMod(ctx, fh)
+	if err != nil {
+		return nil, err
+	}
+	if pm.File == nil || pm.File.Module == nil || pm.File.Module.Syntax == nil {
+		return nil, fmt.Errorf("no parsed go.mod for %s", fh.URI())
+	}
+	rng, err := positionsToRange(pm.Mapper.URI, pm.Mapper, pm.File.Module.Syntax.Start, pm.File.Module.Syntax.End)
 	if err != nil {
 		return nil, err
 	}
@@ -72,19 +120,22 @@ func tidyLens(ctx context.Context, snapshot source.Snapshot, fh source.FileHandl
 			Command:   source.CommandTidy.ID(),
 			Arguments: goModArgs,
 		},
-	}}, nil
+	}}, err
 }
 
 func vendorLens(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle) ([]protocol.CodeLens, error) {
-	pm, err := snapshot.ParseMod(ctx, fh)
-	if err != nil || pm.File == nil {
-		return nil, err
-	}
-	rng, err := moduleStmtRange(fh, pm)
+	goModArgs, err := source.MarshalArgs(fh.URI())
 	if err != nil {
 		return nil, err
 	}
-	goModArgs, err := source.MarshalArgs(fh.URI())
+	pm, err := snapshot.ParseMod(ctx, fh)
+	if err != nil {
+		return nil, err
+	}
+	if pm.File == nil || pm.File.Module == nil || pm.File.Module.Syntax == nil {
+		return nil, fmt.Errorf("no parsed go.mod for %s", fh.URI())
+	}
+	rng, err := positionsToRange(pm.Mapper.URI, pm.Mapper, pm.File.Module.Syntax.Start, pm.File.Module.Syntax.End)
 	if err != nil {
 		return nil, err
 	}
@@ -105,22 +156,18 @@ func vendorLens(ctx context.Context, snapshot source.Snapshot, fh source.FileHan
 	}}, nil
 }
 
-func moduleStmtRange(fh source.FileHandle, pm *source.ParsedModule) (protocol.Range, error) {
-	if pm.File == nil || pm.File.Module == nil || pm.File.Module.Syntax == nil {
-		return protocol.Range{}, fmt.Errorf("no module statement in %s", fh.URI())
-	}
-	syntax := pm.File.Module.Syntax
-	line, col, err := pm.Mapper.Converter.ToPosition(syntax.Start.Byte)
+func positionsToRange(uri span.URI, m *protocol.ColumnMapper, s, e modfile.Position) (protocol.Range, error) {
+	line, col, err := m.Converter.ToPosition(s.Byte)
 	if err != nil {
 		return protocol.Range{}, err
 	}
-	start := span.NewPoint(line, col, syntax.Start.Byte)
-	line, col, err = pm.Mapper.Converter.ToPosition(syntax.End.Byte)
+	start := span.NewPoint(line, col, s.Byte)
+	line, col, err = m.Converter.ToPosition(e.Byte)
 	if err != nil {
 		return protocol.Range{}, err
 	}
-	end := span.NewPoint(line, col, syntax.End.Byte)
-	rng, err := pm.Mapper.Range(span.New(fh.URI(), start, end))
+	end := span.NewPoint(line, col, e.Byte)
+	rng, err := m.Range(span.New(uri, start, end))
 	if err != nil {
 		return protocol.Range{}, err
 	}
