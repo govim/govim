@@ -240,6 +240,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			ExperimentalAutoreadLoadedBuffers: vimconfig.BoolVal(false),
 			SymbolMatcher:                     vimconfig.SymbolMatcherVal(config.SymbolMatcherFuzzy),
 			SymbolStyle:                       vimconfig.SymbolStyleVal(config.SymbolStyleFull),
+			OpenLastProgressWith:              vimconfig.StringVal("below 10split"),
 		}
 	}
 	// Overlay the initial user values on the defaults

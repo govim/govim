@@ -148,6 +148,9 @@ function! s:validAnalyses(v)
   return [v:true, ""]
 endfunction
 
+function! s:openLastProgressWith(v)
+  return s:validString(a:v)
+endfunction
 
 function! s:validExperimentalAutoreadLoadedBuffers(v)
   return s:validBool(a:v)
@@ -197,6 +200,7 @@ let s:validators = {
       \ "TempModfile": function("s:validTempModfile"),
       \ "GoplsEnv": function("s:validGoplsEnv"),
       \ "Analyses": function("s:validAnalyses"),
+      \ "OpenLastProgressWith": function("s:openLastProgressWith"),
       \ "ExperimentalAutoreadLoadedBuffers": function("s:validExperimentalAutoreadLoadedBuffers"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),

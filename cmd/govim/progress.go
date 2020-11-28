@@ -119,6 +119,8 @@ func (v *vimstate) openLastProgress(flags govim.CommandFlags, args ...string) er
 	v.BatchChannelCall("setbufvar", bufNr, "&buflisted", 1)
 	v.BatchChannelCall("setbufline", bufNr, 1, strings.Split(v.lastProgressText.String(), "\n"))
 	v.MustBatchEnd()
-	v.ChannelExf("e %s", bufName)
+	if open := v.config.OpenLastProgressWith; open != nil && *open != "" {
+		v.ChannelExf("%s %s", *open, bufName)
+	}
 	return nil
 }
