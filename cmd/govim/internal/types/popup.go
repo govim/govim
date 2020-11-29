@@ -21,11 +21,22 @@ type PopupProp struct {
 	Len  int    `json:"length"`
 }
 
+type ProgressInitiator string
+
+const (
+	GoTest                 ProgressInitiator = "GoTest"
+	WorkDoneProgressCreate ProgressInitiator = "WorkDoneProgressCreate"
+)
+
 // ProgressPopup represents a vim popup placed in the upper right corner used
 // to show LSP progress. LinePos is used to stack multiple visible progress
-// popups.
+// popups. Initiator is a optional field used to describe who initiated this
+// progress (if known), e.g. "GoTest" when running GOVIMGoTest. This allow
+// us to handle text from different commands to be handled differently (or
+// even suppressed).
 type ProgressPopup struct {
-	ID      int
-	Text    strings.Builder
-	LinePos int
+	ID        int
+	Text      strings.Builder
+	LinePos   int
+	Initiator ProgressInitiator
 }
