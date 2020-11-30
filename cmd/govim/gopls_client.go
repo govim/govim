@@ -30,7 +30,7 @@ const (
 	goplsVerboseOutput        = "verboseOutput"
 	goplsEnv                  = "env"
 	goplsAnalyses             = "analyses"
-	goplsCodeLens             = "codelens"
+	goplsCodeLenses           = "codelenses"
 	goplsSymbolMatcher        = "symbolMatcher"
 	goplsSymbolStyle          = "symbolStyle"
 )
@@ -171,7 +171,7 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	if conf.Analyses != nil {
 		goplsConfig[goplsAnalyses] = *conf.Analyses
 	}
-	goplsConfig[goplsCodeLens] = map[string]bool{
+	goplsConfig[goplsCodeLenses] = map[string]bool{
 		source.CommandToggleDetails.Name: true, // gc_details
 	}
 	if g.vimstate.config.GoplsEnv != nil {
