@@ -52,6 +52,9 @@ func (r *Config) Apply(v *Config) {
 	if v.Analyses != nil {
 		r.Analyses = v.Analyses
 	}
+	if v.OpenLastProgressWith != nil {
+		r.OpenLastProgressWith = v.OpenLastProgressWith
+	}
 	if v.ExperimentalAutoreadLoadedBuffers != nil {
 		r.ExperimentalAutoreadLoadedBuffers = v.ExperimentalAutoreadLoadedBuffers
 	}

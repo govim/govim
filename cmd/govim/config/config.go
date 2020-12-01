@@ -175,6 +175,20 @@ type Config struct {
 	// Default: nil
 	Analyses *map[string]bool `json:",omitempty"`
 
+	// OpenLastProgressWith configures how vim should open the buffer created
+	// when calling :GOVIMLastProgress.
+	// Valid values are any vim command that takes a buffer number as argument.
+	//
+	// Examples: (note that options as "eadirection" alters default behaviour)
+	//    ""             - The buffer is only created
+	//    "e"            - Open the buffer in the current window
+	//    "split"        - Split into two windows with the buffer in one of them
+	//    "7vsplit"      - Split vertically 7 columns wide
+	//    "above 5split" - Split into 5 lines above (left)
+	//
+	// Default: "below 10split"
+	OpenLastProgressWith *string `json:",omitempty"`
+
 	// ExperimentalAutoreadLoadedBuffers is used to reload buffers that are
 	// changed outside vim even when they are loaded (e.g. running two vim
 	// sessions in the same workspace). This is achieved by running "checktime"
