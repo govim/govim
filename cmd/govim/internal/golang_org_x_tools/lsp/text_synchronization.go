@@ -186,20 +186,14 @@ func (s *Server) didModifyFiles(ctx context.Context, modifications []source.File
 			}()
 		}()
 	}
-	views, snapshots, releases, deletions, err := s.session.DidModifyFiles(ctx, modifications)
+
+	// If the set of changes included directories, expand those directories
+	// to their files.
+	modifications = s.session.ExpandModificationsToDirectories(ctx, modifications)
+
+	views, snapshots, releases, err := s.session.DidModifyFiles(ctx, modifications)
 	if err != nil {
 		return err
-	}
-
-	// Clear out diagnostics for deleted files.
-	for _, uri := range deletions {
-		if err := s.client.PublishDiagnostics(ctx, &protocol.PublishDiagnosticsParams{
-			URI:         protocol.URIFromSpanURI(uri),
-			Diagnostics: []protocol.Diagnostic{},
-			Version:     0,
-		}); err != nil {
-			return err
-		}
 	}
 
 	// Check if the user is trying to modify a generated file.
@@ -250,10 +244,7 @@ func (s *Server) didModifyFiles(ctx context.Context, modifications []source.File
 	// After any file modifications, we need to update our watched files,
 	// in case something changed. Compute the new set of directories to watch,
 	// and if it differs from the current set, send updated registrations.
-	if err := s.updateWatchedDirectories(ctx, snapshots); err != nil {
-		return err
-	}
-	return nil
+	return s.updateWatchedDirectories(ctx)
 }
 
 // DiagnosticWorkTitle returns the title of the diagnostic work resulting from a

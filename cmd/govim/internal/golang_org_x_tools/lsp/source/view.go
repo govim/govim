@@ -111,7 +111,7 @@ type Snapshot interface {
 
 	// ModTidy returns the results of `go mod tidy` for the module specified by
 	// the given go.mod file.
-	ModTidy(ctx context.Context, fh FileHandle) (*TidiedModule, error)
+	ModTidy(ctx context.Context, pm *ParsedModule) (*TidiedModule, error)
 
 	// GoModForFile returns the URI of the go.mod file for the given URI.
 	GoModForFile(ctx context.Context, uri span.URI) span.URI
@@ -142,10 +142,6 @@ type Snapshot interface {
 
 	// WorkspacePackages returns the snapshot's top-level packages.
 	WorkspacePackages(ctx context.Context) ([]Package, error)
-
-	// WorkspaceDirectories returns any directory known by the view. For views
-	// within a module, this is the module root and any replace targets.
-	WorkspaceDirectories(ctx context.Context) []span.URI
 }
 
 // PackageFilter sets how a package is filtered out from a set of packages
@@ -179,8 +175,9 @@ const (
 	// modified version of the user's go.mod file, e.g. `go mod tidy` used to
 	// generate diagnostics.
 	WriteTemporaryModFile
-	// ForTypeChecking is for packages.Load.
-	ForTypeChecking
+	// LoadWorkspace is for packages.Load, and other operations that should
+	// consider the whole workspace at once.
+	LoadWorkspace
 )
 
 // View represents a single workspace.
@@ -248,17 +245,16 @@ type ParsedGoFile struct {
 
 // A ParsedModule contains the results of parsing a go.mod file.
 type ParsedModule struct {
+	URI         span.URI
 	File        *modfile.File
 	Mapper      *protocol.ColumnMapper
-	ParseErrors []Error
+	ParseErrors []*Error
 }
 
 // A TidiedModule contains the results of running `go mod tidy` on a module.
 type TidiedModule struct {
-	// The parsed module, which is guaranteed to have parsed successfully.
-	Parsed *ParsedModule
 	// Diagnostics representing changes made by `go mod tidy`.
-	Errors []Error
+	Errors []*Error
 	// The bytes of the go.mod file after it was tidied.
 	TidiedContent []byte
 }
@@ -291,7 +287,12 @@ type Session interface {
 
 	// DidModifyFile reports a file modification to the session. It returns the
 	// resulting snapshots, a guaranteed one per view.
-	DidModifyFiles(ctx context.Context, changes []FileModification) (map[span.URI]View, map[View]Snapshot, []func(), []span.URI, error)
+	DidModifyFiles(ctx context.Context, changes []FileModification) (map[span.URI]View, map[View]Snapshot, []func(), error)
+
+	// ExpandModificationsToDirectories returns the set of changes with the
+	// directory changes removed and expanded to include all of the files in
+	// the directory.
+	ExpandModificationsToDirectories(ctx context.Context, changes []FileModification) []FileModification
 
 	// Overlays returns a slice of file overlays for the session.
 	Overlays() []Overlay
@@ -301,14 +302,16 @@ type Session interface {
 
 	// SetOptions sets the options of this session to new values.
 	SetOptions(*Options)
+
+	// FileWatchingGlobPatterns returns glob patterns to watch every directory
+	// known by the view. For views within a module, this is the module root,
+	// any directory in the module root, and any replace targets.
+	FileWatchingGlobPatterns(ctx context.Context) map[string]struct{}
 }
 
 // Overlay is the type for a file held in memory on a session.
 type Overlay interface {
 	VersionedFileHandle
-
-	// Saved returns whether this overlay has been saved to disk.
-	Saved() bool
 }
 
 // FileModification represents a modification to a file.
@@ -438,6 +441,8 @@ type FileHandle interface {
 	// Read reads the contents of a file.
 	// If the file is not available, returns a nil slice and an error.
 	Read() ([]byte, error)
+	// Saved reports whether the file has the same content on disk.
+	Saved() bool
 }
 
 // FileIdentity uniquely identifies a file at a version from a FileSystem.
@@ -533,10 +538,10 @@ type Package interface {
 
 type ErrorList []*Error
 
-func (err *ErrorList) Error() string {
+func (err ErrorList) Error() string {
 	var b strings.Builder
 	b.WriteString("source error list:")
-	for _, e := range *err {
+	for _, e := range err {
 		b.WriteString(fmt.Sprintf("\n\t%s", e))
 	}
 	return b.String()

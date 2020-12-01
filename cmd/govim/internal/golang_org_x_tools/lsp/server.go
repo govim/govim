@@ -23,9 +23,9 @@ const concurrentAnalyses = 1
 // messages on on the supplied stream.
 func NewServer(session source.Session, client protocol.Client) *Server {
 	return &Server{
-		delivered:             make(map[span.URI]sentDiagnostics),
+		diagnostics:           map[span.URI]*fileReports{},
 		gcOptimizationDetails: make(map[span.URI]struct{}),
-		watchedDirectories:    make(map[span.URI]struct{}),
+		watchedGlobPatterns:   make(map[string]struct{}),
 		changedFiles:          make(map[span.URI]struct{}),
 		session:               session,
 		client:                client,
@@ -79,16 +79,15 @@ type Server struct {
 	// set of folders to build views for when we are ready
 	pendingFolders []protocol.WorkspaceFolder
 
-	// watchedDirectories is the set of directories that we have requested that
+	// watchedGlobPatterns is the set of glob patterns that we have requested
 	// the client watch on disk. It will be updated as the set of directories
 	// that the server should watch changes.
-	watchedDirectoriesMu   sync.Mutex
-	watchedDirectories     map[span.URI]struct{}
-	watchRegistrationCount uint64
+	watchedGlobPatternsMu  sync.Mutex
+	watchedGlobPatterns    map[string]struct{}
+	watchRegistrationCount int
 
-	// delivered is a cache of the diagnostics that the server has sent.
-	deliveredMu sync.Mutex
-	delivered   map[span.URI]sentDiagnostics
+	diagnosticsMu sync.Mutex
+	diagnostics   map[span.URI]*fileReports
 
 	// gcOptimizationDetails describes the packages for which we want
 	// optimization details to be included in the diagnostics. The key is the
@@ -109,14 +108,6 @@ type Server struct {
 	// report with an error message.
 	criticalErrorStatusMu sync.Mutex
 	criticalErrorStatus   *workDone
-}
-
-// sentDiagnostics is used to cache diagnostics that have been sent for a given file.
-type sentDiagnostics struct {
-	id              source.VersionedFileIdentity
-	sorted          []*source.Diagnostic
-	includeAnalysis bool
-	snapshotID      uint64
 }
 
 func (s *Server) workDoneProgressCancel(ctx context.Context, params *protocol.WorkDoneProgressCancelParams) error {

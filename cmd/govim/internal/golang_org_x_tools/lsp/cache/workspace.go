@@ -59,6 +59,10 @@ type workspace struct {
 	// modFiles holds the active go.mod files.
 	modFiles map[span.URI]struct{}
 
+	// go111moduleOff indicates whether GO111MODULE=off has been configured in
+	// the environment.
+	go111moduleOff bool
+
 	// The workspace module is lazily re-built once after being invalidated.
 	// buildMu+built guards this reconstruction.
 	//
@@ -72,7 +76,14 @@ type workspace struct {
 	wsDirs   map[span.URI]struct{}
 }
 
-func newWorkspace(ctx context.Context, root span.URI, fs source.FileSource, experimental bool) (*workspace, error) {
+func newWorkspace(ctx context.Context, root span.URI, fs source.FileSource, go111module string, experimental bool) (*workspace, error) {
+	if go111module == "off" {
+		return &workspace{
+			root:           root,
+			moduleSource:   legacyWorkspace,
+			go111moduleOff: true,
+		}, nil
+	}
 	if !experimental {
 		modFiles, err := getLegacyModules(ctx, root, fs)
 		if err != nil {
@@ -101,7 +112,7 @@ func newWorkspace(ctx context.Context, root span.URI, fs source.FileSource, expe
 			moduleSource: goplsModWorkspace,
 		}, nil
 	}
-	modFiles, err := findAllModules(ctx, root)
+	modFiles, err := findModules(ctx, root, 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +196,7 @@ func (wm *workspace) dirs(ctx context.Context, fs source.FileSource) []span.URI 
 		dirs = append(dirs, d)
 	}
 	sort.Slice(dirs, func(i, j int) bool {
-		return span.CompareURI(dirs[i], dirs[j]) < 0
+		return source.CompareURI(dirs[i], dirs[j]) < 0
 	})
 	return dirs
 }
@@ -234,7 +245,7 @@ func (wm *workspace) invalidate(ctx context.Context, changes map[span.URI]*fileC
 			} else {
 				// gopls.mod is deleted. search for modules again.
 				moduleSource = fileSystemWorkspace
-				modFiles, err = findAllModules(ctx, wm.root)
+				modFiles, err = findModules(ctx, wm.root, 0, 0)
 				// the modFile is no longer valid.
 				if err != nil {
 					event.Error(ctx, "finding file system modules", err)
@@ -254,7 +265,7 @@ func (wm *workspace) invalidate(ctx context.Context, changes map[span.URI]*fileC
 			if !isGoMod(uri) {
 				continue
 			}
-			if wm.moduleSource == legacyWorkspace && !equalURI(modURI(wm.root), uri) {
+			if wm.moduleSource == legacyWorkspace && source.CompareURI(modURI(wm.root), uri) != 0 {
 				// Legacy mode only considers a module a workspace root.
 				continue
 			}
@@ -276,6 +287,10 @@ func (wm *workspace) invalidate(ctx context.Context, changes map[span.URI]*fileC
 		}
 	}
 	if modFiles != nil {
+		// If GO111MODULE=off, don't update the set of active go.mod files.
+		if wm.go111moduleOff {
+			modFiles = wm.modFiles
+		}
 		// Any change to modules triggers a new version.
 		return &workspace{
 			root:         wm.root,
@@ -287,10 +302,6 @@ func (wm *workspace) invalidate(ctx context.Context, changes map[span.URI]*fileC
 	}
 	// No change. Just return wm, since it is immutable.
 	return wm, false
-}
-
-func equalURI(left, right span.URI) bool {
-	return span.CompareURI(left, right) == 0
 }
 
 // goplsModURI returns the URI for the gopls.mod file contained in root.
@@ -372,13 +383,21 @@ func parseGoplsMod(root, uri span.URI, contents []byte) (*modfile.File, map[span
 	return modFile, modFiles, nil
 }
 
-// findAllModules recursively walks the root directory looking for go.mod
-// files, returning the set of modules it discovers.
+// errExhausted is returned by findModules if the file scan limit is reached.
+var errExhausted = errors.New("exhausted")
+
+// findModules recursively walks the root directory looking for go.mod files,
+// returning the set of modules it discovers. If modLimit is non-zero,
+// searching stops once modLimit modules have been found. If fileLimit is
+// non-zero, searching stops once fileLimit files have been checked.
 // TODO(rfindley): consider overlays.
-func findAllModules(ctx context.Context, root span.URI) (map[span.URI]struct{}, error) {
+func findModules(ctx context.Context, root span.URI, modLimit, fileLimit int) (map[span.URI]struct{}, error) {
 	// Walk the view's folder to find all modules in the view.
 	modFiles := make(map[span.URI]struct{})
-	return modFiles, filepath.Walk(root.Filename(), func(path string, info os.FileInfo, err error) error {
+	searched := 0
+
+	errDone := errors.New("done")
+	err := filepath.Walk(root.Filename(), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// Probably a permission error. Keep looking.
 			return filepath.SkipDir
@@ -399,6 +418,17 @@ func findAllModules(ctx context.Context, root span.URI) (map[span.URI]struct{}, 
 		if isGoMod(uri) {
 			modFiles[uri] = struct{}{}
 		}
+		if modLimit > 0 && len(modFiles) >= modLimit {
+			return errDone
+		}
+		searched++
+		if fileLimit > 0 && searched >= fileLimit {
+			return errExhausted
+		}
 		return nil
 	})
+	if err == errDone {
+		return modFiles, nil
+	}
+	return modFiles, err
 }
