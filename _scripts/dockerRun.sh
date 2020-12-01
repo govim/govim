@@ -26,6 +26,7 @@ then
 		done
 	fi
 fi
+runRace=true
 
 if [[ "$runRace" == "true" ]]
 then
