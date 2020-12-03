@@ -58,7 +58,7 @@ func (v *vimstate) runGoTest(flags govim.CommandFlags, args ...string) error {
 	if _, ok := v.progressPopups[token]; ok {
 		return fmt.Errorf("failed to init progress, duplicate token")
 	}
-	v.progressPopups[token] = &types.ProgressPopup{}
+	v.progressPopups[token] = &types.ProgressPopup{Initiator: types.GoTest}
 
 	_, err = v.server.ExecuteCommand(context.Background(), &protocol.ExecuteCommandParams{
 		Command:   c.Command.Command,

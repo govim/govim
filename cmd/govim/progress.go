@@ -49,24 +49,48 @@ func (v *vimstate) handleProgress(popup *types.ProgressPopup, kind, title, messa
 		popup.ID = v.ParseInt(v.ChannelCall("popup_create", lines, opts))
 		v.lastProgressText = &popup.Text
 	case "report":
+		opts := map[string]interface{}{
+			"firstline": firstline,
+		}
 		v.BatchStart()
 		v.BatchChannelCall("popup_settext", popup.ID, lines)
-		v.BatchChannelCall("popup_setoptions", popup.ID, map[string]interface{}{
-			"firstline": firstline,
-		})
+		v.BatchChannelCall("popup_setoptions", popup.ID, opts)
 		v.MustBatchEnd()
 	case "end":
-		v.BatchStart()
-		v.BatchChannelCall("popup_settext", popup.ID, lines)
-		v.BatchChannelCall("popup_setoptions", popup.ID, map[string]interface{}{
+		opts := map[string]interface{}{
 			"time":      3000, // close after 3 seconds, as popup_notification()
 			"firstline": firstline,
-		})
+		}
+		if popup.Initiator == types.GoTest {
+			// gopls could run several go test invocations within the same progress
+			// so we must parse the entire output, otherwise we could have relied on
+			// deltas only and update in both "report" and "end".
+			if hl := v.testOutputToHighlight(popup.Text.String()); hl != "" {
+				opts["highlight"] = hl
+				opts["borderhighlight"] = []string{string(hl)}
+			}
+		}
+		v.BatchStart()
+		v.BatchChannelCall("popup_settext", popup.ID, lines)
+		v.BatchChannelCall("popup_setoptions", popup.ID, opts)
 		v.MustBatchEnd()
 	}
 
 	v.rearrangeProgressPopups()
 	return nil
+}
+
+func (v *vimstate) testOutputToHighlight(text string) config.Highlight {
+	var hl config.Highlight = ""
+	for _, l := range strings.Split(text, "\n") {
+		switch l {
+		case "FAIL":
+			return config.HighlightGoTestFail
+		case "PASS":
+			hl = config.HighlightGoTestPass
+		}
+	}
+	return hl
 }
 
 // rearrangeProgressPopups will move progress popups so that they are sorted by

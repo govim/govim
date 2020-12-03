@@ -422,6 +422,9 @@ func (g *govimplugin) defineHighlights() {
 
 		fmt.Sprintf("highlight default link %s PMenu", config.HighlightSignature),
 		fmt.Sprintf("highlight default %s term=bold cterm=bold gui=bold", config.HighlightSignatureParam),
+
+		fmt.Sprintf("highlight default %s ctermfg=2 guifg=Green", config.HighlightGoTestPass),
+		fmt.Sprintf("highlight default %s ctermfg=1 guifg=Red ", config.HighlightGoTestFail),
 	} {
 		g.vimstate.BatchChannelCall("execute", hi)
 	}

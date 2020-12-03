@@ -309,7 +309,7 @@ func (g *govimplugin) WorkDoneProgressCreate(ctxt context.Context, params *proto
 		if _, ok := v.progressPopups[params.Token]; ok {
 			return fmt.Errorf("WorkDoneProgressCreate received for an ongoing progress token")
 		}
-		v.progressPopups[params.Token] = &types.ProgressPopup{}
+		v.progressPopups[params.Token] = &types.ProgressPopup{Initiator: types.WorkDoneProgressCreate}
 		return nil
 	})
 	return nil

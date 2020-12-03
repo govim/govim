@@ -540,4 +540,9 @@ const (
 	HighlightSignature Highlight = "GOVIMSignature"
 	// HighlightSignatureParam is the group used to add text properties to the signature active parameter
 	HighlightSignatureParam Highlight = "GOVIMSignatureParam"
+
+	// HighlightGoTestPass
+	HighlightGoTestPass Highlight = "GOVIMGoTestPass"
+	//  HighlightGoTestFail
+	HighlightGoTestFail Highlight = "GOVIMGoTestFail"
 )
