@@ -13,6 +13,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	errors "golang.org/x/xerrors"
 )
 
 func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.VersionedFileIdentity][]*source.Diagnostic, error) {
@@ -36,7 +37,7 @@ func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.Vers
 				Range:   e.Range,
 				Source:  e.Category,
 			}
-			if e.Category == "syntax" {
+			if e.Category == "syntax" || e.Kind == source.ListError {
 				d.Severity = protocol.SeverityError
 			} else {
 				d.Severity = protocol.SeverityWarning
@@ -51,13 +52,26 @@ func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.Vers
 	return reports, nil
 }
 
-func ErrorsForMod(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle) ([]source.Error, error) {
-	tidied, err := snapshot.ModTidy(ctx, fh)
+func ErrorsForMod(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle) ([]*source.Error, error) {
+	pm, err := snapshot.ParseMod(ctx, fh)
+	if err != nil {
+		if pm == nil || len(pm.ParseErrors) == 0 {
+			return nil, err
+		}
+		return pm.ParseErrors, nil
+	}
+	tidied, err := snapshot.ModTidy(ctx, pm)
 
 	if source.IsNonFatalGoModError(err) {
 		return nil, nil
 	}
 	if err != nil {
+		// Some error messages can also be displayed as diagnostics.
+		if criticalErr := (*source.CriticalError)(nil); errors.As(err, &criticalErr) {
+			return criticalErr.ErrorList, nil
+		} else if srcErrList := (source.ErrorList)(nil); errors.As(err, &srcErrList) {
+			return srcErrList, nil
+		}
 		return nil, err
 	}
 	return tidied.Errors, nil

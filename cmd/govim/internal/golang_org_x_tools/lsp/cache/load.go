@@ -19,6 +19,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
@@ -46,7 +47,7 @@ type metadata struct {
 
 // load calls packages.Load for the given scopes, updating package metadata,
 // import graph, and mapped files with the result.
-func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
+func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interface{}) error {
 	var query []string
 	var containsDir bool // for logging
 	for _, scope := range scopes {
@@ -93,7 +94,11 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 	ctx, done := event.Start(ctx, "cache.view.load", tag.Query.Of(query))
 	defer done()
 
-	_, inv, cleanup, err := s.goCommandInvocation(ctx, source.ForTypeChecking, &gocommand.Invocation{
+	flags := source.LoadWorkspace
+	if allowNetwork {
+		flags |= source.AllowNetwork
+	}
+	_, inv, cleanup, err := s.goCommandInvocation(ctx, flags, &gocommand.Invocation{
 		WorkingDir: s.view.rootURI.Filename(),
 	})
 	if err != nil {
@@ -123,9 +128,10 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 	}
 	if len(pkgs) == 0 {
 		if err != nil {
-			// Try to extract the error into a diagnostic.
-			if srcErrs := s.parseLoadError(ctx, err); srcErrs != nil {
-				return srcErrs
+			// Try to extract the load error into a structured error with
+			// diagnostics.
+			if criticalErr := s.parseLoadError(ctx, err); criticalErr != nil {
+				return criticalErr
 			}
 		} else {
 			err = fmt.Errorf("no packages returned")
@@ -167,23 +173,101 @@ func (s *snapshot) load(ctx context.Context, scopes ...interface{}) error {
 	return nil
 }
 
-func (s *snapshot) parseLoadError(ctx context.Context, loadErr error) *source.ErrorList {
-	var srcErrs *source.ErrorList
+func (s *snapshot) parseLoadError(ctx context.Context, loadErr error) *source.CriticalError {
+	// The error may be a result of the user's workspace layout. Check for
+	// a valid workspace configuration first.
+	if criticalErr := s.workspaceLayoutErrors(ctx, loadErr); criticalErr != nil {
+		return criticalErr
+	}
+	criticalErr := &source.CriticalError{
+		MainError: loadErr,
+	}
+	// Attempt to place diagnostics in the relevant go.mod files, if any.
 	for _, uri := range s.ModFiles() {
 		fh, err := s.GetFile(ctx, uri)
 		if err != nil {
 			continue
 		}
-		srcErr := extractGoCommandError(ctx, s, fh, loadErr)
+		srcErr := s.extractGoCommandError(ctx, s, fh, loadErr.Error())
 		if srcErr == nil {
 			continue
 		}
-		if srcErrs == nil {
-			srcErrs = &source.ErrorList{}
-		}
-		*srcErrs = append(*srcErrs, srcErr)
+		criticalErr.ErrorList = append(criticalErr.ErrorList, srcErr)
 	}
-	return srcErrs
+	return criticalErr
+}
+
+// workspaceLayoutErrors returns a diagnostic for every open file, as well as
+// an error message if there are no open files.
+func (s *snapshot) workspaceLayoutErrors(ctx context.Context, err error) *source.CriticalError {
+	// Assume the workspace is misconfigured only if we've detected an invalid
+	// build configuration. Currently, a valid build configuration is either a
+	// module at the root of the view or a GOPATH workspace.
+	if s.ValidBuildConfiguration() {
+		return nil
+	}
+	if len(s.workspace.getKnownModFiles()) == 0 {
+		return nil
+	}
+	// TODO(rstambler): Handle GO111MODULE=auto.
+	if s.view.userGo111Module != on {
+		return nil
+	}
+	if s.workspace.moduleSource != legacyWorkspace {
+		return nil
+	}
+	// The user's workspace contains go.mod files and they have
+	// GO111MODULE=on, so we should guide them to create a
+	// workspace folder for each module.
+
+	// Add a diagnostic to every open file, or return a general error if
+	// there aren't any.
+	var open []source.VersionedFileHandle
+	s.mu.Lock()
+	for _, fh := range s.files {
+		if s.isOpenLocked(fh.URI()) {
+			open = append(open, fh)
+		}
+	}
+	s.mu.Unlock()
+
+	msg := `gopls requires a module at the root of your workspace.
+You can work with multiple modules by opening each one as a workspace folder.
+Improvements to this workflow will be coming soon (https://github.com/golang/go/issues/32394),
+and you can learn more here: https://github.com/golang/go/issues/36899.`
+
+	criticalError := &source.CriticalError{
+		MainError: errors.New(msg),
+	}
+	if len(open) == 0 {
+		return criticalError
+	}
+	for _, fh := range open {
+		// Place the diagnostics on the package or module declarations.
+		var rng protocol.Range
+		switch fh.Kind() {
+		case source.Go:
+			if pgf, err := s.ParseGo(ctx, fh, source.ParseHeader); err == nil {
+				pkgDecl := span.NewRange(s.FileSet(), pgf.File.Package, pgf.File.Name.End())
+				if spn, err := pkgDecl.Span(); err == nil {
+					rng, _ = pgf.Mapper.Range(spn)
+				}
+			}
+		case source.Mod:
+			if pmf, err := s.ParseMod(ctx, fh); err == nil {
+				if pmf.File.Module != nil && pmf.File.Module.Syntax != nil {
+					rng, _ = rangeFromPositions(pmf.Mapper, pmf.File.Module.Syntax.Start, pmf.File.Module.Syntax.End)
+				}
+			}
+		}
+		criticalError.ErrorList = append(criticalError.ErrorList, &source.Error{
+			URI:     fh.URI(),
+			Range:   rng,
+			Kind:    source.ListError,
+			Message: msg,
+		})
+	}
+	return criticalError
 }
 
 type workspaceDirKey string
@@ -213,7 +297,7 @@ func (s *snapshot) getWorkspaceDir(ctx context.Context) (span.URI, error) {
 	}
 	key := workspaceDirKey(hashContents(content))
 	s.mu.Lock()
-	s.workspaceDirHandle = s.generation.Bind(key, func(context.Context, memoize.Arg) interface{} {
+	h = s.generation.Bind(key, func(context.Context, memoize.Arg) interface{} {
 		tmpdir, err := ioutil.TempDir("", "gopls-workspace-mod")
 		if err != nil {
 			return &workspaceDirData{err: err}
@@ -232,8 +316,9 @@ func (s *snapshot) getWorkspaceDir(ctx context.Context) (span.URI, error) {
 			}
 		}
 	})
+	s.workspaceDirHandle = h
 	s.mu.Unlock()
-	return getWorkspaceDir(ctx, s.workspaceDirHandle, s.generation)
+	return getWorkspaceDir(ctx, h, s.generation)
 }
 
 func getWorkspaceDir(ctx context.Context, h *memoize.Handle, g *memoize.Generation) (span.URI, error) {
