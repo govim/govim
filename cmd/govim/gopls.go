@@ -155,6 +155,13 @@ func (g *govimplugin) startGopls() error {
 	if conf.SymbolStyle != nil {
 		goplsConfig[goplsSymbolStyle] = *conf.SymbolStyle
 	}
+
+	// TODO: This option was introduced as a way to opt-out from the changes introduced in CL 268597.
+	// According to CL 274532 (that added this opt-out), it is intended to be removed - "Ideally
+	// we'll be able to remove them in a few months after things stabilize.". We need to handle that
+	// case before it is removed.
+	goplsConfig["allowModfileModifications"] = true
+
 	initParams.InitializationOptions = goplsConfig
 
 	if _, err := g.server.Initialize(context.Background(), initParams); err != nil {

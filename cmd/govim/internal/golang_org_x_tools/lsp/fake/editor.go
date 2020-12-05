@@ -63,10 +63,10 @@ type EditorConfig struct {
 	Env        map[string]string
 	BuildFlags []string
 
-	// CodeLens is a map defining whether codelens are enabled, keyed by the
-	// codeLens command. CodeLens which are not present in this map are left in
+	// CodeLenses is a map defining whether codelens are enabled, keyed by the
+	// codeLens command. CodeLenses which are not present in this map are left in
 	// their default state.
-	CodeLens map[string]bool
+	CodeLenses map[string]bool
 
 	// SymbolMatcher is the config associated with the "symbolMatcher" gopls
 	// config option.
@@ -198,8 +198,8 @@ func (e *Editor) configuration() map[string]interface{} {
 		config["buildFlags"] = e.Config.BuildFlags
 	}
 
-	if e.Config.CodeLens != nil {
-		config["codelens"] = e.Config.CodeLens
+	if e.Config.CodeLenses != nil {
+		config["codelenses"] = e.Config.CodeLenses
 	}
 	if e.Config.SymbolMatcher != nil {
 		config["symbolMatcher"] = *e.Config.SymbolMatcher
@@ -218,9 +218,9 @@ func (e *Editor) configuration() map[string]interface{} {
 		config["verboseOutput"] = true
 	}
 
-	// TODO(rFindley): uncomment this if/when diagnostics delay is on by
-	// default... and probably change to the new settings name.
-	// config["experimentalDiagnosticsDelay"] = "10ms"
+	// TODO(rFindley): change to the new settings name once it is no longer
+	// designated experimental.
+	config["experimentalDiagnosticsDelay"] = "10ms"
 
 	// ExperimentalWorkspaceModule is only set as a mode, not a configuration.
 	return config
@@ -397,9 +397,9 @@ func (e *Editor) SaveBuffer(ctx context.Context, path string) error {
 
 func (e *Editor) SaveBufferWithoutActions(ctx context.Context, path string) error {
 	e.mu.Lock()
+	defer e.mu.Unlock()
 	buf, ok := e.buffers[path]
 	if !ok {
-		e.mu.Unlock()
 		return fmt.Errorf(fmt.Sprintf("unknown buffer: %q", path))
 	}
 	content := buf.text()
@@ -408,7 +408,6 @@ func (e *Editor) SaveBufferWithoutActions(ctx context.Context, path string) erro
 	if ok {
 		includeText = syncOptions.Save.IncludeText
 	}
-	e.mu.Unlock()
 
 	docID := e.textDocumentIdentifier(buf.path)
 	if e.Server != nil {
@@ -423,10 +422,8 @@ func (e *Editor) SaveBufferWithoutActions(ctx context.Context, path string) erro
 		return errors.Errorf("writing %q: %w", path, err)
 	}
 
-	e.mu.Lock()
 	buf.dirty = false
 	e.buffers[path] = buf
-	e.mu.Unlock()
 
 	if e.Server != nil {
 		params := &protocol.DidSaveTextDocumentParams{
@@ -812,6 +809,9 @@ func (e *Editor) FormatBuffer(ctx context.Context, path string) error {
 		return fmt.Errorf("before receipt of formatting edits, buffer version changed from %d to %d", version, versionAfter)
 	}
 	edits := convertEdits(resp)
+	if len(edits) == 0 {
+		return nil
+	}
 	return e.editBufferLocked(ctx, path, edits)
 }
 

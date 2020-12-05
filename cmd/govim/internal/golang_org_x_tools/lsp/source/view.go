@@ -31,6 +31,10 @@ type Snapshot interface {
 	// View returns the View associated with this snapshot.
 	View() View
 
+	// BackgroundContext returns a context used for all background processing
+	// on behalf of this snapshot.
+	BackgroundContext() context.Context
+
 	// Fileset returns the Fileset used to parse all the Go files in this snapshot.
 	FileSet() *token.FileSet
 
@@ -84,11 +88,11 @@ type Snapshot interface {
 
 	// RunGoCommandPiped runs the given `go` command, writing its output
 	// to stdout and stderr. Verb, Args, and WorkingDir must be specified.
-	RunGoCommandPiped(ctx context.Context, mode InvocationMode, inv *gocommand.Invocation, stdout, stderr io.Writer) error
+	RunGoCommandPiped(ctx context.Context, mode InvocationFlags, inv *gocommand.Invocation, stdout, stderr io.Writer) error
 
 	// RunGoCommandDirect runs the given `go` command. Verb, Args, and
 	// WorkingDir must be specified.
-	RunGoCommandDirect(ctx context.Context, mode InvocationMode, inv *gocommand.Invocation) (*bytes.Buffer, error)
+	RunGoCommandDirect(ctx context.Context, mode InvocationFlags, inv *gocommand.Invocation) (*bytes.Buffer, error)
 
 	// RunProcessEnvFunc runs fn with the process env for this snapshot's view.
 	// Note: the process env contains cached module and filesystem state.
@@ -111,7 +115,7 @@ type Snapshot interface {
 
 	// ModTidy returns the results of `go mod tidy` for the module specified by
 	// the given go.mod file.
-	ModTidy(ctx context.Context, fh FileHandle) (*TidiedModule, error)
+	ModTidy(ctx context.Context, pm *ParsedModule) (*TidiedModule, error)
 
 	// GoModForFile returns the URI of the go.mod file for the given URI.
 	GoModForFile(ctx context.Context, uri span.URI) span.URI
@@ -142,10 +146,6 @@ type Snapshot interface {
 
 	// WorkspacePackages returns the snapshot's top-level packages.
 	WorkspacePackages(ctx context.Context) ([]Package, error)
-
-	// WorkspaceDirectories returns any directory known by the view. For views
-	// within a module, this is the module root and any replace targets.
-	WorkspaceDirectories(ctx context.Context) []span.URI
 }
 
 // PackageFilter sets how a package is filtered out from a set of packages
@@ -165,13 +165,14 @@ const (
 	WidestPackage
 )
 
-// InvocationMode represents the goal of a particular go command invocation.
-type InvocationMode int
+// InvocationFlags represents the settings of a particular go command invocation.
+// It is a mode, plus a set of flag bits.
+type InvocationFlags int
 
 const (
 	// Normal is appropriate for commands that might be run by a user and don't
 	// deliberately modify go.mod files, e.g. `go test`.
-	Normal = iota
+	Normal InvocationFlags = iota
 	// UpdateUserModFile is for commands that intend to update the user's real
 	// go.mod file, e.g. `go mod tidy` in response to a user's request to tidy.
 	UpdateUserModFile
@@ -179,9 +180,22 @@ const (
 	// modified version of the user's go.mod file, e.g. `go mod tidy` used to
 	// generate diagnostics.
 	WriteTemporaryModFile
-	// ForTypeChecking is for packages.Load.
-	ForTypeChecking
+	// LoadWorkspace is for packages.Load, and other operations that should
+	// consider the whole workspace at once.
+	LoadWorkspace
+
+	// AllowNetwork is a flag bit that indicates the invocation should be
+	// allowed to access the network.
+	AllowNetwork = 1 << 10
 )
+
+func (m InvocationFlags) Mode() InvocationFlags {
+	return m & (AllowNetwork - 1)
+}
+
+func (m InvocationFlags) AllowNetwork() bool {
+	return m&AllowNetwork != 0
+}
 
 // View represents a single workspace.
 // This is the level at which we maintain configuration like working directory
@@ -192,10 +206,6 @@ type View interface {
 
 	// Folder returns the folder with which this view was created.
 	Folder() span.URI
-
-	// BackgroundContext returns a context used for all background processing
-	// on behalf of this view.
-	BackgroundContext() context.Context
 
 	// Shutdown closes this view, and detaches it from its session.
 	Shutdown(ctx context.Context)
@@ -248,17 +258,16 @@ type ParsedGoFile struct {
 
 // A ParsedModule contains the results of parsing a go.mod file.
 type ParsedModule struct {
+	URI         span.URI
 	File        *modfile.File
 	Mapper      *protocol.ColumnMapper
-	ParseErrors []Error
+	ParseErrors []*Error
 }
 
 // A TidiedModule contains the results of running `go mod tidy` on a module.
 type TidiedModule struct {
-	// The parsed module, which is guaranteed to have parsed successfully.
-	Parsed *ParsedModule
 	// Diagnostics representing changes made by `go mod tidy`.
-	Errors []Error
+	Errors []*Error
 	// The bytes of the go.mod file after it was tidied.
 	TidiedContent []byte
 }
@@ -291,7 +300,12 @@ type Session interface {
 
 	// DidModifyFile reports a file modification to the session. It returns the
 	// resulting snapshots, a guaranteed one per view.
-	DidModifyFiles(ctx context.Context, changes []FileModification) (map[span.URI]View, map[View]Snapshot, []func(), []span.URI, error)
+	DidModifyFiles(ctx context.Context, changes []FileModification) (map[span.URI]View, map[View]Snapshot, []func(), error)
+
+	// ExpandModificationsToDirectories returns the set of changes with the
+	// directory changes removed and expanded to include all of the files in
+	// the directory.
+	ExpandModificationsToDirectories(ctx context.Context, changes []FileModification) []FileModification
 
 	// Overlays returns a slice of file overlays for the session.
 	Overlays() []Overlay
@@ -301,14 +315,16 @@ type Session interface {
 
 	// SetOptions sets the options of this session to new values.
 	SetOptions(*Options)
+
+	// FileWatchingGlobPatterns returns glob patterns to watch every directory
+	// known by the view. For views within a module, this is the module root,
+	// any directory in the module root, and any replace targets.
+	FileWatchingGlobPatterns(ctx context.Context) map[string]struct{}
 }
 
 // Overlay is the type for a file held in memory on a session.
 type Overlay interface {
 	VersionedFileHandle
-
-	// Saved returns whether this overlay has been saved to disk.
-	Saved() bool
 }
 
 // FileModification represents a modification to a file.
@@ -438,6 +454,8 @@ type FileHandle interface {
 	// Read reads the contents of a file.
 	// If the file is not available, returns a nil slice and an error.
 	Read() ([]byte, error)
+	// Saved reports whether the file has the same content on disk.
+	Saved() bool
 }
 
 // FileIdentity uniquely identifies a file at a version from a FileSystem.
@@ -531,15 +549,26 @@ type Package interface {
 	Version() *module.Version
 }
 
+type CriticalError struct {
+	MainError error
+	ErrorList
+}
+
+func (err *CriticalError) Error() string {
+	if err.MainError == nil {
+		return ""
+	}
+	return err.MainError.Error()
+}
+
 type ErrorList []*Error
 
-func (err *ErrorList) Error() string {
-	var b strings.Builder
-	b.WriteString("source error list:")
-	for _, e := range *err {
-		b.WriteString(fmt.Sprintf("\n\t%s", e))
+func (err ErrorList) Error() string {
+	var list []string
+	for _, e := range err {
+		list = append(list, e.Error())
 	}
-	return b.String()
+	return strings.Join(list, "\n\t")
 }
 
 // An Error corresponds to an LSP Diagnostic.
@@ -572,6 +601,9 @@ const (
 )
 
 func (e *Error) Error() string {
+	if e.URI == "" {
+		return e.Message
+	}
 	return fmt.Sprintf("%s:%s: %s", e.URI, e.Range, e.Message)
 }
 

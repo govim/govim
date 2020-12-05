@@ -62,7 +62,9 @@ var Commands = []*Command{
 	CommandRegenerateCgo,
 	CommandTest,
 	CommandTidy,
+	CommandUpdateGoSum,
 	CommandUndeclaredName,
+	CommandGoGetPackage,
 	CommandAddDependency,
 	CommandUpgradeDependency,
 	CommandRemoveDependency,
@@ -97,6 +99,18 @@ var (
 	CommandVendor = &Command{
 		Name:  "vendor",
 		Title: "Run go mod vendor",
+	}
+
+	// CommandGoGetPackage runs `go get` to fetch a package.
+	CommandGoGetPackage = &Command{
+		Name:  "go_get_package",
+		Title: "go get package",
+	}
+
+	// CommandUpdateGoSum updates the go.sum file for a module.
+	CommandUpdateGoSum = &Command{
+		Name:  "update_go_sum",
+		Title: "Update go.sum",
 	}
 
 	// CommandAddDependency adds a dependency.
