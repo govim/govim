@@ -25,6 +25,7 @@ type VimConfig struct {
 	GoplsEnv                                     *map[string]string
 	Analyses                                     *map[string]int
 	OpenLastProgressWith                         *string
+	Gofumpt                                      *int
 	ExperimentalAutoreadLoadedBuffers            *int
 	ExperimentalMouseTriggeredHoverPopupOptions  *map[string]interface{}
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
@@ -52,6 +53,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		GoplsEnv:                          copyStringValMap(c.GoplsEnv, d.GoplsEnv),
 		Analyses:                          mergeBoolValMap(c.Analyses, d.Analyses),
 		OpenLastProgressWith:              stringVal(c.OpenLastProgressWith, d.OpenLastProgressWith),
+		Gofumpt:                           boolVal(c.Gofumpt, d.Gofumpt),
 		ExperimentalAutoreadLoadedBuffers: boolVal(c.ExperimentalAutoreadLoadedBuffers, d.ExperimentalAutoreadLoadedBuffers),
 		ExperimentalMouseTriggeredHoverPopupOptions:  copyMap(c.ExperimentalMouseTriggeredHoverPopupOptions, d.ExperimentalMouseTriggeredHoverPopupOptions),
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),

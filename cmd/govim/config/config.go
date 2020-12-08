@@ -189,6 +189,17 @@ type Config struct {
 	// Default: "below 10split"
 	OpenLastProgressWith *string `json:",omitempty"`
 
+	// Gofumpt configures gopls to use gofumpt as formatter.
+	// It is a stricter formatter than gofmt, while being backwards compatible.
+	// Read more at: https://github.com/mvdan/gofumpt
+	//
+	// Note that the way gopls uses gofumpt is still evaluated and might change
+	// in the future (to be default with suggested fixes instead for example).
+	// See https://github.com/golang/go/issues/39805.
+	//
+	// Default: false
+	Gofumpt *bool `json:",omitempty"`
+
 	// ExperimentalAutoreadLoadedBuffers is used to reload buffers that are
 	// changed outside vim even when they are loaded (e.g. running two vim
 	// sessions in the same workspace). This is achieved by running "checktime"

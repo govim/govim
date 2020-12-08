@@ -55,6 +55,9 @@ func (r *Config) Apply(v *Config) {
 	if v.OpenLastProgressWith != nil {
 		r.OpenLastProgressWith = v.OpenLastProgressWith
 	}
+	if v.Gofumpt != nil {
+		r.Gofumpt = v.Gofumpt
+	}
 	if v.ExperimentalAutoreadLoadedBuffers != nil {
 		r.ExperimentalAutoreadLoadedBuffers = v.ExperimentalAutoreadLoadedBuffers
 	}

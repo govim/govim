@@ -152,6 +152,10 @@ function! s:openLastProgressWith(v)
   return s:validString(a:v)
 endfunction
 
+function! s:validGofumpt(v)
+  return s:validBool(a:v)
+endfunction
+
 function! s:validExperimentalAutoreadLoadedBuffers(v)
   return s:validBool(a:v)
 endfunction
@@ -201,6 +205,7 @@ let s:validators = {
       \ "GoplsEnv": function("s:validGoplsEnv"),
       \ "Analyses": function("s:validAnalyses"),
       \ "OpenLastProgressWith": function("s:openLastProgressWith"),
+      \ "Gofumpt": function("s:validGofumpt"),
       \ "ExperimentalAutoreadLoadedBuffers": function("s:validExperimentalAutoreadLoadedBuffers"),
       \ "ExperimentalMouseTriggeredHoverPopupOptions": function("s:validExperimentalMouseTriggeredHoverPopupOptions"),
       \ "ExperimentalCursorTriggeredHoverPopupOptions": function("s:validExperimentalCursorTriggeredHoverPopupOptions"),
