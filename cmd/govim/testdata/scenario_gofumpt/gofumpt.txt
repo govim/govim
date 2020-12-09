@@ -1,0 +1,64 @@
+# Verify that gofumpt can be enabled and works
+
+vim ex 'e main.go'
+vim ex 'w'
+cmp main.go main.golden
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+import "fmt"
+
+func fn() (int, error) {
+
+	return 0, nil
+
+}
+func main() {
+
+	var (
+		s string = ""
+	)
+	fmt.Println(s)
+
+	i, err := fn()
+
+	if err != nil {
+		panic(err)
+	}
+
+	switch i {
+	case 0, 1, 2,
+		3, 4:
+	}
+}
+-- main.golden --
+package main
+
+import "fmt"
+
+func fn() (int, error) {
+	return 0, nil
+}
+
+func main() {
+	var s string = ""
+	fmt.Println(s)
+
+	i, err := fn()
+	if err != nil {
+		panic(err)
+	}
+
+	switch i {
+	case 0, 1, 2, 3, 4:
+	}
+}

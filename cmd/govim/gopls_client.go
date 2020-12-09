@@ -33,6 +33,7 @@ const (
 	goplsCodeLenses           = "codelenses"
 	goplsSymbolMatcher        = "symbolMatcher"
 	goplsSymbolStyle          = "symbolStyle"
+	goplsGofumpt              = "gofumpt"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -164,6 +165,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if g.vimstate.config.TempModfile != nil {
 		goplsConfig[goplsTempModfile] = *conf.TempModfile
+	}
+	if g.vimstate.config.Gofumpt != nil {
+		goplsConfig[goplsGofumpt] = *conf.Gofumpt
 	}
 	if os.Getenv(string(config.EnvVarGoplsVerbose)) == "true" {
 		goplsConfig[goplsVerboseOutput] = true
