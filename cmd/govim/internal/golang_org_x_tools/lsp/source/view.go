@@ -118,7 +118,7 @@ type Snapshot interface {
 	ModTidy(ctx context.Context, pm *ParsedModule) (*TidiedModule, error)
 
 	// GoModForFile returns the URI of the go.mod file for the given URI.
-	GoModForFile(ctx context.Context, uri span.URI) span.URI
+	GoModForFile(uri span.URI) span.URI
 
 	// BuiltinPackage returns information about the special builtin package.
 	BuiltinPackage(ctx context.Context) (*BuiltinPackage, error)
@@ -146,6 +146,11 @@ type Snapshot interface {
 
 	// WorkspacePackages returns the snapshot's top-level packages.
 	WorkspacePackages(ctx context.Context) ([]Package, error)
+
+	// WorkspaceLayoutError reports whether there might be any problems with
+	// the user's workspace configuration, which would cause bad or incorrect
+	// diagnostics.
+	WorkspaceLayoutError(ctx context.Context) *CriticalError
 }
 
 // PackageFilter sets how a package is filtered out from a set of packages
@@ -298,9 +303,10 @@ type Session interface {
 	// GetFile returns a handle for the specified file.
 	GetFile(ctx context.Context, uri span.URI) (FileHandle, error)
 
-	// DidModifyFile reports a file modification to the session. It returns the
-	// resulting snapshots, a guaranteed one per view.
-	DidModifyFiles(ctx context.Context, changes []FileModification) (map[span.URI]View, map[View]Snapshot, []func(), error)
+	// DidModifyFile reports a file modification to the session. It returns
+	// the new snapshots after the modifications have been applied, paired with
+	// the affected file URIs for those snapshots.
+	DidModifyFiles(ctx context.Context, changes []FileModification) (map[Snapshot][]span.URI, []func(), error)
 
 	// ExpandModificationsToDirectories returns the set of changes with the
 	// directory changes removed and expanded to include all of the files in
@@ -551,7 +557,7 @@ type Package interface {
 
 type CriticalError struct {
 	MainError error
-	ErrorList
+	ErrorList []*Error
 }
 
 func (err *CriticalError) Error() string {
@@ -559,16 +565,6 @@ func (err *CriticalError) Error() string {
 		return ""
 	}
 	return err.MainError.Error()
-}
-
-type ErrorList []*Error
-
-func (err ErrorList) Error() string {
-	var list []string
-	for _, e := range err {
-		list = append(list, e.Error())
-	}
-	return strings.Join(list, "\n\t")
 }
 
 // An Error corresponds to an LSP Diagnostic.
@@ -579,7 +575,11 @@ type Error struct {
 	Kind     ErrorKind
 	Message  string
 	Category string // only used by analysis errors so far
-	Related  []RelatedInformation
+
+	Related []RelatedInformation
+
+	Code     string
+	CodeHref string
 
 	// SuggestedFixes is used to generate quick fixes for a CodeAction request.
 	// It isn't part of the Diagnostic type.

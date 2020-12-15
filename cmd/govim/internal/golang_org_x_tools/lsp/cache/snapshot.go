@@ -294,7 +294,7 @@ func (s *snapshot) goCommandInvocation(ctx context.Context, flags source.Invocat
 			modURI = span.URIFromPath(filepath.Join(tmpDir.Filename(), "go.mod"))
 		}
 	} else {
-		modURI = s.GoModForFile(ctx, span.URIFromPath(inv.WorkingDir))
+		modURI = s.GoModForFile(span.URIFromPath(inv.WorkingDir))
 	}
 
 	var modContent []byte
@@ -795,9 +795,13 @@ func (s *snapshot) CachedImportPaths(ctx context.Context) (map[string]source.Pac
 	return results, nil
 }
 
-func (s *snapshot) GoModForFile(ctx context.Context, uri span.URI) span.URI {
+func (s *snapshot) GoModForFile(uri span.URI) span.URI {
+	return moduleForURI(s.workspace.activeModFiles, uri)
+}
+
+func moduleForURI(modFiles map[span.URI]struct{}, uri span.URI) span.URI {
 	var match span.URI
-	for modURI := range s.workspace.getActiveModFiles() {
+	for modURI := range modFiles {
 		if !source.InDir(dirURI(modURI).Filename(), uri.Filename()) {
 			continue
 		}
@@ -890,7 +894,7 @@ func (s *snapshot) addID(uri span.URI, id packageID) {
 		}
 		// If we are setting a real ID, when the package had only previously
 		// had a command-line-arguments ID, we should just replace it.
-		if existingID == "command-line-arguments" {
+		if isCommandLineArguments(string(existingID)) {
 			s.ids[uri][i] = id
 			// Delete command-line-arguments if it was a workspace package.
 			delete(s.workspacePackages, existingID)
@@ -898,6 +902,14 @@ func (s *snapshot) addID(uri span.URI, id packageID) {
 		}
 	}
 	s.ids[uri] = append(s.ids[uri], id)
+}
+
+// isCommandLineArguments reports whether a given value denotes
+// "command-line-arguments" package, which is a package with an unknown ID
+// created by the go command. It can have a test variant, which is why callers
+// should not check that a value equals "command-line-arguments" directly.
+func isCommandLineArguments(s string) bool {
+	return strings.Contains(s, "command-line-arguments")
 }
 
 func (s *snapshot) isWorkspacePackage(id packageID) (packagePath, bool) {
@@ -962,6 +974,19 @@ func (s *snapshot) IsOpen(uri span.URI) bool {
 
 }
 
+func (s *snapshot) openFiles() []source.VersionedFileHandle {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var open []source.VersionedFileHandle
+	for _, fh := range s.files {
+		if s.isOpenLocked(fh.URI()) {
+			open = append(open, fh)
+		}
+	}
+	return open
+}
+
 func (s *snapshot) isOpenLocked(uri span.URI) bool {
 	_, open := s.files[uri].(*overlay)
 	return open
@@ -1012,7 +1037,7 @@ func (s *snapshot) reloadWorkspace(ctx context.Context) error {
 		missingMetadata = true
 
 		// Don't try to reload "command-line-arguments" directly.
-		if pkgPath == "command-line-arguments" {
+		if isCommandLineArguments(string(pkgPath)) {
 			continue
 		}
 		pkgPathSet[pkgPath] = struct{}{}
@@ -1234,7 +1259,7 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		}
 	}
 
-	changedPkgNames := map[packageID][]span.URI{}
+	changedPkgNames := map[packageID]struct{}{}
 	for uri, change := range changes {
 		// Maybe reinitialize the view if we see a change in the vendor
 		// directory.
@@ -1255,7 +1280,7 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		filePackageIDs := guessPackageIDsForURI(uri, s.ids)
 		if pkgNameChanged {
 			for _, id := range filePackageIDs {
-				changedPkgNames[id] = append(changedPkgNames[id], uri)
+				changedPkgNames[id] = struct{}{}
 			}
 		}
 		for _, id := range filePackageIDs {
@@ -1361,7 +1386,7 @@ copyIDs:
 		// go command when the user is outside of GOPATH and outside of a
 		// module. Do not cache them as workspace packages for longer than
 		// necessary.
-		if id == "command-line-arguments" {
+		if isCommandLineArguments(string(id)) {
 			if invalidateMetadata, ok := transitiveIDs[id]; invalidateMetadata && ok {
 				continue
 			}
@@ -1372,6 +1397,12 @@ copyIDs:
 		if m := s.metadata[id]; m != nil {
 			hasFiles := false
 			for _, uri := range s.metadata[id].goFiles {
+				// For internal tests, we need _test files, not just the normal
+				// ones. External tests only have _test files, but we can check
+				// them anyway.
+				if m.forTest != "" && !strings.HasSuffix(uri.Filename(), "_test.go") {
+					continue
+				}
 				if _, ok := result.files[uri]; ok {
 					hasFiles = true
 					break
@@ -1383,8 +1414,10 @@ copyIDs:
 		}
 
 		// If the package name of a file in the package has changed, it's
-		// possible that the package ID may no longer exist.
-		if uris, ok := changedPkgNames[id]; ok && s.shouldDeleteWorkspacePackageID(id, uris) {
+		// possible that the package ID may no longer exist. Delete it from
+		// the set of workspace packages, on the assumption that we will add it
+		// back when the relevant files are reloaded.
+		if _, ok := changedPkgNames[id]; ok {
 			continue
 		}
 
@@ -1420,38 +1453,6 @@ copyIDs:
 		}
 	}
 	return result, workspaceChanged
-}
-
-// shouldDeleteWorkspacePackageID reports whether the given package ID should
-// be removed from the set of workspace packages. If one of the files in the
-// package has changed package names, we check if it is the only file that
-// *only* belongs to this package. For example, in the case of a test variant,
-// confirm that it is the sole file constituting the test variant.
-func (s *snapshot) shouldDeleteWorkspacePackageID(id packageID, changedPkgNames []span.URI) bool {
-	m, ok := s.metadata[id]
-	if !ok {
-		return false
-	}
-	changedPkgName := func(uri span.URI) bool {
-		for _, changed := range changedPkgNames {
-			if uri == changed {
-				return true
-			}
-		}
-		return false
-	}
-	for _, uri := range m.compiledGoFiles {
-		if changedPkgName(uri) {
-			continue
-		}
-		// If there is at least one file remaining that belongs only to this
-		// package, and its package name has not changed, we shouldn't delete
-		// its package ID from the set of workspace packages.
-		if ids := guessPackageIDsForURI(uri, s.ids); len(ids) == 1 && ids[0] == id {
-			return false
-		}
-	}
-	return true
 }
 
 // guessPackageIDsForURI returns all packages related to uri. If we haven't
@@ -1632,12 +1633,12 @@ func (s *snapshot) buildBuiltinPackage(ctx context.Context, goFiles []string) er
 
 // BuildGoplsMod generates a go.mod file for all modules in the workspace. It
 // bypasses any existing gopls.mod.
-func BuildGoplsMod(ctx context.Context, root span.URI, fs source.FileSource) (*modfile.File, error) {
-	allModules, err := findModules(ctx, root, 0)
+func BuildGoplsMod(ctx context.Context, root span.URI, s source.Snapshot) (*modfile.File, error) {
+	allModules, err := findModules(ctx, root, pathExcludedByFilterFunc(s.View().Options()), 0)
 	if err != nil {
 		return nil, err
 	}
-	return buildWorkspaceModFile(ctx, allModules, fs)
+	return buildWorkspaceModFile(ctx, allModules, s)
 }
 
 // TODO(rfindley): move this to workspacemodule.go
@@ -1716,4 +1717,73 @@ func buildWorkspaceModFile(ctx context.Context, modFiles map[span.URI]struct{}, 
 		}
 	}
 	return file, nil
+}
+
+func buildWorkspaceSumFile(ctx context.Context, modFiles map[span.URI]struct{}, fs source.FileSource) ([]byte, error) {
+	allSums := map[module.Version][]string{}
+	for modURI := range modFiles {
+		// TODO(rfindley): factor out this pattern into a uripath package.
+		sumURI := span.URIFromPath(filepath.Join(filepath.Dir(modURI.Filename()), "go.sum"))
+		fh, err := fs.GetFile(ctx, sumURI)
+		if err != nil {
+			continue
+		}
+		data, err := fh.Read()
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, errors.Errorf("reading go sum: %w", err)
+		}
+		if err := readGoSum(allSums, sumURI.Filename(), data); err != nil {
+			return nil, err
+		}
+	}
+	// This logic to write go.sum is copied (with minor modifications) from
+	// https://cs.opensource.google/go/go/+/master:src/cmd/go/internal/modfetch/fetch.go;l=631;drc=762eda346a9f4062feaa8a9fc0d17d72b11586f0
+	var mods []module.Version
+	for m := range allSums {
+		mods = append(mods, m)
+	}
+	module.Sort(mods)
+
+	var buf bytes.Buffer
+	for _, m := range mods {
+		list := allSums[m]
+		sort.Strings(list)
+		// Note (rfindley): here we add all sum lines without verification, because
+		// the assumption is that if they come from a go.sum file, they are
+		// trusted.
+		for _, h := range list {
+			fmt.Fprintf(&buf, "%s %s %s\n", m.Path, m.Version, h)
+		}
+	}
+	return buf.Bytes(), nil
+}
+
+// readGoSum is copied (with minor modifications) from
+// https://cs.opensource.google/go/go/+/master:src/cmd/go/internal/modfetch/fetch.go;l=398;drc=762eda346a9f4062feaa8a9fc0d17d72b11586f0
+func readGoSum(dst map[module.Version][]string, file string, data []byte) error {
+	lineno := 0
+	for len(data) > 0 {
+		var line []byte
+		lineno++
+		i := bytes.IndexByte(data, '\n')
+		if i < 0 {
+			line, data = data, nil
+		} else {
+			line, data = data[:i], data[i+1:]
+		}
+		f := strings.Fields(string(line))
+		if len(f) == 0 {
+			// blank line; skip it
+			continue
+		}
+		if len(f) != 3 {
+			return fmt.Errorf("malformed go.sum:\n%s:%d: wrong number of fields %v", file, lineno, len(f))
+		}
+		mod := module.Version{Path: f[0], Version: f[1]}
+		dst[mod] = append(dst[mod], f[2])
+	}
+	return nil
 }
