@@ -166,7 +166,7 @@ var GeneratedAPIJSON = &APIJSON{
 			{
 				Name:       "codelenses",
 				Type:       "map[string]bool",
-				Doc:        "codelenses overrides the enabled/disabled state of code lenses. See the \"Code Lenses\"\nsection of settings.md for the list of supported lenses.\n\nExample Usage:\n```json5\n\"gopls\": {\n...\n  \"codelens\": {\n    \"generate\": false,  // Don't show the `go generate` lens.\n    \"gc_details\": true  // Show a code lens toggling the display of gc's choices.\n  }\n...\n}\n```\n",
+				Doc:        "codelenses overrides the enabled/disabled state of code lenses. See the \"Code Lenses\"\nsection of settings.md for the list of supported lenses.\n\nExample Usage:\n```json5\n\"gopls\": {\n...\n  \"codelenses\": {\n    \"generate\": false,  // Don't show the `go generate` lens.\n    \"gc_details\": true  // Show a code lens toggling the display of gc's choices.\n  }\n...\n}\n```\n",
 				EnumValues: nil,
 				Default:    "{\"gc_details\":false,\"generate\":true,\"regenerate_cgo\":true,\"tidy\":true,\"upgrade_dependency\":true,\"vendor\":true}",
 			},
@@ -256,6 +256,13 @@ var GeneratedAPIJSON = &APIJSON{
 					},
 				},
 				Default: "\"Dynamic\"",
+			},
+			{
+				Name:       "directoryFilters",
+				Type:       "[]string",
+				Doc:        "directoryFilters can be used to exclude unwanted directories from the\nworkspace. By default, all directories are included. Filters are an\noperator, `+` to include and `-` to exclude, followed by a path prefix\nrelative to the workspace folder. They are evaluated in order, and\nthe last filter that applies to a path controls whether it is included.\nThe path prefix can be empty, so an initial `-` excludes everything.\n\nExamples:\nExclude node_modules: `-node_modules`\nInclude only project_a: `-` (exclude everything), `+project_a`\nInclude only project_a, but not node_modules inside it: `-`, `+project_a`, `-project_a/node_modules`\n",
+				EnumValues: nil,
+				Default:    "[]",
 			},
 		},
 	},

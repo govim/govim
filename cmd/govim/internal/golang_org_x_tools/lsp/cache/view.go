@@ -23,6 +23,7 @@ import (
 
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/semver"
+	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
@@ -242,6 +243,9 @@ func minorOptionsChange(a, b *source.Options) bool {
 	if !reflect.DeepEqual(a.Env, b.Env) {
 		return false
 	}
+	if !reflect.DeepEqual(a.DirectoryFilters, b.DirectoryFilters) {
+		return false
+	}
 	aBuildFlags := make([]string, len(a.BuildFlags))
 	bBuildFlags := make([]string, len(b.BuildFlags))
 	copy(aBuildFlags, a.BuildFlags)
@@ -323,7 +327,16 @@ func (s *snapshot) RunProcessEnvFunc(ctx context.Context, fn func(*imports.Optio
 }
 
 func (v *View) contains(uri span.URI) bool {
-	return source.InDir(v.rootURI.Filename(), uri.Filename()) || source.InDir(v.folder.Filename(), uri.Filename())
+	inRoot := source.InDir(v.rootURI.Filename(), uri.Filename())
+	inFolder := source.InDir(v.folder.Filename(), uri.Filename())
+	if !inRoot && !inFolder {
+		return false
+	}
+	// Filters are applied relative to the workspace folder.
+	if inFolder {
+		return !pathExcludedByFilter(strings.TrimPrefix(uri.Filename(), v.folder.Filename()), v.Options())
+	}
+	return true
 }
 
 func (v *View) mapFile(uri span.URI, f *fileBase) {
@@ -340,15 +353,23 @@ func basename(filename string) string {
 
 func (v *View) relevantChange(c source.FileModification) bool {
 	// If the file is known to the view, the change is relevant.
-	known := v.knownFile(c.URI)
-
+	if v.knownFile(c.URI) {
+		return true
+	}
+	// The gopls.mod may not be "known" because we first access it through the
+	// session. As a result, treat changes to the view's gopls.mod file as
+	// always relevant, even if they are only on-disk changes.
+	// TODO(rstambler): Make sure the gopls.mod is always known to the view.
+	if c.URI == goplsModURI(v.rootURI) {
+		return true
+	}
 	// If the file is not known to the view, and the change is only on-disk,
 	// we should not invalidate the snapshot. This is necessary because Emacs
 	// sends didChangeWatchedFiles events for temp files.
-	if !known && c.OnDisk && (c.Action == source.Change || c.Action == source.Delete) {
+	if c.OnDisk && (c.Action == source.Change || c.Action == source.Delete) {
 		return false
 	}
-	return v.contains(c.URI) || known
+	return v.contains(c.URI)
 }
 
 func (v *View) knownFile(uri span.URI) bool {
@@ -515,11 +536,8 @@ func (s *snapshot) initialize(ctx context.Context, firstAttempt bool) {
 
 		// If we have multiple modules, we need to load them by paths.
 		var scopes []interface{}
-		var modErrors source.ErrorList
+		var modErrors []*source.Error
 		addError := func(uri span.URI, err error) {
-			if modErrors == nil {
-				modErrors = source.ErrorList{}
-			}
 			modErrors = append(modErrors, &source.Error{
 				URI:      uri,
 				Category: "compiler",
@@ -568,7 +586,7 @@ func (s *snapshot) initialize(ctx context.Context, firstAttempt bool) {
 
 // invalidateContent invalidates the content of a Go file,
 // including any position and type information that depends on it.
-func (v *View) invalidateContent(ctx context.Context, changes map[span.URI]*fileChange, forceReloadMetadata bool) (source.Snapshot, func()) {
+func (v *View) invalidateContent(ctx context.Context, changes map[span.URI]*fileChange, forceReloadMetadata bool) (*snapshot, func()) {
 	// Detach the context so that content invalidation cannot be canceled.
 	ctx = xcontext.Detach(ctx)
 
@@ -605,20 +623,22 @@ func (v *View) invalidateContent(ctx context.Context, changes map[span.URI]*file
 }
 
 func copyWorkspace(dst span.URI, src span.URI) error {
-	srcMod := filepath.Join(src.Filename(), "go.mod")
-	srcf, err := os.Open(srcMod)
-	if err != nil {
-		return errors.Errorf("opening snapshot mod file: %w", err)
-	}
-	defer srcf.Close()
-	dstMod := filepath.Join(dst.Filename(), "go.mod")
-	dstf, err := os.Create(dstMod)
-	if err != nil {
-		return errors.Errorf("truncating view mod file: %w", err)
-	}
-	defer dstf.Close()
-	if _, err := io.Copy(dstf, srcf); err != nil {
-		return errors.Errorf("copying modfiles: %w", err)
+	for _, name := range []string{"go.mod", "go.sum"} {
+		srcname := filepath.Join(src.Filename(), name)
+		srcf, err := os.Open(srcname)
+		if err != nil {
+			return errors.Errorf("opening snapshot %s: %w", name, err)
+		}
+		defer srcf.Close()
+		dstname := filepath.Join(dst.Filename(), name)
+		dstf, err := os.Create(dstname)
+		if err != nil {
+			return errors.Errorf("truncating view %s: %w", name, err)
+		}
+		defer dstf.Close()
+		if _, err := io.Copy(dstf, srcf); err != nil {
+			return errors.Errorf("copying %s: %w", name, err)
+		}
 	}
 	return nil
 }
@@ -697,7 +717,7 @@ func go111moduleForVersion(go111module string, goversion int) go111module {
 // Otherwise, it returns folder.
 // TODO (rFindley): move this to workspace.go
 // TODO (rFindley): simplify this once workspace modules are enabled by default.
-func findWorkspaceRoot(ctx context.Context, folder span.URI, fs source.FileSource, experimental bool) (span.URI, error) {
+func findWorkspaceRoot(ctx context.Context, folder span.URI, fs source.FileSource, excludePath func(string) bool, experimental bool) (span.URI, error) {
 	patterns := []string{"go.mod"}
 	if experimental {
 		patterns = []string{"gopls.mod", "go.mod"}
@@ -718,7 +738,7 @@ func findWorkspaceRoot(ctx context.Context, folder span.URI, fs source.FileSourc
 	}
 
 	// ...else we should check if there's exactly one nested module.
-	all, err := findModules(ctx, folder, 2)
+	all, err := findModules(ctx, folder, excludePath, 2)
 	if err == errExhausted {
 		// Fall-back behavior: if we don't find any modules after searching 10000
 		// files, assume there are none.
@@ -912,4 +932,44 @@ func (s *snapshot) vendorEnabled(ctx context.Context, modURI span.URI, modConten
 	}
 	vendorEnabled := modFile.Go != nil && modFile.Go.Version != "" && semver.Compare("v"+modFile.Go.Version, "v1.14") >= 0
 	return vendorEnabled, nil
+}
+
+func (v *View) allFilesExcluded(pkg *packages.Package) bool {
+	opts := v.Options()
+	folder := filepath.ToSlash(v.folder.Filename())
+	for _, f := range pkg.GoFiles {
+		f = filepath.ToSlash(f)
+		if !strings.HasPrefix(f, folder) {
+			return false
+		}
+		if !pathExcludedByFilter(strings.TrimPrefix(f, folder), opts) {
+			return false
+		}
+	}
+	return true
+}
+
+func pathExcludedByFilterFunc(opts *source.Options) func(string) bool {
+	return func(path string) bool {
+		return pathExcludedByFilter(path, opts)
+	}
+}
+
+func pathExcludedByFilter(path string, opts *source.Options) bool {
+	path = strings.TrimPrefix(filepath.ToSlash(path), "/")
+
+	excluded := false
+	for _, filter := range opts.DirectoryFilters {
+		op, prefix := filter[0], filter[1:]
+		// Non-empty prefixes have to be precise directory matches.
+		if prefix != "" {
+			prefix = prefix + "/"
+			path = path + "/"
+		}
+		if !strings.HasPrefix(path, prefix) {
+			continue
+		}
+		excluded = op == '-'
+	}
+	return excluded
 }

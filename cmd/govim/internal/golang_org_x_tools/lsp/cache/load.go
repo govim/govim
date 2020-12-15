@@ -6,6 +6,7 @@ package cache
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"go/types"
 	"io/ioutil"
@@ -53,7 +54,7 @@ func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interf
 	for _, scope := range scopes {
 		switch scope := scope.(type) {
 		case packagePath:
-			if scope == "command-line-arguments" {
+			if isCommandLineArguments(string(scope)) {
 				panic("attempted to load command-line-arguments")
 			}
 			// The only time we pass package paths is when we're doing a
@@ -158,6 +159,11 @@ func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interf
 		if isTestMain(pkg, s.view.gocache) {
 			continue
 		}
+		// Skip filtered packages. They may be added anyway if they're
+		// dependencies of non-filtered packages.
+		if s.view.allFilesExcluded(pkg) {
+			continue
+		}
 		// Set the metadata for this package.
 		m, err := s.setMetadata(ctx, packagePath(pkg.PkgPath), pkg, cfg, map[packageID]struct{}{})
 		if err != nil {
@@ -174,10 +180,8 @@ func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interf
 }
 
 func (s *snapshot) parseLoadError(ctx context.Context, loadErr error) *source.CriticalError {
-	// The error may be a result of the user's workspace layout. Check for
-	// a valid workspace configuration first.
-	if criticalErr := s.workspaceLayoutErrors(ctx, loadErr); criticalErr != nil {
-		return criticalErr
+	if strings.Contains(loadErr.Error(), "cannot find main module") {
+		return s.WorkspaceLayoutError(ctx)
 	}
 	criticalErr := &source.CriticalError{
 		MainError: loadErr,
@@ -199,50 +203,80 @@ func (s *snapshot) parseLoadError(ctx context.Context, loadErr error) *source.Cr
 
 // workspaceLayoutErrors returns a diagnostic for every open file, as well as
 // an error message if there are no open files.
-func (s *snapshot) workspaceLayoutErrors(ctx context.Context, err error) *source.CriticalError {
-	// Assume the workspace is misconfigured only if we've detected an invalid
-	// build configuration. Currently, a valid build configuration is either a
-	// module at the root of the view or a GOPATH workspace.
-	if s.ValidBuildConfiguration() {
-		return nil
-	}
+func (s *snapshot) WorkspaceLayoutError(ctx context.Context) *source.CriticalError {
 	if len(s.workspace.getKnownModFiles()) == 0 {
 		return nil
 	}
-	// TODO(rstambler): Handle GO111MODULE=auto.
-	if s.view.userGo111Module != on {
+	if s.view.userGo111Module == off {
 		return nil
 	}
 	if s.workspace.moduleSource != legacyWorkspace {
 		return nil
 	}
-	// The user's workspace contains go.mod files and they have
-	// GO111MODULE=on, so we should guide them to create a
-	// workspace folder for each module.
-
-	// Add a diagnostic to every open file, or return a general error if
-	// there aren't any.
-	var open []source.VersionedFileHandle
-	s.mu.Lock()
-	for _, fh := range s.files {
-		if s.isOpenLocked(fh.URI()) {
-			open = append(open, fh)
-		}
+	// If the user has one module per view, there is nothing to warn about.
+	if s.ValidBuildConfiguration() && len(s.workspace.getKnownModFiles()) == 1 {
+		return nil
 	}
-	s.mu.Unlock()
 
-	msg := `gopls requires a module at the root of your workspace.
+	// Apply diagnostics about the workspace configuration to relevant open
+	// files.
+	openFiles := s.openFiles()
+
+	// If the snapshot does not have a valid build configuration, it may be
+	// that the user has opened a directory that contains multiple modules.
+	// Check for that an warn about it.
+	if !s.ValidBuildConfiguration() {
+		msg := `gopls requires a module at the root of your workspace.
 You can work with multiple modules by opening each one as a workspace folder.
 Improvements to this workflow will be coming soon (https://github.com/golang/go/issues/32394),
 and you can learn more here: https://github.com/golang/go/issues/36899.`
+		return &source.CriticalError{
+			MainError: errors.Errorf(msg),
+			ErrorList: s.applyCriticalErrorToFiles(ctx, msg, openFiles),
+		}
+	}
 
-	criticalError := &source.CriticalError{
-		MainError: errors.New(msg),
+	// If the user has one active go.mod file, they may still be editing files
+	// in nested modules. Check the module of each open file and add warnings
+	// that the nested module must be opened as a workspace folder.
+	if len(s.workspace.getActiveModFiles()) == 1 {
+		// Get the active root go.mod file to compare against.
+		var rootModURI span.URI
+		for uri := range s.workspace.getActiveModFiles() {
+			rootModURI = uri
+		}
+		nestedModules := map[span.URI][]source.VersionedFileHandle{}
+		for _, fh := range openFiles {
+			modURI := moduleForURI(s.workspace.knownModFiles, fh.URI())
+			if modURI != rootModURI {
+				nestedModules[modURI] = append(nestedModules[modURI], fh)
+			}
+		}
+		// Add a diagnostic to each file in a nested module to mark it as
+		// "orphaned". Don't show a general diagnostic in the progress bar,
+		// because the user may still want to edit a file in a nested module.
+		var srcErrs []*source.Error
+		for modURI, uris := range nestedModules {
+			msg := fmt.Sprintf(`This file is in %s, which is a nested module in the %s module.
+gopls currently requires one module per workspace folder.
+Please open %s as a separate workspace folder.
+You can learn more here: https://github.com/golang/go/issues/36899.
+`, modURI.Filename(), rootModURI.Filename(), modURI.Filename())
+			srcErrs = append(srcErrs, s.applyCriticalErrorToFiles(ctx, msg, uris)...)
+		}
+		if len(srcErrs) != 0 {
+			return &source.CriticalError{
+				MainError: errors.Errorf(`You are working in a nested module. Please open it as a separate workspace folder.`),
+				ErrorList: srcErrs,
+			}
+		}
 	}
-	if len(open) == 0 {
-		return criticalError
-	}
-	for _, fh := range open {
+	return nil
+}
+
+func (s *snapshot) applyCriticalErrorToFiles(ctx context.Context, msg string, files []source.VersionedFileHandle) []*source.Error {
+	var srcErrs []*source.Error
+	for _, fh := range files {
 		// Place the diagnostics on the package or module declarations.
 		var rng protocol.Range
 		switch fh.Kind() {
@@ -260,14 +294,14 @@ and you can learn more here: https://github.com/golang/go/issues/36899.`
 				}
 			}
 		}
-		criticalError.ErrorList = append(criticalError.ErrorList, &source.Error{
+		srcErrs = append(srcErrs, &source.Error{
 			URI:     fh.URI(),
 			Range:   rng,
 			Kind:    source.ListError,
 			Message: msg,
 		})
 	}
-	return criticalError
+	return srcErrs
 }
 
 type workspaceDirKey string
@@ -291,22 +325,36 @@ func (s *snapshot) getWorkspaceDir(ctx context.Context) (span.URI, error) {
 	if err != nil {
 		return "", err
 	}
-	content, err := file.Format()
+	hash := sha256.New()
+	modContent, err := file.Format()
 	if err != nil {
 		return "", err
 	}
-	key := workspaceDirKey(hashContents(content))
+	sumContent, err := s.workspace.sumFile(ctx, s)
+	if err != nil {
+		return "", err
+	}
+	hash.Write(modContent)
+	hash.Write(sumContent)
+	key := workspaceDirKey(hash.Sum(nil))
 	s.mu.Lock()
 	h = s.generation.Bind(key, func(context.Context, memoize.Arg) interface{} {
 		tmpdir, err := ioutil.TempDir("", "gopls-workspace-mod")
 		if err != nil {
 			return &workspaceDirData{err: err}
 		}
-		filename := filepath.Join(tmpdir, "go.mod")
-		if err := ioutil.WriteFile(filename, content, 0644); err != nil {
-			os.RemoveAll(tmpdir)
-			return &workspaceDirData{err: err}
+
+		for name, content := range map[string][]byte{
+			"go.mod": modContent,
+			"go.sum": sumContent,
+		} {
+			filename := filepath.Join(tmpdir, name)
+			if err := ioutil.WriteFile(filename, content, 0644); err != nil {
+				os.RemoveAll(tmpdir)
+				return &workspaceDirData{err: err}
+			}
 		}
+
 		return &workspaceDirData{dir: tmpdir}
 	}, func(v interface{}) {
 		d := v.(*workspaceDirData)
@@ -442,7 +490,7 @@ func isTestMain(pkg *packages.Package, gocache string) bool {
 	if len(pkg.GoFiles) > 1 {
 		return false
 	}
-	if !strings.HasPrefix(pkg.GoFiles[0], gocache) {
+	if !source.InDir(gocache, pkg.GoFiles[0]) {
 		return false
 	}
 	return true

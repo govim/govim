@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -68,19 +69,14 @@ func hashDiagnostics(diags ...*source.Diagnostic) string {
 func (s *Server) diagnoseDetached(snapshot source.Snapshot) {
 	ctx := snapshot.BackgroundContext()
 	ctx = xcontext.Detach(ctx)
-	showWarning := s.diagnose(ctx, snapshot, false)
-	if showWarning {
-		// If a view has been created or the configuration changed, warn the user.
-		s.client.ShowMessage(ctx, &protocol.ShowMessageParams{
-			Type:    protocol.Warning,
-			Message: `You are neither in a module nor in your GOPATH. If you are using modules, please open your editor to a directory in your module. If you believe this warning is incorrect, please file an issue: https://github.com/golang/go/issues/new.`,
-		})
-	}
+	s.diagnose(ctx, snapshot, false)
 	s.publishDiagnostics(ctx, true, snapshot)
 }
 
 func (s *Server) diagnoseSnapshot(snapshot source.Snapshot, changedURIs []span.URI, onDisk bool) {
 	ctx := snapshot.BackgroundContext()
+	ctx, done := event.Start(ctx, "Server.diagnoseSnapshot", tag.Snapshot.Of(snapshot.ID()))
+	defer done()
 
 	delay := snapshot.View().Options().ExperimentalDiagnosticsDelay
 	if delay > 0 {
@@ -106,7 +102,7 @@ func (s *Server) diagnoseSnapshot(snapshot source.Snapshot, changedURIs []span.U
 }
 
 func (s *Server) diagnoseChangedFiles(ctx context.Context, snapshot source.Snapshot, uris []span.URI, onDisk bool) {
-	ctx, done := event.Start(ctx, "Server.diagnoseChangedFiles")
+	ctx, done := event.Start(ctx, "Server.diagnoseChangedFiles", tag.Snapshot.Of(snapshot.ID()))
 	defer done()
 	packages := make(map[source.Package]struct{})
 	for _, uri := range uris {
@@ -138,7 +134,7 @@ func (s *Server) diagnoseChangedFiles(ctx context.Context, snapshot source.Snaps
 		go func(pkg source.Package) {
 			defer wg.Done()
 
-			_ = s.diagnosePkg(ctx, snapshot, pkg, false)
+			s.diagnosePkg(ctx, snapshot, pkg, false)
 		}(pkg)
 	}
 	wg.Wait()
@@ -146,14 +142,14 @@ func (s *Server) diagnoseChangedFiles(ctx context.Context, snapshot source.Snaps
 
 // diagnose is a helper function for running diagnostics with a given context.
 // Do not call it directly. forceAnalysis is only true for testing purposes.
-func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, forceAnalysis bool) bool {
-	ctx, done := event.Start(ctx, "Server.diagnose")
+func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, forceAnalysis bool) {
+	ctx, done := event.Start(ctx, "Server.diagnose", tag.Snapshot.Of(snapshot.ID()))
 	defer done()
 
 	// Wait for a free diagnostics slot.
 	select {
 	case <-ctx.Done():
-		return false
+		return
 	case s.diagnosticsSema <- struct{}{}:
 	}
 	defer func() {
@@ -163,7 +159,8 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, forceAn
 	// First, diagnose the go.mod file.
 	modReports, modErr := mod.Diagnostics(ctx, snapshot)
 	if ctx.Err() != nil {
-		return false
+		log.Trace.Log(ctx, "diagnose cancelled")
+		return
 	}
 	if modErr != nil {
 		event.Error(ctx, "warning: diagnose go.mod", modErr, tag.Directory.Of(snapshot.View().Folder().Filename()), tag.Snapshot.Of(snapshot.ID()))
@@ -179,7 +176,24 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, forceAn
 	// Diagnose all of the packages in the workspace.
 	wsPkgs, err := snapshot.WorkspacePackages(ctx)
 	if s.shouldIgnoreError(ctx, snapshot, err) {
-		return false
+		return
+	}
+	// Even if packages didn't fail to load, we still may want to show
+	// additional warnings.
+	if err == nil {
+		if msg := shouldShowAdHocPackagesWarning(snapshot, wsPkgs); msg != "" {
+			err = fmt.Errorf(msg)
+		}
+	}
+
+	// Even if workspace packages were returned, there still may be an error
+	// with the user's workspace layout. Workspace packages that only have the
+	// ID "command-line-arguments" are usually a symptom of a bad workspace
+	// configuration.
+	if containsCommandLineArguments(wsPkgs) {
+		if criticalErr := snapshot.WorkspaceLayoutError(ctx); criticalErr != nil {
+			err = criticalErr
+		}
 	}
 
 	// Show the error as a progress error report so that it appears in the
@@ -188,16 +202,15 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, forceAn
 	// error progress reports will be closed.
 	s.showCriticalErrorStatus(ctx, snapshot, err)
 
-	if err != nil {
-		event.Error(ctx, "errors diagnosing workspace", err, tag.Snapshot.Of(snapshot.ID()), tag.Directory.Of(snapshot.View().Folder()))
-		return false
+	// If there are no workspace packages, there is nothing to diagnose and
+	// there are no orphaned files.
+	if len(wsPkgs) == 0 {
+		return
 	}
 
 	var (
-		wg              sync.WaitGroup
-		shouldShowMsgMu sync.Mutex
-		shouldShowMsg   bool
-		seen            = map[span.URI]struct{}{}
+		wg   sync.WaitGroup
+		seen = map[span.URI]struct{}{}
 	)
 	for _, pkg := range wsPkgs {
 		wg.Add(1)
@@ -209,33 +222,28 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, forceAn
 		go func(pkg source.Package) {
 			defer wg.Done()
 
-			show := s.diagnosePkg(ctx, snapshot, pkg, forceAnalysis)
-			if show {
-				shouldShowMsgMu.Lock()
-				shouldShowMsg = true
-				shouldShowMsgMu.Unlock()
-			}
+			s.diagnosePkg(ctx, snapshot, pkg, forceAnalysis)
 		}(pkg)
 	}
 	wg.Wait()
+
 	// Confirm that every opened file belongs to a package (if any exist in
 	// the workspace). Otherwise, add a diagnostic to the file.
-	if len(wsPkgs) > 0 {
-		for _, o := range s.session.Overlays() {
-			if _, ok := seen[o.URI()]; ok {
-				continue
-			}
-			diagnostic := s.checkForOrphanedFile(ctx, snapshot, o)
-			if diagnostic == nil {
-				continue
-			}
-			s.storeDiagnostics(snapshot, o.URI(), orphanedSource, []*source.Diagnostic{diagnostic})
+	for _, o := range s.session.Overlays() {
+		if _, ok := seen[o.URI()]; ok {
+			continue
 		}
+		diagnostic := s.checkForOrphanedFile(ctx, snapshot, o)
+		if diagnostic == nil {
+			continue
+		}
+		s.storeDiagnostics(snapshot, o.URI(), orphanedSource, []*source.Diagnostic{diagnostic})
 	}
-	return shouldShowMsg
 }
 
-func (s *Server) diagnosePkg(ctx context.Context, snapshot source.Snapshot, pkg source.Package, alwaysAnalyze bool) bool {
+func (s *Server) diagnosePkg(ctx context.Context, snapshot source.Snapshot, pkg source.Package, alwaysAnalyze bool) {
+	ctx, done := event.Start(ctx, "Server.diagnosePkg", tag.Snapshot.Of(snapshot.ID()), tag.Package.Of(pkg.ID()))
+	defer done()
 	includeAnalysis := alwaysAnalyze // only run analyses for packages with open files
 	var gcDetailsDir span.URI        // find the package's optimization details, if available
 	for _, pgf := range pkg.CompiledGoFiles() {
@@ -261,7 +269,7 @@ func (s *Server) diagnosePkg(ctx context.Context, snapshot source.Snapshot, pkg 
 		reports, err := source.Analyze(ctx, snapshot, pkg, typeCheckResults)
 		if err != nil {
 			event.Error(ctx, "warning: diagnose package", err, tag.Snapshot.Of(snapshot.ID()), tag.Package.Of(pkg.ID()))
-			return false
+			return
 		}
 		for uri, diags := range reports {
 			s.storeDiagnostics(snapshot, uri, analysisSource, diags)
@@ -284,7 +292,6 @@ func (s *Server) diagnosePkg(ctx context.Context, snapshot source.Snapshot, pkg 
 			s.storeDiagnostics(snapshot, id.URI, gcDetailsSource, diags)
 		}
 	}
-	return shouldWarn(snapshot, pkg)
 }
 
 // storeDiagnostics stores results from a single diagnostic source. If merge is
@@ -319,21 +326,6 @@ func (s *Server) storeDiagnostics(snapshot source.Snapshot, uri span.URI, dsourc
 	s.diagnostics[uri].reports[dsource] = report
 }
 
-// shouldWarn reports whether we should warn the user about their build
-// configuration.
-func shouldWarn(snapshot source.Snapshot, pkg source.Package) bool {
-	if snapshot.ValidBuildConfiguration() {
-		return false
-	}
-	if len(pkg.MissingDependencies()) > 0 {
-		return true
-	}
-	if len(pkg.CompiledGoFiles()) == 1 && hasUndeclaredErrors(pkg) {
-		return true // The user likely opened a single file.
-	}
-	return false
-}
-
 // clearDiagnosticSource clears all diagnostics for a given source type. It is
 // necessary for cases where diagnostics have been invalidated by something
 // other than a snapshot change, for example when gc_details is toggled.
@@ -345,21 +337,23 @@ func (s *Server) clearDiagnosticSource(dsource diagnosticSource) {
 	}
 }
 
-// hasUndeclaredErrors returns true if a package has a type error
-// about an undeclared symbol.
-//
-// TODO(findleyr): switch to using error codes in 1.16
-func hasUndeclaredErrors(pkg source.Package) bool {
-	for _, err := range pkg.GetErrors() {
-		if err.Kind != source.TypeError {
-			continue
-		}
-		if strings.Contains(err.Message, "undeclared name:") {
-			return true
+const adHocPackagesWarning = `You are outside of a module and outside of $GOPATH/src.
+If you are using modules, please open your editor to a directory in your module.
+If you believe this warning is incorrect, please file an issue: https://github.com/golang/go/issues/new.`
+
+func shouldShowAdHocPackagesWarning(snapshot source.Snapshot, pkgs []source.Package) string {
+	if snapshot.ValidBuildConfiguration() {
+		return ""
+	}
+	for _, pkg := range pkgs {
+		if len(pkg.MissingDependencies()) > 0 {
+			return adHocPackagesWarning
 		}
 	}
-	return false
+	return ""
 }
+
+const WorkspaceLoadFailure = "Error loading workspace"
 
 // showCriticalErrorStatus shows the error as a progress report.
 // If the error is nil, it clears any existing error progress report.
@@ -371,21 +365,18 @@ func (s *Server) showCriticalErrorStatus(ctx context.Context, snapshot source.Sn
 	// status bar.
 	var errMsg string
 	if err != nil {
-		// Some error messages can also be displayed as diagnostics. But don't
-		// show source.ErrorLists as critical errors--only CriticalErrors
-		// should be shown.
+		event.Error(ctx, "errors loading workspace", err, tag.Snapshot.Of(snapshot.ID()), tag.Directory.Of(snapshot.View().Folder()))
+
+		// Some error messages can also be displayed as diagnostics.
 		if criticalErr := (*source.CriticalError)(nil); errors.As(err, &criticalErr) {
 			s.storeErrorDiagnostics(ctx, snapshot, typeCheckSource, criticalErr.ErrorList)
-		} else if srcErrList := (source.ErrorList)(nil); errors.As(err, &srcErrList) {
-			s.storeErrorDiagnostics(ctx, snapshot, typeCheckSource, srcErrList)
-			return
 		}
 		errMsg = strings.Replace(err.Error(), "\n", " ", -1)
 	}
 
 	if s.criticalErrorStatus == nil {
 		if errMsg != "" {
-			s.criticalErrorStatus = s.progress.start(ctx, "Error loading workspace", errMsg, nil, nil)
+			s.criticalErrorStatus = s.progress.start(ctx, WorkspaceLoadFailure, errMsg, nil, nil)
 		}
 		return
 	}
@@ -445,6 +436,8 @@ func (s *Server) storeErrorDiagnostics(ctx context.Context, snapshot source.Snap
 			Related:  e.Related,
 			Severity: protocol.SeverityError,
 			Source:   e.Category,
+			Code:     e.Code,
+			CodeHref: e.CodeHref,
 		}
 		s.storeDiagnostics(snapshot, e.URI, dsource, []*source.Diagnostic{diagnostic})
 	}
@@ -452,8 +445,16 @@ func (s *Server) storeErrorDiagnostics(ctx context.Context, snapshot source.Snap
 
 // publishDiagnostics collects and publishes any unpublished diagnostic reports.
 func (s *Server) publishDiagnostics(ctx context.Context, final bool, snapshot source.Snapshot) {
+	ctx, done := event.Start(ctx, "Server.publishDiagnostics", tag.Snapshot.Of(snapshot.ID()))
+	defer done()
 	s.diagnosticsMu.Lock()
 	defer s.diagnosticsMu.Unlock()
+
+	published := 0
+	defer func() {
+		log.Trace.Logf(ctx, "published %d diagnostics", published)
+	}()
+
 	for uri, r := range s.diagnostics {
 		// Snapshot IDs are always increasing, so we use them instead of file
 		// versions to create the correct order for diagnostics.
@@ -504,6 +505,7 @@ func (s *Server) publishDiagnostics(ctx context.Context, final bool, snapshot so
 			URI:         protocol.URIFromSpanURI(uri),
 			Version:     version,
 		}); err == nil {
+			published++
 			r.publishedHash = hash
 			r.snapshotID = snapshot.ID()
 			for dsource, hash := range reportHashes {
@@ -514,6 +516,7 @@ func (s *Server) publishDiagnostics(ctx context.Context, final bool, snapshot so
 		} else {
 			if ctx.Err() != nil {
 				// Publish may have failed due to a cancelled context.
+				log.Trace.Log(ctx, "publish cancelled")
 				return
 			}
 			event.Error(ctx, "publishReports: failed to deliver diagnostic", err, tag.URI.Of(uri))
@@ -534,7 +537,7 @@ func toProtocolDiagnostics(diagnostics []*source.Diagnostic) []protocol.Diagnost
 				Message: rel.Message,
 			})
 		}
-		reports = append(reports, protocol.Diagnostic{
+		pdiag := protocol.Diagnostic{
 			// diag.Message might start with \n or \t
 			Message:            strings.TrimSpace(diag.Message),
 			Range:              diag.Range,
@@ -542,7 +545,14 @@ func toProtocolDiagnostics(diagnostics []*source.Diagnostic) []protocol.Diagnost
 			Source:             diag.Source,
 			Tags:               diag.Tags,
 			RelatedInformation: related,
-		})
+		}
+		if diag.Code != "" {
+			pdiag.Code = diag.Code
+		}
+		if diag.CodeHref != "" {
+			pdiag.CodeDescription = &protocol.CodeDescription{Href: diag.CodeHref}
+		}
+		reports = append(reports, pdiag)
 	}
 	return reports
 }
@@ -567,4 +577,13 @@ func (s *Server) shouldIgnoreError(ctx context.Context, snapshot source.Snapshot
 		return errors.New("done")
 	})
 	return !hasGo
+}
+
+func containsCommandLineArguments(pkgs []source.Package) bool {
+	for _, pkg := range pkgs {
+		if strings.Contains(pkg.ID(), "command-line-arguments") {
+			return true
+		}
+	}
+	return false
 }
