@@ -209,6 +209,7 @@ See https://github.com/golang/go/issues/39164 for more detail on this issue.`,
 				Message: `go.sum is out of sync with go.mod. Please update it or run "go mod tidy".`,
 				SuggestedFixes: []source.SuggestedFix{
 					{
+						Title: source.CommandTidy.Title,
 						Command: &protocol.Command{
 							Command:   source.CommandTidy.ID(),
 							Title:     source.CommandTidy.Title,
@@ -216,6 +217,7 @@ See https://github.com/golang/go/issues/39164 for more detail on this issue.`,
 						},
 					},
 					{
+						Title: source.CommandUpdateGoSum.Title,
 						Command: &protocol.Command{
 							Command:   source.CommandUpdateGoSum.ID(),
 							Title:     source.CommandUpdateGoSum.Title,
@@ -509,7 +511,10 @@ func switchDirectness(req *modfile.Require, m *protocol.ColumnMapper, computeEdi
 		return nil, err
 	}
 	// Calculate the edits to be made due to the change.
-	diff := computeEdits(m.URI, string(m.Content), string(newContent))
+	diff, err := computeEdits(m.URI, string(m.Content), string(newContent))
+	if err != nil {
+		return nil, err
+	}
 	return source.ToProtocolEdits(m, diff)
 }
 
