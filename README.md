@@ -25,13 +25,13 @@ Install `govim` via:
   * `Plugin 'govim/govim'`
 
 You might need some `.vimrc`/`.gvimrc` settings to get all features working: see the minimal
-[`.vimrc`](cmd/govim/config/minimal.vimrc) or [`.gvimrc`](cmd/govim/config/minimal.gvimrc) for an commented explanation
+[`.vimrc`](cmd/govim/config/minimal.vimrc) or [`.gvimrc`](cmd/govim/config/minimal.gvimrc) for a commented explanation
 of the required settings. For more details on `.vimrc`/`.gvimrc` settings as well as some tips and tricks, see
 [here](https://github.com/govim/govim/wiki/vimrc-tips).
 
 ### What can `govim` do?
 
-See [`govim` plugin API](https://github.com/govim/govim/wiki/govim-plugin-API) which also has links to some demo
+See the [`govim` plugin API](https://github.com/govim/govim/wiki/govim-plugin-API) which also has links to some demo
 screencasts.
 
 ### FAQ
