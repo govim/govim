@@ -35,7 +35,7 @@ function! s:pushConfig()
 endfunction
 
 function! s:validFormatOnSave(v)
-  let valid = ["", "gofmt", "goimports"]
+  let valid = ["", "gofmt", "goimports", "goimports-gofmt"]
   if index(valid, a:v) < 0
     return [v:false, "must be one of: ".string(valid)]
   endif
