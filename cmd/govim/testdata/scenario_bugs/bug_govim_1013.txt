@@ -1,0 +1,38 @@
+# Test that custom hover opts col & line aren't causing a panic (govim/govim#1013)
+
+[!vim] [!gvim] skip 'Test only known to work in Vim and GVim'
+
+[!vim:v8.1.1649] skip 'New style popup tests do not work on gvim https://github.com/govim/govim/issues/351'
+
+vim ex 'call govim#config#Set(\"ExperimentalMouseTriggeredHoverPopupOptions\", { \"pos\": \"topright\", \"col\": 9999, \"line\": -9999  })'
+
+vim ex 'e main.go'
+vim ex 'call test_setmouse(screenpos(bufwinid(\"main.go\"),6,13)[\"row\"],screenpos(bufwinid(\"main.go\"),6,13)[\"col\"])'
+vim ex 'call feedkeys(\"\\<MouseMove>\\<Ignore>\", \"xt\")'
+sleep 500ms
+vim -stringout expr 'GOVIM_internal_DumpPopups()'
+cmp stdout popup.golden
+! stderr .+
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello, world")
+}
+-- popup.golden --
+func fmt.Println(a ...interface{}) (n int, err error)
+Println formats using the default formats for its operands and writes to standard output.
+Spaces are always added between operands and a newline is appended.
+It returns the number of bytes written and any write error encountered.
