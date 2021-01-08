@@ -13,7 +13,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	errors "golang.org/x/xerrors"
 )
 
 func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.VersionedFileIdentity][]*source.Diagnostic, error) {
@@ -66,10 +65,6 @@ func ErrorsForMod(ctx context.Context, snapshot source.Snapshot, fh source.FileH
 		return nil, nil
 	}
 	if err != nil {
-		// Some error messages can also be displayed as diagnostics.
-		if criticalErr := (*source.CriticalError)(nil); errors.As(err, &criticalErr) {
-			return criticalErr.ErrorList, nil
-		}
 		return nil, err
 	}
 	return tidied.Errors, nil

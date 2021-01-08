@@ -128,20 +128,17 @@ func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interf
 		event.Log(ctx, "go/packages.Load", tag.Snapshot.Of(s.ID()), tag.Directory.Of(cfg.Dir), tag.Query.Of(query), tag.PackageCount.Of(len(pkgs)))
 	}
 	if len(pkgs) == 0 {
-		if err != nil {
-			// Try to extract the load error into a structured error with
-			// diagnostics.
-			if criticalErr := s.parseLoadError(ctx, err); criticalErr != nil {
-				return criticalErr
-			}
-		} else {
+		if err == nil {
 			err = fmt.Errorf("no packages returned")
 		}
 		return errors.Errorf("%v: %w", err, source.PackagesLoadError)
 	}
 	for _, pkg := range pkgs {
 		if !containsDir || s.view.Options().VerboseOutput {
-			event.Log(ctx, "go/packages.Load", tag.Snapshot.Of(s.ID()), tag.PackagePath.Of(pkg.PkgPath), tag.Files.Of(pkg.CompiledGoFiles))
+			event.Log(ctx, "go/packages.Load",
+				tag.Snapshot.Of(s.ID()),
+				tag.Package.Of(pkg.ID),
+				tag.Files.Of(pkg.CompiledGoFiles))
 		}
 		// Ignore packages with no sources, since we will never be able to
 		// correctly invalidate that metadata.
@@ -179,31 +176,9 @@ func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interf
 	return nil
 }
 
-func (s *snapshot) parseLoadError(ctx context.Context, loadErr error) *source.CriticalError {
-	if strings.Contains(loadErr.Error(), "cannot find main module") {
-		return s.WorkspaceLayoutError(ctx)
-	}
-	criticalErr := &source.CriticalError{
-		MainError: loadErr,
-	}
-	// Attempt to place diagnostics in the relevant go.mod files, if any.
-	for _, uri := range s.ModFiles() {
-		fh, err := s.GetFile(ctx, uri)
-		if err != nil {
-			continue
-		}
-		srcErr := s.extractGoCommandError(ctx, s, fh, loadErr.Error())
-		if srcErr == nil {
-			continue
-		}
-		criticalErr.ErrorList = append(criticalErr.ErrorList, srcErr)
-	}
-	return criticalErr
-}
-
 // workspaceLayoutErrors returns a diagnostic for every open file, as well as
 // an error message if there are no open files.
-func (s *snapshot) WorkspaceLayoutError(ctx context.Context) *source.CriticalError {
+func (s *snapshot) workspaceLayoutError(ctx context.Context) *source.CriticalError {
 	if len(s.workspace.getKnownModFiles()) == 0 {
 		return nil
 	}
@@ -245,23 +220,24 @@ and you can learn more here: https://github.com/golang/go/issues/36899.`
 		for uri := range s.workspace.getActiveModFiles() {
 			rootModURI = uri
 		}
-		nestedModules := map[span.URI][]source.VersionedFileHandle{}
+		nestedModules := map[string][]source.VersionedFileHandle{}
 		for _, fh := range openFiles {
 			modURI := moduleForURI(s.workspace.knownModFiles, fh.URI())
 			if modURI != rootModURI {
-				nestedModules[modURI] = append(nestedModules[modURI], fh)
+				modDir := filepath.Dir(modURI.Filename())
+				nestedModules[modDir] = append(nestedModules[modDir], fh)
 			}
 		}
 		// Add a diagnostic to each file in a nested module to mark it as
 		// "orphaned". Don't show a general diagnostic in the progress bar,
 		// because the user may still want to edit a file in a nested module.
 		var srcErrs []*source.Error
-		for modURI, uris := range nestedModules {
+		for modDir, uris := range nestedModules {
 			msg := fmt.Sprintf(`This file is in %s, which is a nested module in the %s module.
 gopls currently requires one module per workspace folder.
 Please open %s as a separate workspace folder.
 You can learn more here: https://github.com/golang/go/issues/36899.
-`, modURI.Filename(), rootModURI.Filename(), modURI.Filename())
+`, modDir, filepath.Dir(rootModURI.Filename()), modDir)
 			srcErrs = append(srcErrs, s.applyCriticalErrorToFiles(ctx, msg, uris)...)
 		}
 		if len(srcErrs) != 0 {

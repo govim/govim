@@ -76,14 +76,13 @@ type EditorConfig struct {
 	// workspace scope to the entire module.
 	LimitWorkspaceScope bool
 
-	// WithoutWorkspaceFolders is used to simulate opening a single file in the
-	// editor, without a workspace root. In that case, the client sends neither
-	// workspace folders nor a root URI.
-	WithoutWorkspaceFolders bool
-
-	// WorkspaceRoot specifies the root path of the workspace folder used when
-	// initializing gopls in the sandbox. If empty, the Workdir is used.
-	WorkspaceRoot string
+	// WorkspaceFolders is the workspace folders to configure on the LSP server,
+	// relative to the sandbox workdir.
+	//
+	// As a special case, if WorkspaceFolders is nil the editor defaults to
+	// configuring a single workspace folder corresponding to the workdir root.
+	// To explicitly send no workspace folders, use an empty (non-nil) slice.
+	WorkspaceFolders []string
 
 	// EnableStaticcheck enables staticcheck analyzers.
 	EnableStaticcheck bool
@@ -125,7 +124,7 @@ func (e *Editor) Connect(ctx context.Context, conn jsonrpc2.Conn, hooks ClientHo
 		protocol.Handlers(
 			protocol.ClientHandler(e.client,
 				jsonrpc2.MethodNotFound)))
-	if err := e.initialize(ctx, e.Config.WithoutWorkspaceFolders, e.Config.WorkspaceRoot); err != nil {
+	if err := e.initialize(ctx, e.Config.WorkspaceFolders); err != nil {
 		return nil, err
 	}
 	e.sandbox.Workdir.AddWatcher(e.onFileChanges)
@@ -230,20 +229,21 @@ func (e *Editor) configuration() map[string]interface{} {
 	return config
 }
 
-func (e *Editor) initialize(ctx context.Context, withoutWorkspaceFolders bool, editorRootPath string) error {
+func (e *Editor) initialize(ctx context.Context, workspaceFolders []string) error {
 	params := &protocol.ParamInitialize{}
 	params.ClientInfo.Name = "fakeclient"
 	params.ClientInfo.Version = "v1.0.0"
-	if !withoutWorkspaceFolders {
-		rootURI := e.sandbox.Workdir.RootURI()
-		if editorRootPath != "" {
-			rootURI = toURI(e.sandbox.Workdir.AbsPath(editorRootPath))
-		}
-		params.WorkspaceFolders = []protocol.WorkspaceFolder{{
-			URI:  string(rootURI),
-			Name: filepath.Base(rootURI.SpanURI().Filename()),
-		}}
+
+	if workspaceFolders == nil {
+		workspaceFolders = []string{string(e.sandbox.Workdir.RelativeTo)}
 	}
+	for _, folder := range workspaceFolders {
+		params.WorkspaceFolders = append(params.WorkspaceFolders, protocol.WorkspaceFolder{
+			URI:  string(e.sandbox.Workdir.URI(folder)),
+			Name: filepath.Base(folder),
+		})
+	}
+
 	params.Capabilities.Workspace.Configuration = true
 	params.Capabilities.Window.WorkDoneProgress = true
 	// TODO: set client capabilities
@@ -723,6 +723,9 @@ func (e *Editor) codeAction(ctx context.Context, path string, rng *protocol.Rang
 		return errors.Errorf("textDocument/codeAction: %w", err)
 	}
 	for _, action := range actions {
+		if action.Title == "" {
+			return errors.Errorf("empty title for code action")
+		}
 		var match bool
 		for _, o := range only {
 			if action.Kind == o {
@@ -753,6 +756,10 @@ func (e *Editor) codeAction(ctx context.Context, path string, rng *protocol.Rang
 			}); err != nil {
 				return err
 			}
+		}
+		// Some commands may edit files on disk.
+		if err := e.sandbox.Workdir.CheckForFileChanges(ctx); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -902,6 +909,23 @@ func (e *Editor) Completion(ctx context.Context, path string, pos Pos) (*protoco
 		return nil, err
 	}
 	return completions, nil
+}
+
+// AcceptCompletion accepts a completion for the given item at the given
+// position.
+func (e *Editor) AcceptCompletion(ctx context.Context, path string, pos Pos, item protocol.CompletionItem) error {
+	if e.Server == nil {
+		return nil
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	_, ok := e.buffers[path]
+	if !ok {
+		return fmt.Errorf("buffer %q is not open", path)
+	}
+	return e.editBufferLocked(ctx, path, convertEdits(append([]protocol.TextEdit{
+		*item.TextEdit,
+	}, item.AdditionalTextEdits...)))
 }
 
 // References executes a reference request on the server.
