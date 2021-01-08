@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/govim/govim/cmd/govim/config"
@@ -78,11 +79,13 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 	formatPopupline := func(msg, source string, severity types.Severity) types.PopupLine {
 		srcProp := string(config.HighlightHoverDiagSrc)
 		msgProp := string(types.SeverityHoverHighlight[severity])
-		return types.PopupLine{Text: fmt.Sprintf("%s %s", msg, source),
+		return types.PopupLine{
+			Text: fmt.Sprintf("%s %s", msg, source),
 			Props: []types.PopupProp{
 				{Type: msgProp, Col: 1, Len: len(msg) + 1 + len(source)}, // Diagnostic message
 				{Type: srcProp, Col: len(msg) + 2, Len: len(source)},     // Source
-			}}
+			},
+		}
 	}
 
 	var lines []types.PopupLine
@@ -113,16 +116,12 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 			opts[k] = v
 		}
 		var line, col int64
-		var err error
-		if lv, ok := opts["line"]; ok {
-			if line, err = rawToInt(lv); err != nil {
-				return nil, fmt.Errorf("failed to parse line option: %v", err)
-			}
+		// TODO: we should use json.Decoder.UseNumber() instead of treating ints as floats.
+		if lv, ok := opts["line"].(float64); ok {
+			line = int64(math.Round(lv))
 		}
-		if cv, ok := opts["col"]; ok {
-			if col, err = rawToInt(cv); err != nil {
-				return nil, fmt.Errorf("failed to parse col option: %v", err)
-			}
+		if cv, ok := opts["col"].(float64); ok {
+			col = int64(math.Round(cv))
 		}
 		opts["line"] = line + int64(vpos.ScreenPos.Row)
 		opts["col"] = col + int64(vpos.ScreenPos.Col)
@@ -139,16 +138,4 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 	v.popupWinID = v.ParseInt(v.ChannelCall("popup_create", lines, opts))
 	v.ChannelRedraw(false)
 	return "", nil
-}
-
-func rawToInt(i interface{}) (int64, error) {
-	var n json.Number
-	if err := json.Unmarshal(i.(json.RawMessage), &n); err != nil {
-		return 0, fmt.Errorf("failed to parse number: %v", err)
-	}
-	v, err := n.Int64()
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse integer from line option: %v", err)
-	}
-	return v, nil
 }
