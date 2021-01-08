@@ -1,3 +1,7 @@
+// Copyright 2020 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package mod
 
 import (
@@ -148,7 +152,7 @@ func firstRequireRange(fh source.FileHandle, pm *source.ParsedModule) (protocol.
 	}
 
 	firstRequire := pm.File.Require[0].Syntax
-	if firstRequire.Start.Byte < start.Byte {
+	if start.Byte == 0 || firstRequire.Start.Byte < start.Byte {
 		start, end = firstRequire.Start, firstRequire.End
 	}
 	return lineToRange(pm.Mapper, fh.URI(), start, end)
