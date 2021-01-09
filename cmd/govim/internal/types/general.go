@@ -87,6 +87,7 @@ var SeverityHoverHighlight = map[Severity]config.Highlight{
 type TextPropID int
 
 const (
-	DiagnosticTextPropID = 0
-	ReferencesTextPropID = 1
+	DiagnosticTextPropID    = 0
+	ReferencesTextPropID    = 1
+	CallHierarchyTextPropID = 2
 )
