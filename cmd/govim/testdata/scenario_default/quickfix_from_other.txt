@@ -1,0 +1,118 @@
+# Test that the quickfix window is updated by diagnostics only in some situations
+
+vim ex 'e main.go'
+vimexprwait errors.golden1 GOVIMTest_getqflist()
+vim ex 'call setqflist([{\"filename\":\"foo\"}, {\"filename\":\"bar\"}, {\"filename\":\"baz\"}], \"r\")'
+vimexprwait errors.other GOVIMTest_getqflist()
+
+# Add an error, the quickfix should remain because it's not already filled with diagnostics
+vim ex 'call cursor(6, 1)'
+vim ex 'call feedkeys(\"yyp\")'
+vimexprwait errors.other GOVIMTest_getqflist()
+
+# Force display diagnostics now
+vim ex 'GOVIMQuickfixDiagnostics'
+vimexprwait errors.golden2 GOVIMTest_getqflist()
+
+# Fill quickfix with empty array, this time it shouldn't remain because it's empty
+vim ex 'call setqflist([])'
+vim ex 'call feedkeys(\"dd\")'
+vimexprwait errors.golden1 GOVIMTest_getqflist()
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Printf("%v")
+}
+-- errors.other --
+[
+  {
+    "bufname": "foo",
+    "col": 0,
+    "lnum": 0,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "",
+    "type": "",
+    "valid": 0,
+    "vcol": 0
+  },
+  {
+    "bufname": "bar",
+    "col": 0,
+    "lnum": 0,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "",
+    "type": "",
+    "valid": 0,
+    "vcol": 0
+  },
+  {
+    "bufname": "baz",
+    "col": 0,
+    "lnum": 0,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "",
+    "type": "",
+    "valid": 0,
+    "vcol": 0
+  }
+]
+-- errors.golden1 --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.golden2 --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]

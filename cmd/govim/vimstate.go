@@ -40,13 +40,6 @@ type vimstate struct {
 	// userBusy indicates the user is moving the cusor doing something
 	userBusy bool
 
-	// quickfixIsDiagnostics is a flag that indicates the quickfix window is being
-	// used for diagnostics, and not, for example, locations of references. If
-	// the user calls GOVIMReferences, quickfixIsDiagnostics is set to false; whilst
-	// false the quickfix window will not update with diagnostics, until the user
-	// calls GOVIMQuickfixDiagnostics, which sets the flag to true.
-	quickfixIsDiagnostics bool
-
 	// popupWinID is the id of the window currently being used for a hover-based popup
 	popupWinID int
 
@@ -102,6 +95,18 @@ type vimstate struct {
 	vimgrepPendingBufs map[int]*types.Buffer
 }
 
+// quickfixCanDiagnostics returns true if the quickfix can be populated with
+// diagnostics.
+func (v *vimstate) quickfixCanDiagnostics() bool {
+	if v.ParseInt(v.ChannelExpr(`len(getqflist())`)) == 0 {
+		// quickfix is empty, it can be used
+		return true
+	}
+	var qflist qflistProps
+	v.Parse(v.ChannelExpr(`getqflist({"title":1})`), &qflist)
+	return qflist.Title == "" || qflist.Title == quickfixDiagnosticsTitle
+}
+
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	preConfig := v.config
 	var vc vimconfig.VimConfig
@@ -116,13 +121,12 @@ func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
 	if !vimconfig.EqualBool(v.config.QuickfixAutoDiagnostics, preConfig.QuickfixAutoDiagnostics) {
 		if v.config.QuickfixAutoDiagnostics == nil || !*v.config.QuickfixAutoDiagnostics {
 			// QuickfixAutoDiagnostics is now not on
-			v.lastQuickFixDiagnostics = []quickfixEntry{}
-			if v.quickfixIsDiagnostics {
-				v.ChannelCall("setqflist", v.lastQuickFixDiagnostics, "r")
+			if v.quickfixCanDiagnostics() {
+				v.setQuickfixDiagnostics([]quickfixEntry{}, 0)
 			}
 		} else {
 			// QuickfixAutoDiagnostics is now on
-			if err := v.updateQuickfixWithDiagnostics(true, false); err != nil {
+			if err := v.updateQuickfixWithDiagnostics(true); err != nil {
 				return nil, fmt.Errorf("failed to update diagnostics: %v", err)
 			}
 		}
