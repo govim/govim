@@ -23,6 +23,7 @@ type VimConfig struct {
 	CompletionBudget                             *string
 	TempModfile                                  *int
 	GoplsEnv                                     *map[string]string
+	GoplsDirectoryFilters                        *[]string
 	Analyses                                     *map[string]int
 	OpenLastProgressWith                         *string
 	Gofumpt                                      *int
@@ -53,6 +54,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		CompletionBudget:                  stringVal(c.CompletionBudget, d.CompletionBudget),
 		TempModfile:                       boolVal(c.TempModfile, d.TempModfile),
 		GoplsEnv:                          copyStringValMap(c.GoplsEnv, d.GoplsEnv),
+		GoplsDirectoryFilters:             copyStringValSlice(c.GoplsDirectoryFilters, d.GoplsDirectoryFilters),
 		Analyses:                          mergeBoolValMap(c.Analyses, d.Analyses),
 		OpenLastProgressWith:              stringVal(c.OpenLastProgressWith, d.OpenLastProgressWith),
 		Gofumpt:                           boolVal(c.Gofumpt, d.Gofumpt),
@@ -105,6 +107,21 @@ func copyStringValMap(i, j *map[string]string) *map[string]string {
 	res := make(map[string]string)
 	for ck, cv := range *toCopy {
 		res[ck] = cv
+	}
+	return &res
+}
+
+func copyStringValSlice(i, j *[]string) *[]string {
+	toCopy := i
+	if i == nil {
+		toCopy = j
+		if j == nil {
+			return nil
+		}
+	}
+	res := make([]string, len(*toCopy))
+	for i, cv := range *toCopy {
+		res[i] = cv
 	}
 	return &res
 }

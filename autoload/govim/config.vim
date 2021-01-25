@@ -136,6 +136,18 @@ function! s:validGoplsEnv(v)
   return [v:true, ""]
 endfunction
 
+function! s:validGoplsDirectoryFilters(v)
+  if type(a:v) != 3
+    return [v:false, "value must be a list"]
+  endif
+  for item in a:v
+    if type(item) != 1
+      return [v:false, "value must be a string"]
+    endif
+  endfor
+  return [v:true, ""]
+endfunction
+
 function! s:validAnalyses(v)
   if type(a:v) != 4
     return [v:false, "must be of type dict"]
@@ -211,6 +223,7 @@ let s:validators = {
       \ "CompletionBudget": function("s:validCompletionBudget"),
       \ "TempModfile": function("s:validTempModfile"),
       \ "GoplsEnv": function("s:validGoplsEnv"),
+      \ "GoplsDirectoryFilters": function("s:validGoplsDirectoryFilters"),
       \ "Analyses": function("s:validAnalyses"),
       \ "OpenLastProgressWith": function("s:openLastProgressWith"),
       \ "Gofumpt": function("s:validGofumpt"),

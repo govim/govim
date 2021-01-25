@@ -49,6 +49,9 @@ func (r *Config) Apply(v *Config) {
 	if v.GoplsEnv != nil {
 		r.GoplsEnv = v.GoplsEnv
 	}
+	if v.GoplsDirectoryFilters != nil {
+		r.GoplsDirectoryFilters = v.GoplsDirectoryFilters
+	}
 	if v.Analyses != nil {
 		r.Analyses = v.Analyses
 	}

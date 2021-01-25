@@ -35,6 +35,7 @@ const (
 	goplsSymbolStyle                 = "symbolStyle"
 	goplsGofumpt                     = "gofumpt"
 	goplsExperimentalWorkspaceModule = "experimentalWorkspaceModule"
+	goplsDirectoryFilters            = "directoryFilters"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -186,6 +187,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 		// It is safe not to copy the map here because a new config setting from
 		// Vim creates a new map.
 		goplsConfig[goplsEnv] = *conf.GoplsEnv
+	}
+	if g.vimstate.config.GoplsDirectoryFilters != nil {
+		goplsConfig[goplsDirectoryFilters] = *conf.GoplsDirectoryFilters
 	}
 	res[0] = goplsConfig
 
