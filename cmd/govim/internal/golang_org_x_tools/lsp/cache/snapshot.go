@@ -717,6 +717,9 @@ func (s *snapshot) allKnownSubdirs(ctx context.Context) map[span.URI]struct{} {
 // the given directory. It does not respect symlinks.
 func (s *snapshot) knownFilesInDir(ctx context.Context, dir span.URI) []span.URI {
 	var files []span.URI
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for uri := range s.files {
 		if source.InDir(dir.Filename(), uri.Filename()) {
 			files = append(files, uri)
@@ -1009,6 +1012,9 @@ func (s *snapshot) awaitLoaded(ctx context.Context) error {
 
 func (s *snapshot) GetCriticalError(ctx context.Context) *source.CriticalError {
 	loadErr := s.awaitLoadedAllErrors(ctx)
+	if errors.Is(loadErr, context.Canceled) {
+		return nil
+	}
 
 	// Even if packages didn't fail to load, we still may want to show
 	// additional warnings.
@@ -1074,6 +1080,10 @@ func containsCommandLineArguments(pkgs []source.Package) bool {
 func (s *snapshot) awaitLoadedAllErrors(ctx context.Context) error {
 	// Do not return results until the snapshot's view has been initialized.
 	s.AwaitInitialized(ctx)
+
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 
 	if err := s.reloadWorkspace(ctx); err != nil {
 		return err
