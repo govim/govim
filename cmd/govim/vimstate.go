@@ -62,7 +62,7 @@ type vimstate struct {
 	// suggestedFixesPopups is a set of suggested fixes keyed by popup ID. It represents
 	// currently defined popups (both hidden and visible) and have a lifespan of single
 	// codeAction call.
-	suggestedFixesPopups map[int][]protocol.WorkspaceEdit
+	suggestedFixesPopups map[int][]suggestedFix
 
 	// working directory (when govim was started)
 	// TODO: handle changes to current working directory during runtime
@@ -179,9 +179,9 @@ func (v *vimstate) popupSelection(args ...json.RawMessage) (interface{}, error) 
 	v.Parse(args[0], &popupID)
 	v.Parse(args[1], &selection)
 
-	var edits []protocol.WorkspaceEdit
+	var fixes []suggestedFix
 	var ok bool
-	if edits, ok = v.suggestedFixesPopups[popupID]; !ok {
+	if fixes, ok = v.suggestedFixesPopups[popupID]; !ok {
 		return nil, fmt.Errorf("couldn't find popup id: %d", popupID)
 	}
 
@@ -196,9 +196,51 @@ func (v *vimstate) popupSelection(args ...json.RawMessage) (interface{}, error) 
 		return nil, nil
 	}
 
-	edit := edits[selection-1]
+	fix := fixes[selection-1]
 
-	return nil, v.applyMultiBufTextedits(nil, edit.DocumentChanges)
+	// Edits should be applied before any Command according to LSP 3.16.
+	if len(fix.edit.DocumentChanges) > 0 {
+		if err := v.applyMultiBufTextedits(nil, fix.edit.DocumentChanges); err != nil {
+			return nil, err
+		}
+	}
+
+	if fix.command != nil {
+		editsCh := make(chan applyEditCall)
+		v.govimplugin.applyEditsLock.Lock()
+		v.govimplugin.applyEditsCh = editsCh
+		v.govimplugin.applyEditsLock.Unlock()
+		done := make(chan struct{})
+
+		var ecErr error
+		v.tomb.Go(func() error {
+			_, ecErr = v.server.ExecuteCommand(context.Background(),
+				&protocol.ExecuteCommandParams{
+					Command:   fix.command.Command,
+					Arguments: fix.command.Arguments,
+				})
+
+			v.govimplugin.applyEditsLock.Lock()
+			v.govimplugin.applyEditsCh = nil
+			v.govimplugin.applyEditsLock.Unlock()
+			close(done)
+			return nil
+		})
+
+		for {
+			select {
+			case <-done:
+				if ecErr != nil {
+					return nil, fmt.Errorf("executeCommand failed: %v", ecErr)
+				}
+				return nil, nil
+			case c := <-editsCh:
+				res, err := v.applyWorkspaceEdit(c.params)
+				c.responseCh <- applyEditResponse{res, err}
+			}
+		}
+	}
+	return nil, nil
 }
 
 func (v *vimstate) progressClosed(args ...json.RawMessage) (interface{}, error) {

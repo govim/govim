@@ -1,0 +1,79 @@
+# Test that suggested edits can be applied to go.mod - go get package
+
+[!go1.14] skip '-modfile only supported in Go 1.14'
+
+vim call 'govim#config#Set' '["ExperimentalAllowModfileModifications",0]'
+
+# Open go.mod that contain an unused depdendency
+vim ex 'e main.go'
+
+# Wait for the diag and open up suggested fixes
+vimexprwait errors.golden GOVIMTest_getqflist()
+vim ex 'call cursor(6,4)'
+vim ex 'GOVIMSuggestedFixes'
+
+# Wait for popup
+# 2021-02-15T19:52:03.163777_#1: sendJSONMsg: [0,[86,"call","popup_create",["go get package example.com/withdeps/foo"],{"callback":"GOVIM_internal_PopupSelection","col":"cursor","cursorline":1,"drag":1,"filter":"GOVIM_internal_SuggestedFixesFilter","line":"cursor+1","mapping":0,"title":"could not import example.com/withdeps/foo (no required module provides package \"example.com/withdeps/foo\")"}]]
+
+
+errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"go get package example.com/withdeps/foo\"\],{.*\"title\":\"could not import example.com/withdeps/foo \(no required module provides package \\\"example.com/withdeps/foo\\\"\)\"'
+! stderr .+
+
+# Can't do vim ex 'normal .. here since the key press must reach the popup menu
+vim ex 'call feedkeys(\"\\<Enter>\", \"xt\")'
+errlogmatch 'recvJSONMsg: .*GOVIM_internal_PopupSelection'
+
+# This check isn't necessary, since how gopls choose to provide the fix is just an implementation detail.
+# It do however verify that we can apply fixes that require govim to call ExecuteCommand (govim/govim#1025)
+# and acts as a canary as long as gopls use commands for this particular fix.
+errlogmatch '&protocol.ExecuteCommandParams{\n.*Command:   \"gopls.go_get_package\"'
+
+# Make sure that the diagnostic goes away when the fix is applied.
+vimexprwait errors.empty GOVIMTest_getqflist()
+
+vim ex 'w!'
+cmp go.mod go.mod.golden
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.14
+-- go.mod.golden --
+module mod.com
+
+go 1.14
+
+require example.com/withdeps v1.0.0
+-- main.go --
+package main
+
+import (
+	"fmt"
+
+	_ "example.com/withdeps/foo"
+)
+
+func main() {
+	fmt.Println("hello, world!")
+}
+-- errors.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 4,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "could not import example.com/withdeps/foo (no required module provides package \"example.com/withdeps/foo\")",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.empty --
+[]

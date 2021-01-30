@@ -1,0 +1,69 @@
+# Test that suggested edits can be applied to go.mod - removing a dependency.
+
+[!go1.14] skip '-modfile only supported in Go 1.14'
+
+# Open go.mod that contain an unused depdendency
+vim ex 'e go.mod'
+
+# Wait for the diag and open up suggested fixes
+vimexprwait errors.golden GOVIMTest_getqflist()
+vim ex 'call cursor(3,1)'
+vim ex 'GOVIMSuggestedFixes'
+
+# Wait for popup
+errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove dependency: example.com/blah\"\],{.*\"title\":\"example.com/blah is not used in this module\"'
+! stderr .+
+
+# Can't do vim ex 'normal .. here since the key press must reach the popup menu
+vim ex 'call feedkeys(\"\\<Enter>\", \"xt\")'
+errlogmatch 'recvJSONMsg: .*GOVIM_internal_PopupSelection'
+
+# This check isn't necessary, since how gopls choose to provide the fix is just an implementation detail.
+# It do however verify that we can apply fixes that require govim to call ExecuteCommand (govim/govim#1025)
+# and acts as a canary as long as gopls use commands for this particular fix.
+errlogmatch '&protocol.ExecuteCommandParams{\n.*Command:   \"gopls.remove_dependency\"'
+
+vim ex 'w!'
+cmp go.mod go.mod.golden
+
+# Make sure that the diagnostic goes away when the fix is applied.
+vimexprwait errors.empty GOVIMTest_getqflist()
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+require example.com/blah v1.0.0
+
+go 1.14
+-- go.mod.golden --
+module mod.com
+
+go 1.14
+-- go.sum --
+example.com/blah v1.0.0 h1:Yr7B+aw1mdffvbZEpxOQr3JwCLQMmUvzFAzxw8p1gqk=
+example.com/blah v1.0.0/go.mod h1:LDRgDEBCzM88pzTnG9COwUsPcGLsgrBJyaYCbPaAEi8=
+-- main.go --
+package main
+
+func main() {}
+-- errors.golden --
+[
+  {
+    "bufname": "go.mod",
+    "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "example.com/blah is not used in this module",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.empty --
+[]
