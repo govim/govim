@@ -131,6 +131,7 @@ func (v *vimstate) motion(args ...json.RawMessage) (interface{}, error) {
 	}
 
 	if targetNode != nil {
+		v.ChannelEx("normal! m'")
 		position := b.Fset.Position(resolv(targetNode))
 		v.ChannelCall("cursor", position.Line, position.Column)
 	}
