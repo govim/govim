@@ -73,4 +73,7 @@ func (r *Config) Apply(v *Config) {
 	if v.ExperimentalProgressPopups != nil {
 		r.ExperimentalProgressPopups = v.ExperimentalProgressPopups
 	}
+	if v.ExperimentalAllowModfileModifications != nil {
+		r.ExperimentalAllowModfileModifications = v.ExperimentalAllowModfileModifications
+	}
 }
