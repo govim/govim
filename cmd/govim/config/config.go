@@ -281,6 +281,22 @@ type Config struct {
 	//
 	// Default: false
 	ExperimentalProgressPopups *bool `json:",omitempty"`
+
+	// ExperimentalAllowModfileModifications controls whether gopls should
+	// automatically modify go.{mod,sum} as a side effect of its use of cmd/go
+	// or not. Setting this option to true can be considered a gopls equivalent
+	// to setting GOFLAGS=-mod=mod when using cmd/go. Leaving it unset or
+	// setting it to false is equivalent to -mod=readonly. Indeed setting
+	// GOFLAGS=-mod=XYZ is now considered deprecated as a means of controlling
+	// this behaviour in gopls.
+	//
+	// For reference: in Go 1.16 cmd/go build commands default to -mod=readonly
+	// (equivalent to leaving this option unset, or setting it to false),
+	// whereas prior to Go 1.16 the default was -mod=mod (equivalent to setting
+	// this option to true).
+	//
+	// Default: true
+	ExperimentalAllowModfileModifications *bool `json:",omitempty"`
 }
 
 type Command string

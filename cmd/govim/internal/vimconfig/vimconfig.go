@@ -31,6 +31,7 @@ type VimConfig struct {
 	ExperimentalCursorTriggeredHoverPopupOptions *map[string]interface{}
 	ExperimentalWorkaroundCompleteoptLongest     *int
 	ExperimentalProgressPopups                   *int
+	ExperimentalAllowModfileModifications        *int
 }
 
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
@@ -59,6 +60,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		ExperimentalCursorTriggeredHoverPopupOptions: copyMap(c.ExperimentalCursorTriggeredHoverPopupOptions, d.ExperimentalCursorTriggeredHoverPopupOptions),
 		ExperimentalWorkaroundCompleteoptLongest:     boolVal(c.ExperimentalWorkaroundCompleteoptLongest, d.ExperimentalWorkaroundCompleteoptLongest),
 		ExperimentalProgressPopups:                   boolVal(c.ExperimentalProgressPopups, d.ExperimentalProgressPopups),
+		ExperimentalAllowModfileModifications:        boolVal(c.ExperimentalAllowModfileModifications, d.ExperimentalAllowModfileModifications),
 	}
 	if v.FormatOnSave == nil {
 		v.FormatOnSave = d.FormatOnSave
