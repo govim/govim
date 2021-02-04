@@ -5,8 +5,10 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -129,6 +131,39 @@ func TestScripts(t *testing.T) {
 						e.Vars = append(e.Vars, "GOVIM_LOGFILE_TMPL=%v")
 					}
 					testPluginPath := filepath.Join(home, ".vim", "pack", "plugins", "start", "govim")
+
+					// Special setup - can now proceed now that e.Vars is complete
+					for _, f := range []string{".warm_module_cache"} {
+						fp := filepath.Join(e.WorkDir, f)
+						c, err := ioutil.ReadFile(fp)
+						if errors.Is(err, os.ErrNotExist) {
+							continue
+						}
+						if err != nil {
+							return fmt.Errorf("failed to read %s: %w", fp, err)
+						}
+						switch f {
+						case ".warm_module_cache":
+							// We need to run go get -d for each non-empty, non-comment line
+							// in the context of a temporary module, using the same environment
+							td, err := ioutil.TempDir("", "")
+							if err != nil {
+								t.Fatalf("failed to create temp dir for warm_module_cache: %v", err)
+							}
+							defer os.RemoveAll(td) // we don't need this after Setup
+							s := bufio.NewScanner(bytes.NewReader(c))
+							for s.Scan() {
+								mod := strings.TrimSpace(s.Text())
+								if strings.HasPrefix(mod, "#") {
+									continue
+								}
+								runCmdEnvDir(t, e, td, "go", "get", mod)
+							}
+							if err := s.Err(); err != nil {
+								return fmt.Errorf("failed to read lines from .warm_module_cache: %v", err)
+							}
+						}
+					}
 
 					errLog := new(testdriver.LockingBuffer)
 					outputs := []io.Writer{
@@ -324,8 +359,20 @@ func TestInstallScripts(t *testing.T) {
 }
 
 func runCmd(t *testing.T, c string, args ...string) string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	return runCmdEnvDir(t, nil, cwd, c, args...)
+}
+
+func runCmdEnvDir(t *testing.T, e *testscript.Env, dir string, c string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(c, args...)
+	if e != nil {
+		cmd.Env = e.Vars
+	}
+	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("failed to run %v: %v\n%s", strings.Join(cmd.Args, " "), err, out)
