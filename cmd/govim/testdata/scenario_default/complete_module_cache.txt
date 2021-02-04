@@ -16,6 +16,9 @@ module mod.com
 go 1.12
 
 require example.com/blah v1.0.0
+-- go.sum --
+example.com/blah v1.0.0 h1:Yr7B+aw1mdffvbZEpxOQr3JwCLQMmUvzFAzxw8p1gqk=
+example.com/blah v1.0.0/go.mod h1:LDRgDEBCzM88pzTnG9COwUsPcGLsgrBJyaYCbPaAEi8=
 -- main.go --
 package main
 
