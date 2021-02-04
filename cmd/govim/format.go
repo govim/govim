@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
@@ -107,7 +106,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 				if euri != buri {
 					return fmt.Errorf("got edits for file %v, but buffer is %v", euri, buri)
 				}
-				if ev := int(math.Round(dc.TextDocument.Version)); ev > 0 && ev != b.Version {
+				if ev := dc.TextDocument.Version; ev > 0 && ev != b.Version {
 					return fmt.Errorf("got edits for version %v, but current buffer version is %v", ev, b.Version)
 				}
 				edits := dc.Edits

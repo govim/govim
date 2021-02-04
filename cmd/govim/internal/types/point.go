@@ -2,7 +2,6 @@ package types
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -53,7 +52,7 @@ func PointFromVim(b *Buffer, line, col int) (Point, error) {
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate offset within buffer %v: %v", b.Num, err)
 	}
-	p := span.NewPoint(line, col, off)
+	p := span.NewPoint(int(line), int(col), off)
 	utf16col, err := span.ToUTF16Column(p, b.contents)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate UTF16 char value: %v", err)
@@ -70,14 +69,14 @@ func PointFromVim(b *Buffer, line, col int) (Point, error) {
 
 func PointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 	cc := b.tokenConvertor()
-	sline := f2int(pos.Line) + 1
-	scol := f2int(pos.Character)
-	soff, err := cc.ToOffset(sline, 1)
+	sline := pos.Line + 1
+	scol := pos.Character
+	soff, err := cc.ToOffset(int(sline), 1)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate offset within buffer %v: %v", b.Num, err)
 	}
-	p := span.NewPoint(sline, 1, soff)
-	p, err = span.FromUTF16Column(p, scol+1, b.contents)
+	p := span.NewPoint(int(sline), 1, soff)
+	p, err = span.FromUTF16Column(p, int(scol)+1, b.contents)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to translate char colum for buffer %v: %v", b.Num, err)
 	}
@@ -86,7 +85,7 @@ func PointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 		line:     p.Line(),
 		col:      p.Column(),
 		offset:   p.Offset(),
-		utf16Col: scol,
+		utf16Col: int(scol),
 	}
 	return res, nil
 }
@@ -135,13 +134,13 @@ func (p Point) Offset() int {
 
 // GoplsLine is the 0-index line in the buffer, returned as a float64 value. This
 // is how gopls refers to lines.
-func (p Point) GoplsLine() float64 {
-	return float64(p.line - 1)
+func (p Point) GoplsLine() uint32 {
+	return uint32(p.line) - 1
 }
 
 // GoplsChar is the 0-index character offset in a buffer.
-func (p Point) GoplsChar() float64 {
-	return float64(p.utf16Col)
+func (p Point) GoplsChar() uint32 {
+	return uint32(p.utf16Col)
 }
 
 // ToPosition converts p to a protocol.Position
@@ -156,8 +155,4 @@ func (p Point) ToPosition() protocol.Position {
 func (p Point) IsWithin(r Range) bool {
 	return r.Start.Offset() <= p.Offset() &&
 		p.Offset() <= r.End.Offset()
-}
-
-func f2int(f float64) int {
-	return int(math.Round(f))
 }

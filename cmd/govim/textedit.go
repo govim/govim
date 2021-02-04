@@ -151,7 +151,7 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 	params := &protocol.DidChangeTextDocumentParams{
 		TextDocument: protocol.VersionedTextDocumentIdentifier{
 			TextDocumentIdentifier: b.ToTextDocumentIdentifier(),
-			Version:                float64(b.Version),
+			Version:                b.Version,
 		},
 		ContentChanges: []protocol.TextDocumentContentChangeEvent{
 			{

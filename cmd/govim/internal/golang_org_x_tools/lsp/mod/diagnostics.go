@@ -8,6 +8,7 @@ package mod
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
@@ -26,22 +27,12 @@ func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.Vers
 			return nil, err
 		}
 		reports[fh.VersionedFileIdentity()] = []*source.Diagnostic{}
-		errors, err := ErrorsForMod(ctx, snapshot, fh)
+		diagnostics, err := DiagnosticsForMod(ctx, snapshot, fh)
 		if err != nil {
 			return nil, err
 		}
-		for _, e := range errors {
-			d := &source.Diagnostic{
-				Message: e.Message,
-				Range:   e.Range,
-				Source:  e.Category,
-			}
-			if e.Category == "syntax" || e.Kind == source.ListError {
-				d.Severity = protocol.SeverityError
-			} else {
-				d.Severity = protocol.SeverityWarning
-			}
-			fh, err := snapshot.GetVersionedFile(ctx, e.URI)
+		for _, d := range diagnostics {
+			fh, err := snapshot.GetVersionedFile(ctx, d.URI)
 			if err != nil {
 				return nil, err
 			}
@@ -51,7 +42,7 @@ func Diagnostics(ctx context.Context, snapshot source.Snapshot) (map[source.Vers
 	return reports, nil
 }
 
-func ErrorsForMod(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle) ([]*source.Error, error) {
+func DiagnosticsForMod(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle) ([]*source.Diagnostic, error) {
 	pm, err := snapshot.ParseMod(ctx, fh)
 	if err != nil {
 		if pm == nil || len(pm.ParseErrors) == 0 {
@@ -59,13 +50,50 @@ func ErrorsForMod(ctx context.Context, snapshot source.Snapshot, fh source.FileH
 		}
 		return pm.ParseErrors, nil
 	}
+
+	var diagnostics []*source.Diagnostic
+
+	// Add upgrade quick fixes for individual modules if we know about them.
+	upgrades := snapshot.View().ModuleUpgrades()
+	for _, req := range pm.File.Require {
+		ver, ok := upgrades[req.Mod.Path]
+		if !ok || req.Mod.Version == ver {
+			continue
+		}
+		rng, err := lineToRange(pm.Mapper, fh.URI(), req.Syntax.Start, req.Syntax.End)
+		if err != nil {
+			return nil, err
+		}
+		// Upgrade to the exact version we offer the user, not the most recent.
+		args, err := source.MarshalArgs(fh.URI(), false, []string{req.Mod.Path + "@" + ver})
+		if err != nil {
+			return nil, err
+		}
+		diagnostics = append(diagnostics, &source.Diagnostic{
+			URI:      fh.URI(),
+			Range:    rng,
+			Severity: protocol.SeverityInformation,
+			Source:   source.UpgradeNotification,
+			Message:  fmt.Sprintf("%v can be upgraded", req.Mod.Path),
+			SuggestedFixes: []source.SuggestedFix{{
+				Title: fmt.Sprintf("Upgrade to %v", ver),
+				Command: &protocol.Command{
+					Title:     fmt.Sprintf("Upgrade to %v", ver),
+					Command:   source.CommandUpgradeDependency.ID(),
+					Arguments: args,
+				},
+			}},
+		})
+	}
+
 	tidied, err := snapshot.ModTidy(ctx, pm)
 
 	if source.IsNonFatalGoModError(err) {
-		return nil, nil
+		return diagnostics, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return tidied.Errors, nil
+	diagnostics = append(diagnostics, tidied.Diagnostics...)
+	return diagnostics, nil
 }

@@ -66,10 +66,10 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 }
 
 type bufChangedChange struct {
-	Lnum  int      `json:"lnum"`
-	Col   int      `json:"col"`
+	Lnum  uint32   `json:"lnum"`
+	Col   uint32   `json:"col"`
 	Added int      `json:"added"`
-	End   int      `json:"end"`
+	End   uint32   `json:"end"`
 	Type  string   `json:"type"`
 	Lines []string `json:"lines"`
 }
@@ -103,7 +103,7 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 	params := &protocol.DidChangeTextDocumentParams{
 		TextDocument: protocol.VersionedTextDocumentIdentifier{
 			TextDocumentIdentifier: b.ToTextDocumentIdentifier(),
-			Version:                float64(b.Version),
+			Version:                b.Version,
 		},
 	}
 	for _, c := range changes {
@@ -111,7 +111,7 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 		change := protocol.TextDocumentContentChangeEvent{
 			Range: &protocol.Range{
 				Start: protocol.Position{
-					Line:      float64(c.Lnum - 1),
+					Line:      c.Lnum - 1,
 					Character: 0,
 				},
 			},
@@ -125,7 +125,7 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 		}
 		newcontents = append(newcontents, contents[c.End-1:]...)
 		change.Range.End = protocol.Position{
-			Line:      float64(c.End - 1),
+			Line:      c.End - 1,
 			Character: 0,
 		}
 		contents = newcontents
@@ -156,7 +156,7 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 			TextDocument: protocol.TextDocumentItem{
 				LanguageID: source.DetectLanguage("", b.URI().Filename()).String(),
 				URI:        protocol.DocumentURI(b.URI()),
-				Version:    float64(b.Version),
+				Version:    b.Version,
 				Text:       string(b.Contents()),
 			},
 		}
@@ -167,7 +167,7 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 	params := &protocol.DidChangeTextDocumentParams{
 		TextDocument: protocol.VersionedTextDocumentIdentifier{
 			TextDocumentIdentifier: b.ToTextDocumentIdentifier(),
-			Version:                float64(b.Version),
+			Version:                b.Version,
 		},
 		ContentChanges: []protocol.TextDocumentContentChangeEvent{
 			{
@@ -215,9 +215,8 @@ func (v *vimstate) bufWritePost(args ...json.RawMessage) error {
 		return fmt.Errorf("tried to handle BufWritePost for buffer %v; but we have no record of it", currBufNr)
 	}
 	params := &protocol.DidSaveTextDocumentParams{
-		TextDocument: protocol.VersionedTextDocumentIdentifier{
-			TextDocumentIdentifier: cb.ToTextDocumentIdentifier(),
-			Version:                float64(cb.Version),
+		TextDocument: protocol.TextDocumentIdentifier{
+			URI: protocol.DocumentURI(cb.URI()),
 		},
 	}
 	if err := v.server.DidSave(context.Background(), params); err != nil {
@@ -230,14 +229,14 @@ type bufferUpdate struct {
 	buffer   *types.Buffer
 	wait     chan bool
 	name     string
-	version  int
+	version  int32
 	contents []byte
 }
 
 func (g *govimplugin) startProcessBufferUpdates() {
 	g.bufferUpdates = make(chan *bufferUpdate)
 	g.tomb.Go(func() error {
-		latest := make(map[*types.Buffer]int)
+		latest := make(map[*types.Buffer]int32)
 		var lock sync.Mutex
 		for upd := range g.bufferUpdates {
 			upd := upd

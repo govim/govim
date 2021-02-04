@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	exec "golang.org/x/sys/execabs"
 	"io"
 	"io/ioutil"
 	"os"
@@ -23,10 +22,12 @@ import (
 
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/semver"
+	exec "golang.org/x/sys/execabs"
 	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -59,6 +60,9 @@ type View struct {
 	folder span.URI
 
 	importsState *importsState
+
+	// moduleUpgrades tracks known upgrades for module paths.
+	moduleUpgrades map[string]string
 
 	// keep track of files by uri and by basename, a single file may be mapped
 	// to multiple uris, and the same basename may map to multiple files
@@ -536,12 +540,12 @@ func (s *snapshot) initialize(ctx context.Context, firstAttempt bool) {
 
 		// If we have multiple modules, we need to load them by paths.
 		var scopes []interface{}
-		var modErrors []*source.Error
+		var modDiagnostics []*source.Diagnostic
 		addError := func(uri span.URI, err error) {
-			modErrors = append(modErrors, &source.Error{
+			modDiagnostics = append(modDiagnostics, &source.Diagnostic{
 				URI:      uri,
-				Category: "compiler",
-				Kind:     source.ListError,
+				Severity: protocol.SeverityError,
+				Source:   source.ListError,
 				Message:  err.Error(),
 			})
 		}
@@ -572,13 +576,15 @@ func (s *snapshot) initialize(ctx context.Context, firstAttempt bool) {
 		}
 		if err != nil {
 			event.Error(ctx, "initial workspace load failed", err)
-			if modErrors != nil {
+			if modDiagnostics != nil {
 				s.initializedErr = &source.CriticalError{
-					MainError: errors.Errorf("errors loading modules: %v: %w", err, modErrors),
-					ErrorList: modErrors,
+					MainError: errors.Errorf("errors loading modules: %v: %w", err, modDiagnostics),
+					DiagList:  modDiagnostics,
 				}
 			} else {
-				s.initializedErr = err
+				s.initializedErr = &source.CriticalError{
+					MainError: err,
+				}
 			}
 		} else {
 			// Clear out the initialization error, in case it had been set
@@ -861,6 +867,26 @@ func (s *Session) getGoEnv(ctx context.Context, folder string, goversion int, go
 
 func (v *View) IsGoPrivatePath(target string) bool {
 	return globsMatchPath(v.goprivate, target)
+}
+
+func (v *View) ModuleUpgrades() map[string]string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	upgrades := map[string]string{}
+	for mod, ver := range v.moduleUpgrades {
+		upgrades[mod] = ver
+	}
+	return upgrades
+}
+
+func (v *View) RegisterModuleUpgrades(upgrades map[string]string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+
+	for mod, ver := range upgrades {
+		v.moduleUpgrades[mod] = ver
+	}
 }
 
 // Copied from

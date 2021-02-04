@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"math"
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -120,7 +119,7 @@ func (v *vimstate) applyWorkspaceEdit(params *protocol.ApplyWorkspaceEditParams)
 				continue
 			}
 
-			if ev := int(math.Round(dc.TextDocument.Version)); ev > 0 && ev != b.Version {
+			if ev := dc.TextDocument.Version; ev > 0 && ev != b.Version {
 				return nil, fmt.Errorf("got edits for buffer version %v, found matching buffer with version %v", ev, b.Version)
 			}
 

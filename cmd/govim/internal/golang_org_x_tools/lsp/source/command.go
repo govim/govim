@@ -65,6 +65,7 @@ var Commands = []*Command{
 	CommandUpdateGoSum,
 	CommandUndeclaredName,
 	CommandGoGetPackage,
+	CommandCheckUpgrades,
 	CommandAddDependency,
 	CommandUpgradeDependency,
 	CommandRemoveDependency,
@@ -111,6 +112,12 @@ var (
 	CommandUpdateGoSum = &Command{
 		Name:  "update_go_sum",
 		Title: "Update go.sum",
+	}
+
+	// CommandCheckUpgrades checks for module upgrades.
+	CommandCheckUpgrades = &Command{
+		Name:  "check_upgrades",
+		Title: "Check for upgrades",
 	}
 
 	// CommandAddDependency adds a dependency.
@@ -239,7 +246,7 @@ func (c *Command) SuggestedFix(ctx context.Context, snapshot Snapshot, fh Versio
 			return nil, err
 		}
 		edits = append(edits, protocol.TextDocumentEdit{
-			TextDocument: protocol.VersionedTextDocumentIdentifier{
+			TextDocument: protocol.OptionalVersionedTextDocumentIdentifier{
 				Version: fh.Version(),
 				TextDocumentIdentifier: protocol.TextDocumentIdentifier{
 					URI: protocol.URIFromSpanURI(fh.URI()),

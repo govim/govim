@@ -19,7 +19,7 @@ type Buffer struct {
 	Num      int
 	Name     string
 	contents []byte
-	Version  int
+	Version  int32
 
 	// Listener is the ID of the listener for the buffer. Listeners number from
 	// 1 so the zero value indicates this buffer does not have a listener.
