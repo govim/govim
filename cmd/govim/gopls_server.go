@@ -217,6 +217,13 @@ func (l loggingGoplsServer) ResolveCodeLens(ctxt context.Context, params *protoc
 	return res, err
 }
 
+func (l loggingGoplsServer) CodeLensRefresh(ctxt context.Context) error {
+	l.Logf("gopls.CodeLensRefresh() call\n%v")
+	err := l.u.CodeLensRefresh(ctxt)
+	l.Logf("gopls.CodeLensRefresh() return; err: %v\n%v", err)
+	return err
+}
+
 func (l loggingGoplsServer) DocumentLink(ctxt context.Context, params *protocol.DocumentLinkParams) ([]protocol.DocumentLink, error) {
 	l.Logf("gopls.DocumentLink() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.DocumentLink(ctxt, params)
@@ -389,5 +396,61 @@ func (l loggingGoplsServer) ResolveCodeAction(ctxt context.Context, params *prot
 	l.Logf("gopls.ResolveCodeAction() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.ResolveCodeAction(ctxt, params)
 	l.Logf("gopls.ResolveCodeAction() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) DidCreateFiles(ctxt context.Context, params *protocol.CreateFilesParams) error {
+	l.Logf("gopls.DidCreateFiles() call; params:\n%v", pretty.Sprint(params))
+	err := l.u.DidCreateFiles(ctxt, params)
+	l.Logf("gopls.DidCreateFiles() return; err: %v\n%v", err)
+	return err
+}
+
+func (l loggingGoplsServer) DidDeleteFiles(ctxt context.Context, params *protocol.DeleteFilesParams) error {
+	l.Logf("gopls.DidDeleteFiles() call; params:\n%v", pretty.Sprint(params))
+	err := l.u.DidDeleteFiles(ctxt, params)
+	l.Logf("gopls.DidDeleteFiles() return; err: %v\n%v", err)
+	return err
+}
+
+func (l loggingGoplsServer) DidRenameFiles(ctxt context.Context, params *protocol.RenameFilesParams) error {
+	l.Logf("gopls.DidRenameFiles() call; params:\n%v", pretty.Sprint(params))
+	err := l.u.DidRenameFiles(ctxt, params)
+	l.Logf("gopls.DidRenameFiles() return; err: %v\n%v", err)
+	return err
+}
+
+func (l loggingGoplsServer) LinkedEditingRange(ctxt context.Context, params *protocol.LinkedEditingRangeParams) (*protocol.LinkedEditingRanges, error) {
+	l.Logf("gopls.LinkedEditingRange() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.LinkedEditingRange(ctxt, params)
+	l.Logf("gopls.LinkedEditingRange() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) ShowDocument(ctxt context.Context, params *protocol.ShowDocumentParams) (*protocol.ShowDocumentResult, error) {
+	l.Logf("gopls.ShowDocument() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.ShowDocument(ctxt, params)
+	l.Logf("gopls.ShowDocument() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) WillCreateFiles(ctxt context.Context, params *protocol.CreateFilesParams) (*protocol.WorkspaceEdit, error) {
+	l.Logf("gopls.WillCreateFiles() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.WillCreateFiles(ctxt, params)
+	l.Logf("gopls.WillCreateFiles() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) WillDeleteFiles(ctxt context.Context, params *protocol.DeleteFilesParams) (*protocol.WorkspaceEdit, error) {
+	l.Logf("gopls.WillDeleteFiles() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.WillDeleteFiles(ctxt, params)
+	l.Logf("gopls.WillDeleteFiles() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) WillRenameFiles(ctxt context.Context, params *protocol.RenameFilesParams) (*protocol.WorkspaceEdit, error) {
+	l.Logf("gopls.WillRenameFiles() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.WillRenameFiles(ctxt, params)
+	l.Logf("gopls.WillRenameFiles() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }

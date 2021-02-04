@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"math"
 	"sort"
 	"strings"
 
@@ -97,7 +96,7 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 		}
 		// We previously verified the filepath above by doing the reverse
 		// lookup from filepath -> buffer, so just verify the version
-		ev := int(math.Round(changes.TextDocument.Version))
+		ev := changes.TextDocument.Version
 		if ev > 0 && ev != b.Version {
 			return fmt.Errorf("edit for buffer %v (%v) was for version %v, current version is %v", tf, bufnr, ev, b.Version)
 		}

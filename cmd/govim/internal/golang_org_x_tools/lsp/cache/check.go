@@ -20,6 +20,7 @@ import (
 	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -377,12 +378,12 @@ func typeCheck(ctx context.Context, snapshot *snapshot, m *metadata, mode source
 		// Try to attach errors messages to the file as much as possible.
 		var found bool
 		for _, e := range rawErrors {
-			srcErr, err := sourceError(ctx, snapshot, pkg, e)
+			srcDiags, err := sourceDiagnostics(ctx, snapshot, pkg, protocol.SeverityError, e)
 			if err != nil {
 				continue
 			}
 			found = true
-			pkg.errors = append(pkg.errors, srcErr)
+			pkg.diagnostics = append(pkg.diagnostics, srcDiags...)
 		}
 		if found {
 			return pkg, nil
@@ -439,12 +440,13 @@ func typeCheck(ctx context.Context, snapshot *snapshot, m *metadata, mode source
 	if mode == source.ParseFull {
 		expandErrors(rawErrors)
 		for _, e := range rawErrors {
-			srcErr, err := sourceError(ctx, snapshot, pkg, e)
+			srcDiags, err := sourceDiagnostics(ctx, snapshot, pkg, protocol.SeverityError, e)
 			if err != nil {
 				event.Error(ctx, "unable to compute error positions", err, tag.Package.Of(pkg.ID()))
 				continue
 			}
-			pkg.errors = append(pkg.errors, srcErr)
+			pkg.diagnostics = append(pkg.diagnostics, srcDiags...)
+
 			if err, ok := e.(extendedError); ok {
 				pkg.typeErrors = append(pkg.typeErrors, err.primary)
 			}

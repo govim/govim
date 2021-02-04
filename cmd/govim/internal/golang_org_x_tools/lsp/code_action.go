@@ -262,7 +262,7 @@ func analysisFixes(ctx context.Context, snapshot source.Snapshot, pkg source.Pac
 		sourceFixAllEdits []protocol.TextDocumentEdit
 	)
 	for _, diag := range diagnostics {
-		srcErr, analyzer, ok := findSourceError(ctx, snapshot, pkg.ID(), diag)
+		srcErr, analyzer, ok := findDiagnostic(ctx, snapshot, pkg.ID(), diag)
 		if !ok {
 			continue
 		}
@@ -300,7 +300,7 @@ func analysisFixes(ctx context.Context, snapshot source.Snapshot, pkg source.Pac
 	return codeActions, sourceFixAllEdits, nil
 }
 
-func findSourceError(ctx context.Context, snapshot source.Snapshot, pkgID string, diag protocol.Diagnostic) (*source.Error, source.Analyzer, bool) {
+func findDiagnostic(ctx context.Context, snapshot source.Snapshot, pkgID string, diag protocol.Diagnostic) (*source.Diagnostic, source.Analyzer, bool) {
 	analyzer := diagnosticToAnalyzer(snapshot, diag.Source, diag.Message)
 	if analyzer == nil {
 		return nil, source.Analyzer{}, false
@@ -316,7 +316,7 @@ func findSourceError(ctx context.Context, snapshot source.Snapshot, pkgID string
 		if protocol.CompareRange(err.Range, diag.Range) != 0 {
 			continue
 		}
-		if err.Category != analyzer.Analyzer.Name {
+		if string(err.Source) != analyzer.Analyzer.Name {
 			continue
 		}
 		// The error matches.
@@ -428,31 +428,31 @@ func convenienceFixes(ctx context.Context, snapshot source.Snapshot, pkg source.
 	return codeActions, nil
 }
 
-func diagnosticToCommandCodeAction(ctx context.Context, snapshot source.Snapshot, e *source.Error, d *protocol.Diagnostic, kind protocol.CodeActionKind) (*protocol.CodeAction, error) {
+func diagnosticToCommandCodeAction(ctx context.Context, snapshot source.Snapshot, sd *source.Diagnostic, pd *protocol.Diagnostic, kind protocol.CodeActionKind) (*protocol.CodeAction, error) {
 	// The fix depends on the category of the analyzer. The diagnostic may be
 	// nil, so use the error's category.
-	analyzer := diagnosticToAnalyzer(snapshot, e.Category, e.Message)
+	analyzer := diagnosticToAnalyzer(snapshot, string(sd.Source), sd.Message)
 	if analyzer == nil {
-		return nil, fmt.Errorf("no convenience analyzer for category %s", e.Category)
+		return nil, fmt.Errorf("no convenience analyzer for source %s", sd.Source)
 	}
 	if analyzer.Command == nil {
 		return nil, fmt.Errorf("no command for convenience analyzer %s", analyzer.Analyzer.Name)
 	}
-	jsonArgs, err := source.MarshalArgs(e.URI, e.Range)
+	jsonArgs, err := source.MarshalArgs(sd.URI, sd.Range)
 	if err != nil {
 		return nil, err
 	}
 	var diagnostics []protocol.Diagnostic
-	if d != nil {
-		diagnostics = append(diagnostics, *d)
+	if pd != nil {
+		diagnostics = append(diagnostics, *pd)
 	}
 	return &protocol.CodeAction{
-		Title:       e.Message,
+		Title:       sd.Message,
 		Kind:        kind,
 		Diagnostics: diagnostics,
 		Command: &protocol.Command{
 			Command:   analyzer.Command.ID(),
-			Title:     e.Message,
+			Title:     sd.Message,
 			Arguments: jsonArgs,
 		},
 	}, nil
@@ -493,7 +493,7 @@ func extractionFixes(ctx context.Context, snapshot source.Snapshot, pkg source.P
 func documentChanges(fh source.VersionedFileHandle, edits []protocol.TextEdit) []protocol.TextDocumentEdit {
 	return []protocol.TextDocumentEdit{
 		{
-			TextDocument: protocol.VersionedTextDocumentIdentifier{
+			TextDocument: protocol.OptionalVersionedTextDocumentIdentifier{
 				Version: fh.Version(),
 				TextDocumentIdentifier: protocol.TextDocumentIdentifier{
 					URI: protocol.URIFromSpanURI(fh.URI()),
@@ -520,7 +520,7 @@ func moduleQuickFixes(ctx context.Context, snapshot source.Snapshot, fh source.V
 			return nil, err
 		}
 	}
-	errors, err := mod.ErrorsForMod(ctx, snapshot, modFH)
+	errors, err := mod.DiagnosticsForMod(ctx, snapshot, modFH)
 	if err != nil {
 		return nil, err
 	}
@@ -549,7 +549,7 @@ func moduleQuickFixes(ctx context.Context, snapshot source.Snapshot, fh source.V
 					continue
 				}
 				action.Edit.DocumentChanges = append(action.Edit.DocumentChanges, protocol.TextDocumentEdit{
-					TextDocument: protocol.VersionedTextDocumentIdentifier{
+					TextDocument: protocol.OptionalVersionedTextDocumentIdentifier{
 						Version: modFH.Version(),
 						TextDocumentIdentifier: protocol.TextDocumentIdentifier{
 							URI: protocol.URIFromSpanURI(modFH.URI()),
@@ -564,8 +564,8 @@ func moduleQuickFixes(ctx context.Context, snapshot source.Snapshot, fh source.V
 	return quickFixes, nil
 }
 
-func sameDiagnostic(d protocol.Diagnostic, e *source.Error) bool {
-	return d.Message == e.Message && protocol.CompareRange(d.Range, e.Range) == 0 && d.Source == e.Category
+func sameDiagnostic(pd protocol.Diagnostic, sd *source.Diagnostic) bool {
+	return pd.Message == sd.Message && protocol.CompareRange(pd.Range, sd.Range) == 0 && pd.Source == string(sd.Source)
 }
 
 func goTest(ctx context.Context, snapshot source.Snapshot, uri span.URI, rng protocol.Range) ([]protocol.CodeAction, error) {

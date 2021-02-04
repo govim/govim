@@ -217,6 +217,25 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 			return err
 		}
 		return runSimpleGoCommand(ctx, snapshot, source.UpdateUserModFile|source.AllowNetwork, uri.SpanURI(), "list", []string{"all"})
+	case source.CommandCheckUpgrades:
+		var uri protocol.DocumentURI
+		var modules []string
+		if err := source.UnmarshalArgs(args, &uri, &modules); err != nil {
+			return err
+		}
+		snapshot, _, ok, release, err := s.beginFileRequest(ctx, uri, source.UnknownKind)
+		defer release()
+		if !ok {
+			return err
+		}
+		upgrades, err := s.getUpgrades(ctx, snapshot, uri.SpanURI(), modules)
+		if err != nil {
+			return err
+		}
+		snapshot.View().RegisterModuleUpgrades(upgrades)
+		// Re-diagnose the snapshot to publish the new module diagnostics.
+		s.diagnoseSnapshot(snapshot, nil, false)
+		return nil
 	case source.CommandAddDependency, source.CommandUpgradeDependency:
 		var uri protocol.DocumentURI
 		var goCmdArgs []string
@@ -233,8 +252,8 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 	case source.CommandRemoveDependency:
 		var uri protocol.DocumentURI
 		var modulePath string
-		var onlyError bool
-		if err := source.UnmarshalArgs(args, &uri, &onlyError, &modulePath); err != nil {
+		var onlyDiagnostic bool
+		if err := source.UnmarshalArgs(args, &uri, &onlyDiagnostic, &modulePath); err != nil {
 			return err
 		}
 		snapshot, fh, ok, release, err := s.beginFileRequest(ctx, uri, source.UnknownKind)
@@ -247,7 +266,7 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 		// must make textual edits.
 		// TODO(rstambler): In Go 1.17+, we will be able to use the go command
 		// without checking if the module is tidy.
-		if onlyError {
+		if onlyDiagnostic {
 			if err := s.runGoGetModule(ctx, snapshot, uri.SpanURI(), false, []string{modulePath + "@none"}); err != nil {
 				return err
 			}
@@ -264,7 +283,7 @@ func (s *Server) runCommand(ctx context.Context, work *workDone, command *source
 		response, err := s.client.ApplyEdit(ctx, &protocol.ApplyWorkspaceEditParams{
 			Edit: protocol.WorkspaceEdit{
 				DocumentChanges: []protocol.TextDocumentEdit{{
-					TextDocument: protocol.VersionedTextDocumentIdentifier{
+					TextDocument: protocol.OptionalVersionedTextDocumentIdentifier{
 						Version: fh.Version(),
 						TextDocumentIdentifier: protocol.TextDocumentIdentifier{
 							URI: protocol.URIFromSpanURI(fh.URI()),
@@ -510,4 +529,28 @@ func runSimpleGoCommand(ctx context.Context, snapshot source.Snapshot, mode sour
 		WorkingDir: filepath.Dir(uri.Filename()),
 	})
 	return err
+}
+
+func (s *Server) getUpgrades(ctx context.Context, snapshot source.Snapshot, uri span.URI, modules []string) (map[string]string, error) {
+	stdout, err := snapshot.RunGoCommandDirect(ctx, source.Normal|source.AllowNetwork, &gocommand.Invocation{
+		Verb:       "list",
+		Args:       append([]string{"-m", "-u", "-json"}, modules...),
+		WorkingDir: filepath.Dir(uri.Filename()),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	upgrades := map[string]string{}
+	for dec := json.NewDecoder(stdout); dec.More(); {
+		mod := &gocommand.ModuleJSON{}
+		if err := dec.Decode(mod); err != nil {
+			return nil, err
+		}
+		if mod.Update == nil {
+			continue
+		}
+		upgrades[mod.Path] = mod.Update.Version
+	}
+	return upgrades, nil
 }

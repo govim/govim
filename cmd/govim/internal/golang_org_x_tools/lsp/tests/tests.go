@@ -1004,7 +1004,7 @@ func (data *Data) collectDiagnostics(spn span.Span, msgSource, msg, msgSeverity 
 	want := &source.Diagnostic{
 		Range:    rng,
 		Severity: severity,
-		Source:   msgSource,
+		Source:   source.DiagnosticSource(msgSource),
 		Message:  msg,
 	}
 	data.Diagnostics[spn.URI()] = append(data.Diagnostics[spn.URI()], want)
@@ -1258,7 +1258,7 @@ func (data *Data) collectSignatures(spn span.Span, signature string, activeParam
 				Label: signature,
 			},
 		},
-		ActiveParameter: float64(activeParam),
+		ActiveParameter: uint32(activeParam),
 	}
 	// Hardcode special case to test the lack of a signature.
 	if signature == "" && activeParam == 0 {
