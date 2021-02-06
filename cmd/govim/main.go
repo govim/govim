@@ -31,11 +31,9 @@ const (
 	PluginPrefix = "GOVIM"
 )
 
-var (
-	// exposeTestAPI is a rather hacky but clean way of only exposing certain
-	// functions, commands and autocommands to Vim when run from a test
-	exposeTestAPI = os.Getenv(testsetup.EnvLoadTestAPI) == "true"
-)
+// exposeTestAPI is a rather hacky but clean way of only exposing certain
+// functions, commands and autocommands to Vim when run from a test
+var exposeTestAPI = os.Getenv(testsetup.EnvLoadTestAPI) == "true"
 
 func mainerr() error {
 	if err := flagSet.Parse(os.Args[1:]); err != nil {
@@ -288,6 +286,8 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineAutoCommand("", govim.Events{govim.EventBufRead, govim.EventBufNewFile}, govim.Patterns{"*.go", "go.mod", "go.sum"}, false, g.vimstate.bufReadPost, exprAutocmdCurrBufInfo)
 	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePre}, govim.Patterns{"*.go", "go.mod", "go.sum"}, false, g.vimstate.formatCurrentBuffer, "eval(expand('<abuf>'))")
 	g.DefineAutoCommand("", govim.Events{govim.EventBufWritePost}, govim.Patterns{"*.go", "go.mod", "go.sum"}, false, g.vimstate.bufWritePost, "eval(expand('<abuf>'))")
+	g.DefineAutoCommand("", govim.Events{govim.EventQuickFixCmdPre}, govim.Patterns{"*vimgrep*"}, false, g.vimstate.bufQuickFixCmdPre)
+	g.DefineAutoCommand("", govim.Events{govim.EventQuickFixCmdPost}, govim.Patterns{"*vimgrep*"}, false, g.vimstate.bufQuickFixCmdPost)
 	g.DefineFunction(string(config.FunctionComplete), []string{"findarg", "base"}, g.vimstate.complete)
 	g.DefineCommand(string(config.CommandGoToDef), g.vimstate.gotoDef, govim.NArgsZeroOrOne)
 	g.DefineCommand(string(config.CommandGoToTypeDef), g.vimstate.gotoTypeDef, govim.NArgsZeroOrOne)

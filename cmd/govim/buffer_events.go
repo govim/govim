@@ -18,7 +18,19 @@ import (
 
 func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	nb := v.currentBufferInfo(args[0])
+	if v.vimgrepPendingBufs != nil {
+		// We are getting BufRead autocommands during a vimgrep.
 
+		// Save the buffer without adding it yet since vimgrep could open
+		// a lot of files that are closed immediately, and we only want to
+		// add buffers still open when vimgrep is done.
+		v.vimgrepPendingBufs[nb.Num] = nb
+		return nil
+	}
+	return v.addBuffer(nb)
+}
+
+func (v *vimstate) addBuffer(nb *types.Buffer) error {
 	// If we load a buffer that already had diagnostics reported by gopls, the buffer number must be
 	// updated to ensure that sign placement etc. works.
 	diags := *v.diagnosticsCache
@@ -63,6 +75,29 @@ func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	}
 
 	return v.handleBufferEvent(nb)
+}
+
+func (v *vimstate) bufQuickFixCmdPre(args ...json.RawMessage) error {
+	v.vimgrepPendingBufs = make(map[int]*types.Buffer)
+	return nil
+}
+
+func (v *vimstate) bufQuickFixCmdPost(args ...json.RawMessage) error {
+	defer func() { v.vimgrepPendingBufs = nil }()
+
+	v.quickfixIsDiagnostics = v.quickfixIsDiagnostics && len(v.vimgrepPendingBufs) == 0
+
+	// Vim versions older than 8.2.2185 did not notify when buffers opened during vimgrep
+	// closed so we need to explicitly check if any of the buffers are still open.
+	for _, b := range v.vimgrepPendingBufs {
+		if v.ParseInt(v.ChannelCall("bufexists", b.Num)) != 1 {
+			continue
+		}
+		if err := v.addBuffer(b); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type bufChangedChange struct {
@@ -184,6 +219,10 @@ func (v *vimstate) deleteCurrentBuffer(args ...json.RawMessage) error {
 	cb, ok := v.buffers[currBufNr]
 	if !ok {
 		return fmt.Errorf("tried to remove buffer %v; but we have no record of it", currBufNr)
+	}
+
+	if v.vimgrepPendingBufs != nil {
+		delete(v.vimgrepPendingBufs, currBufNr)
 	}
 
 	// The diagnosticsCache is updated with -1 (unknown buffer) as bufnr.
