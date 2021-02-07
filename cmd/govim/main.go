@@ -344,6 +344,16 @@ func goModPath(wd string) (string, error) {
 	cmd := exec.Command("go", "env", "GOMOD")
 	cmd.Dir = wd
 
+	// From https://github.com/golang/tools/blob/fe37c9e135b934191089b245ac29325091462508/internal/gocommand/invoke.go#L208:
+	//
+	// On darwin the cwd gets resolved to the real path, which breaks anything that
+	// expects the working directory to keep the original path, including the
+	// go command when dealing with modules.
+	// The Go stdlib has a special feature where if the cwd and the PWD are the
+	// same node then it trusts the PWD, so by setting it in the env for the child
+	// process we fix up all the paths returned by the go command.
+	cmd.Env = append(os.Environ(), "PWD="+wd)
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("failed to execute [%v] in %v: %v\n%s", strings.Join(cmd.Args, " "), wd, err, out)
