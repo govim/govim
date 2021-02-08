@@ -214,35 +214,48 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 	return err
 }
 
-func (v *vimstate) deleteCurrentBuffer(args ...json.RawMessage) error {
+func (v *vimstate) bufDelete(args ...json.RawMessage) error {
 	currBufNr := v.ParseInt(args[0])
 	cb, ok := v.buffers[currBufNr]
 	if !ok {
 		return fmt.Errorf("tried to remove buffer %v; but we have no record of it", currBufNr)
 	}
 
+	return v.deleteBuffer(cb)
+}
+
+func (v *vimstate) bufWipeout(args ...json.RawMessage) error {
+	currBufNr := v.ParseInt(args[0])
+
 	if v.vimgrepPendingBufs != nil {
 		delete(v.vimgrepPendingBufs, currBufNr)
 	}
 
+	if cb, ok := v.buffers[currBufNr]; ok {
+		return v.deleteBuffer(cb)
+	}
+	return nil
+}
+
+func (v *vimstate) deleteBuffer(b *types.Buffer) error {
 	// The diagnosticsCache is updated with -1 (unknown buffer) as bufnr.
 	// We don't want to remove the entries completely here since we want to show them in
 	// the quickfix window. And we don't need to remove existing signs or text properties
 	// either here since they are removed by vim automatically when a buffer is deleted.
 	diags := *v.diagnosticsCache
 	for i, d := range diags {
-		if d.Buf == currBufNr {
+		if d.Buf == b.Num {
 			diags[i].Buf = -1
 		}
 	}
 
-	v.ChannelCall("listener_remove", cb.Listener)
-	delete(v.buffers, cb.Num)
+	v.ChannelCall("listener_remove", b.Listener)
+	delete(v.buffers, b.Num)
 	params := &protocol.DidCloseTextDocumentParams{
-		TextDocument: cb.ToTextDocumentIdentifier(),
+		TextDocument: b.ToTextDocumentIdentifier(),
 	}
 	if err := v.server.DidClose(context.Background(), params); err != nil {
-		return fmt.Errorf("failed to call gopls.DidClose on %v: %v", cb.Name, err)
+		return fmt.Errorf("failed to call gopls.DidClose on %v: %v", b.Name, err)
 	}
 	return nil
 }
