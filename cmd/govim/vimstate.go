@@ -89,6 +89,17 @@ type vimstate struct {
 	// lastProgressText points to the text in the most recently created progress
 	// popup.
 	lastProgressText *strings.Builder
+
+	// vimgrepPendingBufs contain buffers read during a vimgrep quickfix command,
+	// keyed by buffer number.
+	// The purpose is to avoid sending DidOpen/DidClose notifications to gopls
+	// for all files which contained no pattern match.
+	// Vim will reuse the buffer number as long as the searched file didn't contain
+	// a pattern match. See discussion at https://groups.google.com/g/vim_dev/c/qpu2O8cvprY.
+	//
+	// A nil value is used to indicate that there is no ongoing vimgrep.
+	// When vimgrep is done, these buffers are added to govim.
+	vimgrepPendingBufs map[int]*types.Buffer
 }
 
 func (v *vimstate) setConfig(args ...json.RawMessage) (interface{}, error) {
