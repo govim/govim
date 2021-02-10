@@ -66,7 +66,7 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 			BufNr   int   `json:"bufnr"`
 			Windows []int `json:"windows"`
 		}
-		v.Parse(v.ChannelCall("getbufinfo", tf), &bufinfo)
+		v.Parse(v.ChannelExprf(`map(getbufinfo(%q), {_, v -> filter(v, 'v:key == "bufnr" || v:key == "windows"')})`, tf), &bufinfo)
 		switch len(bufinfo) {
 		case 0:
 		case 1:
