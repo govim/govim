@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/govim/govim"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/command"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 )
 
 // toggleGCDetails calls gopls CommandToggleDetails (via CodeLens) that enable/disable
@@ -27,7 +27,7 @@ func (v *vimstate) toggleGCDetails(flags govim.CommandFlags, args ...string) err
 	var cmd *protocol.Command
 	for i := range res {
 		cl := res[i]
-		if cl.Command.Command != source.CommandToggleDetails.ID() {
+		if cl.Command.Command != command.GCDetails.ID() {
 			continue
 		}
 		if cmd != nil {

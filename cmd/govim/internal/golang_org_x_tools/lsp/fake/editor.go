@@ -15,8 +15,8 @@ import (
 	"sync"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/command"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	errors "golang.org/x/xerrors"
 )
@@ -754,22 +754,15 @@ func (e *Editor) ApplyQuickFixes(ctx context.Context, path string, rng *protocol
 	return e.codeAction(ctx, path, rng, diagnostics, protocol.QuickFix, protocol.SourceFixAll)
 }
 
+// GetQuickFixes returns the available quick fix code actions.
+func (e *Editor) GetQuickFixes(ctx context.Context, path string, rng *protocol.Range, diagnostics []protocol.Diagnostic) ([]protocol.CodeAction, error) {
+	return e.getCodeActions(ctx, path, rng, diagnostics, protocol.QuickFix, protocol.SourceFixAll)
+}
+
 func (e *Editor) codeAction(ctx context.Context, path string, rng *protocol.Range, diagnostics []protocol.Diagnostic, only ...protocol.CodeActionKind) error {
-	if e.Server == nil {
-		return nil
-	}
-	params := &protocol.CodeActionParams{}
-	params.TextDocument.URI = e.sandbox.Workdir.URI(path)
-	params.Context.Only = only
-	if diagnostics != nil {
-		params.Context.Diagnostics = diagnostics
-	}
-	if rng != nil {
-		params.Range = *rng
-	}
-	actions, err := e.Server.CodeAction(ctx, params)
+	actions, err := e.getCodeActions(ctx, path, rng, diagnostics, only...)
 	if err != nil {
-		return errors.Errorf("textDocument/codeAction: %w", err)
+		return err
 	}
 	for _, action := range actions {
 		if action.Title == "" {
@@ -812,6 +805,22 @@ func (e *Editor) codeAction(ctx context.Context, path string, rng *protocol.Rang
 		}
 	}
 	return nil
+}
+
+func (e *Editor) getCodeActions(ctx context.Context, path string, rng *protocol.Range, diagnostics []protocol.Diagnostic, only ...protocol.CodeActionKind) ([]protocol.CodeAction, error) {
+	if e.Server == nil {
+		return nil, nil
+	}
+	params := &protocol.CodeActionParams{}
+	params.TextDocument.URI = e.sandbox.Workdir.URI(path)
+	params.Context.Only = only
+	if diagnostics != nil {
+		params.Context.Diagnostics = diagnostics
+	}
+	if rng != nil {
+		params.Range = *rng
+	}
+	return e.Server.CodeAction(ctx, params)
 }
 
 func (e *Editor) ExecuteCommand(ctx context.Context, params *protocol.ExecuteCommandParams) (interface{}, error) {
@@ -892,18 +901,22 @@ func (e *Editor) checkBufferPosition(path string, pos Pos) error {
 // path. It does not report any resulting file changes as a watched file
 // change, so must be followed by a call to Workdir.CheckForFileChanges once
 // the generate command has completed.
+// TODO(rFindley): this shouldn't be necessary anymore. Delete it.
 func (e *Editor) RunGenerate(ctx context.Context, dir string) error {
 	if e.Server == nil {
 		return nil
 	}
 	absDir := e.sandbox.Workdir.AbsPath(dir)
-	jsonArgs, err := source.MarshalArgs(span.URIFromPath(absDir), false)
+	cmd, err := command.NewGenerateCommand("", command.GenerateArgs{
+		Dir:       protocol.URIFromSpanURI(span.URIFromPath(absDir)),
+		Recursive: false,
+	})
 	if err != nil {
 		return err
 	}
 	params := &protocol.ExecuteCommandParams{
-		Command:   source.CommandGenerate.ID(),
-		Arguments: jsonArgs,
+		Command:   cmd.Command,
+		Arguments: cmd.Arguments,
 	}
 	if _, err := e.ExecuteCommand(ctx, params); err != nil {
 		return fmt.Errorf("running generate: %v", err)
