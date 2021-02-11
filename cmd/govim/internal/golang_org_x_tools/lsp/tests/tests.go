@@ -26,6 +26,7 @@ import (
 	"golang.org/x/tools/go/expect"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/packages/packagestest"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/command"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source/completion"
@@ -234,7 +235,7 @@ func DefaultOptions(o *source.Options) {
 		},
 		source.Sum: {},
 	}
-	o.UserOptions.Codelenses[source.CommandTest.Name] = true
+	o.UserOptions.Codelenses[string(command.Test)] = true
 	o.HoverKind = source.SynopsisDocumentation
 	o.InsertTextFormat = protocol.SnippetTextFormat
 	o.CompletionBudget = time.Minute

@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/command"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tool"
@@ -82,7 +83,11 @@ func (c *generateWorkspaceMod) Run(ctx context.Context, args ...string) error {
 		return err
 	}
 	defer conn.terminate(ctx)
-	params := &protocol.ExecuteCommandParams{Command: source.CommandGenerateGoplsMod.ID()}
+	cmd, err := command.NewGenerateGoplsModCommand("", command.URIArg{})
+	if err != nil {
+		return err
+	}
+	params := &protocol.ExecuteCommandParams{Command: cmd.Command, Arguments: cmd.Arguments}
 	if _, err := conn.ExecuteCommand(ctx, params); err != nil {
 		return fmt.Errorf("executing server command: %v", err)
 	}

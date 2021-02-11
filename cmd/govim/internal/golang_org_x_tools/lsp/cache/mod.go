@@ -15,6 +15,7 @@ import (
 	"golang.org/x/mod/module"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/command"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
@@ -213,17 +214,23 @@ func (s *snapshot) ModWhy(ctx context.Context, fh source.FileHandle) (map[string
 
 // extractGoCommandError tries to parse errors that come from the go command
 // and shape them into go.mod diagnostics.
-func (s *snapshot) extractGoCommandErrors(ctx context.Context, snapshot source.Snapshot, fh source.FileHandle, goCmdError string) []*source.Diagnostic {
+func (s *snapshot) extractGoCommandErrors(ctx context.Context, snapshot source.Snapshot, goCmdError string) []*source.Diagnostic {
 	var srcErrs []*source.Diagnostic
-	if srcErr := s.parseModError(ctx, fh, goCmdError); srcErr != nil {
-		srcErrs = append(srcErrs, srcErr)
+	if srcErr := s.parseModError(ctx, goCmdError); srcErr != nil {
+		srcErrs = append(srcErrs, srcErr...)
 	}
-	// If the error message contains a position, use that. Don't pass a file
-	// handle in, as it might not be the file associated with the error.
 	if srcErr := extractErrorWithPosition(ctx, goCmdError, s); srcErr != nil {
 		srcErrs = append(srcErrs, srcErr)
-	} else if srcErr := s.matchErrorToModule(ctx, fh, goCmdError); srcErr != nil {
-		srcErrs = append(srcErrs, srcErr)
+	} else {
+		for _, uri := range s.ModFiles() {
+			fh, err := s.GetFile(ctx, uri)
+			if err != nil {
+				continue
+			}
+			if srcErr := s.matchErrorToModule(ctx, fh, goCmdError); srcErr != nil {
+				srcErrs = append(srcErrs, srcErr)
+			}
+		}
 	}
 	return srcErrs
 }
@@ -250,7 +257,6 @@ func (s *snapshot) matchErrorToModule(ctx context.Context, fh source.FileHandle,
 	var reference *modfile.Line
 	matches := moduleVersionInErrorRe.FindAllStringSubmatch(goCmdError, -1)
 
-outer:
 	for i := len(matches) - 1; i >= 0; i-- {
 		ver := module.Version{Path: matches[i][1], Version: matches[i][2]}
 		// Any module versions that come from the workspace module should not
@@ -264,24 +270,9 @@ outer:
 		if innermost == nil {
 			innermost = &ver
 		}
-
-		for _, req := range pm.File.Require {
-			if req.Mod == ver {
-				reference = req.Syntax
-				break outer
-			}
-		}
-		for _, ex := range pm.File.Exclude {
-			if ex.Mod == ver {
-				reference = ex.Syntax
-				break outer
-			}
-		}
-		for _, rep := range pm.File.Replace {
-			if rep.New == ver || rep.Old == ver {
-				reference = rep.Syntax
-				break outer
-			}
+		reference = findModuleReference(pm.File, ver)
+		if reference != nil {
+			break
 		}
 	}
 
@@ -301,7 +292,12 @@ outer:
 	disabledByGOPROXY := strings.Contains(goCmdError, "disabled by GOPROXY=off")
 	shouldAddDep := strings.Contains(goCmdError, "to add it")
 	if innermost != nil && (disabledByGOPROXY || shouldAddDep) {
-		args, err := source.MarshalArgs(fh.URI(), false, []string{fmt.Sprintf("%v@%v", innermost.Path, innermost.Version)})
+		title := fmt.Sprintf("Download %v@%v", innermost.Path, innermost.Version)
+		cmd, err := command.NewAddDependencyCommand(title, command.DependencyArgs{
+			URI:        protocol.URIFromSpanURI(fh.URI()),
+			AddRequire: false,
+			GoCmdArgs:  []string{fmt.Sprintf("%v@%v", innermost.Path, innermost.Version)},
+		})
 		if err != nil {
 			return nil
 		}
@@ -310,19 +306,12 @@ outer:
 			msg = fmt.Sprintf("%v@%v has not been downloaded", innermost.Path, innermost.Version)
 		}
 		return &source.Diagnostic{
-			URI:      fh.URI(),
-			Range:    rng,
-			Severity: protocol.SeverityError,
-			Message:  msg,
-			Source:   source.ListError,
-			SuggestedFixes: []source.SuggestedFix{{
-				Title: fmt.Sprintf("Download %v@%v", innermost.Path, innermost.Version),
-				Command: &protocol.Command{
-					Title:     source.CommandAddDependency.Title,
-					Command:   source.CommandAddDependency.ID(),
-					Arguments: args,
-				},
-			}},
+			URI:            fh.URI(),
+			Range:          rng,
+			Severity:       protocol.SeverityError,
+			Message:        msg,
+			Source:         source.ListError,
+			SuggestedFixes: []source.SuggestedFix{source.SuggestedFixFromCommand(cmd)},
 		}
 	}
 	diagSource := source.ListError
@@ -336,6 +325,25 @@ outer:
 		Source:   diagSource,
 		Message:  goCmdError,
 	}
+}
+
+func findModuleReference(mf *modfile.File, ver module.Version) *modfile.Line {
+	for _, req := range mf.Require {
+		if req.Mod == ver {
+			return req.Syntax
+		}
+	}
+	for _, ex := range mf.Exclude {
+		if ex.Mod == ver {
+			return ex.Syntax
+		}
+	}
+	for _, rep := range mf.Replace {
+		if rep.New == ver || rep.Old == ver {
+			return rep.Syntax
+		}
+	}
+	return nil
 }
 
 // errorPositionRe matches errors messages of the form <filename>:<line>:<col>,

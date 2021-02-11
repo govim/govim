@@ -18,6 +18,7 @@ import (
 	"golang.org/x/mod/modfile"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/command"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -107,7 +108,7 @@ func (s *snapshot) ModTidy(ctx context.Context, pm *source.ParsedModule) (*sourc
 			Args:       []string{"tidy"},
 			WorkingDir: filepath.Dir(fh.URI().Filename()),
 		}
-		tmpURI, inv, cleanup, err := snapshot.goCommandInvocation(ctx, source.WriteTemporaryModFile|source.AllowNetwork, inv)
+		tmpURI, inv, cleanup, err := snapshot.goCommandInvocation(ctx, source.WriteTemporaryModFile, inv)
 		if err != nil {
 			return &modTidyData{err: err}
 		}
@@ -150,8 +151,7 @@ func (s *snapshot) ModTidy(ctx context.Context, pm *source.ParsedModule) (*sourc
 
 	return mth.tidy(ctx, s)
 }
-
-func (s *snapshot) parseModError(ctx context.Context, fh source.FileHandle, errText string) *source.Diagnostic {
+func (s *snapshot) parseModError(ctx context.Context, errText string) []*source.Diagnostic {
 	// Match on common error messages. This is really hacky, but I'm not sure
 	// of any better way. This can be removed when golang/go#39164 is resolved.
 	isInconsistentVendor := strings.Contains(errText, "inconsistent vendoring")
@@ -161,69 +161,78 @@ func (s *snapshot) parseModError(ctx context.Context, fh source.FileHandle, errT
 		return nil
 	}
 
-	pmf, err := s.ParseMod(ctx, fh)
-	if err != nil {
-		return nil
-	}
-	if pmf.File.Module == nil || pmf.File.Module.Syntax == nil {
-		return nil
-	}
-	rng, err := rangeFromPositions(pmf.Mapper, pmf.File.Module.Syntax.Start, pmf.File.Module.Syntax.End)
-	if err != nil {
-		return nil
-	}
-	args, err := source.MarshalArgs(protocol.URIFromSpanURI(fh.URI()))
-	if err != nil {
-		return nil
-	}
-
 	switch {
 	case isInconsistentVendor:
-		return &source.Diagnostic{
-			URI:      fh.URI(),
+		uri := s.ModFiles()[0]
+		args := command.URIArg{URI: protocol.URIFromSpanURI(uri)}
+		rng, err := s.uriToModDecl(ctx, uri)
+		if err != nil {
+			return nil
+		}
+		cmd, err := command.NewVendorCommand("Run go mod vendor", args)
+		if err != nil {
+			return nil
+		}
+		return []*source.Diagnostic{{
+			URI:      uri,
 			Range:    rng,
 			Severity: protocol.SeverityError,
 			Source:   source.ListError,
 			Message: `Inconsistent vendoring detected. Please re-run "go mod vendor".
 See https://github.com/golang/go/issues/39164 for more detail on this issue.`,
-			SuggestedFixes: []source.SuggestedFix{{
-				Title: source.CommandVendor.Title,
-				Command: &protocol.Command{
-					Command:   source.CommandVendor.ID(),
-					Title:     source.CommandVendor.Title,
-					Arguments: args,
-				},
-			}},
-		}
+			SuggestedFixes: []source.SuggestedFix{source.SuggestedFixFromCommand(cmd)},
+		}}
 
 	case isGoSumUpdates:
-		return &source.Diagnostic{
-			URI:      fh.URI(),
-			Range:    rng,
-			Severity: protocol.SeverityError,
-			Source:   source.ListError,
-			Message:  `go.sum is out of sync with go.mod. Please update it or run "go mod tidy".`,
-			SuggestedFixes: []source.SuggestedFix{
-				{
-					Title: source.CommandTidy.Title,
-					Command: &protocol.Command{
-						Command:   source.CommandTidy.ID(),
-						Title:     source.CommandTidy.Title,
-						Arguments: args,
-					},
-				},
-				{
-					Title: source.CommandUpdateGoSum.Title,
-					Command: &protocol.Command{
-						Command:   source.CommandUpdateGoSum.ID(),
-						Title:     source.CommandUpdateGoSum.Title,
-						Arguments: args,
-					},
-				},
-			},
+		var args []protocol.DocumentURI
+		for _, uri := range s.ModFiles() {
+			args = append(args, protocol.URIFromSpanURI(uri))
 		}
+		var diagnostics []*source.Diagnostic
+		for _, uri := range s.ModFiles() {
+			rng, err := s.uriToModDecl(ctx, uri)
+			if err != nil {
+				return nil
+			}
+			tidyCmd, err := command.NewTidyCommand("Run go mod tidy", command.URIArgs{URIs: args})
+			if err != nil {
+				return nil
+			}
+			updateCmd, err := command.NewUpdateGoSumCommand("Update go.sum", command.URIArgs{URIs: args})
+			if err != nil {
+				return nil
+			}
+			diagnostics = append(diagnostics, &source.Diagnostic{
+				URI:      uri,
+				Range:    rng,
+				Severity: protocol.SeverityError,
+				Source:   source.ListError,
+				Message:  `go.sum is out of sync with go.mod. Please update it by applying the quick fix.`,
+				SuggestedFixes: []source.SuggestedFix{
+					source.SuggestedFixFromCommand(tidyCmd),
+					source.SuggestedFixFromCommand(updateCmd),
+				},
+			})
+		}
+		return diagnostics
+	default:
+		return nil
 	}
-	return nil
+}
+
+func (s *snapshot) uriToModDecl(ctx context.Context, uri span.URI) (protocol.Range, error) {
+	fh, err := s.GetFile(ctx, uri)
+	if err != nil {
+		return protocol.Range{}, nil
+	}
+	pmf, err := s.ParseMod(ctx, fh)
+	if err != nil {
+		return protocol.Range{}, nil
+	}
+	if pmf.File.Module == nil || pmf.File.Module.Syntax == nil {
+		return protocol.Range{}, nil
+	}
+	return rangeFromPositions(pmf.Mapper, pmf.File.Module.Syntax.Start, pmf.File.Module.Syntax.End)
 }
 
 func hashImports(ctx context.Context, wsPackages []source.Package) (string, error) {
@@ -385,24 +394,22 @@ func unusedDiagnostic(m *protocol.ColumnMapper, req *modfile.Require, onlyDiagno
 	if err != nil {
 		return nil, err
 	}
-	args, err := source.MarshalArgs(m.URI, onlyDiagnostic, req.Mod.Path)
+	title := fmt.Sprintf("Remove dependency: %s", req.Mod.Path)
+	cmd, err := command.NewRemoveDependencyCommand(title, command.RemoveDependencyArgs{
+		URI:            protocol.URIFromSpanURI(m.URI),
+		OnlyDiagnostic: onlyDiagnostic,
+		ModulePath:     req.Mod.Path,
+	})
 	if err != nil {
 		return nil, err
 	}
 	return &source.Diagnostic{
-		URI:      m.URI,
-		Range:    rng,
-		Severity: protocol.SeverityWarning,
-		Source:   source.ModTidyError,
-		Message:  fmt.Sprintf("%s is not used in this module", req.Mod.Path),
-		SuggestedFixes: []source.SuggestedFix{{
-			Title: fmt.Sprintf("Remove dependency: %s", req.Mod.Path),
-			Command: &protocol.Command{
-				Title:     source.CommandRemoveDependency.Title,
-				Command:   source.CommandRemoveDependency.ID(),
-				Arguments: args,
-			},
-		}},
+		URI:            m.URI,
+		Range:          rng,
+		Severity:       protocol.SeverityWarning,
+		Source:         source.ModTidyError,
+		Message:        fmt.Sprintf("%s is not used in this module", req.Mod.Path),
+		SuggestedFixes: []source.SuggestedFix{source.SuggestedFixFromCommand(cmd)},
 	}, nil
 }
 
@@ -459,24 +466,22 @@ func missingModuleDiagnostic(snapshot source.Snapshot, pm *source.ParsedModule, 
 			return nil, err
 		}
 	}
-	args, err := source.MarshalArgs(pm.Mapper.URI, !req.Indirect, []string{req.Mod.Path + "@" + req.Mod.Version})
+	title := fmt.Sprintf("Add %s to your go.mod file", req.Mod.Path)
+	cmd, err := command.NewAddDependencyCommand(title, command.DependencyArgs{
+		URI:        protocol.URIFromSpanURI(pm.Mapper.URI),
+		AddRequire: !req.Indirect,
+		GoCmdArgs:  []string{req.Mod.Path + "@" + req.Mod.Version},
+	})
 	if err != nil {
 		return nil, err
 	}
 	return &source.Diagnostic{
-		URI:      pm.Mapper.URI,
-		Range:    rng,
-		Severity: protocol.SeverityError,
-		Source:   source.ModTidyError,
-		Message:  fmt.Sprintf("%s is not in your go.mod file", req.Mod.Path),
-		SuggestedFixes: []source.SuggestedFix{{
-			Title: fmt.Sprintf("Add %s to your go.mod file", req.Mod.Path),
-			Command: &protocol.Command{
-				Title:     source.CommandAddDependency.Title,
-				Command:   source.CommandAddDependency.ID(),
-				Arguments: args,
-			},
-		}},
+		URI:            pm.Mapper.URI,
+		Range:          rng,
+		Severity:       protocol.SeverityError,
+		Source:         source.ModTidyError,
+		Message:        fmt.Sprintf("%s is not in your go.mod file", req.Mod.Path),
+		SuggestedFixes: []source.SuggestedFix{source.SuggestedFixFromCommand(cmd)},
 	}, nil
 }
 
