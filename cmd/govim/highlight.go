@@ -79,6 +79,22 @@ func (v *vimstate) textpropDefine() error {
 		Priority:  types.SeverityPriority[types.SeverityErr] + 1,
 	})
 
+	v.BatchChannelCall("prop_type_add", config.HighlightCallHierarchyDecl, propDict{
+		Highlight: string(config.HighlightCallHierarchyDecl),
+		Combine:   true,
+		Priority:  types.SeverityPriority[types.SeverityErr] + 1,
+	})
+	v.BatchChannelCall("prop_type_add", config.HighlightCallHierarchyFrom, propDict{
+		Highlight: string(config.HighlightCallHierarchyFrom),
+		Combine:   true,
+		Priority:  types.SeverityPriority[types.SeverityErr] + 1,
+	})
+	v.BatchChannelCall("prop_type_add", config.HighlightCallHierarchyRefs, propDict{
+		Highlight: string(config.HighlightCallHierarchyRefs),
+		Combine:   true,
+		Priority:  types.SeverityPriority[types.SeverityErr] + 1,
+	})
+
 	res := v.MustBatchEnd()
 	for i := range res {
 		if v.ParseInt(res[i]) != 0 {
@@ -276,6 +292,43 @@ func (v *vimstate) handleDocumentHighlight(cursorPos types.CursorPosition, res [
 		)
 	}
 	v.MustBatchEnd()
+	return nil
+}
+
+func (v *vimstate) callHierarchyHighlight(b *types.Buffer, rng protocol.Range, refs map[*types.Buffer][]protocol.Range, from []protocol.Range, fromBuf *types.Buffer) error {
+	addProp := func(buf *types.Buffer, p string, r ...protocol.Range) error {
+		if buf == nil || !buf.Loaded {
+			return nil
+		}
+		for _, rn := range r {
+			start, err := types.PointFromPosition(buf, rn.Start)
+			if err != nil {
+				return err
+			}
+			end, err := types.PointFromPosition(buf, rn.End)
+			if err != nil {
+				return err
+			}
+
+			v.ChannelCall("prop_add", start.Line(), start.Col(),
+				propAddDict{p, types.CallHierarchyTextPropID, end.Line(), end.Col(), buf.Num},
+			)
+		}
+		return nil
+	}
+
+	if err := addProp(b, string(config.HighlightCallHierarchyDecl), rng); err != nil {
+		return err
+	}
+	for defBuf, relRng := range refs {
+		if err := addProp(defBuf, string(config.HighlightCallHierarchyRefs), relRng...); err != nil {
+			return err
+		}
+	}
+	if err := addProp(fromBuf, string(config.HighlightCallHierarchyFrom), from...); err != nil {
+		return err
+	}
+
 	return nil
 }
 

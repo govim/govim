@@ -395,6 +395,9 @@ const (
 	// Open a new buffer that contain the current output from the most recently
 	// created progress popup. Useful for looking at a failed test for example.
 	CommandLastProgress Command = "LastProgress"
+
+	// TODO: ..
+	CommandCallHierarchy Command = "CallHierarchy"
 )
 
 type Function string
@@ -572,4 +575,9 @@ const (
 	HighlightGoTestPass Highlight = "GOVIMGoTestPass"
 	//  HighlightGoTestFail
 	HighlightGoTestFail Highlight = "GOVIMGoTestFail"
+
+	// TODO: ...
+	HighlightCallHierarchyDecl Highlight = "GOVIMCallHierarchyDecl"
+	HighlightCallHierarchyFrom Highlight = "GOVIMCallHierarchyFrom"
+	HighlightCallHierarchyRefs Highlight = "GOVIMCallHierarchyRefs"
 )

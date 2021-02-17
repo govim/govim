@@ -64,6 +64,9 @@ type vimstate struct {
 	// codeAction call.
 	suggestedFixesPopups map[int][]protocol.WorkspaceEdit
 
+	// TODO: clever docs..
+	callhierarchy *callHierarchy
+
 	// working directory (when govim was started)
 	// TODO: handle changes to current working directory during runtime
 	workingDirectory string
@@ -227,8 +230,17 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cursor position: %v", err)
 	}
+
+	// Special handling for CallHierarchy buffer.
+	if pos.BufNr == v.callhierarchy.bufNr && !v.userBusy {
+		if err := v.updateCallhierarchyHighlight(); err != nil {
+			return nil, err
+		}
+	}
+
 	if v.userBusy {
 		// We are now busy
+		v.removeTextProps(types.CallHierarchyTextPropID)
 		return nil, v.removeReferenceHighlight(&pos)
 	}
 	// We are now idle

@@ -263,6 +263,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			config:                *defaults,
 			quickfixIsDiagnostics: true,
 			suggestedFixesPopups:  make(map[int][]protocol.WorkspaceEdit),
+			callhierarchy:         &callHierarchy{},
 			progressPopups:        make(map[protocol.ProgressToken]*types.ProgressPopup),
 		},
 	}
@@ -319,6 +320,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.DefineCommand(string(config.CommandGoTest), g.vimstate.runGoTest, govim.RangeLine)
 	g.DefineFunction(string(config.FunctionProgressClosed), []string{"id", "selected"}, g.vimstate.progressClosed)
 	g.DefineCommand(string(config.CommandLastProgress), g.vimstate.openLastProgress)
+	g.DefineCommand(string(config.CommandCallHierarchy), g.vimstate.callHierarchy, govim.NArgsZeroOrOne)
 	g.defineHighlights()
 	if err := g.vimstate.signDefine(); err != nil {
 		return fmt.Errorf("failed to define signs: %v", err)
@@ -437,6 +439,10 @@ func (g *govimplugin) defineHighlights() {
 
 		fmt.Sprintf("highlight default %s ctermfg=2 guifg=Green", config.HighlightGoTestPass),
 		fmt.Sprintf("highlight default %s ctermfg=1 guifg=Red ", config.HighlightGoTestFail),
+
+		fmt.Sprintf("highlight default %s term=bold ctermfg=193 ctermbg=22 guifg=#D2EBBE guibg=#437019", config.HighlightCallHierarchyDecl),
+		fmt.Sprintf("highlight default %s term=reverse cterm=bold ctermfg=231 ctermbg=60 gui=bold guifg=#ffffff guibg=#556779", config.HighlightCallHierarchyFrom),
+		fmt.Sprintf("highlight default %s ctermfg=195 ctermbg=25 guifg=#DEEBFE guibg=#345FA8", config.HighlightCallHierarchyRefs),
 	} {
 		g.vimstate.BatchChannelCall("execute", hi)
 	}
