@@ -234,7 +234,7 @@ function s:define(channel, msg)
       doautoall govim FileType
       if $GOVIM_DISABLE_USER_BUSY != "true"
         au govim CursorMoved,CursorMovedI * ++nested :call s:userBusy(1)
-        au govim CursorHold,CursorHoldI * ++nested :call s:userBusy(0)
+        au govim CursorHold,CursorHoldI,FocusLost * ++nested :call s:userBusy(0)
       endif
       for F in s:loadStatusCallbacks
         call call(F, [s:govim_status])
