@@ -88,7 +88,11 @@ go run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/inter
 
 if [ "${CI:-}" == "true" ] && [ "${GITHUB_EVENT_NAME:-}" != "schedule" ]
 then
-	go mod tidy
+	# Hack to work around golang.org/issue/40067
+	if go list -f {{context.ReleaseTags}} runtime | grep $(echo "$MAX_GO_VERSION" | sed -e 's/^\([^.]*\.[^.]*\).*/\1/') > /dev/null
+	then
+		go mod tidy
+	fi
 	diff <(echo -n) <(go run golang.org/x/tools/cmd/goimports -d $(git ls-files '**/*.go' '*.go' | grep -v golang_org_x_tools))
 	test -z "$(git status --porcelain)" || (git status; git diff; false)
 fi
