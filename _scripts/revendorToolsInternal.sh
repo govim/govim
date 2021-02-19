@@ -28,4 +28,8 @@ find ./cmd/govim/internal/golang_org_x_tools/ -type d -name testdata -exec rm -r
 # Copy license
 cp $tools/LICENSE ./cmd/govim/internal/golang_org_x_tools
 
-go mod tidy
+# Hack to work around golang.org/issue/40067
+if go list -f {{context.ReleaseTags}} runtime | grep $(echo "$MAX_GO_VERSION" | sed -e 's/^\([^.]*\.[^.]*\).*/\1/') > /dev/null
+then
+	go mod tidy
+fi
