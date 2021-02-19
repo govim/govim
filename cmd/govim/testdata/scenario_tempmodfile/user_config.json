@@ -1,3 +1,4 @@
 {
-	"TempModfile": true
+	"TempModfile": true,
+	"ExperimentalAllowModfileModifications": false
 }

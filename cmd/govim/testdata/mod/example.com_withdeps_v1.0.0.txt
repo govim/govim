@@ -1,0 +1,18 @@
+-- .mod --
+module example.com/withdeps
+
+go 1.14
+
+require example.com/blah v1.0.0
+-- .info --
+{"Version":"v1.0.0","Time":"2019-06-05T18:43:18Z"}
+-- go.mod --
+module example.com/withdeps
+
+go 1.14
+
+require example.com/blah v1.0.0
+-- foo/foo.go --
+package foo
+
+import _ "example.com/blah"

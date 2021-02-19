@@ -109,10 +109,8 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 		}
 
 		alts := make([]string, len(suggestions))
-		edits := make([]protocol.WorkspaceEdit, len(suggestions))
 		for j := range suggestions {
 			alts[j] = suggestions[j].msg
-			edits[j] = suggestions[j].edit
 		}
 
 		if len(resolvableDiags) > 1 {
@@ -120,7 +118,7 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 		}
 
 		popupID := v.ParseInt(v.ChannelCall("popup_create", alts, opts))
-		v.suggestedFixesPopups[popupID] = edits
+		v.suggestedFixesPopups[popupID] = suggestions
 	}
 
 	return nil
@@ -128,12 +126,16 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 
 type resolvableDiag struct {
 	title       string
-	suggestions []suggestion
+	suggestions []suggestedFix
 }
 
-type suggestion struct {
-	msg  string
-	edit protocol.WorkspaceEdit
+// suggestedFix is the representation of a single suggested fix. According to LSP 3.16 that could be
+// either a WorkspaceEdit, a Command or both. The edit should be applied before executing a
+// command.
+type suggestedFix struct {
+	msg     string
+	command *protocol.Command
+	edit    protocol.WorkspaceEdit
 }
 
 func diagSuggestions(codeActions []protocol.CodeAction) []resolvableDiag {
@@ -149,7 +151,7 @@ func diagSuggestions(codeActions []protocol.CodeAction) []resolvableDiag {
 		r   protocol.Range
 	}
 
-	resolvableDiags := make(map[diagKey][]suggestion)
+	resolvableDiags := make(map[diagKey][]suggestedFix)
 	for _, ca := range codeActions {
 		if ca.Kind != protocol.QuickFix {
 			continue
@@ -157,9 +159,9 @@ func diagSuggestions(codeActions []protocol.CodeAction) []resolvableDiag {
 		for i := range ca.Diagnostics {
 			k := diagKey{ca.Diagnostics[i].Message, ca.Diagnostics[i].Range}
 			if _, exist := resolvableDiags[k]; !exist {
-				resolvableDiags[k] = make([]suggestion, 0)
+				resolvableDiags[k] = make([]suggestedFix, 0)
 			}
-			resolvableDiags[k] = append(resolvableDiags[k], suggestion{ca.Title, ca.Edit})
+			resolvableDiags[k] = append(resolvableDiags[k], suggestedFix{ca.Title, ca.Command, ca.Edit})
 		}
 	}
 

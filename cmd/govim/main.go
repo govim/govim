@@ -262,7 +262,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			defaultConfig:         *defaults,
 			config:                *defaults,
 			quickfixIsDiagnostics: true,
-			suggestedFixesPopups:  make(map[int][]protocol.WorkspaceEdit),
+			suggestedFixesPopups:  make(map[int][]suggestedFix),
 			progressPopups:        make(map[protocol.ProgressToken]*types.ProgressPopup),
 		},
 	}
