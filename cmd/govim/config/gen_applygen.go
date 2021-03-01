@@ -76,4 +76,7 @@ func (r *Config) Apply(v *Config) {
 	if v.ExperimentalAllowModfileModifications != nil {
 		r.ExperimentalAllowModfileModifications = v.ExperimentalAllowModfileModifications
 	}
+	if v.ExperimentalWorkspaceModule != nil {
+		r.ExperimentalWorkspaceModule = v.ExperimentalWorkspaceModule
+	}
 }

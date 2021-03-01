@@ -190,6 +190,10 @@ function! s:validExperimentalAllowModfileModifications(v)
   return s:validBool(a:v)
 endfunction
 
+function! s:validExperimentalWorkspaceModule(v)
+  return s:validBool(a:v)
+endfunction
+
 let s:validators = {
       \ "FormatOnSave": function("s:validFormatOnSave"),
       \ "QuickfixAutoDiagnostics": function("s:validQuickfixAutoDiagnostics"),
@@ -216,4 +220,5 @@ let s:validators = {
       \ "ExperimentalWorkaroundCompleteoptLongest": function("s:validExperimentalWorkaroundCompleteoptLongest"),
       \ "ExperimentalProgressPopups": function("s:validExperimentalProgressPopups"),
       \ "ExperimentalAllowModfileModifications": function("s:validExperimentalProgressPopups"),
+      \ "ExperimentalWorkspaceModule": function("s:validExperimentalWorkspaceModule"),
       \ }

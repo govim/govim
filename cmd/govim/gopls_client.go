@@ -18,22 +18,23 @@ import (
 )
 
 const (
-	goplsConfigNoDocsOnHover  = "noDocsOnHover"
-	goplsConfigHoverKind      = "hoverKind"
-	goplsDeepCompletion       = "deepCompletion"
-	goplsCompletionMatcher    = "matcher"
-	goplsStaticcheck          = "staticcheck"
-	goplsCompleteUnimported   = "completeUnimported"
-	goplsGoImportsLocalPrefix = "local"
-	goplsCompletionBudget     = "completionBudget"
-	goplsTempModfile          = "tempModfile"
-	goplsVerboseOutput        = "verboseOutput"
-	goplsEnv                  = "env"
-	goplsAnalyses             = "analyses"
-	goplsCodeLenses           = "codelenses"
-	goplsSymbolMatcher        = "symbolMatcher"
-	goplsSymbolStyle          = "symbolStyle"
-	goplsGofumpt              = "gofumpt"
+	goplsConfigNoDocsOnHover         = "noDocsOnHover"
+	goplsConfigHoverKind             = "hoverKind"
+	goplsDeepCompletion              = "deepCompletion"
+	goplsCompletionMatcher           = "matcher"
+	goplsStaticcheck                 = "staticcheck"
+	goplsCompleteUnimported          = "completeUnimported"
+	goplsGoImportsLocalPrefix        = "local"
+	goplsCompletionBudget            = "completionBudget"
+	goplsTempModfile                 = "tempModfile"
+	goplsVerboseOutput               = "verboseOutput"
+	goplsEnv                         = "env"
+	goplsAnalyses                    = "analyses"
+	goplsCodeLenses                  = "codelenses"
+	goplsSymbolMatcher               = "symbolMatcher"
+	goplsSymbolStyle                 = "symbolStyle"
+	goplsGofumpt                     = "gofumpt"
+	goplsExperimentalWorkspaceModule = "experimentalWorkspaceModule"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -163,11 +164,14 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	if conf.CompletionBudget != nil {
 		goplsConfig[goplsCompletionBudget] = *conf.CompletionBudget
 	}
-	if g.vimstate.config.TempModfile != nil {
+	if conf.TempModfile != nil {
 		goplsConfig[goplsTempModfile] = *conf.TempModfile
 	}
-	if g.vimstate.config.Gofumpt != nil {
+	if conf.Gofumpt != nil {
 		goplsConfig[goplsGofumpt] = *conf.Gofumpt
+	}
+	if conf.ExperimentalWorkspaceModule != nil {
+		goplsConfig[goplsExperimentalWorkspaceModule] = *conf.ExperimentalWorkspaceModule
 	}
 	if os.Getenv(string(config.EnvVarGoplsVerbose)) == "true" {
 		goplsConfig[goplsVerboseOutput] = true
@@ -178,7 +182,7 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	goplsConfig[goplsCodeLenses] = map[string]bool{
 		string(command.GCDetails): true, // gc_details
 	}
-	if g.vimstate.config.GoplsEnv != nil {
+	if conf.GoplsEnv != nil {
 		// It is safe not to copy the map here because a new config setting from
 		// Vim creates a new map.
 		goplsConfig[goplsEnv] = *conf.GoplsEnv

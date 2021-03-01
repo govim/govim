@@ -32,6 +32,7 @@ type VimConfig struct {
 	ExperimentalWorkaroundCompleteoptLongest     *int
 	ExperimentalProgressPopups                   *int
 	ExperimentalAllowModfileModifications        *int
+	ExperimentalWorkspaceModule                  *int
 }
 
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
@@ -61,6 +62,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		ExperimentalWorkaroundCompleteoptLongest:     boolVal(c.ExperimentalWorkaroundCompleteoptLongest, d.ExperimentalWorkaroundCompleteoptLongest),
 		ExperimentalProgressPopups:                   boolVal(c.ExperimentalProgressPopups, d.ExperimentalProgressPopups),
 		ExperimentalAllowModfileModifications:        boolVal(c.ExperimentalAllowModfileModifications, d.ExperimentalAllowModfileModifications),
+		ExperimentalWorkspaceModule:                  boolVal(c.ExperimentalWorkspaceModule, d.ExperimentalWorkspaceModule),
 	}
 	if v.FormatOnSave == nil {
 		v.FormatOnSave = d.FormatOnSave

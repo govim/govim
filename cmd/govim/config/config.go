@@ -297,6 +297,10 @@ type Config struct {
 	//
 	// Default: true
 	ExperimentalAllowModfileModifications *bool `json:",omitempty"`
+
+	// ExperimentalWorkspaceModule opts a user into the experimental gopls
+	// support for multi-module workspaces
+	ExperimentalWorkspaceModule *bool `json:",omitempty"`
 }
 
 type Command string
