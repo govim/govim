@@ -1,0 +1,49 @@
+# Verify that we can work with a multi-module workspace. If this test were to
+# run without workspace module support, opening blah/blah.go would result in
+# the following diagnostic:
+#
+# [
+#   {
+#     "bufname": "blah/blah.go",
+#     "col": 1,
+#     "lnum": 1,
+#     "module": "",
+#     "nr": 0,
+#     "pattern": "",
+#     "text": "This file is in $WORK/blah, which is a nested module in the $WORK module.\ngopls currently requires one module per workspace folder.\nPlease open $WORK/blah as a separate workspace folder.\nYou can learn more here: https://github.com/golang/tools/blob/master/gopls/doc/workspace.md.",
+#     "type": "",
+#     "valid": 1,
+#     "vcol": 0
+#   }
+# ]
+
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
+
+vim ex 'e blah/blah.go'
+sleep $GOVIM_ERRLOGMATCH_WAIT
+vimexprwait empty.golden GOVIMTest_getqflist()
+vim ex 'w'
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- blah/blah.go --
+package blah
+
+const Name = "blah"
+-- blah/go.mod --
+module github.com/myitcv/playground/blah
+
+go 1.12
+-- go.mod --
+module blah.com
+
+go 1.12
+-- main.go --
+package main
+
+func main() {
+}
+-- empty.golden --
+[]
