@@ -3,11 +3,14 @@
 package vimconfig
 
 import (
+	"time"
+
 	"github.com/govim/govim/cmd/govim/config"
 )
 
 type VimConfig struct {
 	FormatOnSave                                 *config.FormatOnSave
+	GoImportsTimeout                             *string
 	QuickfixAutoDiagnostics                      *int
 	QuickfixSigns                                *int
 	HighlightDiagnostics                         *int
@@ -38,6 +41,7 @@ type VimConfig struct {
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
 	v := config.Config{
 		FormatOnSave:                      c.FormatOnSave,
+		GoImportsTimeout:                  durationVal(c.GoImportsTimeout, d.GoImportsTimeout),
 		QuickfixSigns:                     boolVal(c.QuickfixSigns, d.QuickfixSigns),
 		QuickfixAutoDiagnostics:           boolVal(c.QuickfixAutoDiagnostics, d.QuickfixAutoDiagnostics),
 		HighlightDiagnostics:              boolVal(c.HighlightDiagnostics, d.HighlightDiagnostics),
@@ -92,6 +96,16 @@ func stringVal(i, j *string) *string {
 		return j
 	}
 	return i
+}
+
+func durationVal(i *string, j *time.Duration) *time.Duration {
+	if i == nil {
+		return j
+	}
+	if t, err := time.ParseDuration(*i); err == nil {
+		return &t
+	}
+	return j
 }
 
 func copyStringValMap(i, j *map[string]string) *map[string]string {
@@ -153,6 +167,10 @@ func SymbolStyleVal(v config.SymbolStyle) *config.SymbolStyle {
 
 func FormatOnSaveVal(v config.FormatOnSave) *config.FormatOnSave {
 	return &v
+}
+
+func DurationVal(t time.Duration) *time.Duration {
+	return &t
 }
 
 func BoolVal(v bool) *bool {

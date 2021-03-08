@@ -78,7 +78,13 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 		if flags.Range != nil {
 			params.Range = *ran
 		}
-		actions, err := v.server.CodeAction(context.Background(), params)
+		ctx := context.Background()
+		var cancel context.CancelFunc
+		if v.config.GoImportsTimeout != nil && *v.config.GoImportsTimeout > 0 {
+			ctx, cancel = context.WithTimeout(ctx, *v.config.GoImportsTimeout)
+			defer cancel()
+		}
+		actions, err := v.server.CodeAction(ctx, params)
 		if err != nil {
 			v.Logf("gopls.CodeAction returned an error; nothing to do")
 			return nil

@@ -4,6 +4,9 @@ func (r *Config) Apply(v *Config) {
 	if v.FormatOnSave != nil {
 		r.FormatOnSave = v.FormatOnSave
 	}
+	if v.GoImportsTimeout != nil {
+		r.GoImportsTimeout = v.GoImportsTimeout
+	}
 	if v.QuickfixAutoDiagnostics != nil {
 		r.QuickfixAutoDiagnostics = v.QuickfixAutoDiagnostics
 	}

@@ -2,6 +2,8 @@
 // used by govim
 package config
 
+import "time"
+
 const (
 	InternalFunctionPrefix = "_internal_"
 )
@@ -45,6 +47,13 @@ type Config struct {
 	//
 	// Default: FormatOnSaveGoImportsGoFmt.
 	FormatOnSave *FormatOnSave `json:",omitempty"`
+
+	// GoImportsTimeout configures how long a goimports call is allowed to run
+	// before being explicitly cancelled. The main use case is to avoid blocking
+	// for long when saving a buffer with GoImports as a part of FormatOnSave.
+	//
+	// Default: 0 (no timeout)
+	GoImportsTimeout *time.Duration `json:",omitempty"`
 
 	// QuickfixAutoDiagnostics is a boolean (0 or 1 in VimScript) that controls
 	// whether auto-population of the quickfix window with gopls diagnostics is

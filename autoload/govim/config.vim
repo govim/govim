@@ -156,6 +156,10 @@ function! s:validGofumpt(v)
   return s:validBool(a:v)
 endfunction
 
+function! s:validGoImportsTimeout(v)
+  return s:validString(a:v)
+endfunction
+
 function! s:validExperimentalAutoreadLoadedBuffers(v)
   return s:validBool(a:v)
 endfunction
@@ -196,6 +200,7 @@ endfunction
 
 let s:validators = {
       \ "FormatOnSave": function("s:validFormatOnSave"),
+      \ "GoImportsTimeout": function("s:validGoImportsTimeout"),
       \ "QuickfixAutoDiagnostics": function("s:validQuickfixAutoDiagnostics"),
       \ "CompletionDeepCompletions": function("s:validCompletionDeepCompletions"),
       \ "CompletionMatcher": function("s:validCompletionMatcher"),
