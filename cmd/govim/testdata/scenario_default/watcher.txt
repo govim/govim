@@ -25,20 +25,6 @@ rm const.go
 errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const.go'", Type:3\}'
 vimexprwait errors.empty GOVIMTest_getqflist()
 
-skip 'Temporary disabled due to https://github.com/govim/govim/issues/492'
-
-# New package, note that this is currently handled by a separate lib in darwin
-vim ex 'call cursor(7,1)'
-vim ex 'call feedkeys(\"ifmt.Println(foo.Bar)\n\\<ESC>\",\"x\")'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-mkdir foo
-cp foo_foo.go.orig foo/foo.go
-errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/foo/foo.go'", Type:1\}'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/foo/foo.go
-vim ex 'w'
-errlogmatch 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-vimexprwait errors.updated GOVIMTest_getqflist()
-
 # No warnings or errors during the test
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages

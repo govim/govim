@@ -1,3 +1,4 @@
+//go:build darwin
 // +build darwin
 
 package fswatcher
@@ -13,24 +14,32 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-const fRemoved = fsevents.ItemRemoved | fsevents.ItemRenamed
-const fChanged = fsevents.ItemModified | fsevents.ItemChangeOwner
-const fCreated = fsevents.ItemCreated
+const (
+	fRemoved = fsevents.ItemRemoved | fsevents.ItemRenamed
+	fChanged = fsevents.ItemModified | fsevents.ItemChangeOwner
+	fCreated = fsevents.ItemCreated
+)
 
 type fswatcher struct {
 	eventCh chan Event
 	es      *fsevents.EventStream
 }
 
-func New(gomodpath string, tomb *tomb.Tomb) (*FSWatcher, error) {
-	dirpath := filepath.Dir(gomodpath)
-	dev, err := fsevents.DeviceForPath(dirpath)
+// New creates a file watcher that provide events recursively for all files and directories
+// that aren't filtered by the watch filter. The root argument must be an existing directory,
+// in our case the module root. FSWatcher will not send events for any path (file or directory)
+// where the filter returns "true".
+func New(root string, filter watchFilterFn, logf logFn, tomb *tomb.Tomb) (*FSWatcher, error) {
+	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
+		return nil, fmt.Errorf("provided root %q must be an existing directory", root)
+	}
+	dev, err := fsevents.DeviceForPath(root)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve device for path %v: %v", dirpath, err)
+		return nil, fmt.Errorf("failed to retrieve device for path %v: %v", root, err)
 	}
 
 	es := &fsevents.EventStream{
-		Paths:   []string{dirpath},
+		Paths:   []string{root},
 		Latency: 200 * time.Millisecond,
 		Device:  dev,
 		Flags:   fsevents.FileEvents | fsevents.WatchRoot,
@@ -40,7 +49,7 @@ func New(gomodpath string, tomb *tomb.Tomb) (*FSWatcher, error) {
 
 	// fsevents returns paths relative to device root so we need
 	// to figure out the actual mount point
-	mountPoint, err := filepath.Abs(dirpath)
+	mountPoint, err := filepath.Abs(root)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -68,6 +77,10 @@ func New(gomodpath string, tomb *tomb.Tomb) (*FSWatcher, error) {
 				event := events[i]
 				path := filepath.Join(mountPoint, event.Path)
 
+				if filter(path) {
+					continue
+				}
+
 				// Darwin might include both "created" and "changed" in the same event
 				// so ordering matters below. The "created" case should be checked
 				// before "changed" to get a behavior that is more consistent with other
@@ -89,8 +102,6 @@ func New(gomodpath string, tomb *tomb.Tomb) (*FSWatcher, error) {
 	return &FSWatcher{&fswatcher{eventCh, es}}, nil
 }
 
-func (w *fswatcher) Add(path string) error    { return nil }
-func (w *fswatcher) Remove(path string) error { return nil }
 func (w *fswatcher) Close() error {
 	w.es.Stop()
 	return nil
