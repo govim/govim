@@ -257,13 +257,12 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 		inShutdown:       make(chan struct{}),
 		diagnosticsCache: &emptyDiags,
 		vimstate: &vimstate{
-			Driver:                d,
-			buffers:               make(map[int]*types.Buffer),
-			defaultConfig:         *defaults,
-			config:                *defaults,
-			quickfixIsDiagnostics: true,
-			suggestedFixesPopups:  make(map[int][]suggestedFix),
-			progressPopups:        make(map[protocol.ProgressToken]*types.ProgressPopup),
+			Driver:               d,
+			buffers:              make(map[int]*types.Buffer),
+			defaultConfig:        *defaults,
+			config:               *defaults,
+			suggestedFixesPopups: make(map[int][]suggestedFix),
+			progressPopups:       make(map[protocol.ProgressToken]*types.ProgressPopup),
 		},
 	}
 	res.vimstate.govimplugin = res

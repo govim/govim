@@ -7,6 +7,10 @@ import (
 	"github.com/govim/govim"
 )
 
+const (
+	quickfixDiagnosticsTitle = "govim diagnostics"
+)
+
 type quickfixEntry struct {
 	Filename string `json:"filename"`
 	Lnum     int    `json:"lnum"`
@@ -24,32 +28,24 @@ func (q quickfixEntry) equalModuloBuffer(q2 quickfixEntry) bool {
 }
 
 func (v *vimstate) quickfixDiagnostics(flags govim.CommandFlags, args ...string) error {
-	wasNotDiagnostics := !v.quickfixIsDiagnostics
-	v.quickfixIsDiagnostics = true
-	return v.updateQuickfixWithDiagnostics(true, wasNotDiagnostics)
+	return v.updateQuickfixWithDiagnostics(true)
 }
 
 // updateQuickfixWithDiagnostics updates Vim's quickfix window with the current
-// diagnostics(), respecting config settings that are overridden by force.  The
-// rather clumsily named wasPrevNotDiagnostics can be set to true if it is
-// known to the caller that the quickfix window was previously (to this call)
-// being used for something other than diagnostics, e.g. references.
-func (v *vimstate) updateQuickfixWithDiagnostics(force bool, wasPrevNotDiagnostics bool) error {
-	if !force && (v.config.QuickfixAutoDiagnostics == nil || !*v.config.QuickfixAutoDiagnostics) {
+// diagnostics(), respecting config settings that are overridden by force.
+func (v *vimstate) updateQuickfixWithDiagnostics(force bool) error {
+	diags := v.diagnostics()
+	diagsHasChanged := v.lastDiagnosticsQuickfix != diags
+	canDiagnostics := v.quickfixCanDiagnostics()
+	autoDiag := v.config.QuickfixAutoDiagnostics == nil || *v.config.QuickfixAutoDiagnostics
+	v.lastDiagnosticsQuickfix = diags
+	if !force && (!diagsHasChanged || !canDiagnostics || !autoDiag) {
 		return nil
 	}
-	diagsRef := v.diagnostics()
-	work := v.lastDiagnosticsQuickfix != diagsRef
-	v.lastDiagnosticsQuickfix = diagsRef
-	if (!force && !work) || !v.quickfixIsDiagnostics {
-		return nil
-	}
-	diags := *diagsRef
 
 	// must be non-nil
 	fixes := []quickfixEntry{}
-
-	for _, d := range diags {
+	for _, d := range *diags {
 		// make fn relative for reporting purposes
 		fn, err := filepath.Rel(v.workingDirectory, d.Filename)
 		if err != nil {
@@ -73,15 +69,16 @@ func (v *vimstate) updateQuickfixWithDiagnostics(force bool, wasPrevNotDiagnosti
 	// by stashing the last selected diagnostic when we flip to, for example,
 	// references mode. But for now we keep it simple.
 	newIdx := 0
-	if !wasPrevNotDiagnostics && len(v.lastQuickFixDiagnostics) > 0 {
-		var want qflistWant
-		v.Parse(v.ChannelExpr(`getqflist({"idx":0})`), &want)
-		if want.Idx == 0 {
-			// NOTE: this should never happen since idx == 0 only if the qf is empty
-			// and we just tested it isn't.
+	if canDiagnostics && len(v.lastQuickFixDiagnostics) > 0 {
+		var qflist qflistProps
+		v.Parse(v.ChannelExpr(`getqflist({"idx":0})`), &qflist)
+		if qflist.Idx == 0 {
 			goto NewIndexSet
 		}
-		wantIdx := want.Idx - 1
+		wantIdx := qflist.Idx - 1
+		if len(v.lastQuickFixDiagnostics) <= wantIdx {
+			goto NewIndexSet
+		}
 		currFix := v.lastQuickFixDiagnostics[wantIdx]
 		var fileNextIdx, fileLastIdx, dirFirstIdx int
 		for i, f := range fixes {
@@ -116,17 +113,20 @@ func (v *vimstate) updateQuickfixWithDiagnostics(force bool, wasPrevNotDiagnosti
 		}
 	}
 NewIndexSet:
-	v.lastQuickFixDiagnostics = fixes
-	v.BatchStart()
-	v.BatchChannelCall("setqflist", fixes, "r")
-	if newIdx > 0 {
-		v.BatchChannelCall("setqflist", []quickfixEntry{}, "r", qflistWant{Idx: newIdx})
-	}
-	v.MustBatchEnd()
-
+	v.setQuickfixDiagnostics(fixes, newIdx)
 	return nil
 }
 
-type qflistWant struct {
-	Idx int `json:"idx"`
+// setQuickfixDiagnostics fills quickfix list with diagnostics, and set the title and index (if != 0).
+func (v *vimstate) setQuickfixDiagnostics(diags []quickfixEntry, index int) {
+	v.lastQuickFixDiagnostics = diags
+	v.BatchStart()
+	v.BatchChannelCall("setqflist", diags, "r")
+	v.BatchChannelCall("setqflist", []quickfixEntry{}, "r", qflistProps{Title: quickfixDiagnosticsTitle, Idx: index})
+	v.MustBatchEnd()
+}
+
+type qflistProps struct {
+	Idx   int    `json:"idx,omitempty"`
+	Title string `json:"title,omitempty"`
 }

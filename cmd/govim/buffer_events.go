@@ -85,8 +85,6 @@ func (v *vimstate) bufQuickFixCmdPre(args ...json.RawMessage) error {
 func (v *vimstate) bufQuickFixCmdPost(args ...json.RawMessage) error {
 	defer func() { v.vimgrepPendingBufs = nil }()
 
-	v.quickfixIsDiagnostics = v.quickfixIsDiagnostics && len(v.vimgrepPendingBufs) == 0
-
 	// Vim versions older than 8.2.2185 did not notify when buffers opened during vimgrep
 	// closed so we need to explicitly check if any of the buffers are still open.
 	for _, b := range v.vimgrepPendingBufs {
