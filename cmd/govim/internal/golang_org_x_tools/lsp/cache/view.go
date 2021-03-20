@@ -236,6 +236,10 @@ func (v *View) Folder() span.URI {
 	return v.folder
 }
 
+func (v *View) TempWorkspace() span.URI {
+	return v.tempWorkspace
+}
+
 func (v *View) Options() *source.Options {
 	v.optionsMu.Lock()
 	defer v.optionsMu.Unlock()
@@ -456,11 +460,6 @@ func (v *View) shutdown(ctx context.Context) {
 	go v.snapshot.generation.Destroy()
 	v.snapshotMu.Unlock()
 	v.importsState.destroy()
-	if v.tempWorkspace != "" {
-		if err := os.RemoveAll(v.tempWorkspace.Filename()); err != nil {
-			event.Error(ctx, "removing temp workspace", err)
-		}
-	}
 }
 
 func (v *View) Session() *Session {
@@ -546,28 +545,32 @@ func (s *snapshot) initialize(ctx context.Context, firstAttempt bool) {
 				Message:  err.Error(),
 			})
 		}
-		for modURI := range s.workspace.getActiveModFiles() {
-			fh, err := s.GetFile(ctx, modURI)
-			if err != nil {
-				addError(modURI, err)
-				continue
+		if len(s.workspace.getActiveModFiles()) > 0 {
+			for modURI := range s.workspace.getActiveModFiles() {
+				fh, err := s.GetFile(ctx, modURI)
+				if err != nil {
+					addError(modURI, err)
+					continue
+				}
+				parsed, err := s.ParseMod(ctx, fh)
+				if err != nil {
+					addError(modURI, err)
+					continue
+				}
+				if parsed.File == nil || parsed.File.Module == nil {
+					addError(modURI, fmt.Errorf("no module path for %s", modURI))
+					continue
+				}
+				path := parsed.File.Module.Mod.Path
+				scopes = append(scopes, moduleLoadScope(path))
 			}
-			parsed, err := s.ParseMod(ctx, fh)
-			if err != nil {
-				addError(modURI, err)
-				continue
-			}
-			if parsed.File == nil || parsed.File.Module == nil {
-				addError(modURI, fmt.Errorf("no module path for %s", modURI))
-				continue
-			}
-			path := parsed.File.Module.Mod.Path
-			scopes = append(scopes, moduleLoadScope(path))
-		}
-		if len(scopes) == 0 {
+		} else {
 			scopes = append(scopes, viewLoadScope("LOAD_VIEW"))
 		}
-		err := s.load(ctx, firstAttempt, append(scopes, packagePath("builtin"))...)
+		var err error
+		if len(scopes) > 0 {
+			err = s.load(ctx, firstAttempt, append(scopes, packagePath("builtin"))...)
+		}
 		if ctx.Err() != nil {
 			return
 		}
@@ -578,7 +581,12 @@ func (s *snapshot) initialize(ctx context.Context, firstAttempt bool) {
 				MainError: err,
 				DiagList:  append(modDiagnostics, extractedDiags...),
 			}
-		} else if len(modDiagnostics) != 0 {
+		} else if len(modDiagnostics) == 1 {
+			s.initializedErr = &source.CriticalError{
+				MainError: fmt.Errorf(modDiagnostics[0].Message),
+				DiagList:  modDiagnostics,
+			}
+		} else if len(modDiagnostics) > 1 {
 			s.initializedErr = &source.CriticalError{
 				MainError: fmt.Errorf("error loading module names"),
 				DiagList:  modDiagnostics,
@@ -614,7 +622,9 @@ func (v *View) invalidateContent(ctx context.Context, changes map[span.URI]*file
 	v.snapshot, workspaceChanged = oldSnapshot.clone(ctx, v.baseCtx, changes, forceReloadMetadata)
 	if workspaceChanged && v.tempWorkspace != "" {
 		snap := v.snapshot
+		release := snap.generation.Acquire(ctx)
 		go func() {
+			defer release()
 			wsdir, err := snap.getWorkspaceDir(ctx)
 			if err != nil {
 				event.Error(ctx, "getting workspace dir", err)
