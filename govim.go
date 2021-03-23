@@ -137,10 +137,6 @@ type Govim interface {
 	// Initialized returns a channel that can be used to wait until a Govim
 	// instance has completed the init phase, post loading.
 	Initialized() chan struct{}
-
-	// Shutdown returns a channel that can be used to wait until a Govim
-	// instance has completed the shutdown phase.
-	Shutdown() chan struct{}
 }
 
 type govimImpl struct {
@@ -174,7 +170,6 @@ type govimImpl struct {
 
 	loaded      chan struct{}
 	initialized chan struct{}
-	shutdown    chan struct{}
 
 	eventQueue *queue.Queue
 	tomb       *tomb.Tomb
@@ -216,7 +211,6 @@ func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer, t *tomb.T
 
 		loaded:      make(chan struct{}),
 		initialized: make(chan struct{}),
-		shutdown:    make(chan struct{}),
 
 		flushEvents: make(chan struct{}),
 
@@ -405,10 +399,6 @@ func (g *govimImpl) Run() error {
 	})
 	g.tomb.Kill(err)
 	var shutdownErr error
-	if g.plugin != nil {
-		shutdownErr = g.plugin.Shutdown()
-		close(g.shutdown)
-	}
 	if g.pluginErrCh != nil {
 		close(g.pluginErrCh)
 	}
@@ -591,6 +581,18 @@ func (g *govimImpl) run() error {
 				is = append(is, i)
 			}
 			fmt.Fprintln(g.log, is...)
+		case "shutdown":
+			g.eventQueue.Add(func() error {
+				resp := [2]interface{}{"", ""}
+				err := g.plugin.Shutdown()
+				if err != nil {
+					errStr := fmt.Sprintf("got error whilst handling shutdown: %v", err)
+					g.Logf(errStr)
+					resp[0] = errStr
+				}
+				g.sendJSONMsg(id, resp)
+				return nil
+			})
 		}
 	}
 }
@@ -964,10 +966,6 @@ func (g *govimImpl) Loaded() chan struct{} {
 
 func (g *govimImpl) Initialized() chan struct{} {
 	return g.initialized
-}
-
-func (g *govimImpl) Shutdown() chan struct{} {
-	return g.shutdown
 }
 
 type errProto struct {

@@ -83,7 +83,10 @@ func mainerr() error {
 func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 	defer out.Close()
 
-	d := newplugin(goplspath, nil, nil, nil)
+	d, err := newplugin(goplspath, nil, nil, nil)
+	if err != nil {
+		return err
+	}
 
 	tf, err := d.createLogFile("govim")
 	if err != nil {
@@ -217,7 +220,7 @@ type govimplugin struct {
 	parentCallArgs []string
 }
 
-func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Config) *govimplugin {
+func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Config) (*govimplugin, error) {
 	if goplsEnv == nil {
 		goplsEnv = os.Environ()
 	}
@@ -266,7 +269,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 		},
 	}
 	res.vimstate.govimplugin = res
-	return res
+	return res, nil
 }
 
 func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
