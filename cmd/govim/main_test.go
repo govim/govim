@@ -189,7 +189,10 @@ func TestScripts(t *testing.T) {
 						user.CompletionBudget = &s
 					}
 
-					d := newplugin(string(goplsPath), e.Vars, defaults, user)
+					d, err := newplugin(string(goplsPath), e.Vars, defaults, user)
+					if err != nil {
+						return err
+					}
 
 					config := &testdriver.Config{
 						Name:           filepath.Base(e.WorkDir),

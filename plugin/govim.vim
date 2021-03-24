@@ -180,6 +180,8 @@ function s:doShutdown()
     " TODO: anything to do here other than return?
     return
   endif
+  let l:shutdownRes = s:ch_evalexpr(["shutdown"])
+  call ch_log("shutdown complete: ".string(l:shutdownRes))
   call ch_close(s:channel)
 endfunction
 
@@ -217,7 +219,7 @@ function s:userBusy(busy)
 endfunction
 
 function s:define(channel, msg)
-  " format is [type, ...]
+  " format is [id, type, ...]
   " type is function, command or autocmd
   try
     let l:id = a:msg[0]
