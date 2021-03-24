@@ -42,11 +42,6 @@ const (
 	EnvTestRaceSlowdown = "GOVIM_TEST_RACE_SLOWDOWN"
 )
 
-// user environment variables
-const (
-	EnvLogfileTmpl = "GOVIM_LOGFILE_TMPL"
-)
-
 // vim versions
 const (
 	// MinVimGovim represents the bare minimum version of Vim required to

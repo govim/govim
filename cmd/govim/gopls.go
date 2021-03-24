@@ -20,16 +20,20 @@ import (
 )
 
 func (g *govimplugin) startGopls() error {
-	logfile, err := g.createLogFile("gopls")
-	if err != nil {
-		return err
+	goplsArgs := []string{"-rpc.trace"}
+	if getEnvVal(g.goplsEnv, config.EnvLog, "on") == "on" {
+
+		logfile, err := g.createLogFile("gopls")
+		if err != nil {
+			return err
+		}
+		logfile.Close()
+		g.Logf("gopls log file: %v", logfile.Name())
+
+		g.ChannelExf("let s:gopls_logfile=%q", logfile.Name())
+		goplsArgs = append(goplsArgs, "-logfile", logfile.Name())
 	}
-	logfile.Close()
-	g.Logf("gopls log file: %v", logfile.Name())
 
-	g.ChannelExf("let s:gopls_logfile=%q", logfile.Name())
-
-	goplsArgs := []string{"-rpc.trace", "-logfile", logfile.Name()}
 	if flags, err := util.Split(os.Getenv(string(config.EnvVarGoplsFlags))); err != nil {
 		g.Logf("invalid env var %s: %v", config.EnvVarGoplsFlags, err)
 	} else {

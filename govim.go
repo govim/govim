@@ -140,9 +140,10 @@ type Govim interface {
 }
 
 type govimImpl struct {
-	in  *json.Decoder
-	out *json.Encoder
-	log io.Writer
+	in      *json.Decoder
+	out     *json.Encoder
+	log     io.Writer
+	logFile *os.File
 
 	// outLock synchronises access to out to ensure we have non-overlapping
 	// sending of messages
@@ -197,11 +198,12 @@ type unscheduledCallback chan callbackResp
 
 func (u unscheduledCallback) isCallback() {}
 
-func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer, t *tomb.Tomb) (Govim, error) {
+func NewGovim(plug Plugin, in io.Reader, out io.Writer, log io.Writer, logFile *os.File, t *tomb.Tomb) (Govim, error) {
 	g := &govimImpl{
-		in:  json.NewDecoder(in),
-		out: json.NewEncoder(out),
-		log: log,
+		in:      json.NewDecoder(in),
+		out:     json.NewEncoder(out),
+		log:     log,
+		logFile: logFile,
 
 		funcHandlers: make(map[string]handler),
 
@@ -293,8 +295,8 @@ func (g *govimImpl) load() error {
 	}
 	close(g.loaded)
 
-	if fi, ok := g.log.(*os.File); ok {
-		g.ChannelEx(`let s:govim_logfile="` + fi.Name() + `"`)
+	if g.logFile != nil {
+		g.ChannelEx(`let s:govim_logfile="` + g.logFile.Name() + `"`)
 	}
 	g.Logf("Go version %v", runtime.Version())
 

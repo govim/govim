@@ -35,6 +35,18 @@ const (
 	// with a value of n or p that would result in 0 >= GOMAXPROCS or
 	// GOMAXPROCS > runtime.NumCPU()
 	EnvVarGoplsGOMAXPROCSMinusN EnvVar = "GOVIM_GOPLS_GOMAXPROCS_MINUS_N"
+
+	// EnvLogfileTmpl specifies the filename format of logfiles created by govim
+	// for govim, gopls and Vim. The default value is "%v_%v_%v". The first %v
+	// verb is expanded to either "govim", "gopls" or "vim_channel". The second
+	// %v verb (if it exists) is expanded to a date and time format
+	// "20060102_1504_05". The third %v verb (if it exists) is expanded to a
+	// ioutil.TempFile-style "*" random string.
+	EnvLogfileTmpl = "GOVIM_LOGFILE_TMPL"
+
+	// EnvLog controls whether log files are created by govim. Log files are only
+	// created when GOVIM_LOG=on. This is the default.
+	EnvLog = "GOVIM_LOG"
 )
 
 //go:generate go run github.com/govim/govim/cmd/govim/config/internal/applygen Config
