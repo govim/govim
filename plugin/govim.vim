@@ -22,9 +22,17 @@ if has("patch-8.2.0452") && !has("patch-8.2.0466")
 endif
 
 " TODO: we are ignoring windows right now....
+" s:tmpdir is the root temporary directory within
+" which we will create a govim directory to contain
+" logfiles
 let s:tmpdir = $TMPDIR
 if s:tmpdir == ""
   let s:tmpdir = "/tmp"
+endif
+let s:tmpdir .= "/govim"
+let s:mkgovimtmproot = system("mkdir -p ".s:tmpdir)
+if v:shell_error
+  throw s:mkgovimtmproot
 endif
 let s:filetmpl = $GOVIM_LOGFILE_TMPL
 if s:filetmpl == ""

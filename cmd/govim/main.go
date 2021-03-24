@@ -224,9 +224,14 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	if goplsEnv == nil {
 		goplsEnv = os.Environ()
 	}
+	// Match the logic within plugin/govim.vim
 	tmpDir := getEnvVal(goplsEnv, "TMPDIR")
 	if tmpDir == "" {
 		tmpDir = os.TempDir()
+	}
+	tmpDir = filepath.Join(tmpDir, "govim")
+	if err := os.MkdirAll(tmpDir, 0777); err != nil {
+		return nil, fmt.Errorf("failed to mkdir %s: %v", tmpDir, err)
 	}
 	if defaults == nil {
 		defaults = &config.Config{
