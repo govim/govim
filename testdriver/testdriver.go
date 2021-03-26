@@ -451,7 +451,7 @@ func (d *TestDriver) listenGovim() error {
 	if d.log != nil {
 		log = d.log
 	}
-	g, err := govim.NewGovim(d.plugin, conn, conn, log, &d.tomb)
+	g, err := govim.NewGovim(d.plugin, conn, conn, log, nil, &d.tomb)
 	if err != nil {
 		return fmt.Errorf("failed to create govim: %v", err)
 	}

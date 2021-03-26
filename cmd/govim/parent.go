@@ -20,7 +20,7 @@ import (
 // startParentServer is called during the init phase of cmd/govim. It starts a
 // Unix Domain Sockets server to allow for communication from a child instance
 func (g *govimplugin) startParentServer() error {
-	td, err := ioutil.TempDir("", "govim-parent-child-*")
+	td, err := ioutil.TempDir("", ".govim-parent-child-*")
 	if err != nil {
 		return fmt.Errorf("failed to create a temp dir for the socket file: %v", err)
 	}

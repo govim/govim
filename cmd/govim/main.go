@@ -88,22 +88,27 @@ func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 		return err
 	}
 
-	tf, err := d.createLogFile("govim")
-	if err != nil {
-		return err
-	}
-	defer tf.Close()
+	var logFile *os.File
+	var writers []io.Writer
 
-	var log io.Writer = tf
+	if getEnvVal(d.goplsEnv, config.EnvLog, "on") == "on" {
+		logFile, err = d.createLogFile("govim")
+		if err != nil {
+			return err
+		}
+		defer logFile.Close()
+		writers = append(writers, logFile)
+		if os.Getenv(testsetup.EnvTestSocket) != "" {
+			fmt.Fprintf(os.Stderr, "New connection will log to %v\n", logFile.Name())
+		}
+	}
+
 	if *fTail {
-		log = io.MultiWriter(tf, os.Stdout)
+		writers = append(writers, os.Stdout)
 	}
+	log := io.MultiWriter(writers...)
 
-	if os.Getenv(testsetup.EnvTestSocket) != "" {
-		fmt.Fprintf(os.Stderr, "New connection will log to %v\n", tf.Name())
-	}
-
-	g, err := govim.NewGovim(d, in, out, log, &d.tomb)
+	g, err := govim.NewGovim(d, in, out, log, logFile, &d.tomb)
 	if err != nil {
 		return fmt.Errorf("failed to create govim instance: %v", err)
 	}
@@ -115,10 +120,7 @@ func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 func (g *govimplugin) createLogFile(prefix string) (*os.File, error) {
 	var tf *os.File
 	var err error
-	logfiletmpl := getEnvVal(g.goplsEnv, testsetup.EnvLogfileTmpl)
-	if logfiletmpl == "" {
-		logfiletmpl = "%v_%v_%v"
-	}
+	logfiletmpl := getEnvVal(g.goplsEnv, config.EnvLogfileTmpl, "%v_%v_%v")
 	logfiletmpl += ".log"
 	logfiletmpl = strings.Replace(logfiletmpl, "%v", prefix, 1)
 	logfiletmpl = strings.Replace(logfiletmpl, "%v", time.Now().Format("20060102_1504_05"), 1)
@@ -224,10 +226,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	if goplsEnv == nil {
 		goplsEnv = os.Environ()
 	}
-	tmpDir := getEnvVal(goplsEnv, "TMPDIR")
-	if tmpDir == "" {
-		tmpDir = os.TempDir()
-	}
+	tmpDir := getEnvVal(goplsEnv, "TMPDIR", os.TempDir())
 	if defaults == nil {
 		defaults = &config.Config{
 			FormatOnSave:                          vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImportsGoFmt),
@@ -445,11 +444,11 @@ func (g *govimplugin) defineHighlights() {
 	g.vimstate.MustBatchEnd()
 }
 
-func getEnvVal(env []string, varname string) string {
+func getEnvVal(env []string, varname string, vdefault string) string {
 	for i := len(env) - 1; i >= 0; i-- {
 		if strings.HasPrefix(env[i], varname+"=") {
 			return strings.TrimPrefix(env[i], varname+"=")
 		}
 	}
-	return ""
+	return vdefault
 }

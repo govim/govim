@@ -26,26 +26,28 @@ let s:tmpdir = $TMPDIR
 if s:tmpdir == ""
   let s:tmpdir = "/tmp"
 endif
-let s:filetmpl = $GOVIM_LOGFILE_TMPL
-if s:filetmpl == ""
-  let s:filetmpl = "%v_%v_%v"
-endif
-let s:filetmpl .= ".log"
-let s:filetmpl = substitute(s:filetmpl, "%v", "vim_channel", "")
-let s:filetmpl = substitute(s:filetmpl, "%v", strftime("%Y%m%d_%H%M_%S"), "")
-if s:filetmpl =~ "%v"
-  let s:filetmpl = substitute(s:filetmpl, "%v", "XXXXXXXXXXXX", "")
-  let s:filetmpl = system("mktemp ".s:tmpdir."/".s:filetmpl." 2>&1")
-  if v:shell_error
-    throw s:filetmpl
+if system("echo -n ${GOVIM_LOG-on}") == "on"
+  let s:filetmpl = $GOVIM_LOGFILE_TMPL
+  if s:filetmpl == ""
+    let s:filetmpl = "%v_%v_%v"
   endif
-else
-  let s:filetmpl = s:tmpdir."/".s:filetmpl
+  let s:filetmpl .= ".log"
+  let s:filetmpl = substitute(s:filetmpl, "%v", "vim_channel", "")
+  let s:filetmpl = substitute(s:filetmpl, "%v", strftime("%Y%m%d_%H%M_%S"), "")
+  if s:filetmpl =~ "%v"
+    let s:filetmpl = substitute(s:filetmpl, "%v", "XXXXXXXXXXXX", "")
+    let s:filetmpl = system("mktemp ".s:tmpdir."/".s:filetmpl." 2>&1")
+    if v:shell_error
+      throw s:filetmpl
+    endif
+  else
+    let s:filetmpl = s:tmpdir."/".s:filetmpl
+  endif
+  let s:ch_logfile = trim(s:filetmpl)
+  let s:govim_logfile="<unset>"
+  let s:gopls_logfile="<unset>"
+  call ch_logfile(s:ch_logfile, "a")
 endif
-let s:ch_logfile = trim(s:filetmpl)
-let s:govim_logfile="<unset>"
-let s:gopls_logfile="<unset>"
-call ch_logfile(s:ch_logfile, "a")
 let s:channel = ""
 let s:timer = ""
 let s:plugindir = expand(expand("<sfile>:p:h:h"))
@@ -381,7 +383,18 @@ function s:govimExit(job, exitstatus)
 endfunction
 
 command -bar GOVIMPluginInstall echom "Installed to ".s:install(1)
-command -bar GOVIMLogfilePaths echom "Vim channel logfile: ".s:ch_logfile | echom "govim logfile: ".s:govim_logfile | echom "gopls logfile: ".s:gopls_logfile
+command -bar GOVIMLogfilePaths call s:logFilePaths()
+
+func s:logFilePaths()
+  if exists("s:ch_logfile")
+    echom "Vim channel logfile: ".s:ch_logfile
+    echom "govim logfile: ".s:govim_logfile
+    echom "gopls logfile: ".s:gopls_logfile
+  else
+    echom "govim logging turned off; enable by setting GOVIM_LOG=on"
+  endif
+endfunction
+
 
 function s:install(force)
   let oldpath = getcwd()
