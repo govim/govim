@@ -183,7 +183,9 @@ func (g *govimplugin) startGopls() error {
 		return fmt.Errorf("failed to derive go.mod path: %v", err)
 	}
 
-	if gomodpath != "" {
+	// "go env GOMOD" might return an empty string (not module mode) or os.DevNull (in module
+	// mode but without a module root).
+	if gomodpath != "" && gomodpath != os.DevNull {
 		// i.e. we are in a module
 		mw, err := newModWatcher(g, gomodpath)
 		if err != nil {
