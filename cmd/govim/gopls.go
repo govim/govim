@@ -21,8 +21,8 @@ import (
 
 func (g *govimplugin) startGopls() error {
 	goplsArgs := []string{"-rpc.trace"}
-	if getEnvVal(g.goplsEnv, config.EnvLog, "on") == "on" {
 
+	if g.logging["on"] {
 		logfile, err := g.createLogFile("gopls")
 		if err != nil {
 			return err
