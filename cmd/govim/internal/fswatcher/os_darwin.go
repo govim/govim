@@ -25,7 +25,7 @@ type fswatcher struct {
 	es      *fsevents.EventStream
 }
 
-func New(root string, skipDir watchFilterFn, logf logFn, tomb *tomb.Tomb) (*FSWatcher, error) {
+func New(root string, skipDir watchFilterFn, logf logFn, logRaw bool, tomb *tomb.Tomb) (*FSWatcher, error) {
 	dirpath := filepath.Dir(root)
 	dev, err := fsevents.DeviceForPath(dirpath)
 	if err != nil {
@@ -67,6 +67,9 @@ func New(root string, skipDir watchFilterFn, logf logFn, tomb *tomb.Tomb) (*FSWa
 			if !ok {
 				break
 			}
+            if logRaw {
+                logf("raw: %s",e)
+            }
 			for i := range events {
 				event := events[i]
 				path := filepath.Join(mountPoint, event.Path)

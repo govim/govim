@@ -41,7 +41,7 @@ func newModWatcher(plug *govimplugin, gomodpath string) (*modWatcher, error) {
 		return nil, fmt.Errorf("could not resolve dir from go.mod path %v: %v", gomodpath, err)
 	}
 
-	w, err := fswatcher.New(dirpath, eventFilter(dirpath), infof, &plug.tomb)
+	w, err := fswatcher.New(dirpath, eventFilter(dirpath), infof, plug.logging["watcher"], &plug.tomb)
 	if err != nil {
 		return nil, err
 	}

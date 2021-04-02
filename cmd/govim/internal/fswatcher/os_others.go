@@ -19,7 +19,7 @@ type fswatcher struct {
 	logf    logFn
 }
 
-func New(root string, skipDir watchFilterFn, logf logFn, tomb *tomb.Tomb) (*FSWatcher, error) {
+func New(root string, skipDir watchFilterFn, logf logFn, logRaw bool, tomb *tomb.Tomb) (*FSWatcher, error) {
 	mw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new watcher: %v", err)
@@ -102,6 +102,9 @@ func New(root string, skipDir watchFilterFn, logf logFn, tomb *tomb.Tomb) (*FSWa
 			e, ok := <-mw.Events
 			if !ok {
 				break
+			}
+			if logRaw {
+				logf("raw: %s", e)
 			}
 			path := e.Name
 			switch e.Op {
