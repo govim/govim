@@ -91,7 +91,7 @@ func launch(goplspath string, in io.ReadCloser, out io.WriteCloser) error {
 	var logFile *os.File
 	var writers []io.Writer
 
-	if getEnvVal(d.goplsEnv, config.EnvLog, "on") == "on" {
+	if d.logging["on"] {
 		logFile, err = d.createLogFile("govim")
 		if err != nil {
 			return err
@@ -143,6 +143,11 @@ type govimplugin struct {
 
 	// errCh is the channel passed from govim on Init
 	errCh chan error
+
+	// logging is used to determine what to log. It can be used both as a
+	// way to limit logging as well as a way to extend it. The value is
+	// inherited from env var GOVIM_LOG.
+	logging map[string]bool
 
 	// tmpDir is the temp directory within which log files will be created
 	tmpDir string
@@ -226,6 +231,10 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	if goplsEnv == nil {
 		goplsEnv = os.Environ()
 	}
+	logging := make(map[string]bool)
+	for _, v := range strings.Split(getEnvVal(goplsEnv, config.EnvLog, "on"), ",") {
+		logging[v] = true
+	}
 	tmpDir := getEnvVal(goplsEnv, "TMPDIR", os.TempDir())
 	if defaults == nil {
 		defaults = &config.Config{
@@ -251,6 +260,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	d := plugin.NewDriver(PluginPrefix)
 	var emptyDiags []types.Diagnostic
 	res := &govimplugin{
+		logging:          logging,
 		tmpDir:           tmpDir,
 		rawDiagnostics:   make(map[span.URI]*protocol.PublishDiagnosticsParams),
 		goplsEnv:         goplsEnv,

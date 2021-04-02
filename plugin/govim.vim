@@ -26,7 +26,7 @@ let s:tmpdir = $TMPDIR
 if s:tmpdir == ""
   let s:tmpdir = "/tmp"
 endif
-if system("echo -n ${GOVIM_LOG-on}") == "on"
+if index(split(system("echo -n ${GOVIM_LOG-on}"), ","), "on") >= 0
   let s:filetmpl = $GOVIM_LOGFILE_TMPL
   if s:filetmpl == ""
     let s:filetmpl = "%v_%v_%v"
