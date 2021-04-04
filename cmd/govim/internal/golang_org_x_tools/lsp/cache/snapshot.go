@@ -761,18 +761,34 @@ func (s *snapshot) knownFilesInDir(ctx context.Context, dir span.URI) []span.URI
 }
 
 func (s *snapshot) WorkspacePackages(ctx context.Context) ([]source.Package, error) {
-	if err := s.awaitLoaded(ctx); err != nil {
+	phs, err := s.workspacePackageHandles(ctx)
+	if err != nil {
 		return nil, err
 	}
 	var pkgs []source.Package
-	for _, pkgID := range s.workspacePackageIDs() {
-		pkg, err := s.checkedPackage(ctx, pkgID, s.workspaceParseMode(pkgID))
+	for _, ph := range phs {
+		pkg, err := ph.check(ctx, s)
 		if err != nil {
 			return nil, err
 		}
 		pkgs = append(pkgs, pkg)
 	}
 	return pkgs, nil
+}
+
+func (s *snapshot) workspacePackageHandles(ctx context.Context) ([]*packageHandle, error) {
+	if err := s.awaitLoaded(ctx); err != nil {
+		return nil, err
+	}
+	var phs []*packageHandle
+	for _, pkgID := range s.workspacePackageIDs() {
+		ph, err := s.buildPackageHandle(ctx, pkgID, s.workspaceParseMode(pkgID))
+		if err != nil {
+			return nil, err
+		}
+		phs = append(phs, ph)
+	}
+	return phs, nil
 }
 
 func (s *snapshot) KnownPackages(ctx context.Context) ([]source.Package, error) {
@@ -1099,8 +1115,11 @@ func (s *snapshot) awaitLoadedAllErrors(ctx context.Context) *source.CriticalErr
 	// TODO(rstambler): Should we be more careful about returning the
 	// initialization error? Is it possible for the initialization error to be
 	// corrected without a successful reinitialization?
-	if s.initializedErr != nil {
-		return s.initializedErr
+	s.mu.Lock()
+	initializedErr := s.initializedErr
+	s.mu.Unlock()
+	if initializedErr != nil {
+		return initializedErr
 	}
 
 	if ctx.Err() != nil {
