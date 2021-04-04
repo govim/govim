@@ -32,6 +32,8 @@ func (g *govimplugin) startGopls() error {
 
 		g.ChannelExf("let s:gopls_logfile=%q", logfile.Name())
 		goplsArgs = append(goplsArgs, "-logfile", logfile.Name())
+	} else {
+		goplsArgs = append(goplsArgs, "-logfile", os.DevNull)
 	}
 
 	if flags, err := util.Split(os.Getenv(string(config.EnvVarGoplsFlags))); err != nil {
