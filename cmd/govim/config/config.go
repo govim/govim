@@ -175,6 +175,18 @@ type Config struct {
 	// GOFLAGS=-modfile=go.local.mod in order to use an alternative go.mod file.
 	GoplsEnv *map[string]string `json:",omitempty"`
 
+	// GoplsDirectoryFilters can be used to exclude unwanted directories from the
+	// workspace. By default, all directories are included. Filters are an
+	// operator, `+` to include and `-` to exclude, followed by a path prefix
+	// relative to the workspace folder. They are evaluated in order, and
+	// the last filter that applies to a path controls whether it is included.
+	// The path prefix can be empty, so an initial `-` excludes everything.
+	//
+	// For more details and examples see:
+	//
+	// https://github.com/golang/tools/blob/master/gopls/doc/settings.md#directoryfilters-string
+	GoplsDirectoryFilters *[]string `json:",omitempty"`
+
 	// Analyses is a map of booleans (0 or 1 in VimScript) used to enable/disable
 	// specific analyses in gopls. Entries in the map are used to override
 	// defaults specified by gopls. A list of analyzers with their default value
