@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -394,14 +395,19 @@ func (g *govimplugin) Shutdown() error {
 	}
 	os.RemoveAll(g.socketDir) // see note above
 
-	// Shutdown gopls
-	//
-	// We "kill" gopls by closing its stdin. Standard practice for processes
-	// that communicate over stdin/stdout is to exit cleanly when stdin is
-	// closed.
-	if err := g.server.Shutdown(context.Background()); err != nil {
+	// TODO: remove this workaround for golang.org/issue/45476. We should not
+	// have to set a deadline for our call to Shutdown.  500ms is the longest a
+	// user should be expected to wait before "forcing" the shutdown sequence.
+	// Because of golang.org/issue/45476, the shorter we make this timeout the
+	// greater the likelihood that gopls will leave $TMPDIR artefacts lying
+	// around, and not have properly tidied up after itself.
+	ctxt, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	if err := g.server.Shutdown(ctxt); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return fmt.Errorf("failed to call gopls Shutdown: %v", err)
 	}
+	// As the initiator of the connection to gopls, complete shutdown by closing
+	// stdin to the process we started.
 	if err := g.goplsStdin.Close(); err != nil {
 		return fmt.Errorf("failed to close gopls stdin: %v", err)
 	}
