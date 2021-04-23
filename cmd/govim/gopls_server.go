@@ -454,3 +454,24 @@ func (l loggingGoplsServer) WillRenameFiles(ctxt context.Context, params *protoc
 	l.Logf("gopls.WillRenameFiles() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
+
+func (l loggingGoplsServer) Diagnostic(ctxt context.Context, params *string) (*string, error) {
+	l.Logf("gopls.Diagnostic() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.Diagnostic(ctxt, params)
+	l.Logf("gopls.Diagnostic() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) DiagnosticWorkspace(ctxt context.Context, params *protocol.WorkspaceDiagnosticParams) (*protocol.WorkspaceDiagnosticReport, error) {
+	l.Logf("gopls.DiagnosticWorkspace() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.DiagnosticWorkspace(ctxt, params)
+	l.Logf("gopls.DiagnosticWorkspace() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) DiagnosticRefresh(ctxt context.Context) error {
+	l.Logf("gopls.DiagnosticRefresh() call")
+	err := l.u.DiagnosticRefresh(ctxt)
+	l.Logf("gopls.DiagnosticRefresh() return; err: %v", err)
+	return err
+}
