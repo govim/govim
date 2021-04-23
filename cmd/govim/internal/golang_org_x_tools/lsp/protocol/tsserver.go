@@ -6,8 +6,8 @@ package protocol
 
 // Package protocol contains data types and code for LSP jsonrpcs
 // generated automatically from vscode-languageserver-node
-// commit: dae62de921d25964e8732411ca09e532dde992f5
-// last fetched Thu Feb 04 2021 11:11:02 GMT-0500 (Eastern Standard Time)
+// commit: d58c00bbf8837b9fd0144924db5e7b1c543d839e
+// last fetched Sat Apr 17 2021 08:26:29 GMT-0400 (Eastern Daylight Time)
 
 // Code generated (see typescript/README.md) DO NOT EDIT.
 
@@ -47,7 +47,7 @@ type Server interface {
 	IncomingCalls(context.Context, *CallHierarchyIncomingCallsParams) ([]CallHierarchyIncomingCall /*CallHierarchyIncomingCall[] | null*/, error)
 	OutgoingCalls(context.Context, *CallHierarchyOutgoingCallsParams) ([]CallHierarchyOutgoingCall /*CallHierarchyOutgoingCall[] | null*/, error)
 	SemanticTokensFull(context.Context, *SemanticTokensParams) (*SemanticTokens /*SemanticTokens | null*/, error)
-	SemanticTokensFullDelta(context.Context, *SemanticTokensDeltaParams) (interface{} /* SemanticTokens | SemanticTokensDelta | nil*/, error)
+	SemanticTokensFullDelta(context.Context, *SemanticTokensDeltaParams) (interface{} /* SemanticTokens | SemanticTokensDelta | float64*/, error)
 	SemanticTokensRange(context.Context, *SemanticTokensRangeParams) (*SemanticTokens /*SemanticTokens | null*/, error)
 	SemanticTokensRefresh(context.Context) error
 	ShowDocument(context.Context, *ShowDocumentParams) (*ShowDocumentResult, error)
@@ -81,6 +81,9 @@ type Server interface {
 	Rename(context.Context, *RenameParams) (*WorkspaceEdit /*WorkspaceEdit | null*/, error)
 	PrepareRename(context.Context, *PrepareRenameParams) (*Range /*Range | { range: Range, placeholder: string } | { defaultBehavior: boolean } | null*/, error)
 	ExecuteCommand(context.Context, *ExecuteCommandParams) (interface{} /*any | null*/, error)
+	Diagnostic(context.Context, *string) (*string, error)
+	DiagnosticWorkspace(context.Context, *WorkspaceDiagnosticParams) (*WorkspaceDiagnosticReport, error)
+	DiagnosticRefresh(context.Context) error
 	NonstandardRequest(ctx context.Context, method string, params interface{}) (interface{}, error)
 }
 
@@ -336,7 +339,9 @@ func serverDispatch(ctx context.Context, server Server, reply jsonrpc2.Replier, 
 	case "initialize": // req
 		var params ParamInitialize
 		if err := json.Unmarshal(r.Params(), &params); err != nil {
-			return true, sendParseError(ctx, reply, err)
+			if _, ok := err.(*json.UnmarshalTypeError); !ok {
+				return true, sendParseError(ctx, reply, err)
+			}
 		}
 		resp, err := server.Initialize(ctx, &params)
 		return true, reply(ctx, resp, err)
@@ -506,6 +511,26 @@ func serverDispatch(ctx context.Context, server Server, reply jsonrpc2.Replier, 
 		}
 		resp, err := server.ExecuteCommand(ctx, &params)
 		return true, reply(ctx, resp, err)
+	case "textDocument/diagnostic": // req
+		var params string
+		if err := json.Unmarshal(r.Params(), &params); err != nil {
+			return true, sendParseError(ctx, reply, err)
+		}
+		resp, err := server.Diagnostic(ctx, &params)
+		return true, reply(ctx, resp, err)
+	case "workspace/diagnostic": // req
+		var params WorkspaceDiagnosticParams
+		if err := json.Unmarshal(r.Params(), &params); err != nil {
+			return true, sendParseError(ctx, reply, err)
+		}
+		resp, err := server.DiagnosticWorkspace(ctx, &params)
+		return true, reply(ctx, resp, err)
+	case "workspace/diagnostic/refresh": // req
+		if len(r.Params()) > 0 {
+			return true, reply(ctx, nil, errors.Errorf("%w: expected no params", jsonrpc2.ErrInvalidParams))
+		}
+		err := server.DiagnosticRefresh(ctx)
+		return true, reply(ctx, nil, err)
 
 	default:
 		return false, nil
@@ -663,8 +688,8 @@ func (s *serverDispatcher) SemanticTokensFull(ctx context.Context, params *Seman
 	return result, nil
 }
 
-func (s *serverDispatcher) SemanticTokensFullDelta(ctx context.Context, params *SemanticTokensDeltaParams) (interface{} /* SemanticTokens | SemanticTokensDelta | nil*/, error) {
-	var result interface{} /* SemanticTokens | SemanticTokensDelta | nil*/
+func (s *serverDispatcher) SemanticTokensFullDelta(ctx context.Context, params *SemanticTokensDeltaParams) (interface{} /* SemanticTokens | SemanticTokensDelta | float64*/, error) {
+	var result interface{} /* SemanticTokens | SemanticTokensDelta | float64*/
 	if err := Call(ctx, s.Conn, "textDocument/semanticTokens/full/delta", params, &result); err != nil {
 		return nil, err
 	}
@@ -921,6 +946,26 @@ func (s *serverDispatcher) ExecuteCommand(ctx context.Context, params *ExecuteCo
 		return nil, err
 	}
 	return result, nil
+}
+
+func (s *serverDispatcher) Diagnostic(ctx context.Context, params *string) (*string, error) {
+	var result *string
+	if err := Call(ctx, s.Conn, "textDocument/diagnostic", params, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *serverDispatcher) DiagnosticWorkspace(ctx context.Context, params *WorkspaceDiagnosticParams) (*WorkspaceDiagnosticReport, error) {
+	var result *WorkspaceDiagnosticReport
+	if err := Call(ctx, s.Conn, "workspace/diagnostic", params, &result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *serverDispatcher) DiagnosticRefresh(ctx context.Context) error {
+	return Call(ctx, s.Conn, "workspace/diagnostic/refresh", nil, nil)
 }
 
 func (s *serverDispatcher) NonstandardRequest(ctx context.Context, method string, params interface{}) (interface{}, error) {
