@@ -20,6 +20,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/command"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -584,6 +585,7 @@ func (s *Server) getUpgrades(ctx context.Context, snapshot source.Snapshot, uri 
 		Verb:       "list",
 		Args:       append([]string{"-m", "-u", "-json"}, modules...),
 		WorkingDir: filepath.Dir(uri.Filename()),
+		ModFlag:    "readonly",
 	})
 	if err != nil {
 		return nil, err
@@ -692,5 +694,22 @@ func (c *commandHandler) WorkspaceMetadata(ctx context.Context) (command.Workspa
 			ModuleDir: view.TempWorkspace().Filename(),
 		})
 	}
+	return result, nil
+}
+
+func (c *commandHandler) StartDebugging(ctx context.Context, args command.DebuggingArgs) (result command.DebuggingResult, _ error) {
+	addr := args.Addr
+	if addr == "" {
+		addr = "localhost:0"
+	}
+	di := debug.GetInstance(ctx)
+	if di == nil {
+		return result, errors.New("internal error: server has no debugging instance")
+	}
+	listenedAddr, err := di.Serve(ctx, addr)
+	if err != nil {
+		return result, errors.Errorf("starting debug server: %w", err)
+	}
+	result.URLs = []string{"http://" + listenedAddr}
 	return result, nil
 }
