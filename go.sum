@@ -15,8 +15,9 @@ github.com/fsnotify/fsevents v0.1.1/go.mod h1:+d+hS27T6k5J8CRaPLKFgwKYcpS7GwW3Ul
 github.com/fsnotify/fsnotify v1.4.7 h1:IXs+QLmnXW2CcXuY+8Mzv/fWEsPGWxqefPtCP5CnV9I=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/google/go-cmp v0.2.1-0.20190312032427-6f77996f0c42/go.mod h1:8QqcDgzrUqlUb/G2PQTWiueGozuR1884gddMywk6iLU=
-github.com/google/go-cmp v0.5.4 h1:L8R9j+yAqZuZjsqh/z+F1NCffTKKLShY6zXTItVIZ8M=
 github.com/google/go-cmp v0.5.4/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+github.com/google/go-cmp v0.5.5 h1:Khx7svrCpmxxtHBq5j2mp/xVjsi8hQMfNLvJFAlrGgU=
+github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/safehtml v0.0.2/go.mod h1:L4KWwDsUJdECRAEpZoBn3O64bQaywRscowZjJAzjHnU=
 github.com/jba/templatecheck v0.5.0/go.mod h1:/1k7EajoSErFI9GLHAsiIJEaNLt3ALKNw2TV7z2SYv4=
 github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+oQHNcck=
@@ -79,10 +80,10 @@ golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGm
 golang.org/x/tools v0.0.0-20191119224855-298f0cb1881e/go.mod h1:b+2E5dAYhXwXZwtnZ6UAqBI28+e2cm9otk0dWdXHAEo=
 golang.org/x/tools v0.0.0-20210101214203-2dba1e4ea05c/go.mod h1:emZCQorbCU4vsT4fOWvOPXz4eW1wZW4PmDk9uLelYpA=
 golang.org/x/tools v0.1.0/go.mod h1:xkSsbof2nBLbhDlRMhhhyNLN/zl3eTqcnHD5viDpcZ0=
-golang.org/x/tools v0.1.1-0.20210422170518-f946a157eefe h1:HNJiwGJfGFN64PAg8ZAP2gPPqlFQb/RLlE4lNoozcrw=
-golang.org/x/tools v0.1.1-0.20210422170518-f946a157eefe/go.mod h1:q7cPXv+8VGj9Sx5ckHx2nzMtCSaZFrowzWpjN/cwVb8=
-golang.org/x/tools/gopls v0.0.0-20210422170518-f946a157eefe h1:AdWiFlHZ0JvXsp/Y+VvS2yhauzZJ+IJdGdz5JrzSejw=
-golang.org/x/tools/gopls v0.0.0-20210422170518-f946a157eefe/go.mod h1:CZQdtKbZgAeshTriieGh1ukECViWgFRjWkuYOK4XXoQ=
+golang.org/x/tools v0.1.1-0.20210429193421-aec13729f180 h1:QbLiSa89jGpjevwy+zb4IVvmLYs19zW+HNjfnZknQhQ=
+golang.org/x/tools v0.1.1-0.20210429193421-aec13729f180/go.mod h1:q7cPXv+8VGj9Sx5ckHx2nzMtCSaZFrowzWpjN/cwVb8=
+golang.org/x/tools/gopls v0.0.0-20210429193421-aec13729f180 h1:ImKWmGU3UKJePb4B+NVQac2XukLIao5vPyrRo+Rtr3M=
+golang.org/x/tools/gopls v0.0.0-20210429193421-aec13729f180/go.mod h1:BpTENt6DJuaOZgbyRJ6lYPnWBVjKvxcmYGva5fY1ieU=
 golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.org/x/xerrors v0.0.0-20191011141410-1b5146add898/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
 golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=

@@ -51,7 +51,7 @@ type snapshot struct {
 	generation *memoize.Generation
 
 	// builtin pins the AST and package for builtin.go in memory.
-	builtin *builtinPackageHandle
+	builtin *builtinPackageData
 
 	// The snapshot's initialization state is controlled by the fields below.
 	//
@@ -351,22 +351,25 @@ func (s *snapshot) goCommandInvocation(ctx context.Context, flags source.Invocat
 		return "", nil, cleanup, err
 	}
 
-	mutableModFlag := ""
-	if s.view.goversion >= 16 {
-		mutableModFlag = "mod"
-	}
+	// If the mod flag isn't set, populate it based on the mode and workspace.
+	if inv.ModFlag == "" {
+		mutableModFlag := ""
+		if s.view.goversion >= 16 {
+			mutableModFlag = "mod"
+		}
 
-	switch mode {
-	case source.LoadWorkspace, source.Normal:
-		if vendorEnabled {
-			inv.ModFlag = "vendor"
-		} else if !allowModfileModificationOption {
-			inv.ModFlag = "readonly"
-		} else {
+		switch mode {
+		case source.LoadWorkspace, source.Normal:
+			if vendorEnabled {
+				inv.ModFlag = "vendor"
+			} else if !allowModfileModificationOption {
+				inv.ModFlag = "readonly"
+			} else {
+				inv.ModFlag = mutableModFlag
+			}
+		case source.UpdateUserModFile, source.WriteTemporaryModFile:
 			inv.ModFlag = mutableModFlag
 		}
-	case source.UpdateUserModFile, source.WriteTemporaryModFile:
-		inv.ModFlag = mutableModFlag
 	}
 
 	wantTempMod := mode != source.UpdateUserModFile
@@ -960,12 +963,12 @@ func isCommandLineArguments(s string) bool {
 	return strings.Contains(s, "command-line-arguments")
 }
 
-func (s *snapshot) isWorkspacePackage(id packageID) (packagePath, bool) {
+func (s *snapshot) isWorkspacePackage(id packageID) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	scope, ok := s.workspacePackages[id]
-	return scope, ok
+	_, ok := s.workspacePackages[id]
+	return ok
 }
 
 func (s *snapshot) FindFile(uri span.URI) source.VersionedFileHandle {
@@ -1279,13 +1282,12 @@ func contains(views []*View, view *View) bool {
 }
 
 func inVendor(uri span.URI) bool {
-	toSlash := filepath.ToSlash(uri.Filename())
-	if !strings.Contains(toSlash, "/vendor/") {
+	if !strings.Contains(string(uri), "/vendor/") {
 		return false
 	}
 	// Only packages in _subdirectories_ of /vendor/ are considered vendored
 	// (/vendor/a/foo.go is vendored, /vendor/foo.go is not).
-	split := strings.Split(toSlash, "/vendor/")
+	split := strings.Split(string(uri), "/vendor/")
 	if len(split) < 2 {
 		return false
 	}
@@ -1339,28 +1341,24 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		builtin:           s.builtin,
 		initializeOnce:    s.initializeOnce,
 		initializedErr:    s.initializedErr,
-		ids:               make(map[span.URI][]packageID),
-		importedBy:        make(map[packageID][]packageID),
-		metadata:          make(map[packageID]*metadata),
-		packages:          make(map[packageKey]*packageHandle),
-		actions:           make(map[actionKey]*actionHandle),
-		files:             make(map[span.URI]source.VersionedFileHandle),
-		goFiles:           make(map[parseKey]*parseGoHandle),
-		workspacePackages: make(map[packageID]packagePath),
-		unloadableFiles:   make(map[span.URI]struct{}),
-		parseModHandles:   make(map[span.URI]*parseModHandle),
-		modTidyHandles:    make(map[span.URI]*modTidyHandle),
-		modWhyHandles:     make(map[span.URI]*modWhyHandle),
+		ids:               make(map[span.URI][]packageID, len(s.ids)),
+		importedBy:        make(map[packageID][]packageID, len(s.importedBy)),
+		metadata:          make(map[packageID]*metadata, len(s.metadata)),
+		packages:          make(map[packageKey]*packageHandle, len(s.packages)),
+		actions:           make(map[actionKey]*actionHandle, len(s.actions)),
+		files:             make(map[span.URI]source.VersionedFileHandle, len(s.files)),
+		goFiles:           make(map[parseKey]*parseGoHandle, len(s.goFiles)),
+		workspacePackages: make(map[packageID]packagePath, len(s.workspacePackages)),
+		unloadableFiles:   make(map[span.URI]struct{}, len(s.unloadableFiles)),
+		parseModHandles:   make(map[span.URI]*parseModHandle, len(s.parseModHandles)),
+		modTidyHandles:    make(map[span.URI]*modTidyHandle, len(s.modTidyHandles)),
+		modWhyHandles:     make(map[span.URI]*modWhyHandle, len(s.modWhyHandles)),
 		workspace:         newWorkspace,
 	}
 
 	if !workspaceChanged && s.workspaceDirHandle != nil {
 		result.workspaceDirHandle = s.workspaceDirHandle
 		newGen.Inherit(s.workspaceDirHandle)
-	}
-
-	if s.builtin != nil {
-		newGen.Inherit(s.builtin.handle)
 	}
 
 	// Copy all of the FileHandles.
@@ -1548,7 +1546,7 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 				// For internal tests, we need _test files, not just the normal
 				// ones. External tests only have _test files, but we can check
 				// them anyway.
-				if m.forTest != "" && !strings.HasSuffix(uri.Filename(), "_test.go") {
+				if m.forTest != "" && !strings.HasSuffix(string(uri), "_test.go") {
 					continue
 				}
 				if _, ok := result.files[uri]; ok {
@@ -1753,12 +1751,18 @@ func (s *snapshot) BuiltinPackage(ctx context.Context) (*source.BuiltinPackage, 
 	if s.builtin == nil {
 		return nil, errors.Errorf("no builtin package for view %s", s.view.name)
 	}
-	d, err := s.builtin.handle.Get(ctx, s.generation, s)
+	return s.builtin.parsed, s.builtin.err
+}
+
+func (s *snapshot) IsBuiltin(ctx context.Context, uri span.URI) bool {
+	builtin, err := s.BuiltinPackage(ctx)
 	if err != nil {
-		return nil, err
+		event.Error(ctx, "checking for builtin", err)
+		return false
 	}
-	data := d.(*builtinPackageData)
-	return data.parsed, data.err
+	// We should always get the builtin URI in a canonical form, so use simple
+	// string comparison here. span.CompareURI is too expensive.
+	return builtin.ParsedFile.URI == uri
 }
 
 func (s *snapshot) buildBuiltinPackage(ctx context.Context, goFiles []string) error {
@@ -1773,29 +1777,28 @@ func (s *snapshot) buildBuiltinPackage(ctx context.Context, goFiles []string) er
 	if err != nil {
 		return err
 	}
-	h := s.generation.Bind(fh.FileIdentity(), func(ctx context.Context, arg memoize.Arg) interface{} {
-		snapshot := arg.(*snapshot)
-
-		pgh := snapshot.parseGoHandle(ctx, fh, source.ParseFull)
-		pgf, _, err := snapshot.parseGo(ctx, pgh)
-		if err != nil {
-			return &builtinPackageData{err: err}
-		}
-		pkg, err := ast.NewPackage(snapshot.view.session.cache.fset, map[string]*ast.File{
-			pgf.URI.Filename(): pgf.File,
-		}, nil, nil)
-		if err != nil {
-			return &builtinPackageData{err: err}
-		}
-		return &builtinPackageData{
-			parsed: &source.BuiltinPackage{
-				ParsedFile: pgf,
-				Package:    pkg,
-			},
-		}
-	}, nil)
-	s.builtin = &builtinPackageHandle{handle: h}
+	s.builtin = buildBuiltinPackage(ctx, fh, s)
 	return nil
+}
+
+func buildBuiltinPackage(ctx context.Context, fh *fileHandle, snapshot *snapshot) *builtinPackageData {
+	pgh := snapshot.parseGoHandle(ctx, fh, source.ParseFull)
+	pgf, _, err := snapshot.parseGo(ctx, pgh)
+	if err != nil {
+		return &builtinPackageData{err: err}
+	}
+	pkg, err := ast.NewPackage(snapshot.view.session.cache.fset, map[string]*ast.File{
+		pgf.URI.Filename(): pgf.File,
+	}, nil, nil)
+	if err != nil {
+		return &builtinPackageData{err: err}
+	}
+	return &builtinPackageData{
+		parsed: &source.BuiltinPackage{
+			ParsedFile: pgf,
+			Package:    pkg,
+		},
+	}
 }
 
 // BuildGoplsMod generates a go.mod file for all modules in the workspace. It
