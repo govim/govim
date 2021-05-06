@@ -19,6 +19,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/template"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 	errors "golang.org/x/xerrors"
@@ -208,6 +209,12 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, forceAn
 	// will still be shown as a ShowMessage. If there is no error, any running
 	// error progress reports will be closed.
 	s.showCriticalErrorStatus(ctx, snapshot, criticalErr)
+
+	// There may be .tmpl files.
+	for _, f := range snapshot.Templates() {
+		diags := template.Diagnose(f)
+		s.storeDiagnostics(snapshot, f.URI(), typeCheckSource, diags)
+	}
 
 	// If there are no workspace packages, there is nothing to diagnose and
 	// there are no orphaned files.

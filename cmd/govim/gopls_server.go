@@ -427,13 +427,6 @@ func (l loggingGoplsServer) LinkedEditingRange(ctxt context.Context, params *pro
 	return res, err
 }
 
-func (l loggingGoplsServer) ShowDocument(ctxt context.Context, params *protocol.ShowDocumentParams) (*protocol.ShowDocumentResult, error) {
-	l.Logf("gopls.ShowDocument() call; params:\n%v", pretty.Sprint(params))
-	res, err := l.u.ShowDocument(ctxt, params)
-	l.Logf("gopls.ShowDocument() return; err: %v; res\n%v", err, pretty.Sprint(res))
-	return res, err
-}
-
 func (l loggingGoplsServer) WillCreateFiles(ctxt context.Context, params *protocol.CreateFilesParams) (*protocol.WorkspaceEdit, error) {
 	l.Logf("gopls.WillCreateFiles() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.WillCreateFiles(ctxt, params)

@@ -151,11 +151,6 @@ type builtinPackageHandle struct {
 	handle *memoize.Handle
 }
 
-type builtinPackageData struct {
-	parsed *source.BuiltinPackage
-	err    error
-}
-
 // fileBase holds the common functionality for all files.
 // It is intended to be embedded in the file implementations
 type fileBase struct {
@@ -335,6 +330,37 @@ func (s *snapshot) WriteEnv(ctx context.Context, w io.Writer) error {
 
 func (s *snapshot) RunProcessEnvFunc(ctx context.Context, fn func(*imports.Options) error) error {
 	return s.view.importsState.runProcessEnvFunc(ctx, s, fn)
+}
+
+func (s *snapshot) locateTemplateFiles(ctx context.Context) {
+	if !s.view.Options().ExperimentalTemplateSupport {
+		return
+	}
+	dir := s.workspace.root.Filename()
+	searched := 0
+	// Change to WalkDir when we move up to 1.16
+	err := filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if strings.HasSuffix(filepath.Ext(path), "tmpl") && !pathExcludedByFilter(path, s.view.options) &&
+			!fi.IsDir() {
+			k := span.URIFromPath(path)
+			fh, err := s.GetVersionedFile(ctx, k)
+			if err != nil {
+				return nil
+			}
+			s.files[k] = fh
+		}
+		searched++
+		if fileLimit > 0 && searched > fileLimit {
+			return errExhausted
+		}
+		return nil
+	})
+	if err != nil {
+		event.Error(ctx, "searching for template files failed", err)
+	}
 }
 
 func (v *View) contains(uri span.URI) bool {
@@ -553,6 +579,7 @@ func (s *snapshot) loadWorkspace(ctx context.Context, firstAttempt bool) {
 			Message:  err.Error(),
 		})
 	}
+	s.locateTemplateFiles(ctx)
 	if len(s.workspace.getActiveModFiles()) > 0 {
 		for modURI := range s.workspace.getActiveModFiles() {
 			fh, err := s.GetFile(ctx, modURI)

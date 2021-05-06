@@ -50,9 +50,6 @@ type snapshot struct {
 	// the cache generation that contains the data for this snapshot.
 	generation *memoize.Generation
 
-	// builtin pins the AST and package for builtin.go in memory.
-	builtin *builtinPackageData
-
 	// The snapshot's initialization state is controlled by the fields below.
 	//
 	// initializeOnce guards snapshot initialization. Each snapshot is
@@ -64,8 +61,11 @@ type snapshot struct {
 	// to avoid too many go/packages calls.
 	initializedErr *source.CriticalError
 
-	// mu guards all of the maps in the snapshot.
+	// mu guards all of the maps in the snapshot, as well as the builtin URI.
 	mu sync.Mutex
+
+	// builtin pins the AST and package for builtin.go in memory.
+	builtin span.URI
 
 	// ids maps file URIs to package IDs.
 	// It may be invalidated on calls to go/packages.
@@ -145,6 +145,19 @@ func (s *snapshot) ModFiles() []span.URI {
 		uris = append(uris, modURI)
 	}
 	return uris
+}
+
+func (s *snapshot) Templates() map[span.URI]source.VersionedFileHandle {
+	if !s.view.options.ExperimentalTemplateSupport {
+		return nil
+	}
+	ans := map[span.URI]source.VersionedFileHandle{}
+	for k, x := range s.files {
+		if strings.HasSuffix(filepath.Ext(k.Filename()), "tmpl") {
+			ans[k] = x
+		}
+	}
+	return ans
 }
 
 func (s *snapshot) ValidBuildConfiguration() bool {
@@ -677,6 +690,7 @@ func (s *snapshot) fileWatchingGlobPatterns(ctx context.Context) map[string]stru
 	// applied to every folder in the workspace.
 	patterns := map[string]struct{}{
 		"**/*.{go,mod,sum}": {},
+		"**/*.*tmpl":        {},
 	}
 	dirs := s.workspace.dirs(ctx, s)
 	for _, dir := range dirs {
@@ -690,7 +704,7 @@ func (s *snapshot) fileWatchingGlobPatterns(ctx context.Context) map[string]stru
 		// TODO(rstambler): If microsoft/vscode#3025 is resolved before
 		// microsoft/vscode#101042, we will need a work-around for Windows
 		// drive letter casing.
-		patterns[fmt.Sprintf("%s/**/*.{go,mod,sum}", dirName)] = struct{}{}
+		patterns[fmt.Sprintf("%s/**/*.{go,mod,sum,tmpl}", dirName)] = struct{}{}
 	}
 
 	// Some clients do not send notifications for changes to directories that
@@ -1745,60 +1759,37 @@ func extractMagicComments(f *ast.File) []string {
 	return results
 }
 
-func (s *snapshot) BuiltinPackage(ctx context.Context) (*source.BuiltinPackage, error) {
+func (s *snapshot) BuiltinFile(ctx context.Context) (*source.ParsedGoFile, error) {
 	s.AwaitInitialized(ctx)
 
-	if s.builtin == nil {
+	s.mu.Lock()
+	builtin := s.builtin
+	s.mu.Unlock()
+
+	if builtin == "" {
 		return nil, errors.Errorf("no builtin package for view %s", s.view.name)
 	}
-	return s.builtin.parsed, s.builtin.err
+
+	fh, err := s.GetFile(ctx, builtin)
+	if err != nil {
+		return nil, err
+	}
+	return s.ParseGo(ctx, fh, source.ParseFull)
 }
 
 func (s *snapshot) IsBuiltin(ctx context.Context, uri span.URI) bool {
-	builtin, err := s.BuiltinPackage(ctx)
-	if err != nil {
-		event.Error(ctx, "checking for builtin", err)
-		return false
-	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	// We should always get the builtin URI in a canonical form, so use simple
 	// string comparison here. span.CompareURI is too expensive.
-	return builtin.ParsedFile.URI == uri
+	return uri == s.builtin
 }
 
-func (s *snapshot) buildBuiltinPackage(ctx context.Context, goFiles []string) error {
-	if len(goFiles) != 1 {
-		return errors.Errorf("only expected 1 file, got %v", len(goFiles))
-	}
-	uri := span.URIFromPath(goFiles[0])
+func (s *snapshot) setBuiltin(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	// Get the FileHandle through the cache to avoid adding it to the snapshot
-	// and to get the file content from disk.
-	fh, err := s.view.session.cache.getFile(ctx, uri)
-	if err != nil {
-		return err
-	}
-	s.builtin = buildBuiltinPackage(ctx, fh, s)
-	return nil
-}
-
-func buildBuiltinPackage(ctx context.Context, fh *fileHandle, snapshot *snapshot) *builtinPackageData {
-	pgh := snapshot.parseGoHandle(ctx, fh, source.ParseFull)
-	pgf, _, err := snapshot.parseGo(ctx, pgh)
-	if err != nil {
-		return &builtinPackageData{err: err}
-	}
-	pkg, err := ast.NewPackage(snapshot.view.session.cache.fset, map[string]*ast.File{
-		pgf.URI.Filename(): pgf.File,
-	}, nil, nil)
-	if err != nil {
-		return &builtinPackageData{err: err}
-	}
-	return &builtinPackageData{
-		parsed: &source.BuiltinPackage{
-			ParsedFile: pgf,
-			Package:    pkg,
-		},
-	}
+	s.builtin = span.URIFromPath(path)
 }
 
 // BuildGoplsMod generates a go.mod file for all modules in the workspace. It
@@ -1819,7 +1810,8 @@ func buildWorkspaceModFile(ctx context.Context, modFiles map[span.URI]struct{}, 
 	// Fall back to 1.12 -- old versions insist on having some version.
 	goVersion := "1.12"
 
-	paths := make(map[string]span.URI)
+	paths := map[string]span.URI{}
+	excludes := map[string][]string{}
 	var sortedModURIs []span.URI
 	for uri := range modFiles {
 		sortedModURIs = append(sortedModURIs, uri)
@@ -1862,6 +1854,9 @@ func buildWorkspaceModFile(ctx context.Context, modFiles map[span.URI]struct{}, 
 		if err := file.AddReplace(path, "", dirURI(modURI).Filename(), ""); err != nil {
 			return nil, err
 		}
+		for _, exclude := range parsed.Exclude {
+			excludes[exclude.Mod.Path] = append(excludes[exclude.Mod.Path], exclude.Mod.Version)
+		}
 	}
 	if goVersion != "" {
 		file.AddGoStmt(goVersion)
@@ -1903,6 +1898,11 @@ func buildWorkspaceModFile(ctx context.Context, modFiles map[span.URI]struct{}, 
 			if err := file.AddReplace(rep.Old.Path, rep.Old.Version, newPath, newVersion); err != nil {
 				return nil, err
 			}
+		}
+	}
+	for path, versions := range excludes {
+		for _, version := range versions {
+			file.AddExclude(path, version)
 		}
 	}
 	file.SortBlocks()

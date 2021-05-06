@@ -99,7 +99,8 @@ func DefaultOptions() *Options {
 						protocol.SourceOrganizeImports: true,
 						protocol.QuickFix:              true,
 					},
-					Sum: {},
+					Sum:  {},
+					Tmpl: {},
 				},
 				SupportedCommands: commands,
 			},
@@ -132,7 +133,7 @@ func DefaultOptions() *Options {
 					CompletionOptions: CompletionOptions{
 						Matcher:                        Fuzzy,
 						CompletionBudget:               100 * time.Millisecond,
-						ExperimentalPostfixCompletions: false,
+						ExperimentalPostfixCompletions: true,
 					},
 					Codelenses: map[string]bool{
 						string(command.Generate):          true,
@@ -188,6 +189,8 @@ type ClientOptions struct {
 	SemanticTypes                     []string
 	SemanticMods                      []string
 	RelatedInformationSupported       bool
+	CompletionTags                    bool
+	CompletionDeprecated              bool
 }
 
 // ServerOptions holds LSP-specific configuration that is provided by the
@@ -239,6 +242,10 @@ type BuildOptions struct {
 	// ExperimentalWorkspaceModule opts a user into the experimental support
 	// for multi-module workspaces.
 	ExperimentalWorkspaceModule bool `status:"experimental"`
+
+	// ExperimentalTemplateSupport opts into the experimental support
+	// for template files.
+	ExperimentalTemplateSupport bool `status:"experimental"`
 
 	// ExperimentalPackageCacheKey controls whether to use a coarser cache key
 	// for package type information to increase cache hits. This setting removes
@@ -647,6 +654,12 @@ func (o *Options) ForClientCapabilities(caps protocol.ClientCapabilities) {
 
 	// Check if the client supports diagnostic related information.
 	o.RelatedInformationSupported = caps.TextDocument.PublishDiagnostics.RelatedInformation
+	// Check if the client completion support incliudes tags (preferred) or deprecation
+	if caps.TextDocument.Completion.CompletionItem.TagSupport.ValueSet != nil {
+		o.CompletionTags = true
+	} else if caps.TextDocument.Completion.CompletionItem.DeprecatedSupport {
+		o.CompletionDeprecated = true
+	}
 }
 
 func (o *Options) Clone() *Options {
@@ -707,6 +720,7 @@ func (o *Options) AddStaticcheckAnalyzer(a *analysis.Analyzer, enabled bool) {
 func (o *Options) enableAllExperiments() {
 	o.SemanticTokens = true
 	o.ExperimentalPostfixCompletions = true
+	o.ExperimentalTemplateSupport = true
 }
 
 func (o *Options) enableAllExperimentMaps() {
@@ -890,6 +904,9 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 
 	case "experimentalWorkspaceModule":
 		result.setBool(&o.ExperimentalWorkspaceModule)
+
+	case "experimentalTemplateSupport":
+		result.setBool(&o.ExperimentalTemplateSupport)
 
 	case "experimentalDiagnosticsDelay":
 		result.setDuration(&o.ExperimentalDiagnosticsDelay)

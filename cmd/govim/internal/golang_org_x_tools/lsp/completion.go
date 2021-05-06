@@ -15,6 +15,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source/completion"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/template"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -31,6 +32,8 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 		candidates, surrounding, err = completion.Completion(ctx, snapshot, fh, params.Position, params.Context)
 	case source.Mod:
 		candidates, surrounding = nil, nil
+	case source.Tmpl:
+		candidates, surrounding, err = template.Completion(ctx, snapshot, fh, params.Position, params.Context)
 	}
 	if err != nil {
 		event.Error(ctx, "no completions found", err, tag.Position.Of(params.Position))
@@ -154,6 +157,8 @@ func toProtocolCompletionItems(candidates []completion.CompletionItem, rng proto
 
 			Preselect:     i == 0,
 			Documentation: candidate.Documentation,
+			Tags:          candidate.Tags,
+			Deprecated:    candidate.Deprecated,
 		}
 		items = append(items, item)
 	}
