@@ -40,6 +40,11 @@ const (
 
 var _ protocol.Client = (*govimplugin)(nil)
 
+func (g *govimplugin) ShowDocument(context.Context, *protocol.ShowDocumentParams) (*protocol.ShowDocumentResult, error) {
+	defer absorbShutdownErr()
+	panic("ShowDocument not implemented yet")
+}
+
 func (g *govimplugin) ShowMessage(ctxt context.Context, params *protocol.ShowMessageParams) error {
 	defer absorbShutdownErr()
 	g.logGoplsClientf("ShowMessage callback: %v", pretty.Sprint(params))

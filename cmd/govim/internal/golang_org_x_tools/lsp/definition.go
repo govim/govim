@@ -9,13 +9,18 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/template"
 )
 
 func (s *Server) definition(ctx context.Context, params *protocol.DefinitionParams) ([]protocol.Location, error) {
-	snapshot, fh, ok, release, err := s.beginFileRequest(ctx, params.TextDocument.URI, source.Go)
+	kind := source.DetectLanguage("", params.TextDocument.URI.SpanURI().Filename())
+	snapshot, fh, ok, release, err := s.beginFileRequest(ctx, params.TextDocument.URI, kind)
 	defer release()
 	if !ok {
 		return nil, err
+	}
+	if fh.Kind() == source.Tmpl {
+		return template.Definition(snapshot, fh, params.Position)
 	}
 	ident, err := source.Identifier(ctx, snapshot, fh, params.Position)
 	if err != nil {

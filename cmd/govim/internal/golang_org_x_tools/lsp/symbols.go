@@ -11,18 +11,24 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/template"
 )
 
 func (s *Server) documentSymbol(ctx context.Context, params *protocol.DocumentSymbolParams) ([]interface{}, error) {
 	ctx, done := event.Start(ctx, "lsp.Server.documentSymbol")
 	defer done()
 
-	snapshot, fh, ok, release, err := s.beginFileRequest(ctx, params.TextDocument.URI, source.Go)
+	snapshot, fh, ok, release, err := s.beginFileRequest(ctx, params.TextDocument.URI, source.UnknownKind)
 	defer release()
 	if !ok {
 		return []interface{}{}, err
 	}
-	docSymbols, err := source.DocumentSymbols(ctx, snapshot, fh)
+	var docSymbols []protocol.DocumentSymbol
+	if fh.Kind() == source.Tmpl {
+		docSymbols, err = template.DocumentSymbols(snapshot, fh)
+	} else {
+		docSymbols, err = source.DocumentSymbols(ctx, snapshot, fh)
+	}
 	if err != nil {
 		event.Error(ctx, "DocumentSymbols failed", err, tag.URI.Of(fh.URI()))
 		return []interface{}{}, nil

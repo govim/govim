@@ -270,6 +270,7 @@ func (e *Editor) initialize(ctx context.Context, workspaceFolders []string) erro
 	params.Capabilities.Workspace.Configuration = true
 	params.Capabilities.Window.WorkDoneProgress = true
 	// TODO: set client capabilities
+	params.Capabilities.TextDocument.Completion.CompletionItem.TagSupport.ValueSet = []protocol.CompletionItemTag{protocol.ComplDeprecated}
 	params.InitializationOptions = e.configuration()
 	if e.Config.SendPID {
 		params.ProcessID = int32(os.Getpid())
@@ -706,11 +707,35 @@ func (e *Editor) GoToDefinition(ctx context.Context, path string, pos Pos) (stri
 	if err != nil {
 		return "", Pos{}, errors.Errorf("definition: %w", err)
 	}
-	if len(resp) == 0 {
+	return e.extractFirstPathAndPos(ctx, resp)
+}
+
+// GoToTypeDefinition jumps to the type definition of the symbol at the given position
+// in an open buffer.
+func (e *Editor) GoToTypeDefinition(ctx context.Context, path string, pos Pos) (string, Pos, error) {
+	if err := e.checkBufferPosition(path, pos); err != nil {
+		return "", Pos{}, err
+	}
+	params := &protocol.TypeDefinitionParams{}
+	params.TextDocument.URI = e.sandbox.Workdir.URI(path)
+	params.Position = pos.ToProtocolPosition()
+
+	resp, err := e.Server.TypeDefinition(ctx, params)
+	if err != nil {
+		return "", Pos{}, errors.Errorf("type definition: %w", err)
+	}
+	return e.extractFirstPathAndPos(ctx, resp)
+}
+
+// extractFirstPathAndPos returns the path and the position of the first location.
+// It opens the file if needed.
+func (e *Editor) extractFirstPathAndPos(ctx context.Context, locs []protocol.Location) (string, Pos, error) {
+	if len(locs) == 0 {
 		return "", Pos{}, nil
 	}
-	newPath := e.sandbox.Workdir.URIToPath(resp[0].URI)
-	newPos := fromProtocolPosition(resp[0].Range.Start)
+
+	newPath := e.sandbox.Workdir.URIToPath(locs[0].URI)
+	newPos := fromProtocolPosition(locs[0].Range.Start)
 	if !e.HasBuffer(newPath) {
 		if err := e.OpenFile(ctx, newPath); err != nil {
 			return "", Pos{}, errors.Errorf("OpenFile: %w", err)
@@ -753,13 +778,13 @@ func (e *Editor) Symbol(ctx context.Context, query string) ([]SymbolInformation,
 
 // OrganizeImports requests and performs the source.organizeImports codeAction.
 func (e *Editor) OrganizeImports(ctx context.Context, path string) error {
-	_, err := e.codeAction(ctx, path, nil, nil, protocol.SourceOrganizeImports)
+	_, err := e.applyCodeActions(ctx, path, nil, nil, protocol.SourceOrganizeImports)
 	return err
 }
 
 // RefactorRewrite requests and performs the source.refactorRewrite codeAction.
 func (e *Editor) RefactorRewrite(ctx context.Context, path string, rng *protocol.Range) error {
-	applied, err := e.codeAction(ctx, path, rng, nil, protocol.RefactorRewrite)
+	applied, err := e.applyCodeActions(ctx, path, rng, nil, protocol.RefactorRewrite)
 	if applied == 0 {
 		return errors.Errorf("no refactorings were applied")
 	}
@@ -768,11 +793,38 @@ func (e *Editor) RefactorRewrite(ctx context.Context, path string, rng *protocol
 
 // ApplyQuickFixes requests and performs the quickfix codeAction.
 func (e *Editor) ApplyQuickFixes(ctx context.Context, path string, rng *protocol.Range, diagnostics []protocol.Diagnostic) error {
-	applied, err := e.codeAction(ctx, path, rng, diagnostics, protocol.QuickFix, protocol.SourceFixAll)
+	applied, err := e.applyCodeActions(ctx, path, rng, diagnostics, protocol.SourceFixAll, protocol.QuickFix)
 	if applied == 0 {
 		return errors.Errorf("no quick fixes were applied")
 	}
 	return err
+}
+
+// ApplyCodeAction applies the given code action.
+func (e *Editor) ApplyCodeAction(ctx context.Context, action protocol.CodeAction) error {
+	for _, change := range action.Edit.DocumentChanges {
+		path := e.sandbox.Workdir.URIToPath(change.TextDocument.URI)
+		if int32(e.buffers[path].version) != change.TextDocument.Version {
+			// Skip edits for old versions.
+			continue
+		}
+		edits := convertEdits(change.Edits)
+		if err := e.EditBuffer(ctx, path, edits); err != nil {
+			return errors.Errorf("editing buffer %q: %w", path, err)
+		}
+	}
+	// Execute any commands. The specification says that commands are
+	// executed after edits are applied.
+	if action.Command != nil {
+		if _, err := e.ExecuteCommand(ctx, &protocol.ExecuteCommandParams{
+			Command:   action.Command.Command,
+			Arguments: action.Command.Arguments,
+		}); err != nil {
+			return err
+		}
+	}
+	// Some commands may edit files on disk.
+	return e.sandbox.Workdir.CheckForFileChanges(ctx)
 }
 
 // GetQuickFixes returns the available quick fix code actions.
@@ -780,7 +832,7 @@ func (e *Editor) GetQuickFixes(ctx context.Context, path string, rng *protocol.R
 	return e.getCodeActions(ctx, path, rng, diagnostics, protocol.QuickFix, protocol.SourceFixAll)
 }
 
-func (e *Editor) codeAction(ctx context.Context, path string, rng *protocol.Range, diagnostics []protocol.Diagnostic, only ...protocol.CodeActionKind) (int, error) {
+func (e *Editor) applyCodeActions(ctx context.Context, path string, rng *protocol.Range, diagnostics []protocol.Diagnostic, only ...protocol.CodeActionKind) (int, error) {
 	actions, err := e.getCodeActions(ctx, path, rng, diagnostics, only...)
 	if err != nil {
 		return 0, err
@@ -801,29 +853,7 @@ func (e *Editor) codeAction(ctx context.Context, path string, rng *protocol.Rang
 			continue
 		}
 		applied++
-		for _, change := range action.Edit.DocumentChanges {
-			path := e.sandbox.Workdir.URIToPath(change.TextDocument.URI)
-			if int32(e.buffers[path].version) != change.TextDocument.Version {
-				// Skip edits for old versions.
-				continue
-			}
-			edits := convertEdits(change.Edits)
-			if err := e.EditBuffer(ctx, path, edits); err != nil {
-				return 0, errors.Errorf("editing buffer %q: %w", path, err)
-			}
-		}
-		// Execute any commands. The specification says that commands are
-		// executed after edits are applied.
-		if action.Command != nil {
-			if _, err := e.ExecuteCommand(ctx, &protocol.ExecuteCommandParams{
-				Command:   action.Command.Command,
-				Arguments: action.Command.Arguments,
-			}); err != nil {
-				return 0, err
-			}
-		}
-		// Some commands may edit files on disk.
-		if err := e.sandbox.Workdir.CheckForFileChanges(ctx); err != nil {
+		if err := e.ApplyCodeAction(ctx, action); err != nil {
 			return 0, err
 		}
 	}

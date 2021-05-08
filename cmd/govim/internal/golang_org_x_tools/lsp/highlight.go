@@ -11,6 +11,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/template"
 )
 
 func (s *Server) documentHighlight(ctx context.Context, params *protocol.DocumentHighlightParams) ([]protocol.DocumentHighlight, error) {
@@ -19,6 +20,11 @@ func (s *Server) documentHighlight(ctx context.Context, params *protocol.Documen
 	if !ok {
 		return nil, err
 	}
+
+	if fh.Kind() == source.Tmpl {
+		return template.Highlight(ctx, snapshot, fh, params.Position)
+	}
+
 	rngs, err := source.Highlight(ctx, snapshot, fh, params.Position)
 	if err != nil {
 		event.Error(ctx, "no highlight", err, tag.URI.Of(params.TextDocument.URI))

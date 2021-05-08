@@ -10,6 +10,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/template"
 )
 
 func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*protocol.Hover, error) {
@@ -23,6 +24,8 @@ func (s *Server) hover(ctx context.Context, params *protocol.HoverParams) (*prot
 		return mod.Hover(ctx, snapshot, fh, params.Position)
 	case source.Go:
 		return source.Hover(ctx, snapshot, fh, params.Position)
+	case source.Tmpl:
+		return template.Hover(ctx, snapshot, fh, params.Position)
 	}
 	return nil, nil
 }
