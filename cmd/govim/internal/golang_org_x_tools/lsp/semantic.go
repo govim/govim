@@ -23,6 +23,10 @@ import (
 	errors "golang.org/x/xerrors"
 )
 
+// The LSP says that errors for the semantic token requests should only be returned
+// for exceptions (a word not otherwise defined). This code treats a too-large file
+// as an exception. On parse errors, the code does what it can.
+
 // reject full semantic token requests for large files
 const maxFullFileSize int = 100000
 
@@ -49,8 +53,7 @@ func (s *Server) computeSemanticTokens(ctx context.Context, td protocol.TextDocu
 	ans := protocol.SemanticTokens{
 		Data: []uint32{},
 	}
-	kind := source.DetectLanguage("", td.URI.SpanURI().Filename())
-	snapshot, _, ok, release, err := s.beginFileRequest(ctx, td.URI, kind)
+	snapshot, fh, ok, release, err := s.beginFileRequest(ctx, td.URI, source.UnknownKind)
 	defer release()
 	if !ok {
 		return nil, err
@@ -61,7 +64,7 @@ func (s *Server) computeSemanticTokens(ctx context.Context, td protocol.TextDocu
 		// the client won't remember the wrong answer
 		return nil, errors.Errorf("semantictokens are disabled")
 	}
-	if kind == source.Tmpl {
+	if fh.Kind() == source.Tmpl {
 		// this is a little cumbersome to avoid both exporting 'encoded' and its methods
 		// and to avoid import cycles
 		e := &encoded{
@@ -73,26 +76,27 @@ func (s *Server) computeSemanticTokens(ctx context.Context, td protocol.TextDocu
 		add := func(line, start uint32, len uint32) {
 			e.add(line, start, len, tokMacro, nil)
 		}
-		data := func() ([]uint32, error) {
+		data := func() []uint32 {
 			return e.Data()
 		}
-		return template.SemanticTokens(ctx, snapshot, td.URI.SpanURI(), add, data)
+		return template.SemanticTokens(ctx, snapshot, fh.URI(), add, data)
 	}
-	pkg, err := snapshot.PackageForFile(ctx, td.URI.SpanURI(), source.TypecheckFull, source.WidestPackage)
+	if fh.Kind() != source.Go {
+		return nil, nil
+	}
+	pkg, err := snapshot.PackageForFile(ctx, fh.URI(), source.TypecheckFull, source.WidestPackage)
 	if err != nil {
 		return nil, err
 	}
 	info := pkg.GetTypesInfo()
-	pgf, err := pkg.File(td.URI.SpanURI())
+	pgf, err := pkg.File(fh.URI())
 	if err != nil {
 		return nil, err
 	}
-	if pgf.ParseErr != nil {
-		return nil, pgf.ParseErr
-	}
+	// don't return errors on pgf.ParseErr. Do what we can.
 	if rng == nil && len(pgf.Src) > maxFullFileSize {
 		err := fmt.Errorf("semantic tokens: file %s too large for full (%d>%d)",
-			td.URI.SpanURI().Filename(), len(pgf.Src), maxFullFileSize)
+			fh.URI().Filename(), len(pgf.Src), maxFullFileSize)
 		return nil, err
 	}
 	e := &encoded{
@@ -105,16 +109,13 @@ func (s *Server) computeSemanticTokens(ctx context.Context, td protocol.TextDocu
 		tokMods:  s.session.Options().SemanticMods,
 	}
 	if err := e.init(); err != nil {
+		// e.init should never return an error, unless there's some
+		// seemingly impossible race condition
 		return nil, err
 	}
 	e.semantics()
-	ans.Data, err = e.Data()
-	if err != nil {
-		// this is an internal error, likely caused by a typo
-		// for a token or modifier
-		return nil, err
-	}
-	// for small cache, some day. for now, the client ignores this
+	ans.Data = e.Data()
+	// For delta requests, but we've never seen any.
 	ans.ResultID = fmt.Sprintf("%v", time.Now())
 	return &ans, nil
 }
@@ -180,7 +181,8 @@ func (e *encoded) token(start token.Pos, leng int, typ tokenType, mods []string)
 		// "column mapper is for file...instead of..."
 		// "line is beyond end of file..."
 		// see line 116 of internal/span/token.go which uses Position not PositionFor
-		event.Error(e.ctx, "failed to convert to range", err)
+		// (it is too verbose to print the error on every token. some other RPC will fail)
+		// event.Error(e.ctx, "failed to convert to range", err)
 		return
 	}
 	if lspRange.End.Line != lspRange.Start.Line {
@@ -379,11 +381,13 @@ func (e *encoded) inspector(n ast.Node) bool {
 	case *ast.UnaryExpr:
 		e.token(x.OpPos, len(x.Op.String()), tokOperator, nil)
 	case *ast.ValueSpec:
-	// things we won't see
-	case *ast.BadDecl, *ast.BadExpr, *ast.BadStmt,
-		*ast.File, *ast.Package:
+	// things we only see with parsing or type errors, so we ignore them
+	case *ast.BadDecl, *ast.BadExpr, *ast.BadStmt:
+		return true
+	// not going to see these
+	case *ast.File, *ast.Package:
 		log.Printf("implement %T %s", x, e.pgf.Tok.PositionFor(x.Pos(), false))
-	// things we knowingly ignore
+	// other things we knowingly ignore
 	case *ast.Comment, *ast.CommentGroup:
 		pop()
 		return false
@@ -511,9 +515,14 @@ func (e *encoded) definitionFor(x *ast.Ident) (tokenType, []string) {
 			// (type A func(b uint64)) (err error)
 			// b and err should not be tokType, but tokVaraible
 			// and in GenDecl/TpeSpec/StructType/FieldList/Field/Ident
-			// (type A struct{b uint64})
+			// (type A struct{b uint64}
+			// but on type B struct{C}), C is a type, but is not being defined.
 			fldm := e.stack[len(e.stack)-2]
-			if _, ok := fldm.(*ast.Field); ok {
+			if fld, ok := fldm.(*ast.Field); ok {
+				// if len(fld.names) == 0 this is a tokType, being used
+				if len(fld.Names) == 0 {
+					return tokType, nil
+				}
 				return tokVariable, mods
 			}
 			return tokType, mods
@@ -571,14 +580,14 @@ func (e *encoded) init() error {
 	}
 	span, err := e.pgf.Mapper.RangeSpan(*e.rng)
 	if err != nil {
-		return errors.Errorf("range span (%v) error for %s", err, e.pgf.File.Name)
+		return errors.Errorf("range span (%w) error for %s", err, e.pgf.File.Name)
 	}
 	e.end = e.start + token.Pos(span.End().Offset())
 	e.start += token.Pos(span.Start().Offset())
 	return nil
 }
 
-func (e *encoded) Data() ([]uint32, error) {
+func (e *encoded) Data() []uint32 {
 	// binary operators, at least, will be out of order
 	sort.Slice(e.items, func(i, j int) bool {
 		if e.items[i].line != e.items[j].line {
@@ -609,7 +618,7 @@ func (e *encoded) Data() ([]uint32, error) {
 		}
 		x[j+4] = uint32(mask)
 	}
-	return x, nil
+	return x
 }
 
 func (e *encoded) importSpec(d *ast.ImportSpec) {
