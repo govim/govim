@@ -5,11 +5,7 @@
 # for now in this test to give exposure to the staticcheck work
 
 vim ex 'e main.go'
-[go1.15] vimexprwait errors.golden GOVIMTest_getqflist()
-
-# Unclear why go1.14 is special.. but we'll be dropping support
-# for it soon
-[go1.14] [!go1.15] vimexprwait errors.go1.14.golden GOVIMTest_getqflist()
+vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -51,22 +47,7 @@ func main() {
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "Printf format %v reads arg #1, but call has 0 args",
-    "type": "",
-    "valid": 1,
-    "vcol": 0
-  }
-]
--- errors.go1.14.golden --
-[
-  {
-    "bufname": "main.go",
-    "col": 2,
-    "lnum": 9,
-    "module": "",
-    "nr": 0,
-    "pattern": "",
-    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "text": "fmt.Printf format %v reads arg #1, but call has 0 args",
     "type": "",
     "valid": 1,
     "vcol": 0
