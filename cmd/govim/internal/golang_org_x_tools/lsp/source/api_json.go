@@ -145,6 +145,19 @@ var GeneratedAPIJSON = &APIJSON{
 				Hierarchy:  "build",
 			},
 			{
+				Name: "experimentalUseInvalidMetadata",
+				Type: "bool",
+				Doc:  "experimentalUseInvalidMetadata enables gopls to fall back on outdated\npackage metadata to provide editor features if the go command fails to\nload packages for some reason (like an invalid go.mod file). This will\neventually be the default behavior, and this setting will be removed.\n",
+				EnumKeys: EnumKeys{
+					ValueType: "",
+					Keys:      nil,
+				},
+				EnumValues: nil,
+				Default:    "false",
+				Status:     "experimental",
+				Hierarchy:  "build",
+			},
+			{
 				Name: "hoverKind",
 				Type: "enum",
 				Doc:  "hoverKind controls the information that appears in the hover text.\nSingleLine and Structured are intended for use only by authors of editor plugins.\n",
@@ -738,9 +751,9 @@ var GeneratedAPIJSON = &APIJSON{
 		},
 		{
 			Command: "gopls.add_import",
-			Title:   "",
-			Doc:     "",
-			ArgDoc:  "{\n\t\"ImportPath\": string,\n\t\"URI\": string,\n}",
+			Title:   "asks the server to add an import path to a given Go file.",
+			Doc:     "The method will call applyEdit on the client so that clients don't have\nto apply the edit themselves.",
+			ArgDoc:  "{\n\t// ImportPath is the target import path that should\n\t// be added to the URI file\n\t\"ImportPath\": string,\n\t// URI is the file that the ImportPath should be\n\t// added to\n\t\"URI\": string,\n}",
 		},
 		{
 			Command: "gopls.apply_fix",
@@ -780,8 +793,8 @@ var GeneratedAPIJSON = &APIJSON{
 		},
 		{
 			Command: "gopls.list_known_packages",
-			Title:   "",
-			Doc:     "",
+			Title:   "retrieves a list of packages",
+			Doc:     "that are importable from the given URI.",
 			ArgDoc:  "{\n\t// The file URI.\n\t\"URI\": string,\n}",
 		},
 		{

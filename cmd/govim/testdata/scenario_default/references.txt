@@ -246,7 +246,7 @@ func DoIt() {
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "Printf format %v reads arg #1, but call has 0 args",
+    "text": "fmt.Printf format %v reads arg #1, but call has 0 args",
     "type": "",
     "valid": 1,
     "vcol": 0
