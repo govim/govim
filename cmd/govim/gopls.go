@@ -49,7 +49,7 @@ func (g *govimplugin) startGopls() error {
 		var gmp int
 		if strings.HasSuffix(v, "%") {
 			v = strings.TrimSuffix(v, "%")
-			p, err := strconv.ParseFloat(v, 10)
+			p, err := strconv.ParseFloat(v, 64)
 			if err != nil {
 				return fmt.Errorf("failed to parse percentage from %v value %q: %v", config.EnvVarGoplsGOMAXPROCSMinusN, ev, err)
 			}
