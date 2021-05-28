@@ -97,13 +97,15 @@ func (g *govimplugin) RegisterCapability(ctxt context.Context, params *protocol.
 	for _, r := range params.Registrations {
 		switch r.Method {
 		case "workspace/didChangeConfiguration":
-			// For now ignore per #949
+			// For now ignore per github.com/govim/govim/issues/949
 		case "workspace/didChangeWorkspaceFolders":
-			// For now ignore per #172
+			// For now ignore per github.com/govim/govim/issues/172
 		case "workspace/didChangeWatchedFiles":
-			// For now ignore per #950
+			// For now ignore per github.com/govim/govim/issues/950
+		case "textDocument/semanticTokens":
+			// For now ignore per github.com/govim/govim/issues/1083
 		default:
-			panic(fmt.Errorf("RegisterCapability called with unknown method: %v", pretty.Sprint(params)))
+			panic(fmt.Errorf("RegisterCapability called with unknown method: %v", r.Method))
 		}
 	}
 	g.logGoplsClientf("RegisterCapability: %v", pretty.Sprint(params))
