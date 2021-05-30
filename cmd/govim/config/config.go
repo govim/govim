@@ -191,7 +191,7 @@ type Config struct {
 	// specific analyses in gopls. Entries in the map are used to override
 	// defaults specified by gopls. A list of analyzers with their default value
 	// can be found in the gopls documentation (e.g.
-	// https://cs.opensource.google/go/tools/+/master:gopls/doc/analyzers.md for
+	// https://cs.opensource.google/go/x/tools/+/master:gopls/doc/analyzers.md for
 	// master).
 	//
 	// Example: govim#config#Set("Analyses", {"fillstruct": 1, "unreachable": 0})
