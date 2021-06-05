@@ -221,7 +221,7 @@ func (s *Session) createView(ctx context.Context, name string, folder, tempWorks
 		generation:        s.cache.store.Generation(generationName(v, 0)),
 		packages:          make(map[packageKey]*packageHandle),
 		ids:               make(map[span.URI][]packageID),
-		metadata:          make(map[packageID]*knownMetadata),
+		metadata:          make(map[packageID]*metadata),
 		files:             make(map[span.URI]source.VersionedFileHandle),
 		goFiles:           make(map[parseKey]*parseGoHandle),
 		importedBy:        make(map[packageID][]packageID),
@@ -553,8 +553,7 @@ func knownDirectories(ctx context.Context, snapshots []*snapshot) map[span.URI]s
 		for _, dir := range dirs {
 			result[dir] = struct{}{}
 		}
-		subdirs := snapshot.allKnownSubdirs(ctx)
-		for dir := range subdirs {
+		for _, dir := range snapshot.getKnownSubdirs(dirs) {
 			result[dir] = struct{}{}
 		}
 	}
