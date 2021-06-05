@@ -23,8 +23,7 @@ type textEdit struct {
 	lines  []string
 }
 
-func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.TextEdit) error {
-
+func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.TextEdit) (err error) {
 	// prepare the changes to make in Vim
 	blines := bytes.Split(b.Contents()[:len(b.Contents())-1], []byte("\n"))
 	var changes []textEdit
@@ -142,6 +141,10 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 	v.BatchAssertChannelCall(AssertIsZero(), "listener_flush", b.Num)
 	newContentsRes := v.BatchChannelExprf(`join(getbufline(%v, 0, "$"), "\n")."\n"`, b.Num)
 	v.MustBatchEnd()
+
+	if err := v.updateSemanticTokens(b); err != nil {
+		v.Logf("failed to update semantic tokens for buffer %d: %v", b.Num, err)
+	}
 
 	var newContents string
 	v.Parse(newContentsRes(), &newContents)

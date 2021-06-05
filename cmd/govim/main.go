@@ -204,6 +204,12 @@ type govimplugin struct {
 	cancelDocHighlight     context.CancelFunc
 	cancelDocHighlightLock sync.Mutex
 
+	// cancelSemTokRangeBuf is the function to cancel the ongoing LSP semanticTokens/range call,
+	// per window ID. It must be called before assigning a new value (or nil) to it. It is
+	// nil when there is no ongoing call.
+	cancelSemTokRangeBuf  map[int]context.CancelFunc
+	cancelSemTokRangeLock sync.Mutex
+
 	// applyEditsCh is used to pass incoming edit requests (ApplyEdit) to the main thread.
 	// Incoming ApplyEdit calls will use this channel if set (not nil) instead of schedule
 	// edits directly. It is used to allow process edits during a blocking call on the vim
@@ -261,14 +267,15 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	d := plugin.NewDriver(PluginPrefix)
 	var emptyDiags []types.Diagnostic
 	res := &govimplugin{
-		logging:          logging,
-		tmpDir:           tmpDir,
-		rawDiagnostics:   make(map[span.URI]*protocol.PublishDiagnosticsParams),
-		goplsEnv:         goplsEnv,
-		goplspath:        goplspath,
-		Driver:           d,
-		inShutdown:       make(chan struct{}),
-		diagnosticsCache: &emptyDiags,
+		logging:              logging,
+		tmpDir:               tmpDir,
+		rawDiagnostics:       make(map[span.URI]*protocol.PublishDiagnosticsParams),
+		cancelSemTokRangeBuf: make(map[int]context.CancelFunc),
+		goplsEnv:             goplsEnv,
+		goplspath:            goplspath,
+		Driver:               d,
+		inShutdown:           make(chan struct{}),
+		diagnosticsCache:     &emptyDiags,
 		vimstate: &vimstate{
 			Driver:               d,
 			buffers:              make(map[int]*types.Buffer),
@@ -276,6 +283,19 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			config:               *defaults,
 			suggestedFixesPopups: make(map[int][]suggestedFix),
 			progressPopups:       make(map[protocol.ProgressToken]*types.ProgressPopup),
+			semanticTokens: struct {
+				lock  sync.Mutex
+				types map[uint32]string
+				mods  map[uint32]string
+			}{
+				types: make(map[uint32]string),
+				mods:  make(map[uint32]string),
+			},
+			placedSemanticTokens: make(map[int]struct {
+				bufnr int
+				from  int
+				to    int
+			}),
 		},
 	}
 	res.vimstate.govimplugin = res
@@ -316,6 +336,7 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	g.ChannelExf(`call govim#config#Set("%vFunc", function("%v%v"))`, config.InternalFunctionPrefix, PluginPrefix, config.FunctionSetConfig)
 	g.DefineFunction(string(config.FunctionSetUserBusy), []string{"isBusy", "cursorPos"}, g.vimstate.setUserBusy)
 	g.DefineFunction(string(config.FunctionPopupSelection), []string{"id", "selected"}, g.vimstate.popupSelection)
+	g.DefineFunction(string(config.FunctionVisibleLines), []string{"buffers"}, g.vimstate.visibleLines)
 	g.DefineCommand(string(config.CommandReferences), g.vimstate.references)
 	g.DefineCommand(string(config.CommandImplements), g.vimstate.implements)
 	g.DefineCommand(string(config.CommandRename), g.vimstate.rename, govim.NArgsZeroOrOne)
@@ -467,6 +488,29 @@ func (g *govimplugin) defineHighlights() {
 
 		fmt.Sprintf("highlight default %s ctermfg=2 guifg=Green", config.HighlightGoTestPass),
 		fmt.Sprintf("highlight default %s ctermfg=1 guifg=Red ", config.HighlightGoTestFail),
+
+		fmt.Sprintf("highlight default link %s Operator", config.HighlightSemTokNamespace),
+		fmt.Sprintf("highlight default link %s Type", config.HighlightSemTokType),
+		fmt.Sprintf("highlight default link %s Error", config.HighlightSemTokClass),
+		fmt.Sprintf("highlight default link %s Error", config.HighlightSemTokEnum),
+		fmt.Sprintf("highlight default link %s Error", config.HighlightSemTokInterface),
+		fmt.Sprintf("highlight default link %s Error", config.HighlightSemTokStruct),
+		fmt.Sprintf("highlight default link %s Identifier", config.HighlightSemTokTypeParameter),
+		fmt.Sprintf("highlight default link %s Identifier", config.HighlightSemTokParameter),
+		fmt.Sprintf("highlight default link %s Normal", config.HighlightSemTokVariable),
+		fmt.Sprintf("highlight default link %s Error", config.HighlightSemTokProperty),
+		fmt.Sprintf("highlight default link %s Error", config.HighlightSemTokEnumMember),
+		fmt.Sprintf("highlight default link %s Error", config.HighlightSemTokEvent),
+		fmt.Sprintf("highlight default link %s Function", config.HighlightSemTokFunction),
+		fmt.Sprintf("highlight default link %s Function", config.HighlightSemTokMethod),
+		fmt.Sprintf("highlight default link %s Error", config.HighlightSemTokMacro),
+		fmt.Sprintf("highlight default link %s Keyword", config.HighlightSemTokKeyword),
+		fmt.Sprintf("highlight default link %s Error", config.HighlightSemTokModifier),
+		fmt.Sprintf("highlight default link %s Comment", config.HighlightSemTokComment),
+		fmt.Sprintf("highlight default link %s String", config.HighlightSemTokString),
+		fmt.Sprintf("highlight default link %s Number", config.HighlightSemTokNumber),
+		fmt.Sprintf("highlight default link %s Error", config.HighlightSemTokRegexp),
+		fmt.Sprintf("highlight default link %s Operator", config.HighlightSemTokOperator),
 	} {
 		g.vimstate.BatchChannelCall("execute", hi)
 	}

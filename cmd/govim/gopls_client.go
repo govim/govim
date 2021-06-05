@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"strings"
@@ -37,6 +39,7 @@ const (
 	goplsExperimentalWorkspaceModule = "experimentalWorkspaceModule"
 	goplsDirectoryFilters            = "directoryFilters"
 	goplsMemoryMode                  = "memoryMode"
+	goplsSemanticTokens              = "semanticTokens"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -104,7 +107,27 @@ func (g *govimplugin) RegisterCapability(ctxt context.Context, params *protocol.
 		case "workspace/didChangeWatchedFiles":
 			// For now ignore per github.com/govim/govim/issues/950
 		case "textDocument/semanticTokens":
-			// For now ignore per github.com/govim/govim/issues/1083
+			raw, err := json.Marshal(r.RegisterOptions)
+			if err != nil {
+				panic(err)
+			}
+
+			var opts protocol.SemanticTokensRegistrationOptions
+			err = json.Unmarshal(raw, &opts)
+			if err != nil {
+				panic(err)
+			}
+
+			g.vimstate.semanticTokens.lock.Lock()
+			defer g.vimstate.semanticTokens.lock.Unlock()
+
+			for i, str := range opts.Legend.TokenTypes {
+				g.vimstate.semanticTokens.types[uint32(i)] = str
+			}
+			for i, str := range opts.Legend.TokenModifiers {
+				r := uint32(math.Exp2(float64(i)))
+				g.vimstate.semanticTokens.mods[r] = str
+			}
 		default:
 			panic(fmt.Errorf("RegisterCapability called with unknown method: %v", r.Method))
 		}
@@ -123,6 +146,8 @@ func (g *govimplugin) UnregisterCapability(ctxt context.Context, params *protoco
 			// For now ignore per #172
 		case "workspace/didChangeWatchedFiles":
 		// 	// For now ignore per #950
+		case "textDocument/semanticTokens":
+			// TODO: we should probably clear existing tokens here
 		default:
 			panic(fmt.Errorf("UnregisterCapability called with unknown method: %v", pretty.Sprint(params)))
 		}

@@ -238,6 +238,7 @@ function s:define(channel, msg)
       if $GOVIM_DISABLE_USER_BUSY != "true"
         au govim CursorMoved,CursorMovedI * ++nested :call s:userBusy(1)
         au govim CursorHold,CursorHoldI,FocusLost * ++nested :call s:userBusy(0)
+        au govim CursorHold,CursorHoldI,CursorMoved * ++nested :call s:visibleLines()
       endif
       for F in s:loadStatusCallbacks
         call call(F, [s:govim_status])
@@ -599,3 +600,41 @@ if $GOVIM_DISABLE_USER_BUSY == "true"
     return s:userBusy(a:busy)
   endfunction
 endif
+
+let s:visibleLines = {}
+
+function s:visibleLines()
+  " fetch first and last visible line for all listed buffers that have >0 window ID's assigned
+  " and return as a map as: { <winid> : {"<first>,<last>":<bufnr>, ... } }
+  "
+  let l:current = {}
+  for b in filter(getbufinfo({'buflisted':1}), 'len(v:val.windows) > 0')
+      for winid in b["windows"]
+          if has_key(l:current, winid)
+              throw "found more than one buffer in a single window"
+          endif
+          let l:current[winid] = {line('w0', winid).",".line('w$', winid) : b["bufnr"]}
+      endfor
+  endfor
+  let l:delta = deepcopy(l:current)
+
+  for winid in keys(l:delta)
+    if has_key(s:visibleLines, winid)
+      for range in keys(l:delta[winid])
+        if has_key(s:visibleLines[winid], range)
+          let l:removed = remove(l:delta[winid], range)
+          break
+        endif
+      endfor
+      if empty(l:delta[winid])
+          let l:removed = remove(l:delta, winid)
+      endif
+    endif
+  endfor
+
+  let s:visibleLines = l:current
+
+  if len(l:delta) > 0
+    call GOVIM_internal_VisibleLines(l:delta)
+  endif
+endfunction

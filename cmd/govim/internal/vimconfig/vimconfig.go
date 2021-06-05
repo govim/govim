@@ -35,6 +35,7 @@ type VimConfig struct {
 	ExperimentalAllowModfileModifications        *int
 	ExperimentalWorkspaceModule                  *int
 	ExperimentalGoplsMemoryMode                  *config.GoplsMemoryMode
+	ExperimentalSemanticTokens                   *int
 }
 
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
@@ -67,6 +68,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		ExperimentalAllowModfileModifications:        boolVal(c.ExperimentalAllowModfileModifications, d.ExperimentalAllowModfileModifications),
 		ExperimentalWorkspaceModule:                  boolVal(c.ExperimentalWorkspaceModule, d.ExperimentalWorkspaceModule),
 		ExperimentalGoplsMemoryMode:                  c.ExperimentalGoplsMemoryMode,
+		ExperimentalSemanticTokens:                   boolVal(c.ExperimentalSemanticTokens, d.ExperimentalSemanticTokens),
 	}
 	if v.FormatOnSave == nil {
 		v.FormatOnSave = d.FormatOnSave

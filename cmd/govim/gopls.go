@@ -17,6 +17,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/types"
 	"github.com/govim/govim/cmd/govim/internal/util"
 )
 
@@ -189,6 +190,36 @@ func (g *govimplugin) startGopls() error {
 	// case before it is removed. Following up on that point is tracked in golang.org/issue/44008
 	if conf.ExperimentalAllowModfileModifications != nil {
 		goplsConfig["allowModfileModifications"] = *conf.ExperimentalAllowModfileModifications
+	}
+
+	if conf.ExperimentalSemanticTokens != nil && *conf.ExperimentalSemanticTokens {
+		var tokenTypes []string
+		for tok := range types.SemanticTokenHighlight {
+			tokenTypes = append(tokenTypes, tok)
+		}
+		// TODO: Modifiers aren't used in govim at all right now, and there are only a few places
+		// where gopls actually do send them to add granularity.
+		tokenModifiers := []string{
+			"declaration",
+			"definition",
+			"readonly",
+			"static",
+			"depricated",
+			"abstract",
+			"async",
+			"modification",
+			"documentation",
+			"defaultLibrary",
+		}
+		initParams.Capabilities.TextDocument.SemanticTokens = protocol.SemanticTokensClientCapabilities{
+			DynamicRegistration:     true,
+			TokenTypes:              tokenTypes,
+			TokenModifiers:          tokenModifiers,
+			Formats:                 []string{"relative"},
+			OverlappingTokenSupport: true,
+		}
+
+		goplsConfig[goplsSemanticTokens] = true
 	}
 
 	initParams.InitializationOptions = goplsConfig

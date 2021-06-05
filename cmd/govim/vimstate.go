@@ -93,6 +93,26 @@ type vimstate struct {
 	// A nil value is used to indicate that there is no ongoing vimgrep.
 	// When vimgrep is done, these buffers are added to govim.
 	vimgrepPendingBufs map[int]*types.Buffer
+
+	// semanticTokens is the supported semantic token types and modifiers as
+	// reported by gopls. It is keyed by the number that gopls use in semantic
+	// token responses and the value is the string representation (defined by
+	// LSP "SemanticTokenTypes"). This map is populated from gopls with the
+	// negotiated types and tokens supported by both govim and gopls.
+	//
+	// It is guarded by a mutex since it is populated asynchronously via
+	// RegisterCapabilities. We choose it over calling Schedule since it would
+	// introduce extra latency.
+	semanticTokens struct {
+		lock  sync.Mutex
+		types map[uint32]string
+		mods  map[uint32]string
+	}
+	placedSemanticTokens map[int]struct {
+		bufnr int
+		from  int
+		to    int
+	}
 }
 
 // quickfixCanDiagnostics returns true if the quickfix can be populated with

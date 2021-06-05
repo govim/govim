@@ -214,6 +214,13 @@ function! s:validExperimentalGoplsMemoryMode(v)
   return [v:true, ""]
 endfunction
 
+function! s:validExperimentalSemanticTokens(v)
+  if !has("patch-8.2.3356")
+      return [v:false, "vim version too old, upgrade to >= 8.2.3356"]
+  endif
+  return s:validBool(a:v)
+endfunction
+
 let s:validators = {
       \ "FormatOnSave": function("s:validFormatOnSave"),
       \ "QuickfixAutoDiagnostics": function("s:validQuickfixAutoDiagnostics"),
@@ -243,4 +250,5 @@ let s:validators = {
       \ "ExperimentalAllowModfileModifications": function("s:validExperimentalProgressPopups"),
       \ "ExperimentalWorkspaceModule": function("s:validExperimentalWorkspaceModule"),
       \ "ExperimentalGoplsMemoryMode": function("s:validExperimentalGoplsMemoryMode"),
+      \ "ExperimentalSemanticTokens": function("s:validExperimentalSemanticTokens"),
       \ }

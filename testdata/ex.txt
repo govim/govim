@@ -1,4 +1,9 @@
 # Test that the vim sidecar ex command works
 
+# Populate the buffer to ensure that write doesn't fail with "E749: empty buffer".
+# That can happen if vim hasn't set the internal memfile yet, see bufwrite() in
+# vim's src/bufwrite.c.
+vim ex 'call setline(1, \"foo\")'
+
 vim ex 'w test'
 exists test
