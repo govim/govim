@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -124,7 +123,7 @@ func (v *vimstate) loadLocation(mods govim.CommModList, loc protocol.Location, a
 	v.ChannelEx("normal! m'")
 
 	vp := v.Viewport()
-	tf := strings.TrimPrefix(string(loc.URI), "file://")
+	tf := loc.URI.SpanURI().Filename()
 
 	bn := v.ParseInt(v.ChannelCall("bufnr", tf))
 	if bn != -1 {

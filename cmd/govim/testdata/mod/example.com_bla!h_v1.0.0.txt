@@ -1,0 +1,13 @@
+-- .mod --
+module example.com/blaH
+
+-- .info --
+{"Version":"v1.0.0","Time":"2018-10-22T18:45:39Z"}
+
+-- go.mod --
+module example.com/blaH
+
+-- main.go --
+package blaH
+
+const Name = "example.com/blaH"

@@ -1,0 +1,37 @@
+# Test that GOVIMGoToDef works jumping to a definition within
+# the module cache for a package path with a capital letter
+
+# More natural to split below and to the right
+vim ex 'set splitbelow'
+vim ex 'set splitright'
+
+# Definition in same file
+vim ex 'e '$WORK/p.go
+vim ex 'call cursor(5,18)'
+vim ex 'GOVIMGoToDef'
+vim expr 'expand(''%:p'')'
+stdout '^\Q"'$WORK'/.home/gopath/pkg/mod/example.com/bla!h@v1.0.0/main.go"\E$'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '^\Q[3,7]\E$'
+vim ex 'GOVIMGoToPrevDef'
+vim expr 'expand(''%:p'')'
+stdout '^\Q"'$WORK'/p.go"\E$'
+vim expr '[getcurpos()[1], getcurpos()[2]]'
+stdout '^\Q[5,18]\E$'
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+
+require example.com/blah v1.0.0
+-- p.go --
+package p
+
+import "example.com/blaH"
+
+const sink = blaH.Name

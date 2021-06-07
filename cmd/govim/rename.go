@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
@@ -61,7 +60,7 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 	sort.Strings(fps)
 
 	for _, filepath := range fps {
-		tf := strings.TrimPrefix(filepath, "file://")
+		tf := protocol.DocumentURI(filepath).SpanURI().Filename()
 		var bufinfo []struct {
 			BufNr   int   `json:"bufnr"`
 			Windows []int `json:"windows"`
@@ -70,7 +69,7 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 		switch len(bufinfo) {
 		case 0:
 		case 1:
-			bufNrs[filepath] = bufinfo[0].BufNr
+			bufNrs[tf] = bufinfo[0].BufNr
 			if len(bufinfo[0].Windows) > 0 {
 				continue
 			}
@@ -79,17 +78,18 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 		}
 		// Hard code split for now
 		v.ChannelExf("%v split %v", splitMods, tf)
-		bufNrs[filepath] = v.ParseInt(v.ChannelCall("bufnr", tf))
+		bufNrs[tf] = v.ParseInt(v.ChannelCall("bufnr", tf))
 	}
 	v.ChannelCall("win_gotoid", vp.Current.WinID)
 
 	for _, filepath := range fps {
-		changes := uriMap[protocol.DocumentURI(filepath)]
+		uri := protocol.DocumentURI(filepath)
+		tf := uri.SpanURI().Filename()
+		changes := uriMap[uri]
 		if len(changes.Edits) == 0 {
 			continue
 		}
-		tf := strings.TrimPrefix(filepath, "file://")
-		bufnr := bufNrs[filepath]
+		bufnr := bufNrs[tf]
 		b, ok := v.buffers[bufnr]
 		if !ok {
 			return fmt.Errorf("expected to have a buffer for %v; did not", tf)
