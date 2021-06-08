@@ -5,7 +5,7 @@ vim ex 'set splitbelow'
 vim ex 'set splitright'
 
 # Ensure the module cache is populated
-go mod download
+go mod download all
 
 # Definition in an open window in current tab
 vim ex 'set switchbuf=useopen'

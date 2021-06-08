@@ -3,7 +3,7 @@
 [gvim:v8.1.1711] skip 'Known to be flake with GVim v8.1.1711'
 
 # Verify that new imports get correctly placed
-go mod download
+go mod download all
 vim ex 'e main.go'
 vim ex 'GOVIMGoImports'
 vim ex 'noautocmd w'
