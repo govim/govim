@@ -5,7 +5,8 @@
 [short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
 
 vim ex 'e main.go'
-vimexprwait pre.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait pre.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait pre.golden GOVIMTest_getqflist()
 vim ex 'w'
 
 # We have to sleep here because there is no event we are waiting for
@@ -56,6 +57,23 @@ func main() {
   {
     "bufname": "main.go",
     "col": 8,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "could not import example.com/blah (no required module provides package \"example.com/blah\")",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- pre.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 8,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 3,
     "module": "",
     "nr": 0,

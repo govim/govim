@@ -2,7 +2,8 @@
 
 # Default behaviour is quickfix autodiagnostics & sign placment enabled
 vim ex 'e main.go'
-vimexprwait errors.golden1 GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden1 GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden1 GOVIMTest_getqflist()
 vimexprwait signs.golden1 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # There must be no quickfix entries or signs when both are explicitly disabled
@@ -14,12 +15,14 @@ vimexprwait nosigns.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"
 
 # Enabling quickfix autodiagnostics should give quickfix entries but no signs
 vim call 'govim#config#Set' '["QuickfixAutoDiagnostics", 1]'
-vimexprwait errors.golden2 GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden2 GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden2 GOVIMTest_getqflist()
 vimexprwait nosigns.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Enabling signs should place signs again
 vim call 'govim#config#Set' '["QuickfixSigns", 1]'
-vimexprwait errors.golden2 GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden2 GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden2 GOVIMTest_getqflist()
 vimexprwait signs.golden2 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*\"})'
 
 # Signs should be placed with quickfix autodiagnostics disabled
@@ -30,7 +33,8 @@ vimexprwait signs.golden3 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\": \"*
 
 # Calling :GOVIMQuickfixDiagnostics should force-populate the quickfix window
 vim ex 'GOVIMQuickfixDiagnostics'
-vimexprwait errors.golden3 GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden3 GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden3 GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -92,6 +96,65 @@ func f2() string {}
   {
     "bufname": "main.go",
     "col": 19,
+    "lnum": 10,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden1 --
+[
+  {
+    "bufname": "main.go",
+    "col": 36,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: i",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 39,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 19,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 9,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 19,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 10,
     "module": "",
     "nr": 0,
@@ -213,6 +276,93 @@ func f2() string {}
     "vcol": 0
   }
 ]
+-- errors.v8.2.3019.golden2 --
+[
+  {
+    "bufname": "main.go",
+    "col": 36,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: i",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 39,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 35,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: i",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 38,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 19,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 10,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 19,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 11,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- signs.golden2 --
 [
   {
@@ -257,70 +407,6 @@ func f2() string {}
         "group": "govim",
         "id": 6,
         "lnum": 11,
-        "name": "GOVIMSignErr",
-        "priority": 14
-      }
-    ]
-  }
-]
--- signs.golden3 --
-[
-  {
-    "bufname": "main.go",
-    "signs": [
-      {
-        "group": "govim",
-        "id": 2,
-        "lnum": 6,
-        "name": "GOVIMSignErr",
-        "priority": 14
-      },
-      {
-        "group": "govim",
-        "id": 1,
-        "lnum": 6,
-        "name": "GOVIMSignErr",
-        "priority": 14
-      },
-      {
-        "group": "govim",
-        "id": 4,
-        "lnum": 7,
-        "name": "GOVIMSignErr",
-        "priority": 14
-      },
-      {
-        "group": "govim",
-        "id": 3,
-        "lnum": 7,
-        "name": "GOVIMSignErr",
-        "priority": 14
-      },
-      {
-        "group": "govim",
-        "id": 6,
-        "lnum": 8,
-        "name": "GOVIMSignErr",
-        "priority": 14
-      },
-      {
-        "group": "govim",
-        "id": 5,
-        "lnum": 8,
-        "name": "GOVIMSignErr",
-        "priority": 14
-      },
-      {
-        "group": "govim",
-        "id": 7,
-        "lnum": 11,
-        "name": "GOVIMSignErr",
-        "priority": 14
-      },
-      {
-        "group": "govim",
-        "id": 8,
-        "lnum": 12,
         "name": "GOVIMSignErr",
         "priority": 14
       }
@@ -424,6 +510,185 @@ func f2() string {}
     "type": "",
     "valid": 1,
     "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden3 --
+[
+  {
+    "bufname": "main.go",
+    "col": 36,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: i",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 39,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 35,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: i",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 38,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 35,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 8,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: i",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 38,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 8,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 19,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 11,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 19,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 12,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- signs.golden3 --
+[
+  {
+    "bufname": "main.go",
+    "signs": [
+      {
+        "group": "govim",
+        "id": 2,
+        "lnum": 6,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 1,
+        "lnum": 6,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 4,
+        "lnum": 7,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 3,
+        "lnum": 7,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 6,
+        "lnum": 8,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 5,
+        "lnum": 8,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 7,
+        "lnum": 11,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      },
+      {
+        "group": "govim",
+        "id": 8,
+        "lnum": 12,
+        "name": "GOVIMSignErr",
+        "priority": 14
+      }
+    ]
   }
 ]
 -- nosigns.golden --

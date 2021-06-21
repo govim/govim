@@ -14,7 +14,8 @@ vimexprwait empty.golden GOVIMTest_getqflist()
 
 # Make a change that adds diagnostics
 vim call append '[4,"\tx := 123"]'
-vimexprwait errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Undo that change and ensure we still zero diagnostics again
 vim ex 5delete
@@ -40,6 +41,23 @@ func main() {
   {
     "bufname": "main.go",
     "col": 2,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "x declared but not used",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 5,
     "module": "",
     "nr": 0,

@@ -2,7 +2,8 @@
 
 # Open main.go and verify we have one error
 vim ex 'e main.go'
-vimexprwait errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Find references to x then select the second instance
 vim ex 'call cursor(5,5)'
@@ -35,6 +36,23 @@ func main() {
   {
     "bufname": "main.go",
     "col": 2,
+    "lnum": 8,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "fmt.Printf format %v reads arg #2, but call has 1 arg",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 8,
     "module": "",
     "nr": 0,

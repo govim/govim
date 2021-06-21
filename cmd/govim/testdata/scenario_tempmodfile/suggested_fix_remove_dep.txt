@@ -6,7 +6,8 @@
 vim ex 'e go.mod'
 
 # Wait for the diag and open up suggested fixes
-vimexprwait errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 vim ex 'call cursor(3,1)'
 vim ex 'GOVIMSuggestedFixes'
 
@@ -55,6 +56,23 @@ func main() {}
   {
     "bufname": "go.mod",
     "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "example.com/blah is not used in this module",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "go.mod",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 3,
     "module": "",
     "nr": 0,

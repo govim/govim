@@ -4,7 +4,8 @@
 
 # Open main.go that lacks import statement for "fmt"
 vim ex 'e main.go'
-vimexprwait errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Save the file so the import statment is added (and cursor is moved)
 vim ex 'call cursor(4,15)'
@@ -33,6 +34,23 @@ func main() {
   {
     "bufname": "main.go",
     "col": 2,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: fmt",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 4,
     "module": "",
     "nr": 0,

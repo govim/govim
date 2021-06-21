@@ -2,7 +2,8 @@
 # in the edge case of an error that references the end of file.
 
 vim ex 'e main.go'
-vimexprwait errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -21,6 +22,23 @@ var _ *
   {
     "bufname": "main.go",
     "col": 8,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected ';', found 'EOF'",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 8,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 3,
     "module": "",
     "nr": 0,

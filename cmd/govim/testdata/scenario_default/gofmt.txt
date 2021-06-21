@@ -19,7 +19,8 @@ cp file.go.bad file.go
 vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.bad
-vimexprwait errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 
 skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
 
@@ -61,6 +62,23 @@ const (
   {
     "bufname": "file.go",
     "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found blah",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "file.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 3,
     "module": "",
     "nr": 0,

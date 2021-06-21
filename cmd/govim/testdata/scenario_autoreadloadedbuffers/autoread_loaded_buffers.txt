@@ -13,7 +13,8 @@ vim ex 'e main.go'
 # "edit" the loaded file from outside of vim
 cp const.go.commented const.go
 
-vimexprwait errors.undeclared GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.undeclared GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.undeclared GOVIMTest_getqflist()
 
 # No warnings or errors during the test
 
@@ -52,6 +53,23 @@ const (
   {
     "bufname": "main.go",
     "col": 14,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: Const1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.undeclared --
+[
+  {
+    "bufname": "main.go",
+    "col": 14,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 6,
     "module": "",
     "nr": 0,

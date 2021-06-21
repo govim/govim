@@ -7,12 +7,14 @@ vimexprwait placed_main.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\"
 # open other.go and add a broken statement to get an error that masks the warnings
 vim ex 'e other.go'
 vim call append '[6,"asd"]'
-vimexprwait tmp_error.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait tmp_error.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait tmp_error.golden GOVIMTest_getqflist()
 
 # remove the broken statement
 vim ex 'call cursor(7,1)'
 vim ex 'normal dd'
-vimexprwait warnings.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait warnings.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait warnings.golden GOVIMTest_getqflist()
 
 # jump back to main and check that the sign is still present
 vim ex 'w'
@@ -70,11 +72,59 @@ func foo() {
     "vcol": 0
   }
 ]
+-- warnings.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "fmt.Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "other.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "fmt.Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- tmp_error.golden --
 [
   {
     "bufname": "other.go",
     "col": 1,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: asd",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- tmp_error.v8.2.3019.golden --
+[
+  {
+    "bufname": "other.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 7,
     "module": "",
     "nr": 0,

@@ -6,7 +6,8 @@
 
 # Tests basic case with a single diagnostic, no fix selected
 vim ex 'e main.go'
-vimexprwait initial_errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait initial_errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait initial_errors.golden GOVIMTest_getqflist()
 
 vim ex 'call cursor(6,2)'
 vim ex 'GOVIMSuggestedFixes'
@@ -29,7 +30,8 @@ cmp main.go main.go.single.golden
 # second one since that is the cursor position line.
 cp main.go.different_lines main.go
 vim ex 'e! main.go'
-vimexprwait different_lines_errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait different_lines_errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait different_lines_errors.golden GOVIMTest_getqflist()
 
 vim ex 'call cursor(7,2)'
 vim ex 'GOVIMSuggestedFixes'
@@ -40,7 +42,8 @@ errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\
 # title to indicate more than one. It shall also be possible to cycle forward and backwards.
 cp main.go.same_line main.go
 vim ex 'e! main.go'
-vimexprwait same_line_errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait same_line_errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait same_line_errors.golden GOVIMTest_getqflist()
 
 vim ex 'call cursor(6,2)'
 vim ex 'GOVIMSuggestedFixes'
@@ -130,6 +133,23 @@ func main() {
     "vcol": 0
   }
 ]
+-- initial_errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of x to x",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- different_lines_errors.golden --
 [
   {
@@ -147,6 +167,37 @@ func main() {
   {
     "bufname": "main.go",
     "col": 2,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of y to y",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- different_lines_errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of x to x",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 7,
     "module": "",
     "nr": 0,
@@ -198,6 +249,65 @@ func main() {
   {
     "bufname": "main.go",
     "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of y to y",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- same_line_errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of a to a",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of b to b",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of x to x",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 6,
     "module": "",
     "nr": 0,
