@@ -5,7 +5,8 @@
 # for now in this test to give exposure to the staticcheck work
 
 vim ex 'e main.go'
-vimexprwait errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -43,6 +44,37 @@ func main() {
   {
     "bufname": "main.go",
     "col": 2,
+    "lnum": 9,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "fmt.Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 6,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "the argument is already a string, there's no need to use fmt.Sprintf",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 9,
     "module": "",
     "nr": 0,

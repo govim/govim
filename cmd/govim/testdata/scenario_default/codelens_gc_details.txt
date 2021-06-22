@@ -6,8 +6,10 @@
 # Compiler details are reported using "information" severity
 vim ex 'e main.go'
 vim ex 'GOVIMGCDetails'
-[go1.14] [!go1.15] vimexprwait errors.go114.golden GOVIMTest_getqflist()
-[go1.15] vimexprwait errors.go115.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] [go1.14] [!go1.15] vimexprwait errors.go114.v8.2.3019.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] [go1.15] vimexprwait errors.go115.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] [go1.14] [!go1.15] vimexprwait errors.go114.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] [go1.15] vimexprwait errors.go115.golden GOVIMTest_getqflist()
 
 
 [short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
@@ -73,6 +75,51 @@ func fn() {}
     "vcol": 0
   }
 ]
+-- errors.go114.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 6,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "canInlineFunction(cost: 2)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 4,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "inlineCall(main.fn)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 6,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "canInlineFunction(cost: 0)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- errors.go115.golden --
 [
   {
@@ -90,6 +137,37 @@ func fn() {}
   {
     "bufname": "main.go",
     "col": 6,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "canInlineFunction(cost: 0)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go115.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 6,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "canInlineFunction(cost: 2)",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 6,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 7,
     "module": "",
     "nr": 0,

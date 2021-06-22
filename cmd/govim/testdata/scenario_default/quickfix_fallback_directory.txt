@@ -3,7 +3,8 @@
 # there's no other errors in this entry file.
 
 vim ex 'e charly.go'
-vimexprwait errors.golden.orig GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden.orig GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden.orig GOVIMTest_getqflist()
 
 # Now move to error 'errc' and check the position
 vim expr 'setqflist([], \"r\", {\"idx\": 3})'
@@ -14,7 +15,8 @@ stdout '{"idx":3}'
 # Now fix selected error and assert the index points to the first file of the directory
 vim ex 'call cursor(3,1)'
 vim normal dd
-vimexprwait errors.golden.updated GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden.updated GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden.updated GOVIMTest_getqflist()
 vim expr 'getqflist({\"idx\": 0})'
 stdout '{"idx":2}'
 ! stderr .+
@@ -94,6 +96,65 @@ errdave
     "vcol": 0
   }
 ]
+-- errors.v8.2.3019.golden.orig --
+[
+  {
+    "bufname": "alice/alice.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found erralice",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "bob.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found errbob",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "charly.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found errcharly",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "dave.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found errdave",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- errors.golden.updated --
 [
   {
@@ -123,6 +184,51 @@ errdave
   {
     "bufname": "dave.go",
     "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found errdave",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden.updated --
+[
+  {
+    "bufname": "alice/alice.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found erralice",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "bob.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found errbob",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "dave.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 3,
     "module": "",
     "nr": 0,

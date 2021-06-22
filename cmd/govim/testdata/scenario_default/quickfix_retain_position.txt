@@ -1,7 +1,8 @@
 # Test that the quickfix window logic around retaining its selected item
 
 vim ex 'e main.go'
-vimexprwait errors.golden.orig GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden.orig GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden.orig GOVIMTest_getqflist()
 
 # Verify we have the first entry selected
 vim expr 'getqflist({\"idx\": 0})'
@@ -18,7 +19,8 @@ stdout '{"idx":2}'
 vim ex 'e other.go'
 vim ex 'call cursor(3,1)'
 vim normal Sasdf
-vimexprwait errors.golden.updated GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden.updated GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden.updated GOVIMTest_getqflist()
 vim expr 'getqflist({\"idx\": 0})'
 stdout '{"idx":2}'
 ! stderr .+
@@ -72,6 +74,37 @@ package main
     "vcol": 0
   }
 ]
+-- errors.v8.2.3019.golden.orig --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: asdf",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 8,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: fdas",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- errors.golden.updated --
 [
   {
@@ -101,6 +134,51 @@ package main
   {
     "bufname": "other.go",
     "col": 1,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found asdf",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden.updated --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: asdf",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 8,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undeclared name: fdas",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "other.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 3,
     "module": "",
     "nr": 0,

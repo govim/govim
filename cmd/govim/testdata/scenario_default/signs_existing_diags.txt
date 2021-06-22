@@ -1,7 +1,8 @@
 # Test that signs are placed when opening a file that already has diagnostics.
 
 vim ex 'e main.go'
-vimexprwait errors.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 vim ex 'e other.go'
 vimexprwait placed.golden 'GOVIMTest_sign_getplaced(\"other.go\", {\"group\": \"*\"})'
 
@@ -46,6 +47,37 @@ func foo() {
   {
     "bufname": "other.go",
     "col": 5,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "fmt.Printf format %v reads arg #1, but call has 0 args",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 5,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "self-assignment of z to z",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "other.go",
+    "col": 5,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 6,
     "module": "",
     "nr": 0,

@@ -6,6 +6,8 @@
 
 # Expand $WORK within our golden file
 envsubst error.golden
+[vim:v8.2.3019] envsubst error.v8.2.3019.golden
+[!vim:v8.2.3019] envsubst error.golden
 
 # Open dependency via GoToDef
 vim ex 'e main.go'
@@ -18,7 +20,8 @@ stdout '^\Q"'$WORK'/p/blah.go"\E$'
 vim call append '[3, "asd"]'
 
 # Expect the error to be reported
-vimexprwait error.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] vimexprwait error.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] vimexprwait error.golden GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -53,6 +56,23 @@ const Name = "example.com/blah"
   {
     "bufname": "$WORK/p/blah.go",
     "col": 1,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "expected declaration, found asd",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- error.v8.2.3019.golden --
+[
+  {
+    "bufname": "$WORK/p/blah.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 4,
     "module": "",
     "nr": 0,

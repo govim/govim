@@ -28,8 +28,10 @@ vim ex 'noau w! check'
 cmp check p/x_test.go.orig
 
 # Expect the errors
-[!go1.16] vimexprwait errors.golden GOVIMTest_getqflist()
-[go1.16]  vimexprwait errors.go1.16.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] [!go1.16] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[vim:v8.2.3019] [go1.16] vimexprwait errors.go1.16.v8.2.3019.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] [!go1.16] vimexprwait errors.golden GOVIMTest_getqflist()
+[!vim:v8.2.3019] [go1.16] vimexprwait errors.go1.16.golden GOVIMTest_getqflist()
 
 # Change p.DoIt to accept an integer
 vim ex 'sp p/p.go'
@@ -123,6 +125,51 @@ func TestDoIt(t *testing.T) {
     "vcol": 0
   }
 ]
+-- errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 9,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "cannot convert 5 (untyped int constant) to string",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "p/p_test.go",
+    "col": 7,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "cannot convert 5 (untyped int constant) to string",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "p/x_test.go",
+    "col": 9,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 10,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "cannot convert 5 (untyped int constant) to string",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
 -- errors.go1.16.golden --
 [
   {
@@ -152,6 +199,51 @@ func TestDoIt(t *testing.T) {
   {
     "bufname": "p/x_test.go",
     "col": 9,
+    "lnum": 10,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "cannot use 5 (untyped int constant) as string value in argument to p.DoIt",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go1.16.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 9,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "cannot use 5 (untyped int constant) as string value in argument to p.DoIt",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "p/p_test.go",
+    "col": 7,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "cannot use 5 (untyped int constant) as string value in argument to DoIt",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "p/x_test.go",
+    "col": 9,
+    "end_col": 0,
+    "end_lnum": 0,
     "lnum": 10,
     "module": "",
     "nr": 0,
