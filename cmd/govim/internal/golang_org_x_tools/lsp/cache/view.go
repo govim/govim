@@ -343,7 +343,7 @@ func (s *snapshot) locateTemplateFiles(ctx context.Context) {
 		if err != nil {
 			return err
 		}
-		if strings.HasSuffix(filepath.Ext(path), "tmpl") && !pathExcludedByFilter(path, s.view.options) &&
+		if strings.HasSuffix(filepath.Ext(path), "tmpl") && !pathExcludedByFilter(path, dir, s.view.gomodcache, s.view.options) &&
 			!fi.IsDir() {
 			k := span.URIFromPath(path)
 			fh, err := s.GetVersionedFile(ctx, k)
@@ -371,7 +371,7 @@ func (v *View) contains(uri span.URI) bool {
 	}
 	// Filters are applied relative to the workspace folder.
 	if inFolder {
-		return !pathExcludedByFilter(strings.TrimPrefix(uri.Filename(), v.folder.Filename()), v.Options())
+		return !pathExcludedByFilter(strings.TrimPrefix(uri.Filename(), v.folder.Filename()), v.rootURI.Filename(), v.gomodcache, v.Options())
 	}
 	return true
 }
@@ -393,12 +393,16 @@ func (v *View) relevantChange(c source.FileModification) bool {
 	if v.knownFile(c.URI) {
 		return true
 	}
-	// The gopls.mod may not be "known" because we first access it through the
-	// session. As a result, treat changes to the view's gopls.mod file as
-	// always relevant, even if they are only on-disk changes.
-	// TODO(rstambler): Make sure the gopls.mod is always known to the view.
-	if c.URI == goplsModURI(v.rootURI) {
-		return true
+	// The go.work/gopls.mod may not be "known" because we first access it
+	// through the session. As a result, treat changes to the view's go.work or
+	// gopls.mod file as always relevant, even if they are only on-disk
+	// changes.
+	// TODO(rstambler): Make sure the go.work/gopls.mod files are always known
+	// to the view.
+	for _, src := range []workspaceSource{goWorkWorkspace, goplsModWorkspace} {
+		if c.URI == uriForSource(v.rootURI, src) {
+			return true
+		}
 	}
 	// If the file is not known to the view, and the change is only on-disk,
 	// we should not invalidate the snapshot. This is necessary because Emacs
@@ -607,12 +611,19 @@ func (s *snapshot) loadWorkspace(ctx context.Context, firstAttempt bool) {
 	if len(scopes) > 0 {
 		err = s.load(ctx, firstAttempt, append(scopes, packagePath("builtin"))...)
 	}
-	if ctx.Err() != nil {
+	// If the context is canceled on the first attempt, loading has failed
+	// because the go command has timed out--that should be a critical error.
+	if !firstAttempt && ctx.Err() != nil {
 		return
 	}
 
 	var criticalErr *source.CriticalError
-	if err != nil {
+	if ctx.Err() != nil {
+		event.Error(ctx, fmt.Sprintf("initial workspace load: %v", err), err)
+		criticalErr = &source.CriticalError{
+			MainError: err,
+		}
+	} else if err != nil {
 		event.Error(ctx, "initial workspace load failed", err)
 		extractedDiags, _ := s.extractGoCommandErrors(ctx, err.Error())
 		criticalErr = &source.CriticalError{
@@ -775,7 +786,7 @@ func go111moduleForVersion(go111module string, goversion int) go111module {
 func findWorkspaceRoot(ctx context.Context, folder span.URI, fs source.FileSource, excludePath func(string) bool, experimental bool) (span.URI, error) {
 	patterns := []string{"go.mod"}
 	if experimental {
-		patterns = []string{"gopls.mod", "go.mod"}
+		patterns = []string{"go.work", "gopls.mod", "go.mod"}
 	}
 	for _, basename := range patterns {
 		dir, err := findRootPattern(ctx, folder, basename, fs)
@@ -1017,24 +1028,29 @@ func (v *View) allFilesExcluded(pkg *packages.Package) bool {
 		if !strings.HasPrefix(f, folder) {
 			return false
 		}
-		if !pathExcludedByFilter(strings.TrimPrefix(f, folder), opts) {
+		if !pathExcludedByFilter(strings.TrimPrefix(f, folder), v.rootURI.Filename(), v.gomodcache, opts) {
 			return false
 		}
 	}
 	return true
 }
 
-func pathExcludedByFilterFunc(opts *source.Options) func(string) bool {
+func pathExcludedByFilterFunc(root, gomodcache string, opts *source.Options) func(string) bool {
 	return func(path string) bool {
-		return pathExcludedByFilter(path, opts)
+		return pathExcludedByFilter(path, root, gomodcache, opts)
 	}
 }
 
-func pathExcludedByFilter(path string, opts *source.Options) bool {
+func pathExcludedByFilter(path, root, gomodcache string, opts *source.Options) bool {
 	path = strings.TrimPrefix(filepath.ToSlash(path), "/")
+	gomodcache = strings.TrimPrefix(filepath.ToSlash(strings.TrimPrefix(gomodcache, root)), "/")
 
 	excluded := false
-	for _, filter := range opts.DirectoryFilters {
+	filters := opts.DirectoryFilters
+	if gomodcache != "" {
+		filters = append(filters, "-"+gomodcache)
+	}
+	for _, filter := range filters {
 		op, prefix := filter[0], filter[1:]
 		// Non-empty prefixes have to be precise directory matches.
 		if prefix != "" {
