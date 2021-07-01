@@ -13,8 +13,8 @@ require (
 	golang.org/x/mod v0.4.2
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20210510120138-977fb7262007
-	golang.org/x/tools v0.1.3-0.20210604203405-1225b6f53f67
-	golang.org/x/tools/gopls v0.0.0-20210604203405-1225b6f53f67
+	golang.org/x/tools v0.1.5-0.20210630164504-f0847e0ce981
+	golang.org/x/tools/gopls v0.0.0-20210630164504-f0847e0ce981
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637

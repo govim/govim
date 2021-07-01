@@ -14,6 +14,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/progress"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
@@ -36,6 +37,8 @@ type Session struct {
 
 	// gocmdRunner guards go command calls from concurrency errors.
 	gocmdRunner *gocommand.Runner
+
+	progress *progress.Tracker
 }
 
 type overlay struct {
@@ -131,6 +134,11 @@ func (s *Session) SetOptions(options *source.Options) {
 	s.options = options
 }
 
+func (s *Session) SetProgressTracker(tracker *progress.Tracker) {
+	// The progress tracker should be set before any view is initialized.
+	s.progress = tracker
+}
+
 func (s *Session) Shutdown(ctx context.Context) {
 	s.viewMu.Lock()
 	defer s.viewMu.Unlock()
@@ -173,14 +181,14 @@ func (s *Session) createView(ctx context.Context, name string, folder, tempWorks
 	}
 	root := folder
 	if options.ExpandWorkspaceToModule {
-		root, err = findWorkspaceRoot(ctx, root, s, pathExcludedByFilterFunc(options), options.ExperimentalWorkspaceModule)
+		root, err = findWorkspaceRoot(ctx, root, s, pathExcludedByFilterFunc(root.Filename(), ws.gomodcache, options), options.ExperimentalWorkspaceModule)
 		if err != nil {
 			return nil, nil, func() {}, err
 		}
 	}
 
 	// Build the gopls workspace, collecting active modules in the view.
-	workspace, err := newWorkspace(ctx, root, s, pathExcludedByFilterFunc(options), ws.userGo111Module == off, options.ExperimentalWorkspaceModule)
+	workspace, err := newWorkspace(ctx, root, s, pathExcludedByFilterFunc(root.Filename(), ws.gomodcache, options), ws.userGo111Module == off, options.ExperimentalWorkspaceModule)
 	if err != nil {
 		return nil, nil, func() {}, err
 	}
@@ -221,7 +229,7 @@ func (s *Session) createView(ctx context.Context, name string, folder, tempWorks
 		generation:        s.cache.store.Generation(generationName(v, 0)),
 		packages:          make(map[packageKey]*packageHandle),
 		ids:               make(map[span.URI][]packageID),
-		metadata:          make(map[packageID]*metadata),
+		metadata:          make(map[packageID]*knownMetadata),
 		files:             make(map[span.URI]source.VersionedFileHandle),
 		goFiles:           make(map[parseKey]*parseGoHandle),
 		importedBy:        make(map[packageID][]packageID),
