@@ -112,7 +112,7 @@ func DefaultOptions() *Options {
 				},
 				UIOptions: UIOptions{
 					DiagnosticOptions: DiagnosticOptions{
-						ExperimentalDiagnosticsDelay: 250 * time.Millisecond,
+						DiagnosticsDelay: 250 * time.Millisecond,
 						Annotations: map[Annotation]bool{
 							Bounds: true,
 							Escape: true,
@@ -377,13 +377,22 @@ type DiagnosticOptions struct {
 	// that should be reported by the gc_details command.
 	Annotations map[Annotation]bool `status:"experimental"`
 
-	// ExperimentalDiagnosticsDelay controls the amount of time that gopls waits
+	// DiagnosticsDelay controls the amount of time that gopls waits
 	// after the most recent file modification before computing deep diagnostics.
 	// Simple diagnostics (parsing and type-checking) are always run immediately
 	// on recently modified packages.
 	//
 	// This option must be set to a valid duration string, for example `"250ms"`.
-	ExperimentalDiagnosticsDelay time.Duration `status:"experimental"`
+	DiagnosticsDelay time.Duration `status:"advanced"`
+
+	// ExperimentalWatchedFileDelay controls the amount of time that gopls waits
+	// for additional workspace/didChangeWatchedFiles notifications to arrive,
+	// before processing all such notifications in a single batch. This is
+	// intended for use by LSP clients that don't support their own batching of
+	// file system notifications.
+	//
+	// This option must be set to a valid duration string, for example `"100ms"`.
+	ExperimentalWatchedFileDelay time.Duration `status:"experimental"`
 }
 
 type NavigationOptions struct {
@@ -732,6 +741,7 @@ func (o *Options) EnableAllExperiments() {
 	o.ExperimentalPostfixCompletions = true
 	o.ExperimentalTemplateSupport = true
 	o.ExperimentalUseInvalidMetadata = true
+	o.ExperimentalWatchedFileDelay = 50 * time.Millisecond
 }
 
 func (o *Options) enableAllExperimentMaps() {
@@ -919,8 +929,15 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 	case "experimentalTemplateSupport":
 		result.setBool(&o.ExperimentalTemplateSupport)
 
-	case "experimentalDiagnosticsDelay":
-		result.setDuration(&o.ExperimentalDiagnosticsDelay)
+	case "experimentalDiagnosticsDelay", "diagnosticsDelay":
+		if name == "experimentalDiagnosticsDelay" {
+			result.State = OptionDeprecated
+			result.Replacement = "diagnosticsDelay"
+		}
+		result.setDuration(&o.DiagnosticsDelay)
+
+	case "experimentalWatchedFileDelay":
+		result.setDuration(&o.ExperimentalWatchedFileDelay)
 
 	case "experimentalPackageCacheKey":
 		result.setBool(&o.ExperimentalPackageCacheKey)

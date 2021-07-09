@@ -607,35 +607,40 @@ func (s *snapshot) loadWorkspace(ctx context.Context, firstAttempt bool) {
 	} else {
 		scopes = append(scopes, viewLoadScope("LOAD_VIEW"))
 	}
-	var err error
+
+	// If we're loading anything, ensure we also load builtin.
+	// TODO(rstambler): explain the rationale for this.
 	if len(scopes) > 0 {
-		err = s.load(ctx, firstAttempt, append(scopes, packagePath("builtin"))...)
+		scopes = append(scopes, packagePath("builtin"))
 	}
+	err := s.load(ctx, firstAttempt, scopes...)
+
 	// If the context is canceled on the first attempt, loading has failed
 	// because the go command has timed out--that should be a critical error.
-	if !firstAttempt && ctx.Err() != nil {
+	if err != nil && !firstAttempt && ctx.Err() != nil {
 		return
 	}
 
 	var criticalErr *source.CriticalError
-	if ctx.Err() != nil {
+	switch {
+	case err != nil && ctx.Err() != nil:
 		event.Error(ctx, fmt.Sprintf("initial workspace load: %v", err), err)
 		criticalErr = &source.CriticalError{
 			MainError: err,
 		}
-	} else if err != nil {
+	case err != nil:
 		event.Error(ctx, "initial workspace load failed", err)
 		extractedDiags, _ := s.extractGoCommandErrors(ctx, err.Error())
 		criticalErr = &source.CriticalError{
 			MainError: err,
 			DiagList:  append(modDiagnostics, extractedDiags...),
 		}
-	} else if len(modDiagnostics) == 1 {
+	case len(modDiagnostics) == 1:
 		criticalErr = &source.CriticalError{
 			MainError: fmt.Errorf(modDiagnostics[0].Message),
 			DiagList:  modDiagnostics,
 		}
-	} else if len(modDiagnostics) > 1 {
+	case len(modDiagnostics) > 1:
 		criticalErr = &source.CriticalError{
 			MainError: fmt.Errorf("error loading module names"),
 			DiagList:  modDiagnostics,
@@ -654,6 +659,10 @@ func (v *View) invalidateContent(ctx context.Context, changes map[span.URI]*file
 	// Detach the context so that content invalidation cannot be canceled.
 	ctx = xcontext.Detach(ctx)
 
+	// This should be the only time we hold the view's snapshot lock for any period of time.
+	v.snapshotMu.Lock()
+	defer v.snapshotMu.Unlock()
+
 	// Cancel all still-running previous requests, since they would be
 	// operating on stale data.
 	v.snapshot.cancel()
@@ -661,34 +670,41 @@ func (v *View) invalidateContent(ctx context.Context, changes map[span.URI]*file
 	// Do not clone a snapshot until its view has finished initializing.
 	v.snapshot.AwaitInitialized(ctx)
 
-	// This should be the only time we hold the view's snapshot lock for any period of time.
-	v.snapshotMu.Lock()
-	defer v.snapshotMu.Unlock()
-
 	oldSnapshot := v.snapshot
 
 	var workspaceChanged bool
 	v.snapshot, workspaceChanged = oldSnapshot.clone(ctx, v.baseCtx, changes, forceReloadMetadata)
-	if workspaceChanged && v.tempWorkspace != "" {
-		snap := v.snapshot
-		release := snap.generation.Acquire(ctx)
-		go func() {
-			defer release()
-			wsdir, err := snap.getWorkspaceDir(ctx)
-			if err != nil {
-				event.Error(ctx, "getting workspace dir", err)
-			}
-			if err := copyWorkspace(v.tempWorkspace, wsdir); err != nil {
-				event.Error(ctx, "copying workspace dir", err)
-			}
-		}()
+	if workspaceChanged {
+		if err := v.updateWorkspaceLocked(ctx); err != nil {
+			event.Error(ctx, "copying workspace dir", err)
+		}
 	}
 	go oldSnapshot.generation.Destroy()
 
 	return v.snapshot, v.snapshot.generation.Acquire(ctx)
 }
 
-func copyWorkspace(dst span.URI, src span.URI) error {
+func (v *View) updateWorkspace(ctx context.Context) error {
+	if v.tempWorkspace == "" {
+		return nil
+	}
+	v.snapshotMu.Lock()
+	defer v.snapshotMu.Unlock()
+	return v.updateWorkspaceLocked(ctx)
+}
+
+// updateWorkspaceLocked should only be called when v.snapshotMu is held. It
+// guarantees that workspace module content will be copied to v.tempWorkace at
+// some point in the future. We do not guarantee that the temp workspace sees
+// all changes to the workspace module, only that it is eventually consistent
+// with the workspace module of the latest snapshot.
+func (v *View) updateWorkspaceLocked(ctx context.Context) error {
+	release := v.snapshot.generation.Acquire(ctx)
+	defer release()
+	src, err := v.snapshot.getWorkspaceDir(ctx)
+	if err != nil {
+		return err
+	}
 	for _, name := range []string{"go.mod", "go.sum"} {
 		srcname := filepath.Join(src.Filename(), name)
 		srcf, err := os.Open(srcname)
@@ -696,7 +712,7 @@ func copyWorkspace(dst span.URI, src span.URI) error {
 			return errors.Errorf("opening snapshot %s: %w", name, err)
 		}
 		defer srcf.Close()
-		dstname := filepath.Join(dst.Filename(), name)
+		dstname := filepath.Join(v.tempWorkspace.Filename(), name)
 		dstf, err := os.Create(dstname)
 		if err != nil {
 			return errors.Errorf("truncating view %s: %w", name, err)

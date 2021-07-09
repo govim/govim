@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
 	jsonrpc2_v2 "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2_v2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp"
@@ -514,27 +513,6 @@ func addGoEnvToInitializeRequest(ctx context.Context, r jsonrpc2.Request) (jsonr
 		return nil, fmt.Errorf("%T is not a *jsonrpc2.Call", r)
 	}
 	return jsonrpc2.NewCall(call.ID(), "initialize", params)
-}
-
-func getGoEnv(ctx context.Context, env map[string]interface{}) (map[string]string, error) {
-	var runEnv []string
-	for k, v := range env {
-		runEnv = append(runEnv, fmt.Sprintf("%s=%s", k, v))
-	}
-	runner := gocommand.Runner{}
-	output, err := runner.Run(ctx, gocommand.Invocation{
-		Verb: "env",
-		Args: []string{"-json"},
-		Env:  runEnv,
-	})
-	if err != nil {
-		return nil, err
-	}
-	envmap := make(map[string]string)
-	if err := json.Unmarshal(output.Bytes(), &envmap); err != nil {
-		return nil, err
-	}
-	return envmap, nil
 }
 
 func (f *Forwarder) replyWithDebugAddress(outerCtx context.Context, r jsonrpc2.Replier, args command.DebuggingArgs) jsonrpc2.Replier {
