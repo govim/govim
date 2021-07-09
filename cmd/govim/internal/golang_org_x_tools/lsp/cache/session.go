@@ -28,7 +28,7 @@ type Session struct {
 	optionsMu sync.Mutex
 	options   *source.Options
 
-	viewMu  sync.Mutex
+	viewMu  sync.RWMutex
 	views   []*View
 	viewMap map[span.URI]*View // map of URI->best view
 
@@ -248,27 +248,21 @@ func (s *Session) createView(ctx context.Context, name string, folder, tempWorks
 	snapshot := v.snapshot
 	release := snapshot.generation.Acquire(initCtx)
 	go func() {
+		defer release()
 		snapshot.initialize(initCtx, true)
-		if v.tempWorkspace != "" {
-			var err error
-			var wsdir span.URI
-			wsdir, err = snapshot.getWorkspaceDir(initCtx)
-			if err == nil {
-				err = copyWorkspace(v.tempWorkspace, wsdir)
-			}
-			if err != nil {
-				event.Error(ctx, "copying workspace dir", err)
-			}
+		// Ensure that the view workspace is written at least once following
+		// initialization.
+		if err := v.updateWorkspace(initCtx); err != nil {
+			event.Error(ctx, "copying workspace dir", err)
 		}
-		release()
 	}()
 	return v, snapshot, snapshot.generation.Acquire(ctx), nil
 }
 
 // View returns the view by name.
 func (s *Session) View(name string) source.View {
-	s.viewMu.Lock()
-	defer s.viewMu.Unlock()
+	s.viewMu.RLock()
+	defer s.viewMu.RUnlock()
 	for _, view := range s.views {
 		if view.Name() == name {
 			return view
@@ -284,9 +278,8 @@ func (s *Session) ViewOf(uri span.URI) (source.View, error) {
 }
 
 func (s *Session) viewOf(uri span.URI) (*View, error) {
-	s.viewMu.Lock()
-	defer s.viewMu.Unlock()
-
+	s.viewMu.RLock()
+	defer s.viewMu.RUnlock()
 	// Check if we already know this file.
 	if v, found := s.viewMap[uri]; found {
 		return v, nil
@@ -300,8 +293,8 @@ func (s *Session) viewOf(uri span.URI) (*View, error) {
 }
 
 func (s *Session) viewsOf(uri span.URI) []*View {
-	s.viewMu.Lock()
-	defer s.viewMu.Unlock()
+	s.viewMu.RLock()
+	defer s.viewMu.RUnlock()
 
 	var views []*View
 	for _, view := range s.views {
@@ -313,8 +306,8 @@ func (s *Session) viewsOf(uri span.URI) []*View {
 }
 
 func (s *Session) Views() []source.View {
-	s.viewMu.Lock()
-	defer s.viewMu.Unlock()
+	s.viewMu.RLock()
+	defer s.viewMu.RUnlock()
 	result := make([]source.View, len(s.views))
 	for i, v := range s.views {
 		result[i] = v
@@ -424,6 +417,8 @@ type fileChange struct {
 }
 
 func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModification) (map[source.Snapshot][]span.URI, []func(), error) {
+	s.viewMu.RLock()
+	defer s.viewMu.RUnlock()
 	views := make(map[*View]map[span.URI]*fileChange)
 	affectedViews := map[span.URI][]*View{}
 
@@ -523,6 +518,8 @@ func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModif
 }
 
 func (s *Session) ExpandModificationsToDirectories(ctx context.Context, changes []source.FileModification) []source.FileModification {
+	s.viewMu.RLock()
+	defer s.viewMu.RUnlock()
 	var snapshots []*snapshot
 	for _, v := range s.views {
 		snapshot, release := v.getSnapshot(ctx)
@@ -711,6 +708,8 @@ func (s *Session) Overlays() []source.Overlay {
 }
 
 func (s *Session) FileWatchingGlobPatterns(ctx context.Context) map[string]struct{} {
+	s.viewMu.RLock()
+	defer s.viewMu.RUnlock()
 	patterns := map[string]struct{}{}
 	for _, view := range s.views {
 		snapshot, release := view.getSnapshot(ctx)
