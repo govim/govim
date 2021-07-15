@@ -31,9 +31,7 @@ const (
 	autoCommHandlePref = "autocommand:"
 )
 
-var (
-	ErrShuttingDown = errors.New("govim shutting down")
-)
+var ErrShuttingDown = errors.New("govim shutting down")
 
 type Flavor uint
 

@@ -325,6 +325,13 @@ type Config struct {
 	// ExperimentalWorkspaceModule opts a user into the experimental gopls
 	// support for multi-module workspaces
 	ExperimentalWorkspaceModule *bool `json:",omitempty"`
+
+	// ExperimentalSemanticTokens enables highlighting of semantic tokens as
+	// provided by gopls. It can act as a replacement or supplement to vim's
+	// ordinary syntax highlighting and will provide a more detailed highlighting.
+	//
+	// Default: false
+	ExperimentalSemanticTokens *bool `json:",omitempty"`
 }
 
 type Command string
@@ -472,6 +479,10 @@ const (
 	// should be run to create a "child" instance of govim to communicate with
 	// its "parent" (the instance which responded to this function call)
 	FunctionParentCommand Function = "ParentCommand"
+
+	// FunctionVisibleLines is an internal function used to pass information from
+	// vim to govim about which lines are visible in each window.
+	FunctionVisibleLines Function = InternalFunctionPrefix + "VisibleLines"
 )
 
 // FormatOnSave typed constants define the set of valid values that

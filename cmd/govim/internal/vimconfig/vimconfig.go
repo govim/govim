@@ -34,6 +34,7 @@ type VimConfig struct {
 	ExperimentalProgressPopups                   *int
 	ExperimentalAllowModfileModifications        *int
 	ExperimentalWorkspaceModule                  *int
+	ExperimentalSemanticTokens                   *int
 }
 
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
@@ -65,6 +66,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		ExperimentalProgressPopups:                   boolVal(c.ExperimentalProgressPopups, d.ExperimentalProgressPopups),
 		ExperimentalAllowModfileModifications:        boolVal(c.ExperimentalAllowModfileModifications, d.ExperimentalAllowModfileModifications),
 		ExperimentalWorkspaceModule:                  boolVal(c.ExperimentalWorkspaceModule, d.ExperimentalWorkspaceModule),
+		ExperimentalSemanticTokens:                   boolVal(c.ExperimentalSemanticTokens, d.ExperimentalSemanticTokens),
 	}
 	if v.FormatOnSave == nil {
 		v.FormatOnSave = d.FormatOnSave

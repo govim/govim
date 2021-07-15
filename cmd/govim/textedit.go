@@ -23,8 +23,7 @@ type textEdit struct {
 	lines  []string
 }
 
-func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.TextEdit) error {
-
+func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.TextEdit) (err error) {
 	// prepare the changes to make in Vim
 	blines := bytes.Split(b.Contents()[:len(b.Contents())-1], []byte("\n"))
 	var changes []textEdit

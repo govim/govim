@@ -74,6 +74,10 @@ func (v *vimstate) addBuffer(nb *types.Buffer) error {
 		v.Logf("failed to update highlights for buffer %d: %v", nb.Num, err)
 	}
 
+	if err := v.updateSemanticTokens(nb); err != nil {
+		v.Logf("failed to update semantic tokens for buffer %d: %v", nb.Num, err)
+	}
+
 	return v.handleBufferEvent(nb)
 }
 

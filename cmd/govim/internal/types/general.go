@@ -89,4 +89,37 @@ type TextPropID int
 const (
 	DiagnosticTextPropID = 0
 	ReferencesTextPropID = 1
+	SemanticTokenPropID  = 2
 )
+
+// SemanticTokenHighlight returns corresponding highlight name for a semantic token.
+// It also acts as a list of all semantic tokens supported by govim.
+// TODO: We should use GOVIM defined highlights instead so that the user can alter the
+// highlights.
+var SemanticTokenHighlight = map[string]string{
+	"namespace": "Operator",
+	"type":      "Type",
+	"parameter": "Identifier",
+	"variable":  "Normal",
+	"function":  "Function",
+	"member":    "Function",
+	"keyword":   "Keyword",
+	"comment":   "Comment",
+	"string":    "String",
+	"number":    "Number",
+	"operator":  "Operator",
+
+	// TODO: There follwing commented ones wasn't used by gopls when semantic token
+	// support was added. We should provide some sane highlight for them as well.
+	//	"class":         "",
+	//	"enum":          "",
+	//	"interface":     "",
+	//	"struct":        "",
+	//	"typeParameter": "",
+	//	"property":      "",
+	//	"enumMember":    "",
+	//	"event":         "",
+	//	"macro":         "",
+	//	"modifier":      "",
+	//	"regexp":        "",
+}
