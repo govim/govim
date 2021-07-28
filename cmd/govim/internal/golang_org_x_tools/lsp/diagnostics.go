@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/log"
@@ -119,10 +120,10 @@ func (s *Server) diagnoseSnapshot(snapshot source.Snapshot, changedURIs []span.U
 		// delay.
 		s.diagnoseChangedFiles(ctx, snapshot, changedURIs, onDisk)
 		s.publishDiagnostics(ctx, false, snapshot)
-		s.diagDebouncer.debounce(snapshot.View().Name(), snapshot.ID(), delay, func() {
+		if ok := <-s.diagDebouncer.debounce(snapshot.View().Name(), snapshot.ID(), time.After(delay)); ok {
 			s.diagnose(ctx, snapshot, false)
 			s.publishDiagnostics(ctx, true, snapshot)
-		})
+		}
 		return
 	}
 
@@ -210,7 +211,7 @@ func (s *Server) diagnose(ctx context.Context, snapshot source.Snapshot, forceAn
 	}
 
 	// Diagnose all of the packages in the workspace.
-	wsPkgs, err := snapshot.WorkspacePackages(ctx)
+	wsPkgs, err := snapshot.ActivePackages(ctx)
 	if s.shouldIgnoreError(ctx, snapshot, err) {
 		return
 	}
