@@ -156,8 +156,11 @@ type Snapshot interface {
 	// in TypecheckWorkspace mode.
 	KnownPackages(ctx context.Context) ([]Package, error)
 
-	// WorkspacePackages returns the snapshot's top-level packages.
-	WorkspacePackages(ctx context.Context) ([]Package, error)
+	// ActivePackages returns the packages considered 'active' in the workspace.
+	//
+	// In normal memory mode, this is all workspace packages. In degraded memory
+	// mode, this is just the reverse transitive closure of open packages.
+	ActivePackages(ctx context.Context) ([]Package, error)
 
 	// GetCriticalError returns any critical errors in the workspace.
 	GetCriticalError(ctx context.Context) *CriticalError
@@ -581,6 +584,7 @@ type Package interface {
 	Version() *module.Version
 	HasListOrParseErrors() bool
 	HasTypeErrors() bool
+	ParseMode() ParseMode
 }
 
 type CriticalError struct {

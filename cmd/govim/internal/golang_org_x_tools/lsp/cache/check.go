@@ -207,16 +207,8 @@ func (s *snapshot) workspaceParseMode(id packageID) source.ParseMode {
 	if s.view.Options().MemoryMode == source.ModeNormal {
 		return source.ParseFull
 	}
-
-	// Degraded mode. Check for open files.
-	m, ok := s.metadata[id]
-	if !ok {
-		return source.ParseExported
-	}
-	for _, cgf := range m.compiledGoFiles {
-		if s.isOpenLocked(cgf) {
-			return source.ParseFull
-		}
+	if s.isActiveLocked(id, nil) {
+		return source.ParseFull
 	}
 	return source.ParseExported
 }
@@ -539,8 +531,10 @@ func doTypeCheck(ctx context.Context, snapshot *snapshot, m *metadata, mode sour
 	for _, cgf := range pkg.compiledGoFiles {
 		files = append(files, cgf.File)
 	}
+
 	// Type checking errors are handled via the config, so ignore them here.
 	_ = check.Files(files)
+
 	// If the context was cancelled, we may have returned a ton of transient
 	// errors to the type checker. Swallow them.
 	if ctx.Err() != nil {

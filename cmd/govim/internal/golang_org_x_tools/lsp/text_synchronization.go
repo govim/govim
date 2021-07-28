@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
@@ -241,7 +242,11 @@ func (s *Server) didModifyFiles(ctx context.Context, modifications []source.File
 	//     process changes in order.
 	s.pendingOnDiskChanges = append(s.pendingOnDiskChanges, pending)
 	ctx = xcontext.Detach(ctx)
-	delayed := func() {
+	okc := s.watchedFileDebouncer.debounce("", 0, time.After(delay))
+	go func() {
+		if ok := <-okc; !ok {
+			return
+		}
 		s.fileChangeMu.Lock()
 		var allChanges []source.FileModification
 		// For accurate progress notifications, we must notify all goroutines
@@ -263,8 +268,7 @@ func (s *Server) didModifyFiles(ctx context.Context, modifications []source.File
 		for _, done := range dones {
 			close(done)
 		}
-	}
-	go s.watchedFileDebouncer.debounce("", 0, delay, delayed)
+	}()
 	return nil
 }
 
@@ -278,6 +282,7 @@ func (s *Server) processModifications(ctx context.Context, modifications []sourc
 		// produce a better error message. The actual race to the cache should be
 		// guarded by Session.viewMu.
 		s.stateMu.Unlock()
+		close(diagnoseDone)
 		return errors.New("server is shut down")
 	}
 	s.stateMu.Unlock()
@@ -287,6 +292,7 @@ func (s *Server) processModifications(ctx context.Context, modifications []sourc
 
 	snapshots, releases, err := s.session.DidModifyFiles(ctx, modifications)
 	if err != nil {
+		close(diagnoseDone)
 		return err
 	}
 
