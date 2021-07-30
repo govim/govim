@@ -52,7 +52,7 @@ const (
 	// and SafeState* functionality.
 	MinVimSafeState = "v8.1.2056"
 
-	LatestVim = "v8.2.2385"
+	LatestVim = "v8.2.3249"
 )
 
 var (
@@ -133,9 +133,9 @@ func (v gvimVersionType) Flavor() govim.Flavor {
 }
 
 func EnvLookupFlavorCommand() (flav govim.Flavor, cmd Command, err error) {
-	vf, ok := os.LookupEnv("VIM_FLAVOR")
+	vf, ok := os.LookupEnv(EnvVimFlavor)
 	if !ok {
-		return flav, cmd, fmt.Errorf("VIM_FLAVOR env var is not set")
+		return flav, cmd, fmt.Errorf("%v env var is not set", EnvVimFlavor)
 	}
 	foundFlav := false
 	for _, f := range govim.Flavors {
@@ -145,7 +145,7 @@ func EnvLookupFlavorCommand() (flav govim.Flavor, cmd Command, err error) {
 		}
 	}
 	if !foundFlav {
-		return flav, cmd, fmt.Errorf("VIM_FLAVOR set to invalid value: %v", vf)
+		return flav, cmd, fmt.Errorf("%v set to invalid value: %v", EnvVimFlavor, vf)
 	}
 	switch flav {
 	case govim.FlavorVim:
