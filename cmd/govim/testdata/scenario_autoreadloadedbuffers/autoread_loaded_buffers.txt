@@ -13,8 +13,8 @@ vim ex 'e main.go'
 # "edit" the loaded file from outside of vim
 cp const.go.commented const.go
 
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.undeclared GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.undeclared GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.undeclared GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.undeclared GOVIMTest_getqflist()
 
 # No warnings or errors during the test
 

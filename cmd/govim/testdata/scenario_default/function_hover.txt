@@ -14,8 +14,8 @@ cmp stdout popup.golden
 # Single warning (unreachable code) + docs as popup content
 vim call append '[5,"\treturn"]'
 vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
-[vim:v8.2.3019] vimexprwait warning.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait warning.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait warning.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait warning.golden GOVIMTest_getqflist()
 vim expr 'GOVIMHover()'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout warning_popup.golden
@@ -25,8 +25,8 @@ cmp stdout warning_popup.golden
 # Two warnings (unreachable code + formatting directive %v) + docs
 vim ex '7s/Hello, world/%v/'
 vim ex 'call cursor(7,8)'
-[vim:v8.2.3019] vimexprwait warnings.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait warnings.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait warnings.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait warnings.golden GOVIMTest_getqflist()
 vim expr 'GOVIMHover()'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout warnings_popup.golden
@@ -46,8 +46,8 @@ vim ex 'call cursor(6,1)'
 vim ex 'normal dd'
 vim ex 'call cursor(6,7)'
 vim ex 'normal x'
-[vim:v8.2.3019] vimexprwait error.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait error.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait error.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait error.golden GOVIMTest_getqflist()
 vim expr 'GOVIMHover()'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
 cmp stdout error_popup.golden

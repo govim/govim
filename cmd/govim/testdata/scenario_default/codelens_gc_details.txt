@@ -6,10 +6,10 @@
 # Compiler details are reported using "information" severity
 vim ex 'e main.go'
 vim ex 'GOVIMGCDetails'
-[vim:v8.2.3019] [go1.14] [!go1.15] vimexprwait errors.go114.v8.2.3019.golden GOVIMTest_getqflist()
-[vim:v8.2.3019] [go1.15] vimexprwait errors.go115.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] [go1.14] [!go1.15] vimexprwait errors.go114.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] [go1.15] vimexprwait errors.go115.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.14] [!go1.15] vimexprwait errors.go114.v8.2.3019.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.15] vimexprwait errors.go115.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.14] [!go1.15] vimexprwait errors.go114.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.15] vimexprwait errors.go115.golden GOVIMTest_getqflist()
 
 
 [short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'

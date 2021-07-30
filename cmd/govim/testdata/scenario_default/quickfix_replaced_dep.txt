@@ -6,8 +6,8 @@
 
 # Expand $WORK within our golden file
 envsubst error.golden
-[vim:v8.2.3019] envsubst error.v8.2.3019.golden
-[!vim:v8.2.3019] envsubst error.golden
+[v8.2.3019] envsubst error.v8.2.3019.golden
+[!v8.2.3019] envsubst error.golden
 
 # Open dependency via GoToDef
 vim ex 'e main.go'
@@ -20,8 +20,8 @@ stdout '^\Q"'$WORK'/p/blah.go"\E$'
 vim call append '[3, "asd"]'
 
 # Expect the error to be reported
-[vim:v8.2.3019] vimexprwait error.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait error.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait error.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait error.golden GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103

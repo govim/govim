@@ -2,8 +2,8 @@
 # selected entry file, if this one isn't found and if there's no next entry.
 
 vim ex 'e main.go'
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden.orig GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden.orig GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden.orig GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden.orig GOVIMTest_getqflist()
 
 # Verify we have the first entry selected
 vim expr 'getqflist({\"idx\": 0})'
@@ -19,8 +19,8 @@ stdout '{"idx":4}'
 # Now fix selected error and assert the index points to the last entry of the file
 vim ex 'call cursor(7,1)'
 vim normal dd
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden.updated GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden.updated GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden.updated GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden.updated GOVIMTest_getqflist()
 vim expr 'getqflist({\"idx\": 0})'
 stdout '{"idx":3}'
 ! stderr .+

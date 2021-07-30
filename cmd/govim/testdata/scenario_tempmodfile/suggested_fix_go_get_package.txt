@@ -8,8 +8,8 @@ vim call 'govim#config#Set' '["ExperimentalAllowModfileModifications",0]'
 vim ex 'e main.go'
 
 # Wait for the diag and open up suggested fixes
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 vim ex 'call cursor(6,4)'
 vim ex 'GOVIMSuggestedFixes'
 

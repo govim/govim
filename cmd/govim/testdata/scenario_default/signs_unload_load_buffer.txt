@@ -7,14 +7,14 @@ vimexprwait placed_main.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\"
 # open other.go and add a broken statement to get an error that masks the warnings
 vim ex 'e other.go'
 vim call append '[6,"asd"]'
-[vim:v8.2.3019] vimexprwait tmp_error.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait tmp_error.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait tmp_error.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait tmp_error.golden GOVIMTest_getqflist()
 
 # remove the broken statement
 vim ex 'call cursor(7,1)'
 vim ex 'normal dd'
-[vim:v8.2.3019] vimexprwait warnings.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait warnings.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait warnings.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait warnings.golden GOVIMTest_getqflist()
 
 # jump back to main and check that the sign is still present
 vim ex 'w'

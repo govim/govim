@@ -28,10 +28,10 @@ vim ex 'noau w! check'
 cmp check p/x_test.go.orig
 
 # Expect the errors
-[vim:v8.2.3019] [!go1.16] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[vim:v8.2.3019] [go1.16] vimexprwait errors.go1.16.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] [!go1.16] vimexprwait errors.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] [go1.16] vimexprwait errors.go1.16.golden GOVIMTest_getqflist()
+[v8.2.3019] [!go1.16] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.16] vimexprwait errors.go1.16.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [!go1.16] vimexprwait errors.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.16] vimexprwait errors.go1.16.golden GOVIMTest_getqflist()
 
 # Change p.DoIt to accept an integer
 vim ex 'sp p/p.go'

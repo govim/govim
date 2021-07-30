@@ -4,8 +4,8 @@
 
 # Open main.go that lacks import statement for "fmt"
 vim ex 'e main.go'
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Save the file so the import statment is added (and cursor is moved)
 vim ex 'call cursor(4,15)'

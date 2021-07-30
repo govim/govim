@@ -5,8 +5,8 @@
 [short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
 
 vim ex 'e main.go'
-[vim:v8.2.3019] vimexprwait pre.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait pre.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait pre.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait pre.golden GOVIMTest_getqflist()
 vim ex 'w'
 
 # We have to sleep here because there is no event we are waiting for

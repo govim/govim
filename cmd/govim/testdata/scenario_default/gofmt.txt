@@ -19,8 +19,8 @@ cp file.go.bad file.go
 vim ex 'e! file.go'
 vim ex 'w'
 cmp file.go file.go.bad
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 
 skip 'Temporarily disable pending https://github.com/golang/go/issues/31150'
 

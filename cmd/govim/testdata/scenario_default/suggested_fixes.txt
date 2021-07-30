@@ -6,8 +6,8 @@
 
 # Tests basic case with a single diagnostic, no fix selected
 vim ex 'e main.go'
-[vim:v8.2.3019] vimexprwait initial_errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait initial_errors.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait initial_errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait initial_errors.golden GOVIMTest_getqflist()
 
 vim ex 'call cursor(6,2)'
 vim ex 'GOVIMSuggestedFixes'
@@ -30,8 +30,8 @@ cmp main.go main.go.single.golden
 # second one since that is the cursor position line.
 cp main.go.different_lines main.go
 vim ex 'e! main.go'
-[vim:v8.2.3019] vimexprwait different_lines_errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait different_lines_errors.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait different_lines_errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait different_lines_errors.golden GOVIMTest_getqflist()
 
 vim ex 'call cursor(7,2)'
 vim ex 'GOVIMSuggestedFixes'
@@ -42,8 +42,8 @@ errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\"Remove\"\],{.*\"title\
 # title to indicate more than one. It shall also be possible to cycle forward and backwards.
 cp main.go.same_line main.go
 vim ex 'e! main.go'
-[vim:v8.2.3019] vimexprwait same_line_errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait same_line_errors.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait same_line_errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait same_line_errors.golden GOVIMTest_getqflist()
 
 vim ex 'call cursor(6,2)'
 vim ex 'GOVIMSuggestedFixes'

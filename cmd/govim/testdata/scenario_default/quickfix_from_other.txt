@@ -1,28 +1,28 @@
 # Test that the quickfix window is updated by diagnostics only in some situations
 
 vim ex 'e main.go'
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden1 GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden1 GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden1 GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden1 GOVIMTest_getqflist()
 vim ex 'call setqflist([{\"filename\":\"foo\"}, {\"filename\":\"bar\"}, {\"filename\":\"baz\"}], \"r\")'
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.other GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.other GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.other GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.other GOVIMTest_getqflist()
 
 # Add an error, the quickfix should remain because it's not already filled with diagnostics
 vim ex 'call cursor(6, 1)'
 vim ex 'call feedkeys(\"yyp\")'
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.other GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.other GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.other GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.other GOVIMTest_getqflist()
 
 # Force display diagnostics now
 vim ex 'GOVIMQuickfixDiagnostics'
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden2 GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden2 GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden2 GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden2 GOVIMTest_getqflist()
 
 # Fill quickfix with empty array, this time it shouldn't remain because it's empty
 vim ex 'call setqflist([])'
 vim ex 'call feedkeys(\"dd\")'
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden1 GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden1 GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden1 GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden1 GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
