@@ -8,7 +8,8 @@ vim ex 'e main.go'
 vim ex 'call cursor(5,5)'
 vim ex 'call GOVIM_test_SetUserBusy(1)'
 vim ex 'call GOVIM_test_SetUserBusy(0)'
-vimexprwait foo_references.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[v8.2.3233]  vimexprwait foo_references.v8.2.3233.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[!v8.2.3233] vimexprwait foo_references.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 
 # Placing the cursor on "fmt" should highlight all other occations of fmt
@@ -16,7 +17,8 @@ vim ex 'call cursor(9,2)'
 vim ex 'call GOVIM_test_SetUserBusy(1)'
 vim ex 'call GOVIM_test_SetUserBusy(0)'
 vim ex 'w'
-vimexprwait fmt_references.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[v8.2.3233]  vimexprwait fmt_references.v8.2.3233.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[!v8.2.3233] vimexprwait fmt_references.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -83,6 +85,52 @@ func main() {
   [],
   []
 ]
+-- foo_references.v8.2.3233.golden --
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 36,
+      "end": 1,
+      "id": 1,
+      "length": 3,
+      "start": 1,
+      "type": "GOVIMReferences",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 42,
+      "end": 1,
+      "id": 1,
+      "length": 3,
+      "start": 1,
+      "type": "GOVIMReferences",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 41,
+      "end": 1,
+      "id": 1,
+      "length": 3,
+      "start": 1,
+      "type": "GOVIMReferences",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  []
+]
 -- fmt_references.golden --
 [
   [],
@@ -121,6 +169,51 @@ func main() {
       "length": 3,
       "start": 1,
       "type": "GOVIMReferences"
+    }
+  ],
+  []
+]
+-- fmt_references.v8.2.3233.golden --
+[
+  [],
+  [],
+  [
+    {
+      "col": 8,
+      "end": 1,
+      "id": 1,
+      "length": 5,
+      "start": 1,
+      "type": "GOVIMReferences",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 1,
+      "length": 3,
+      "start": 1,
+      "type": "GOVIMReferences",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 1,
+      "length": 3,
+      "start": 1,
+      "type": "GOVIMReferences",
+      "type_bufnr": 0
     }
   ],
   []

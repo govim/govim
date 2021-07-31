@@ -7,34 +7,42 @@
 # TODO: Rewrite property listing when vim implements prop_find().
 
 # Errors are placed with ranges matching the diagnostic
+# prop_find() isn't implemented in vim (as of 8.1.2389) so call prop_list on each line.
 vim ex 'e main.go'
-vimexprwait main_go_errors.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")' # prop_find() isn't implemented in vim (as of 8.1.2389) so call prop_list on each line.
+[v8.2.3233]  vimexprwait main_go_errors.v8.2.3233.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[!v8.2.3233] vimexprwait main_go_errors.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 # Removing the two empty funcs, should remove those errors.
 vim ex 'call cursor(9,1)'
 vim ex 'normal 2dd'
-vimexprwait main_go_errors2.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[v8.2.3233]  vimexprwait main_go_errors2.v8.2.3233.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[!v8.2.3233] vimexprwait main_go_errors2.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 # Adding declaration of i and v should remove the last errors and instead add warnings for main.go (since other.go isn't loaded)
 vim call append '[5, "\tvar i, v string"]'
 vim ex 'w'
-vimexprwait main_go_warning.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[v8.2.3233]  vimexprwait main_go_warning.v8.2.3233.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[!v8.2.3233] vimexprwait main_go_warning.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 # Switching to a new buffer (other.go) should add warnings in that buffer
 vim ex 'split other.go'
-vimexprwait other_go_warning.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[v8.2.3233]  vimexprwait other_go_warning.v8.2.3233.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[!v8.2.3233] vimexprwait other_go_warning.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 # Closing the split shouldn't remove warnings in main.go
 vim ex 'bwipe'
-vimexprwait main_go_warning.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[v8.2.3233]  vimexprwait main_go_warning.v8.2.3233.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[!v8.2.3233] vimexprwait main_go_warning.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 # Open without split should also add warnings in the new buffer
 vim ex 'e other.go'
-vimexprwait other_go_warning.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[v8.2.3233]  vimexprwait other_go_warning.v8.2.3233.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[!v8.2.3233] vimexprwait other_go_warning.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 # Closing the other.go buffer shouldn't remove warnings in main.go
 vim ex 'bwipe'
-vimexprwait main_go_warning.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[v8.2.3233]  vimexprwait main_go_warning.v8.2.3233.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+[!v8.2.3233] vimexprwait main_go_warning.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -111,6 +119,58 @@ func foo() {
     }
   ]
 ]
+-- main_go_errors.v8.2.3233.golden --
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 36,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr",
+      "type_bufnr": 0
+    },
+    {
+      "col": 39,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [],
+  [
+    {
+      "col": 19,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 19,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr",
+      "type_bufnr": 0
+    }
+  ]
+]
 -- main_go_errors2.golden --
 [
   [],
@@ -139,6 +199,36 @@ func foo() {
   [],
   []
 ]
+-- main_go_errors2.v8.2.3233.golden --
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 36,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr",
+      "type_bufnr": 0
+    },
+    {
+      "col": 39,
+      "end": 1,
+      "id": 0,
+      "length": 1,
+      "start": 1,
+      "type": "GOVIMErr",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  []
+]
 -- main_go_warning.golden --
 [
   [],
@@ -159,6 +249,27 @@ func foo() {
   ],
   []
 ]
+-- main_go_warning.v8.2.3233.golden --
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 0,
+      "length": 39,
+      "start": 1,
+      "type": "GOVIMWarn",
+      "type_bufnr": 0
+    }
+  ],
+  []
+]
 -- other_go_warning.golden --
 [
   [],
@@ -174,6 +285,26 @@ func foo() {
       "length": 17,
       "start": 1,
       "type": "GOVIMWarn"
+    }
+  ],
+  []
+]
+-- other_go_warning.v8.2.3233.golden --
+[
+  [],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 5,
+      "end": 1,
+      "id": 0,
+      "length": 17,
+      "start": 1,
+      "type": "GOVIMWarn",
+      "type_bufnr": 0
     }
   ],
   []
