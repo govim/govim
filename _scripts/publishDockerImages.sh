@@ -2,4 +2,4 @@
 
 source "${BASH_SOURCE%/*}/common.bash"
 
-docker push govim/govim
+docker push -a govim/govim
