@@ -2,7 +2,8 @@
 
 [!vim] [!gvim] skip 'Test only known to work in Vim and GVim'
 
-[!vim:v8.1.1649] skip 'New style popup tests do not work on gvim https://github.com/govim/govim/issues/351'
+[!v8.1.1649] skip 'New style popup tests do not work on gvim >= v8.1.1659 https://github.com/govim/govim/issues/351'
+[gvim] skip 'New style popup tests do not work on gvim >= v8.1.1659 https://github.com/govim/govim/issues/351'
 
 vim ex 'call govim#config#Set(\"ExperimentalMouseTriggeredHoverPopupOptions\", { \"pos\": \"topright\", \"col\": 9999, \"line\": -9999  })'
 

@@ -1,6 +1,6 @@
 # Test that GoImportsLocalPrefix works for existing imports
 
-[gvim:v8.1.1711] skip 'Known to be flake with GVim v8.1.1711'
+[v8.1.1711] [gvim] skip 'Known to be flake with GVim v8.1.1711'
 
 # Verify that new imports get correctly placed
 go mod download all

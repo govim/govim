@@ -8,20 +8,20 @@ vim ex 'e main.go'
 vim ex 'call cursor (9,6)' #TODO: replcae with my values
 vim ex 'GOVIMImplements' # note this moves the cursor to the quickfix window
 vim ex 'call win_gotoid(win_findbuf(bufnr(\"main.go\"))[0])'
-[vim:v8.2.3019] vimexprwait locations.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait locations.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait locations.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait locations.golden GOVIMTest_getqflist()
 
 # Introduce an error - locations should remain
 vim ex 'call cursor(14, 1)'
 vim ex 'call feedkeys(\"ofmt.Printf(\\\"%v\\\")\\<ESC>\", \"xt\")'
 sleep $GOVIM_ERRLOGMATCH_WAIT
-[vim:v8.2.3019] vimexprwait locations.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait locations.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait locations.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait locations.golden GOVIMTest_getqflist()
 
 # Now use quickfix for errors
 vim ex 'GOVIMQuickfixDiagnostics'
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103

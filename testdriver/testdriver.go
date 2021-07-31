@@ -839,6 +839,32 @@ func Sleep(ts *testscript.TestScript, neg bool, args []string) {
 	time.Sleep(d)
 }
 
+// Condition reports whether the given condition cond is satisfied or not. This
+// function is called after the builtin testscript conditions which are
+// documented in the testscript package, examples include:
+//
+// [short]
+// [go1.14]
+//
+// Example conditions:
+//
+// [golang.org/issues/1234]
+// Satisfied if GOVIM_TESTSCRIPT_ISSUES does not contain a regexp that matches
+// the condition string
+//
+// [github.com/govim/govim/issues/4321]
+// Satisfied if GOVIM_TESTSCRIPT_ISSUES does not contain a regexp that matches
+// the condition string
+//
+// [vim]
+// Satisfied if we are testing with vim
+//
+// [gvim]
+// Satisfied if we are testing with gvim
+//
+// [v1.2.3]
+// Satisfied if we are running vim/gvim/whatever version >=v1.2.3
+//
 func Condition(cond string) (bool, error) {
 	// Does this condition match any of the issue tracker regexps? If so, return
 	// true unless the GOVIM_TESTSCRIPT_ISSUES specifies a regexp that matches
@@ -859,57 +885,53 @@ func Condition(cond string) (bool, error) {
 			return true, nil
 		}
 	}
-	// Fallthrough to matching the Vim/Gvim conditions
+
+	// Derive environment
 	envf, cmd, err := testsetup.EnvLookupFlavorCommand()
 	if err != nil {
 		return false, err
 	}
+
+	// Is the condition a semver version? If so, check
+	// against the version of vim running
+	if semver.IsValid(cond) {
+		version, err := getVimFlavourVersion(cmd)
+		if err != nil {
+			return false, err
+		}
+		return semver.Compare(version, cond) >= 0, nil
+	}
+
+	// Fallthrough to the final mode of checking the flavour
+	// If we don't match a flavour we're done: error
 	var f govim.Flavor
-	switch {
-	case strings.HasPrefix(cond, govim.FlavorVim.String()):
+	switch cond {
+	case govim.FlavorVim.String():
 		f = govim.FlavorVim
-	case strings.HasPrefix(cond, govim.FlavorGvim.String()):
+	case govim.FlavorGvim.String():
 		f = govim.FlavorGvim
 	default:
 		return false, fmt.Errorf("unknown condition %v", cond)
 	}
-	v := strings.TrimPrefix(cond, f.String())
-	if envf != f {
-		return false, nil
-	}
-	if v == "" {
-		return true, nil
-	}
-	if v[0] != ':' {
-		return false, fmt.Errorf("failed to find version separator")
-	}
-	v = v[1:]
-	if !semver.IsValid(v) {
-		return false, fmt.Errorf("%v is not a valid semver version", v)
-	}
-	switch f {
-	case govim.FlavorVim, govim.FlavorGvim:
-		var allArgs []string
-		allArgs = append(allArgs, cmd...)
-		allArgs = append(allArgs, "-v", "--cmd", "echo v:versionlong | qall", "--not-a-term")
-		cmd := exec.Command(allArgs[0], allArgs[1:]...)
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			return false, fmt.Errorf("failed to get v:versionlong value from Vim via %v: %v\n%s", strings.Join(cmd.Args, " "), err, out)
-		}
-		versionStr := strings.TrimSpace(stripansi.Strip(string(out)))
-		versionInt, err := strconv.Atoi(versionStr)
-		if err != nil {
-			return false, fmt.Errorf("failed to convert Vim v:versionlong value %v to an integer: %v", versionStr, err)
-		}
-		version := govim.ParseVersionLong(versionInt)
-		if err != nil {
-			return false, fmt.Errorf("failed to parse version from %v: %v", versionStr, err)
-		}
-		return semver.Compare(version, v) >= 0, nil
-	}
+	return envf == f, nil
+}
 
-	panic("should not reach here")
+func getVimFlavourVersion(c testsetup.Command) (string, error) {
+	var allArgs []string
+	allArgs = append(allArgs, c...)
+	allArgs = append(allArgs, "-v", "--cmd", "echo v:versionlong | qall", "--not-a-term")
+	cmd := exec.Command(allArgs[0], allArgs[1:]...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("failed to get v:versionlong value from Vim via %v: %v\n%s", strings.Join(cmd.Args, " "), err, out)
+	}
+	versionStr := strings.TrimSpace(stripansi.Strip(string(out)))
+	versionInt, err := strconv.Atoi(versionStr)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert Vim v:versionlong value %v to an integer: %v", versionStr, err)
+	}
+	version := govim.ParseVersionLong(versionInt)
+	return version, nil
 }
 
 type LockingBuffer struct {

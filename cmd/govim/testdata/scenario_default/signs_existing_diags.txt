@@ -1,8 +1,8 @@
 # Test that signs are placed when opening a file that already has diagnostics.
 
 vim ex 'e main.go'
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
 vim ex 'e other.go'
 vimexprwait placed.golden 'GOVIMTest_sign_getplaced(\"other.go\", {\"group\": \"*\"})'
 

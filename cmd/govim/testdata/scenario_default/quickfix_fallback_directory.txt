@@ -3,8 +3,8 @@
 # there's no other errors in this entry file.
 
 vim ex 'e charly.go'
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden.orig GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden.orig GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden.orig GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden.orig GOVIMTest_getqflist()
 
 # Now move to error 'errc' and check the position
 vim expr 'setqflist([], \"r\", {\"idx\": 3})'
@@ -15,8 +15,8 @@ stdout '{"idx":3}'
 # Now fix selected error and assert the index points to the first file of the directory
 vim ex 'call cursor(3,1)'
 vim normal dd
-[vim:v8.2.3019] vimexprwait errors.v8.2.3019.golden.updated GOVIMTest_getqflist()
-[!vim:v8.2.3019] vimexprwait errors.golden.updated GOVIMTest_getqflist()
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden.updated GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden.updated GOVIMTest_getqflist()
 vim expr 'getqflist({\"idx\": 0})'
 stdout '{"idx":2}'
 ! stderr .+
