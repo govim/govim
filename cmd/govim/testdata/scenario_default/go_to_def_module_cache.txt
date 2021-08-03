@@ -7,7 +7,7 @@ vim ex 'set splitright'
 
 # Definition in same file
 vim ex 'e '$WORK/p.go
-vim ex 'call cursor(5,18)'
+vim ex 'call cursor(5,19)'
 vim ex 'GOVIMGoToDef'
 vim expr 'expand(''%:p'')'
 stdout '^\Q"'$WORK'/.home/gopath/pkg/mod/example.com/blah@v1.0.0/main.go"\E$'
@@ -17,7 +17,7 @@ vim ex 'GOVIMGoToPrevDef'
 vim expr 'expand(''%:p'')'
 stdout '^\Q"'$WORK'/p.go"\E$'
 vim expr '[getcurpos()[1], getcurpos()[2]]'
-stdout '^\Q[5,18]\E$'
+stdout '^\Q[5,19]\E$'
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
