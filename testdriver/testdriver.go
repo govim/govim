@@ -212,6 +212,22 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		}
 	}
 
+	// testscript prepends PATH with the directory that contain
+	// subcommands. Since we are going to execute vim here, and also
+	// have a subcommand named "vim", we must specify the entire path if
+	// "vim" is a part of vimCmd.
+	for i := range vimCmd {
+		if vimCmd[i] != "vim" {
+			continue
+		}
+		abs, err := testsetup.RealVimPath()
+		if err != nil {
+			return nil, fmt.Errorf("failed to find vim binary: %v", err)
+		}
+		vimCmd[i] = abs
+		break
+	}
+
 	res.cmd = exec.Command(vimCmd[0], vimCmd[1:]...)
 	res.cmd.Env = c.Env.Vars
 	res.cmd.Dir = c.Env.WorkDir

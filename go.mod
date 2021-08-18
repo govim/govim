@@ -9,12 +9,12 @@ require (
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/kr/pretty v0.1.0
 	github.com/myitcv/vbash v0.0.4
-	github.com/rogpeppe/go-internal v1.6.2
+	github.com/rogpeppe/go-internal v1.8.0
 	golang.org/x/mod v0.4.2
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20210510120138-977fb7262007
-	golang.org/x/tools v0.1.6-0.20210810003850-7bc3c281e1f3
-	golang.org/x/tools/gopls v0.0.0-20210810003850-7bc3c281e1f3
+	golang.org/x/sys v0.0.0-20210809222454-d867a43fc93e
+	golang.org/x/tools v0.1.6-0.20210818172240-bf6c7f26e9f0
+	golang.org/x/tools/gopls v0.0.0-20210818172240-bf6c7f26e9f0
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
