@@ -337,8 +337,17 @@ func runCmd(t *testing.T, c string, args ...string) string {
 }
 
 func execvim() int {
+	// testscript prepends PATH with the directory that contain
+	// subcommands. Since we are going to execute vim here, and also
+	// have a subcommand named "vim", we need to find the real vim path.
+	v, err := testsetup.RealVimPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to locate vim: %v", err)
+		return 1
+	}
+
 	args := append([]string{"--not-a-term"}, os.Args[1:]...)
-	cmd := exec.Command("vim", args[1:]...)
+	cmd := exec.Command(v, args[1:]...)
 	thepty, err := pty.Start(cmd)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to start %v: %v", strings.Join(cmd.Args, " "), err)

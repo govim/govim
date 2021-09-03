@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/govim/govim"
@@ -154,4 +155,27 @@ func EnvLookupFlavorCommand() (flav govim.Flavor, cmd Command, err error) {
 		cmd = GvimCommand
 	}
 	return flav, cmd, nil
+}
+
+// RealVimPath iterates over PATH returning the second vim
+// executable found. Reason being that testscript prepends
+// the PATH with the subcommand dir causing a conflict where
+// the first vim found is the subcommand.
+func RealVimPath() (path string, err error) {
+	var firstFound bool
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		path := filepath.Join(dir, "vim")
+		d, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		if m := d.Mode(); m.IsDir() || m&0111 == 0 {
+			continue
+		}
+		if firstFound {
+			return path, nil
+		}
+		firstFound = true
+	}
+	return "", fmt.Errorf("not found")
 }
