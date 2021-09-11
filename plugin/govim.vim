@@ -31,7 +31,6 @@ if index(split(system("echo -n ${GOVIM_LOG-on}"), ","), "on") >= 0
   if s:filetmpl == ""
     let s:filetmpl = "%v_%v_%v"
   endif
-  let s:filetmpl .= ".log"
   let s:filetmpl = substitute(s:filetmpl, "%v", "vim_channel", "")
   let s:filetmpl = substitute(s:filetmpl, "%v", strftime("%Y%m%d_%H%M_%S"), "")
   if s:filetmpl =~ "%v"
