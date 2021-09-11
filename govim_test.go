@@ -29,6 +29,8 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	// Snapshot PATH since it is prepended by testscript.
+	os.Setenv(testsetup.EnvTestPathEnv, os.Getenv("PATH"))
 	os.Exit(testscript.RunMain(m, map[string]func() int{
 		"vim": testdriver.Vim,
 	}))

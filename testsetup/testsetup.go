@@ -41,6 +41,11 @@ const (
 	// EnvTestRaceSlowdown is a floating point factor by which to adjust
 	// EnvErrLogMatchWait for race tests
 	EnvTestRaceSlowdown = "GOVIM_TEST_RACE_SLOWDOWN"
+
+	// EnvTestPathEnv is used to override PATH when looking for executables.
+	// Testscript prepends PATH with the subcommand folder, so EnvTestPathEnv
+	// acts as a snapshot of PATH before it was modified.
+	EnvTestPathEnv = "GOVIM_TEST_PATH_ENV"
 )
 
 // vim versions
@@ -157,25 +162,43 @@ func EnvLookupFlavorCommand() (flav govim.Flavor, cmd Command, err error) {
 	return flav, cmd, nil
 }
 
-// RealVimPath iterates over PATH returning the second vim
-// executable found. Reason being that testscript prepends
-// the PATH with the subcommand dir causing a conflict where
-// the first vim found is the subcommand.
-func RealVimPath() (path string, err error) {
-	var firstFound bool
-	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		path := filepath.Join(dir, "vim")
-		d, err := os.Stat(path)
+// LookPath searches for an executable named file, using EnvTestPathEnv as PATH
+// (if set). The ordinary PATH env is used if it isn't set.
+// If file contains a slash, it is tried directly.
+// The result may be an absolute path or a path relative to the current directory.
+func LookPath(file string) (string, error) {
+	findExecutable := func(file string) error {
+		d, err := os.Stat(file)
 		if err != nil {
-			continue
+			return err
 		}
-		if m := d.Mode(); m.IsDir() || m&0111 == 0 {
-			continue
+		if m := d.Mode(); !m.IsDir() && m&0111 != 0 {
+			return nil
 		}
-		if firstFound {
+		return os.ErrPermission
+	}
+
+	if strings.Contains(file, "/") {
+		err := findExecutable(file)
+		if err == nil {
+			return file, nil
+		}
+		return "", err
+	}
+
+	pathEnv := os.Getenv(EnvTestPathEnv)
+	if pathEnv == "" {
+		pathEnv = os.Getenv("PATH")
+	}
+	for _, dir := range filepath.SplitList(pathEnv) {
+		if dir == "" {
+			// Unix shell semantics: path element "" means "."
+			dir = "."
+		}
+		path := filepath.Join(dir, file)
+		if err := findExecutable(path); err == nil {
 			return path, nil
 		}
-		firstFound = true
 	}
-	return "", fmt.Errorf("not found")
+	return "", fmt.Errorf("failed to find executable in provided path")
 }

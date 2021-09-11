@@ -196,7 +196,8 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		"GOVIMTESTDRIVER_SOCKET="+res.driverListener.Addr().String(),
 	)
 
-	vimCmd := cmd
+	vimCmd := make([]string, len(cmd))
+	copy(vimCmd, cmd)
 	if e := os.Getenv("VIM_COMMAND"); e != "" {
 		vimCmd = strings.Fields(e)
 	}
@@ -220,7 +221,7 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		if vimCmd[i] != "vim" {
 			continue
 		}
-		abs, err := testsetup.RealVimPath()
+		abs, err := testsetup.LookPath("vim")
 		if err != nil {
 			return nil, fmt.Errorf("failed to find vim binary: %v", err)
 		}
@@ -249,6 +250,7 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 func (d *TestDriver) Logf(format string, a ...interface{}) {
 	fmt.Fprintf(d.log, format+"\n", a...)
 }
+
 func (d *TestDriver) LogStripANSI(r io.Reader) {
 	scanner := bufio.NewScanner(r)
 	for {
@@ -588,7 +590,6 @@ func (d *TestDriver) listenDriver() error {
 		}
 		return nil
 	})
-
 	if err != nil {
 		return fmt.Errorf("%v", err)
 	}
@@ -933,8 +934,22 @@ func Condition(cond string) (bool, error) {
 }
 
 func getVimFlavourVersion(c testsetup.Command) (string, error) {
-	var allArgs []string
-	allArgs = append(allArgs, c...)
+	allArgs := make([]string, len(c))
+	// testscript prepends PATH with the directory that contain
+	// subcommands. Since we are going to execute vim here, and also
+	// also have a subcommand named "vim", we must specify the entire path if
+	// "vim" is a part of c.
+	for i := range c {
+		if c[i] != "vim" {
+			allArgs[i] = c[i]
+			continue
+		}
+		abs, err := testsetup.LookPath("vim")
+		if err != nil {
+			return "", fmt.Errorf("failed to find vim binary: %v", err)
+		}
+		allArgs[i] = abs
+	}
 	allArgs = append(allArgs, "-v", "--cmd", "echo v:versionlong | qall", "--not-a-term")
 	cmd := exec.Command(allArgs[0], allArgs[1:]...)
 	out, err := cmd.CombinedOutput()
