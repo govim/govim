@@ -78,7 +78,7 @@ func Identifier(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 	ctx, done := event.Start(ctx, "source.Identifier")
 	defer done()
 
-	pkgs, err := snapshot.PackagesForFile(ctx, fh.URI(), TypecheckAll)
+	pkgs, err := snapshot.PackagesForFile(ctx, fh.URI(), TypecheckAll, false)
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +377,7 @@ func inferredSignature(info *types.Info, path []ast.Node) *types.Signature {
 			// If the IndexExpr is fully instantiated, we consider that 'inference' for
 			// gopls' purposes.
 			sig, _ := info.TypeOf(e).(*types.Signature)
-			if sig != nil && len(typeparams.ForSignature(sig)) == 0 {
+			if sig != nil && typeparams.ForSignature(sig).Len() == 0 {
 				return sig
 			}
 			_, sig = typeparams.GetInferred(info, e)
