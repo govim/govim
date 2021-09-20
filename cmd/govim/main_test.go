@@ -42,6 +42,10 @@ func init() {
 }
 
 func TestMain(m *testing.M) {
+	// Snapshot PATH since it is prepended by testscript.
+	if os.Getenv(testsetup.EnvTestPathEnv) == "" {
+		os.Setenv(testsetup.EnvTestPathEnv, os.Getenv("PATH"))
+	}
 	os.Exit(testscript.RunMain(m, map[string]func() int{
 		"vim":         testdriver.Vim,
 		"vimexprwait": testdriver.VimExprWait,
@@ -287,6 +291,7 @@ func TestInstallScripts(t *testing.T) {
 					"PLUGIN_PATH="+govimPath,
 					"GOPATH="+gopath,
 					"GOCACHE="+gocache,
+					testsetup.EnvTestPathEnv+"="+os.Getenv(testsetup.EnvTestPathEnv),
 					testsetup.EnvLoadTestAPI+"=true",
 				)
 				return nil
@@ -317,6 +322,7 @@ func TestInstallScripts(t *testing.T) {
 					"PLUGIN_PATH="+govimPath,
 					"GOPATH="+gopath,
 					"GOCACHE="+gocache,
+					testsetup.EnvTestPathEnv+"="+os.Getenv(testsetup.EnvTestPathEnv),
 					string(config.EnvVarUseGoplsFromPath)+"=true",
 					testsetup.EnvLoadTestAPI+"=true",
 				)
@@ -340,7 +346,7 @@ func execvim() int {
 	// testscript prepends PATH with the directory that contain
 	// subcommands. Since we are going to execute vim here, and also
 	// have a subcommand named "vim", we need to find the real vim path.
-	v, err := testsetup.RealVimPath()
+	v, err := testsetup.LookPath("vim")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to locate vim: %v", err)
 		return 1
