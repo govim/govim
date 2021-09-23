@@ -94,7 +94,13 @@ func (v *vimstate) showHover(posExpr string, opts map[string]interface{}, userOp
 			if (b.Num != d.Buf) || !pos.IsWithin(d.Range) {
 				continue
 			}
-			lines = append(lines, formatPopupline(d.Text, d.Source, d.Severity))
+			for i, l := range strings.Split(d.Text, "\n") {
+				if i == 0 {
+					lines = append(lines, formatPopupline(l, d.Source, d.Severity))
+					continue
+				}
+				lines = append(lines, formatPopupline(l, "", d.Severity))
+			}
 		}
 	}
 	msg, err := v.hoverMsgAt(pos, b.ToTextDocumentIdentifier())
