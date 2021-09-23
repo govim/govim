@@ -552,9 +552,19 @@ var GeneratedAPIJSON = &APIJSON{
 							Default: "false",
 						},
 						{
+							Name:    "\"useany\"",
+							Doc:     "check for constraints that could be simplified to \"any\"",
+							Default: "true",
+						},
+						{
 							Name:    "\"fillreturns\"",
 							Doc:     "suggested fixes for \"wrong number of return values (want %d, got %d)\"\n\nThis checker provides suggested fixes for type errors of the\ntype \"wrong number of return values (want %d, got %d)\". For example:\n\tfunc m() (int, string, *bool, error) {\n\t\treturn\n\t}\nwill turn into\n\tfunc m() (int, string, *bool, error) {\n\t\treturn 0, \"\", nil, nil\n\t}\n\nThis functionality is similar to https://github.com/sqs/goreturns.\n",
 							Default: "true",
+						},
+						{
+							Name:    "\"implementmissing\"",
+							Doc:     "suggested fixes for \"undeclared name: %s\" on a function call\n\nThis checker provides suggested fixes for type errors of the\ntype \"undeclared name: %s\" that happen for a function call. For example:\n\tfunc m() {\n\t  a(1)\n\t}\nwill turn into\n\tfunc m() {\n\t  a(1)\n\t}\n\n\tfunc a(i int) {}\n",
+							Default: "false",
 						},
 						{
 							Name:    "\"nonewvars\"",
@@ -1120,9 +1130,19 @@ var GeneratedAPIJSON = &APIJSON{
 			Default: false,
 		},
 		{
+			Name:    "useany",
+			Doc:     "check for constraints that could be simplified to \"any\"",
+			Default: true,
+		},
+		{
 			Name:    "fillreturns",
 			Doc:     "suggested fixes for \"wrong number of return values (want %d, got %d)\"\n\nThis checker provides suggested fixes for type errors of the\ntype \"wrong number of return values (want %d, got %d)\". For example:\n\tfunc m() (int, string, *bool, error) {\n\t\treturn\n\t}\nwill turn into\n\tfunc m() (int, string, *bool, error) {\n\t\treturn 0, \"\", nil, nil\n\t}\n\nThis functionality is similar to https://github.com/sqs/goreturns.\n",
 			Default: true,
+		},
+		{
+			Name:    "implementmissing",
+			Doc:     "suggested fixes for \"undeclared name: %s\" on a function call\n\nThis checker provides suggested fixes for type errors of the\ntype \"undeclared name: %s\" that happen for a function call. For example:\n\tfunc m() {\n\t  a(1)\n\t}\nwill turn into\n\tfunc m() {\n\t  a(1)\n\t}\n\n\tfunc a(i int) {}\n",
+			Default: false,
 		},
 		{
 			Name:    "nonewvars",
