@@ -49,6 +49,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/unusedwrite"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/fillreturns"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/fillstruct"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/implementmissing"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/nonewvars"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/noresultvalues"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/simplifycompositelit"
@@ -56,6 +57,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/simplifyslice"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/undeclaredname"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/unusedparams"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/useany"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/command"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff/myers"
@@ -754,6 +756,9 @@ func (o *Options) enableAllExperimentMaps() {
 	if _, ok := o.Analyses[unusedparams.Analyzer.Name]; !ok {
 		o.Analyses[unusedparams.Analyzer.Name] = true
 	}
+	if _, ok := o.Analyses[implementmissing.Analyzer.Name]; !ok {
+		o.Analyses[implementmissing.Analyzer.Name] = true
+	}
 }
 
 func (o *Options) set(name string, value interface{}, seen map[string]struct{}) OptionResult {
@@ -1171,6 +1176,11 @@ func typeErrorAnalyzers() map[string]*Analyzer {
 			ActionKind: []protocol.CodeActionKind{protocol.SourceFixAll, protocol.QuickFix},
 			Enabled:    true,
 		},
+		implementmissing.Analyzer.Name: {
+			Analyzer:   implementmissing.Analyzer,
+			ActionKind: []protocol.CodeActionKind{protocol.SourceFixAll, protocol.QuickFix},
+			Enabled:    false,
+		},
 		nonewvars.Analyzer.Name: {
 			Analyzer: nonewvars.Analyzer,
 			Enabled:  true,
@@ -1236,6 +1246,7 @@ func defaultAnalyzers() map[string]*Analyzer {
 		testinggoroutine.Analyzer.Name: {Analyzer: testinggoroutine.Analyzer, Enabled: true},
 		unusedparams.Analyzer.Name:     {Analyzer: unusedparams.Analyzer, Enabled: false},
 		unusedwrite.Analyzer.Name:      {Analyzer: unusedwrite.Analyzer, Enabled: false},
+		useany.Analyzer.Name:           {Analyzer: useany.Analyzer, Enabled: true},
 
 		// gofmt -s suite:
 		simplifycompositelit.Analyzer.Name: {
