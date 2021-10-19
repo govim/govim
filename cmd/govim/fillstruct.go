@@ -103,12 +103,12 @@ type applyEditCall struct {
 
 // applyEditResponse represents a LSP ApplyEdit response
 type applyEditResponse struct {
-	res *protocol.ApplyWorkspaceEditResponse
+	res *protocol.ApplyWorkspaceEditResult
 	err error
 }
 
-func (v *vimstate) applyWorkspaceEdit(params *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {
-	res := &protocol.ApplyWorkspaceEditResponse{Applied: true}
+func (v *vimstate) applyWorkspaceEdit(params *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResult, error) {
+	res := &protocol.ApplyWorkspaceEditResult{Applied: true}
 
 	edits := make(map[*types.Buffer][]protocol.TextEdit)
 	for _, dc := range params.Edit.DocumentChanges {

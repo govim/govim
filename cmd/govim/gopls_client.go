@@ -204,12 +204,12 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	return res, nil
 }
 
-func (g *govimplugin) ApplyEdit(ctxt context.Context, params *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResponse, error) {
+func (g *govimplugin) ApplyEdit(ctxt context.Context, params *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResult, error) {
 	defer absorbShutdownErr()
 	g.logGoplsClientf("ApplyEdit: %v", pretty.Sprint(params))
 
 	var err error
-	var res *protocol.ApplyWorkspaceEditResponse
+	var res *protocol.ApplyWorkspaceEditResult
 	g.applyEditsLock.Lock()
 	if g.applyEditsCh == nil {
 		// ApplyEdit wasn't send by another blocking call so it's fine to just schedule the edits here
