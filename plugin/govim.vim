@@ -398,12 +398,29 @@ endfunction
 function s:install(force)
   let oldpath = getcwd()
   execute "cd ".s:plugindir
+
+  " Note that we use "env -i" to use git with an empty environment.
+  " Otherwise, using vim with govim as the editor in "git commit" will break,
+  " as "git commit" will set GIT_DIR, which "git rev-parse" will follow.
+  " We'd then end up with the user's in-progress commit, not govim's HEAD.
   " TODO: make work on Windows
-  let commit = trim(system("git rev-parse HEAD 2>&1"))
+  let commit = trim(system("env -i git rev-parse HEAD 2>&1"))
   if v:shell_error
     throw commit
   endif
+
   let targetdir = s:plugindir."/cmd/govim/.bin/".commit."/"
+  if $GOVIM_DEBUG_INSTALL == "true"
+	  " The first line may directly follow a "hint" message from Vim.
+	  echo "\n"
+	  echom "oldpath: ".oldpath
+	  echom "plugindir: ".s:plugindir
+	  echom "commit: ".commit
+	  echom "force: ".a:force
+	  echom "always install: ".$GOVIM_ALWAYS_INSTALL
+	  echom "govim readable: ".filereadable(targetdir."govim")
+	  echom "gopls readable: ".filereadable(targetdir."gopls")
+  endif
   if a:force || $GOVIM_ALWAYS_INSTALL == "true" || !filereadable(targetdir."govim") || !filereadable(targetdir."gopls")
     echom "Installing govim and gopls"
     call feedkeys(" ") " to prevent press ENTER to continue
