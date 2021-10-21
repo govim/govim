@@ -468,3 +468,24 @@ func (l loggingGoplsServer) DiagnosticRefresh(ctxt context.Context) error {
 	l.Logf("gopls.DiagnosticRefresh() return; err: %v", err)
 	return err
 }
+
+func (l loggingGoplsServer) PrepareTypeHierarchy(ctxt context.Context, params *protocol.TypeHierarchyPrepareParams) ([]protocol.TypeHierarchyItem, error) {
+	l.Logf("gopls.PrepareTypeHierarchy() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.PrepareTypeHierarchy(ctxt, params)
+	l.Logf("gopls.PrepareTypeHierarchy() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) Subtypes(ctxt context.Context, params *protocol.TypeHierarchySubtypesParams) ([]protocol.TypeHierarchyItem, error) {
+	l.Logf("gopls.Subtypes() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.Subtypes(ctxt, params)
+	l.Logf("gopls.Subtypes() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) Supertypes(ctxt context.Context, params *protocol.TypeHierarchySupertypesParams) ([]protocol.TypeHierarchyItem, error) {
+	l.Logf("gopls.Supertypes() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.Supertypes(ctxt, params)
+	l.Logf("gopls.Supertypes() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
