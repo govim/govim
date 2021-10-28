@@ -74,7 +74,8 @@ type TestDriver struct {
 	log     io.Writer
 	debug   Debug
 
-	cmd *exec.Cmd
+	ptySize *pty.Winsize
+	cmd     *exec.Cmd
 
 	name string
 
@@ -108,7 +109,8 @@ type Config struct {
 }
 
 type VimConfig struct {
-	InitialFile string
+	InitialFile  string `json:",omitempty"`
+	WindowHeight int    `json:",omitempty"`
 }
 
 type Debug struct {
@@ -210,6 +212,11 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 	if c.Vim != nil {
 		if c.Vim.InitialFile != "" {
 			vimCmd = append(vimCmd, c.Vim.InitialFile)
+		}
+		if c.Vim.WindowHeight != 0 {
+			// Since vim use the bottom line as "command-line" the pty must have
+			// one line more than the desired vim window height.
+			res.ptySize = &pty.Winsize{Rows: uint16(c.Vim.WindowHeight) + 1}
 		}
 	}
 
@@ -342,7 +349,7 @@ func (d *TestDriver) Wait() error {
 }
 
 func (d *TestDriver) runVim() error {
-	thepty, err := pty.Start(d.cmd)
+	thepty, err := pty.StartWithSize(d.cmd, d.ptySize)
 	if err != nil {
 		close(d.doneQuitVim)
 		err := fmt.Errorf("failed to start %v: %v", strings.Join(d.cmd.Args, " "), err)

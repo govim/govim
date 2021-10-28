@@ -33,9 +33,7 @@ const (
 	EnvInstallScripts = "GOVIM_RUN_INSTALL_TESTSCRIPTS"
 )
 
-var (
-	fGoplsPath = flag.String("gopls", "", "Path to the gopls binary for use in scenario tests. If unset, gopls is built from a tagged version.")
-)
+var fGoplsPath = flag.String("gopls", "", "Path to the gopls binary for use in scenario tests. If unset, gopls is built from a tagged version.")
 
 func init() {
 	exposeTestAPI = true
