@@ -1,0 +1,35 @@
+# Test that pty window height can be set to a smaller value than the loaded file
+
+vim ex 'e foo.txt'
+
+# Window height
+vim expr 'winheight(0)'
+stdout '^10$'
+! stderr .+
+
+# Last visible line in window
+vim expr 'line(\"w$\")'
+stdout '^10$'
+! stderr .+
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- foo.txt --
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+-- vim_config.json --
+{
+        "WindowHeight": 10
+}
