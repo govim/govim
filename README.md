@@ -49,3 +49,4 @@ Contributions are very much welcome in the form of:
 
 See [`govim` tests](https://github.com/govim/govim/wiki/govim-tests) for details on how the modules in this repository
 are tested.
+
