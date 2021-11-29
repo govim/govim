@@ -1,0 +1,66 @@
+# Test that "degradeClosed" memory mode works by renaming a identifier
+# used in another package with no open files (in a non exported context).
+#
+# The test isn't foolproof since there is no fixed rules of how gopls
+# should degrade. It acts as a canary for detecting changes that breaks
+# the ability to set memory mode.
+
+# Rename a const in package a that is used by both b and c, without opening package c
+vim ex 'e b/b.go'
+vim ex 'call cursor(6,8)'
+vim ex 'call execute(\"GOVIMRename Foo\")'
+vim ex 'silent noautocmd wall'
+cmp a/a.go a.go.Foo
+cmp b/b.go b.go.Foo
+
+# Ensure that package c wasn't updated since it didn't have any open files
+cmp c/c.go c.go.orginal
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- a/a.go --
+package a
+
+const Aa = 1
+-- b/b.go --
+package b
+
+import "mod.com/a"
+
+func bb() {
+	_ = a.Aa
+}
+-- c/c.go --
+package c
+
+import "mod.com/a"
+
+func cc() {
+	_ = a.Aa
+}
+-- a.go.Foo --
+package a
+
+const Foo = 1
+-- b.go.Foo --
+package b
+
+import "mod.com/a"
+
+func bb() {
+	_ = a.Foo
+}
+-- c.go.orginal --
+package c
+
+import "mod.com/a"
+
+func cc() {
+	_ = a.Aa
+}

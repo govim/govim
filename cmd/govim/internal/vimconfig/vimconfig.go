@@ -34,6 +34,7 @@ type VimConfig struct {
 	ExperimentalProgressPopups                   *int
 	ExperimentalAllowModfileModifications        *int
 	ExperimentalWorkspaceModule                  *int
+	ExperimentalGoplsMemoryMode                  *config.GoplsMemoryMode
 }
 
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
@@ -65,6 +66,7 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		ExperimentalProgressPopups:                   boolVal(c.ExperimentalProgressPopups, d.ExperimentalProgressPopups),
 		ExperimentalAllowModfileModifications:        boolVal(c.ExperimentalAllowModfileModifications, d.ExperimentalAllowModfileModifications),
 		ExperimentalWorkspaceModule:                  boolVal(c.ExperimentalWorkspaceModule, d.ExperimentalWorkspaceModule),
+		ExperimentalGoplsMemoryMode:                  c.ExperimentalGoplsMemoryMode,
 	}
 	if v.FormatOnSave == nil {
 		v.FormatOnSave = d.FormatOnSave
@@ -77,6 +79,9 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 	}
 	if v.SymbolStyle == nil {
 		v.SymbolStyle = d.SymbolStyle
+	}
+	if v.ExperimentalGoplsMemoryMode == nil {
+		v.ExperimentalGoplsMemoryMode = d.ExperimentalGoplsMemoryMode
 	}
 	return v
 }

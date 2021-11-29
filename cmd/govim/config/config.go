@@ -325,6 +325,24 @@ type Config struct {
 	// ExperimentalWorkspaceModule opts a user into the experimental gopls
 	// support for multi-module workspaces
 	ExperimentalWorkspaceModule *bool `json:",omitempty"`
+
+	// ExperimentalGoplsMemoryMode is used to configures gopls experimental
+	// feature "memoryMode". As of gopls v0.7.3 there are two options:
+	//
+	// * "Normal"        - default
+	// * "DegradeClosed" - gopls will collect less information about packages
+	//                     without open files. As a result, features like
+	//                     Find References and Rename will miss results in
+	//                     such packages.
+	//
+	// For details see:
+	// https://github.com/golang/tools/blob/master/gopls/doc/settings.md#memorymode-enum
+	//
+	// Note that this is an experimental feature in gopls that might go away
+	// in the future.
+	//
+	// Default: "Normal"
+	ExperimentalGoplsMemoryMode *GoplsMemoryMode `json:",omitempty"`
 }
 
 type Command string
@@ -549,6 +567,20 @@ const (
 	// SymbolStyleDynamic specifies that gopls should dynamic name-qualify
 	// workspace symbol candidates
 	SymbolStyleDynamic SymbolStyle = "dynamic"
+)
+
+// GoplsMemoryMode typed constants defined the set of valid values that
+// Config.GoplsMemoryMode can take
+type GoplsMemoryMode string
+
+const (
+	// GoplsMemoryModeNormal specifies that gopls should use the default
+	// memory model setting
+	GoplsMemoryModeNormal GoplsMemoryMode = "Normal"
+
+	// GoplsMemoryModeDegradeClosed specifies that gopls should use
+	// a degraded mode for packages without any open files
+	GoplsMemoryModeDegradeClosed GoplsMemoryMode = "DegradeClosed"
 )
 
 // Highlight typed constants define the different highlight groups used by govim.
