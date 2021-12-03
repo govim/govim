@@ -82,4 +82,7 @@ func (r *Config) Apply(v *Config) {
 	if v.ExperimentalWorkspaceModule != nil {
 		r.ExperimentalWorkspaceModule = v.ExperimentalWorkspaceModule
 	}
+	if v.ExperimentalGoplsMemoryMode != nil {
+		r.ExperimentalGoplsMemoryMode = v.ExperimentalGoplsMemoryMode
+	}
 }

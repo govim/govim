@@ -36,6 +36,7 @@ const (
 	goplsGofumpt                     = "gofumpt"
 	goplsExperimentalWorkspaceModule = "experimentalWorkspaceModule"
 	goplsDirectoryFilters            = "directoryFilters"
+	goplsMemoryMode                  = "memoryMode"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -180,6 +181,9 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if conf.ExperimentalWorkspaceModule != nil {
 		goplsConfig[goplsExperimentalWorkspaceModule] = *conf.ExperimentalWorkspaceModule
+	}
+	if conf.ExperimentalGoplsMemoryMode != nil {
+		goplsConfig[goplsMemoryMode] = *conf.ExperimentalGoplsMemoryMode
 	}
 	if os.Getenv(string(config.EnvVarGoplsVerbose)) == "true" {
 		goplsConfig[goplsVerboseOutput] = true

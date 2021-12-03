@@ -206,6 +206,14 @@ function! s:validExperimentalWorkspaceModule(v)
   return s:validBool(a:v)
 endfunction
 
+function! s:validExperimentalGoplsMemoryMode(v)
+  let valid = ["Normal", "DegradeClosed"]
+  if index(valid, a:v) < 0
+    return [v:false, "must be one of: ".string(valid)]
+  endif
+  return [v:true, ""]
+endfunction
+
 let s:validators = {
       \ "FormatOnSave": function("s:validFormatOnSave"),
       \ "QuickfixAutoDiagnostics": function("s:validQuickfixAutoDiagnostics"),
@@ -234,4 +242,5 @@ let s:validators = {
       \ "ExperimentalProgressPopups": function("s:validExperimentalProgressPopups"),
       \ "ExperimentalAllowModfileModifications": function("s:validExperimentalProgressPopups"),
       \ "ExperimentalWorkspaceModule": function("s:validExperimentalWorkspaceModule"),
+      \ "ExperimentalGoplsMemoryMode": function("s:validExperimentalGoplsMemoryMode"),
       \ }
