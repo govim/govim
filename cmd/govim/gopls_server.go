@@ -489,3 +489,24 @@ func (l loggingGoplsServer) Supertypes(ctxt context.Context, params *protocol.Ty
 	l.Logf("gopls.Supertypes() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
+
+func (l loggingGoplsServer) InlineValues(ctxt context.Context, params *protocol.InlineValuesParams) ([]protocol.InlineValue, error) {
+	l.Logf("gopls.InlineValues() call; params:\n", pretty.Sprint(params))
+	res, err := l.u.InlineValues(ctxt, params)
+	l.Logf("gopls.InlineValues() return; err: %v; res:\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) InlineValuesRefresh(ctxt context.Context) error {
+	l.Logf("gopls.InlineValuesRefresh() call")
+	err := l.u.InlineValuesRefresh(ctxt)
+	l.Logf("gopls.InlineValues() return; err: %v", err)
+	return err
+}
+
+func (l loggingGoplsServer) ResolveWorkspaceSymbol(ctxt context.Context, params *protocol.WorkspaceSymbol) (*protocol.WorkspaceSymbol, error) {
+	l.Logf("gopls.ResolveWorkspaceSymbol() call; params:\n", pretty.Sprint(params))
+	res, err := l.u.ResolveWorkspaceSymbol(ctxt, params)
+	l.Logf("gopls.ResolveWorkspaceSymbol() return; err: %v; res:\n%v", err, pretty.Sprint(res))
+	return res, err
+}
