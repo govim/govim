@@ -403,8 +403,8 @@ function s:install(force)
   " Otherwise, using vim with govim as the editor in "git commit" will break,
   " as "git commit" will set GIT_DIR, which "git rev-parse" will follow.
   " We'd then end up with the user's in-progress commit, not govim's HEAD.
-  " TODO: make work on Windows
-  let commit = trim(system("env -i git rev-parse HEAD 2>&1"))
+  let git = trim(system("which git"))
+  let commit = trim(system("env -i ".git." rev-parse HEAD 2>&1"))
   if v:shell_error
     throw commit
   endif
