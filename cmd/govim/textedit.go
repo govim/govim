@@ -109,6 +109,7 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 	if err != nil {
 		return fmt.Errorf("failed to create temp undo file: %v", err)
 	}
+	tf.Close()
 
 	v.ChannelExf("wundo! %v", tf.Name())
 	defer func() {
