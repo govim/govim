@@ -10,6 +10,7 @@ import (
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/internal/fswatcher"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -41,7 +42,11 @@ func newModWatcher(plug *govimplugin, gomodpath string) (*modWatcher, error) {
 		return nil, fmt.Errorf("could not resolve dir from go.mod path %v: %v", gomodpath, err)
 	}
 
-	w, err := fswatcher.New(dirpath, eventFilter(dirpath), infof, &plug.tomb)
+	var filtered []string
+	if df := plug.vimstate.config.GoplsDirectoryFilters; df != nil {
+		filtered = append(filtered, *df...)
+	}
+	w, err := fswatcher.New(dirpath, eventFilter(dirpath, filtered), infof, &plug.tomb)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +102,7 @@ func (m *modWatcher) watch() {
 //
 //  > The module root directory is the directory that contains the go.mod file.
 //
-func eventFilter(root string) func(string) bool {
+func eventFilter(root string, dirFilters []string) func(string) bool {
 	return func(path string) bool {
 		path = filepath.Clean(path)
 		if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
@@ -118,6 +123,10 @@ func eventFilter(root string) func(string) bool {
 		parts := strings.Split(rel, string(os.PathSeparator))
 		if len(parts) == 0 {
 			return false
+		}
+
+		if source.FiltersDisallow(rel, dirFilters) {
+			return true
 		}
 
 		var curr string
