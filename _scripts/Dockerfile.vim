@@ -6,10 +6,11 @@ RUN apt-get update && \
 
 RUN git config --global advice.detachedHead false
 
-ARG GH_USER
-ARG GH_TOKEN
-RUN echo -e "machine github.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc
-RUN echo -e "machine githubusercontent.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc
+RUN --mount=type=secret,id=GH_USER --mount=type=secret,id=GH_TOKEN \
+  export GH_USER=$(cat /run/secrets/GH_USER) && \
+  export GH_TOKEN=$(cat /run/secrets/GH_TOKEN) && \
+  echo -e "machine github.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc && \
+  echo -e "machine githubusercontent.com\n  login $GH_USER\n  password $GH_TOKEN" >> ~/.netrc
 
 ARG VIM_VERSION
 RUN cd /tmp && \
@@ -24,7 +25,8 @@ ENV PATH=/vim/bin:$PATH
 RUN rm ~/.netrc
 
 ARG GO_VERSION
-RUN curl -sL https://dl.google.com/go/${GO_VERSION}.linux-amd64.tar.gz | tar -C / -zx
+ARG TARGETARCH TARGETOS
+RUN curl -sL https://dl.google.com/go/${GO_VERSION}.${TARGETOS}-${TARGETARCH}.tar.gz | tar -C / -zx
 ENV PATH=/go/bin:$PATH
 
 ARG VBASHVERSION
