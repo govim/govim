@@ -124,10 +124,10 @@ func New(root string, filter watchFilterFn, logf logFn, tomb *tomb.Tomb) (*FSWat
 				break
 			}
 			path := e.Name
-			switch e.Op {
+			switch {
 			// fsnotify processes file renaming as a Rename event followed by a
 			// Create event, so we can effectively treat renaming as removal.
-			case fsnotify.Rename, fsnotify.Remove:
+			case e.Op&(fsnotify.Rename|fsnotify.Remove) != 0:
 				if v, ok := w.activeWatches[path]; ok {
 					if v {
 						logf("stopped watching (implicit) dir %q", path)
@@ -143,9 +143,9 @@ func New(root string, filter watchFilterFn, logf logFn, tomb *tomb.Tomb) (*FSWat
 					continue
 				}
 				eventCh <- Event{path, OpRemoved}
-			case fsnotify.Chmod, fsnotify.Write, fsnotify.Create:
+			case e.Op&(fsnotify.Chmod|fsnotify.Write|fsnotify.Create) != 0:
 				var op Op
-				if e.Op == fsnotify.Create {
+				if e.Op&fsnotify.Create != 0 {
 					op = OpCreated
 				} else {
 					op = OpChanged
