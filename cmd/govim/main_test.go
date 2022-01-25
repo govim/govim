@@ -222,6 +222,7 @@ func TestScripts(t *testing.T) {
 					})
 					return nil
 				},
+				UpdateScripts: os.Getenv("GOVIM_UPDATE") == "true",
 			}
 			if err := gotooltest.Setup(&params); err != nil {
 				t.Fatal(err)

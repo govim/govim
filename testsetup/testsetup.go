@@ -58,7 +58,7 @@ const (
 	// and SafeState* functionality.
 	MinVimSafeState = "v8.1.2056"
 
-	LatestVim = "v8.2.3450"
+	LatestVim = "v8.2.4213"
 )
 
 var (
@@ -79,7 +79,7 @@ func (c Command) BuildCommand(args ...string) *exec.Cmd {
 }
 
 var (
-	GoVersions = []string{"go1.16.8", "go1.17.1"}
+	GoVersions = []string{"go1.16.13", "go1.17.6", "go1.18beta1"}
 
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{

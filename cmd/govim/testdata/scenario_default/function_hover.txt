@@ -7,7 +7,8 @@ vim ex 'e main.go'
 vim ex 'call cursor(6,6)'
 vim expr 'GOVIMHover()'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
-cmp stdout popup.golden
+[!go1.18] cmp stdout popup.pre_go1.18.golden
+[go1.18] cmp stdout popup.golden
 ! stderr .+
 
 
@@ -18,7 +19,8 @@ vim ex 'call feedkeys(\"\\<CursorHold>\", \"xt\")'
 [!v8.2.3019] vimexprwait warning.golden GOVIMTest_getqflist()
 vim expr 'GOVIMHover()'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
-cmp stdout warning_popup.golden
+[!go1.18] cmp stdout warning_popup.pre_go1.18.golden
+[go1.18] cmp stdout warning_popup.golden
 ! stderr .+
 
 
@@ -29,7 +31,8 @@ vim ex 'call cursor(7,8)'
 [!v8.2.3019] vimexprwait warnings.golden GOVIMTest_getqflist()
 vim expr 'GOVIMHover()'
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
-cmp stdout warnings_popup.golden
+[!go1.18] cmp stdout warnings_popup.pre_go1.18.golden
+[go1.18] cmp stdout warnings_popup.golden
 ! stderr .+
 
 
@@ -69,12 +72,30 @@ import "fmt"
 func main() {
 	fmt.Println("Hello, world")
 }
+-- popup.pre_go1.18.golden --
+func fmt.Println(a ...interface{}) (n int, err error)
+Println formats using the default formats for its operands and writes to standard output.
+Spaces are always added between operands and a newline is appended.
+It returns the number of bytes written and any write error encountered.
 -- popup.golden --
+func fmt.Println(a ...any) (n int, err error)
+Println formats using the default formats for its operands and writes to standard output.
+Spaces are always added between operands and a newline is appended.
+It returns the number of bytes written and any write error encountered.
+-- warning_popup.pre_go1.18.golden --
+unreachable code unreachable
 func fmt.Println(a ...interface{}) (n int, err error)
 Println formats using the default formats for its operands and writes to standard output.
 Spaces are always added between operands and a newline is appended.
 It returns the number of bytes written and any write error encountered.
 -- warning_popup.golden --
+unreachable code unreachable
+func fmt.Println(a ...any) (n int, err error)
+Println formats using the default formats for its operands and writes to standard output.
+Spaces are always added between operands and a newline is appended.
+It returns the number of bytes written and any write error encountered.
+-- warnings_popup.pre_go1.18.golden --
+fmt.Println call has possible formatting directive %v printf
 unreachable code unreachable
 func fmt.Println(a ...interface{}) (n int, err error)
 Println formats using the default formats for its operands and writes to standard output.
@@ -83,7 +104,7 @@ It returns the number of bytes written and any write error encountered.
 -- warnings_popup.golden --
 fmt.Println call has possible formatting directive %v printf
 unreachable code unreachable
-func fmt.Println(a ...interface{}) (n int, err error)
+func fmt.Println(a ...any) (n int, err error)
 Println formats using the default formats for its operands and writes to standard output.
 Spaces are always added between operands and a newline is appended.
 It returns the number of bytes written and any write error encountered.
