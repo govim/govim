@@ -28,7 +28,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	errors "golang.org/x/xerrors"
 )
 
 var (
@@ -91,7 +90,6 @@ func parseBuffer(buf []byte) *Parsed {
 		nls:   []int{-1},
 	}
 	if len(buf) == 0 {
-		ans.ParseErr = errors.New("empty buffer")
 		return ans
 	}
 	// how to compute allAscii...

@@ -18,6 +18,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
 
 // FormatType returns the detail and kind for a types.Type.
@@ -226,6 +227,14 @@ func FormatVarType(ctx context.Context, snapshot Snapshot, srcpkg Package, obj *
 
 	expr, err := varType(ctx, snapshot, pkg, obj)
 	if err != nil {
+		return types.TypeString(obj.Type(), qf)
+	}
+
+	// If the given expr refers to a type parameter, then use the
+	// object's Type instead of the type parameter declaration. This helps
+	// format the instantiated type as opposed to the original undeclared
+	// generic type.
+	if typeparams.IsTypeParam(pkg.GetTypesInfo().Types[expr].Type) {
 		return types.TypeString(obj.Type(), qf)
 	}
 

@@ -114,7 +114,7 @@ func DefaultOptions() *Options {
 					ExperimentalPackageCacheKey: true,
 					MemoryMode:                  ModeNormal,
 					DirectoryFilters:            []string{"-node_modules"},
-					TemplateExtensions:          []string{"tmpl", "gotmpl"},
+					TemplateExtensions:          []string{},
 				},
 				UIOptions: UIOptions{
 					DiagnosticOptions: DiagnosticOptions{
@@ -751,6 +751,7 @@ func (o *Options) EnableAllExperiments() {
 	o.ExperimentalPostfixCompletions = true
 	o.ExperimentalUseInvalidMetadata = true
 	o.ExperimentalWatchedFileDelay = 50 * time.Millisecond
+	o.SymbolMatcher = SymbolFastFuzzy
 }
 
 func (o *Options) enableAllExperimentMaps() {
@@ -1335,12 +1336,9 @@ func collectEnums(opt *OptionJSON) string {
 	write := func(name, doc string, index, len int) {
 		if doc != "" {
 			unbroken := parBreakRE.ReplaceAllString(doc, "\\\n")
-			fmt.Fprintf(&b, "* %s", unbroken)
+			fmt.Fprintf(&b, "* %s\n", strings.TrimSpace(unbroken))
 		} else {
-			fmt.Fprintf(&b, "* `%s`", name)
-		}
-		if index < len-1 {
-			fmt.Fprint(&b, "\n")
+			fmt.Fprintf(&b, "* `%s`\n", name)
 		}
 	}
 	if len(opt.EnumValues) > 0 && opt.Type == "enum" {
