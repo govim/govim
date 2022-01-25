@@ -510,3 +510,24 @@ func (l loggingGoplsServer) ResolveWorkspaceSymbol(ctxt context.Context, params 
 	l.Logf("gopls.ResolveWorkspaceSymbol() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
 }
+
+func (l loggingGoplsServer) DidChangeNotebookDocument(ctxt context.Context, params *protocol.DidChangeNotebookDocumentParams) error {
+	l.Logf("gopls.DidChangeNotebookDocument() call; params:\n", pretty.Sprint(params))
+	err := l.u.DidChangeNotebookDocument(ctxt, params)
+	l.Logf("gopls.DidChangeNotebookDocument() return; err: %v\n%v", err)
+	return err
+}
+
+func (l loggingGoplsServer) DidCloseNotebookDocument(ctxt context.Context, params *protocol.DidCloseNotebookDocumentParams) error {
+	l.Logf("gopls.DidCloseNotebookDocument() call; params:\n", pretty.Sprint(params))
+	err := l.u.DidCloseNotebookDocument(ctxt, params)
+	l.Logf("gopls.DidCloseNotebookDocument() return; err: %v\n%v", err)
+	return err
+}
+
+func (l loggingGoplsServer) DidOpenNotebookDocument(ctxt context.Context, params *protocol.DidOpenNotebookDocumentParams) error {
+	l.Logf("gopls.DidOpenNotebookDocument() call; params:\n", pretty.Sprint(params))
+	err := l.u.DidOpenNotebookDocument(ctxt, params)
+	l.Logf("gopls.DidOpenNotebookDocument() return; err: %v\n%v", err)
+	return err
+}

@@ -89,7 +89,7 @@ function! s:validCompletionMatcher(v)
 endfunction
 
 function! s:validSymbolMatcher(v)
-  let valid = ["caseInsensitive", "caseSensitive", "fuzzy"]
+  let valid = ["caseInsensitive", "caseSensitive", "fuzzy", "fastfuzzy"]
   if index(valid, a:v) < 0
     return [v:false, "must be one of: ".string(valid)]
   endif
