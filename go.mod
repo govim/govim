@@ -19,7 +19,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
-	honnef.co/go/tools v0.2.1
+	honnef.co/go/tools v0.3.0-0.dev.0.20220120121056-246e50be7597
 )
 
 require (

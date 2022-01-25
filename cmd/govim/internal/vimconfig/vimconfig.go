@@ -125,9 +125,7 @@ func copyStringValSlice(i, j *[]string) *[]string {
 		}
 	}
 	res := make([]string, len(*toCopy))
-	for i, cv := range *toCopy {
-		res[i] = cv
-	}
+	copy(res, *toCopy)
 	return &res
 }
 
