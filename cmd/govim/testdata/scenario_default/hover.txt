@@ -10,7 +10,8 @@ vim ex 'call test_setmouse(screenpos(bufwinid(\"main.go\"),6,13)[\"row\"],screen
 vim ex 'call feedkeys(\"\\<MouseMove>\\<Ignore>\", \"xt\")'
 sleep 500ms
 vim -stringout expr 'GOVIM_internal_DumpPopups()'
-cmp stdout popup.golden
+[!go1.18] cmp stdout popup.pre_go1.18.golden
+[go1.18] cmp stdout popup.golden
 ! stderr .+
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
@@ -30,8 +31,13 @@ import "fmt"
 func main() {
 	fmt.Println("Hello, world")
 }
--- popup.golden --
+-- popup.pre_go1.18.golden --
 func fmt.Println(a ...interface{}) (n int, err error)
+Println formats using the default formats for its operands and writes to standard output.
+Spaces are always added between operands and a newline is appended.
+It returns the number of bytes written and any write error encountered.
+-- popup.golden --
+func fmt.Println(a ...any) (n int, err error)
 Println formats using the default formats for its operands and writes to standard output.
 Spaces are always added between operands and a newline is appended.
 It returns the number of bytes written and any write error encountered.
