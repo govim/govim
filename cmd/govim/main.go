@@ -239,19 +239,18 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	tmpDir := getEnvVal(goplsEnv, "TMPDIR", os.TempDir())
 	if defaults == nil {
 		defaults = &config.Config{
-			FormatOnSave:                          vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImportsGoFmt),
-			QuickfixAutoDiagnostics:               vimconfig.BoolVal(true),
-			QuickfixSigns:                         vimconfig.BoolVal(true),
-			Staticcheck:                           vimconfig.BoolVal(false),
-			HighlightDiagnostics:                  vimconfig.BoolVal(true),
-			HighlightReferences:                   vimconfig.BoolVal(true),
-			HoverDiagnostics:                      vimconfig.BoolVal(true),
-			TempModfile:                           vimconfig.BoolVal(false),
-			ExperimentalAutoreadLoadedBuffers:     vimconfig.BoolVal(false),
-			SymbolMatcher:                         vimconfig.SymbolMatcherVal(config.SymbolMatcherFuzzy),
-			SymbolStyle:                           vimconfig.SymbolStyleVal(config.SymbolStyleFull),
-			OpenLastProgressWith:                  vimconfig.StringVal("below 10split"),
-			ExperimentalAllowModfileModifications: vimconfig.BoolVal(true),
+			FormatOnSave:                      vimconfig.FormatOnSaveVal(config.FormatOnSaveGoImportsGoFmt),
+			QuickfixAutoDiagnostics:           vimconfig.BoolVal(true),
+			QuickfixSigns:                     vimconfig.BoolVal(true),
+			Staticcheck:                       vimconfig.BoolVal(false),
+			HighlightDiagnostics:              vimconfig.BoolVal(true),
+			HighlightReferences:               vimconfig.BoolVal(true),
+			HoverDiagnostics:                  vimconfig.BoolVal(true),
+			TempModfile:                       vimconfig.BoolVal(false),
+			ExperimentalAutoreadLoadedBuffers: vimconfig.BoolVal(false),
+			SymbolMatcher:                     vimconfig.SymbolMatcherVal(config.SymbolMatcherFuzzy),
+			SymbolStyle:                       vimconfig.SymbolStyleVal(config.SymbolStyleFull),
+			OpenLastProgressWith:              vimconfig.StringVal("below 10split"),
 		}
 	}
 	// Overlay the initial user values on the defaults

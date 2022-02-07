@@ -319,7 +319,7 @@ type Config struct {
 	// whereas prior to Go 1.16 the default was -mod=mod (equivalent to setting
 	// this option to true).
 	//
-	// Default: true
+	// Default: false
 	ExperimentalAllowModfileModifications *bool `json:",omitempty"`
 
 	// ExperimentalWorkspaceModule opts a user into the experimental gopls
