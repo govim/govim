@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -182,12 +183,27 @@ func (v *vimstate) bufUnload(args ...json.RawMessage) error {
 	return nil
 }
 
+func detectLanguage(filename string) source.FileKind {
+	// Detect the language based on the file extension.
+	switch ext := filepath.Ext(filename); ext {
+	case ".mod":
+		return source.Mod
+	case ".sum":
+		return source.Sum
+	case ".go":
+		return source.Go
+	default:
+		// (for instance, before go1.15 cgo files had no extension)
+		return source.Go
+	}
+}
+
 func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 	v.triggerBufferASTUpdate(b)
 	if b.Version == 1 {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
-				LanguageID: source.DetectLanguage("", b.URI().Filename()).String(),
+				LanguageID: detectLanguage(b.URI().Filename()).String(),
 				URI:        protocol.DocumentURI(b.URI()),
 				Version:    b.Version,
 				Text:       string(b.Contents()),
