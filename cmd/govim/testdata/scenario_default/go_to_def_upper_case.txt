@@ -28,7 +28,10 @@ module mod.com
 
 go 1.12
 
-require example.com/blah v1.0.0
+require example.com/blaH v1.0.0
+-- go.sum --
+example.com/blaH v1.0.0 h1:iXP7NTq9zM+XteJ+LOgQ4/86Qk9gcwGy7izwrf03Hng=
+example.com/blaH v1.0.0/go.mod h1:2yAkoKJQQy5q8VEphynudWTTk7rzAUrdv+/+RxewcXI=
 -- p.go --
 package p
 
