@@ -39,9 +39,10 @@ type IdentifierInfo struct {
 
 	ident *ast.Ident
 
-	// enclosing is an expression used to determine the link anchor for an
-	// identifier. If it's a named type, it should be exported.
-	enclosing types.Type
+	// For struct fields or embedded interfaces, enclosing is the object
+	// corresponding to the outer type declaration, if it is exported, for use in
+	// documentation links.
+	enclosing *types.TypeName
 
 	pkg Package
 	qf  types.Qualifier
@@ -217,6 +218,10 @@ func findIdentifier(ctx context.Context, snapshot Snapshot, pkg Package, pgf *Pa
 			return nil, errors.Errorf("no declaration for %s", result.Name)
 		}
 		result.Declaration.node = decl
+		if typeSpec, ok := decl.(*ast.TypeSpec); ok {
+			// Find the GenDecl (which has the doc comments) for the TypeSpec.
+			result.Declaration.fullDecl = findGenDecl(builtin.File, typeSpec)
+		}
 
 		// The builtin package isn't in the dependency graph, so the usual
 		// utilities won't work here.
@@ -314,6 +319,18 @@ func findIdentifier(ctx context.Context, snapshot Snapshot, pkg Package, pgf *Pa
 	return result, nil
 }
 
+// findGenDecl determines the parent ast.GenDecl for a given ast.Spec.
+func findGenDecl(f *ast.File, spec ast.Spec) *ast.GenDecl {
+	for _, decl := range f.Decls {
+		if genDecl, ok := decl.(*ast.GenDecl); ok {
+			if genDecl.Pos() <= spec.Pos() && genDecl.End() >= spec.End() {
+				return genDecl
+			}
+		}
+	}
+	return nil
+}
+
 // fullNode tries to extract the full spec corresponding to obj's declaration.
 // If the package was not parsed in full, the declaration file will be
 // re-parsed to ensure it has complete syntax.
@@ -359,7 +376,7 @@ func inferredSignature(info *types.Info, id *ast.Ident) *types.Signature {
 	return sig
 }
 
-func searchForEnclosing(info *types.Info, path []ast.Node) types.Type {
+func searchForEnclosing(info *types.Info, path []ast.Node) *types.TypeName {
 	for _, n := range path {
 		switch n := n.(type) {
 		case *ast.SelectorExpr:
@@ -367,9 +384,9 @@ func searchForEnclosing(info *types.Info, path []ast.Node) types.Type {
 				recv := Deref(sel.Recv())
 
 				// Keep track of the last exported type seen.
-				var exported types.Type
+				var exported *types.TypeName
 				if named, ok := recv.(*types.Named); ok && named.Obj().Exported() {
-					exported = named
+					exported = named.Obj()
 				}
 				// We don't want the last element, as that's the field or
 				// method itself.
@@ -377,7 +394,7 @@ func searchForEnclosing(info *types.Info, path []ast.Node) types.Type {
 					if r, ok := recv.Underlying().(*types.Struct); ok {
 						recv = Deref(r.Field(index).Type())
 						if named, ok := recv.(*types.Named); ok && named.Obj().Exported() {
-							exported = named
+							exported = named.Obj()
 						}
 					}
 				}
@@ -385,12 +402,16 @@ func searchForEnclosing(info *types.Info, path []ast.Node) types.Type {
 			}
 		case *ast.CompositeLit:
 			if t, ok := info.Types[n]; ok {
-				return t.Type
+				if named, _ := t.Type.(*types.Named); named != nil {
+					return named.Obj()
+				}
 			}
 		case *ast.TypeSpec:
 			if _, ok := n.Type.(*ast.StructType); ok {
 				if t, ok := info.Defs[n.Name]; ok {
-					return t.Type()
+					if tname, _ := t.(*types.TypeName); tname != nil {
+						return tname
+					}
 				}
 			}
 		}

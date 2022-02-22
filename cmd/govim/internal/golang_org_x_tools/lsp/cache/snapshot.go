@@ -102,9 +102,13 @@ type snapshot struct {
 	// unloadableFiles keeps track of files that we've failed to load.
 	unloadableFiles map[span.URI]struct{}
 
-	// parseModHandles keeps track of any ParseModHandles for the snapshot.
+	// parseModHandles keeps track of any parseModHandles for the snapshot.
 	// The handles need not refer to only the view's go.mod file.
 	parseModHandles map[span.URI]*parseModHandle
+
+	// parseWorkHandles keeps track of any parseWorkHandles for the snapshot.
+	// The handles need not refer to only the view's go.work file.
+	parseWorkHandles map[span.URI]*parseWorkHandle
 
 	// Preserve go.mod-related handles to avoid garbage-collecting the results
 	// of various calls to the go command. The handles need not refer to only
@@ -421,18 +425,7 @@ func (s *snapshot) goCommandInvocation(ctx context.Context, flags source.Invocat
 	//  3. We're using at least Go 1.18.
 	useWorkFile := !needTempMod && s.workspace.moduleSource == goWorkWorkspace && s.view.goversion >= 18
 	if useWorkFile {
-		workURI := uriForSource(s.workspace.root, goWorkWorkspace)
-		workFH, err := s.GetFile(ctx, workURI)
-		if err != nil {
-			return "", nil, cleanup, err
-		}
-		// TODO(rfindley): we should use the last workfile that actually parsed, as
-		// tracked by the workspace.
-		tmpURI, cleanup, err = tempWorkFile(workFH)
-		if err != nil {
-			return "", nil, cleanup, err
-		}
-		inv.WorkFile = tmpURI.Filename()
+		// TODO(#51215): build a temp workfile and set GOWORK in the environment.
 	} else if useTempMod {
 		if modURI == "" {
 			return "", nil, cleanup, fmt.Errorf("no go.mod file found in %s", inv.WorkingDir)
@@ -686,6 +679,12 @@ func (s *snapshot) getParseModHandle(uri span.URI) *parseModHandle {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.parseModHandles[uri]
+}
+
+func (s *snapshot) getParseWorkHandle(uri span.URI) *parseWorkHandle {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.parseWorkHandles[uri]
 }
 
 func (s *snapshot) getModWhyHandle(uri span.URI) *modWhyHandle {
@@ -1729,6 +1728,7 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		workspacePackages: make(map[PackageID]PackagePath, len(s.workspacePackages)),
 		unloadableFiles:   make(map[span.URI]struct{}, len(s.unloadableFiles)),
 		parseModHandles:   make(map[span.URI]*parseModHandle, len(s.parseModHandles)),
+		parseWorkHandles:  make(map[span.URI]*parseWorkHandle, len(s.parseWorkHandles)),
 		modTidyHandles:    make(map[span.URI]*modTidyHandle, len(s.modTidyHandles)),
 		modWhyHandles:     make(map[span.URI]*modWhyHandle, len(s.modWhyHandles)),
 		knownSubdirs:      make(map[span.URI]struct{}, len(s.knownSubdirs)),
@@ -1762,6 +1762,10 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 	// Copy all of the modHandles.
 	for k, v := range s.parseModHandles {
 		result.parseModHandles[k] = v
+	}
+	// Copy all of the parseWorkHandles.
+	for k, v := range s.parseWorkHandles {
+		result.parseWorkHandles[k] = v
 	}
 
 	for k, v := range s.goFiles {
@@ -1853,9 +1857,8 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 				delete(result.modWhyHandles, k)
 			}
 		}
-		if isGoMod(uri) {
-			delete(result.parseModHandles, uri)
-		}
+		delete(result.parseModHandles, uri)
+		delete(result.parseWorkHandles, uri)
 		// Handle the invalidated file; it may have new contents or not exist.
 		if !change.exists {
 			delete(result.files, uri)
@@ -2058,6 +2061,9 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		newGen.Inherit(v.handle)
 	}
 	for _, v := range result.parseModHandles {
+		newGen.Inherit(v.handle)
+	}
+	for _, v := range result.parseWorkHandles {
 		newGen.Inherit(v.handle)
 	}
 	// Don't bother copying the importedBy graph,

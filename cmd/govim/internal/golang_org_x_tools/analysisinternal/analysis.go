@@ -17,6 +17,9 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/fuzzy"
 )
 
+// Flag to gate diagnostics for fuzz tests in 1.18.
+var DiagnoseFuzzTests bool = false
+
 var (
 	GetTypeErrors func(p interface{}) []types.Error
 	SetTypeErrors func(p interface{}, errors []types.Error)

@@ -55,6 +55,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/simplifycompositelit"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/simplifyrange"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/simplifyslice"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/stubmethods"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/undeclaredname"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/unusedparams"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/useany"
@@ -103,6 +104,7 @@ func DefaultOptions() *Options {
 						protocol.SourceOrganizeImports: true,
 						protocol.QuickFix:              true,
 					},
+					Work: {},
 					Sum:  {},
 					Tmpl: {},
 				},
@@ -1215,6 +1217,12 @@ func convenienceAnalyzers() map[string]*Analyzer {
 			Fix:        FillStruct,
 			Enabled:    true,
 			ActionKind: []protocol.CodeActionKind{protocol.RefactorRewrite},
+		},
+		stubmethods.Analyzer.Name: {
+			Analyzer:   stubmethods.Analyzer,
+			ActionKind: []protocol.CodeActionKind{protocol.RefactorRewrite},
+			Fix:        StubMethods,
+			Enabled:    true,
 		},
 	}
 }

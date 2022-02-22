@@ -10,6 +10,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/mod"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/work"
 )
 
 func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormattingParams) ([]protocol.TextEdit, error) {
@@ -23,6 +24,8 @@ func (s *Server) formatting(ctx context.Context, params *protocol.DocumentFormat
 		return mod.Format(ctx, snapshot, fh)
 	case source.Go:
 		return source.Format(ctx, snapshot, fh)
+	case source.Work:
+		return work.Format(ctx, snapshot, fh)
 	}
 	return nil, nil
 }
