@@ -409,7 +409,12 @@ function s:install(force)
     throw commit
   endif
 
-  let targetdir = s:plugindir."/cmd/govim/.bin/".commit."/"
+  let goversion = trim(system("go version"))
+  if v:shell_error
+    throw goversion
+  endif
+
+  let targetdir = s:plugindir."/cmd/govim/.bin/".sha256(commit.goversion)."/"
   if $GOVIM_DEBUG_INSTALL == "true"
 	  " The first line may directly follow a "hint" message from Vim.
 	  echo "\n"
