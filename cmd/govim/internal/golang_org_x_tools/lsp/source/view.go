@@ -18,6 +18,7 @@ import (
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/module"
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/progress"
@@ -128,6 +129,9 @@ type Snapshot interface {
 
 	// GoModForFile returns the URI of the go.mod file for the given URI.
 	GoModForFile(uri span.URI) span.URI
+
+	// WorkFile, if non-empty, is the go.work file for the workspace.
+	WorkFile() span.URI
 
 	// ParseWork is used to parse go.work files.
 	ParseWork(ctx context.Context, fh FileHandle) (*ParsedWorkFile, error)
@@ -319,6 +323,9 @@ type Metadata interface {
 
 	// PackagePath is the package path.
 	PackagePath() string
+
+	// ModuleInfo returns the go/packages module information for the given package.
+	ModuleInfo() *packages.Module
 }
 
 // Session represents a single connection from a client.
@@ -652,6 +659,7 @@ const (
 	OptimizationDetailsError DiagnosticSource = "optimizer details"
 	UpgradeNotification      DiagnosticSource = "upgrade available"
 	TemplateError            DiagnosticSource = "template"
+	WorkFileError            DiagnosticSource = "go.work file"
 )
 
 func AnalyzerErrorKind(name string) DiagnosticSource {
