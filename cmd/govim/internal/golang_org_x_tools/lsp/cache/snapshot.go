@@ -162,6 +162,10 @@ func (s *snapshot) ModFiles() []span.URI {
 	return uris
 }
 
+func (s *snapshot) WorkFile() span.URI {
+	return s.workspace.workFile
+}
+
 func (s *snapshot) Templates() map[span.URI]source.VersionedFileHandle {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1025,7 +1029,11 @@ func (s *snapshot) MetadataForFile(ctx context.Context, uri span.URI) ([]source.
 	var mds []source.Metadata
 	for _, id := range knownIDs {
 		md := s.getMetadata(id)
-		mds = append(mds, md)
+		// TODO(rfindley): knownIDs and metadata should be in sync, but existing
+		// code is defensive of nil metadata.
+		if md != nil {
+			mds = append(mds, md)
+		}
 	}
 	return mds, nil
 }
