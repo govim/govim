@@ -16,6 +16,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source/completion"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/template"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/work"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -32,6 +33,12 @@ func (s *Server) completion(ctx context.Context, params *protocol.CompletionPara
 		candidates, surrounding, err = completion.Completion(ctx, snapshot, fh, params.Position, params.Context)
 	case source.Mod:
 		candidates, surrounding = nil, nil
+	case source.Work:
+		cl, err := work.Completion(ctx, snapshot, fh, params.Position)
+		if err != nil {
+			break
+		}
+		return cl, nil
 	case source.Tmpl:
 		var cl *protocol.CompletionList
 		cl, err = template.Completion(ctx, snapshot, fh, params.Position, params.Context)
