@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -132,8 +133,28 @@ func (g *govimplugin) startGopls() error {
 		g: g,
 	}
 
+	// gomodspec points at the workspace file (go.work) in workspace mode, or go.mod in
+	// module mode.
+	gomodspec, err := goModSpecPath(g.vimstate.workingDirectory)
+	if err != nil {
+		return fmt.Errorf("failed to derive go.work/go.mod path: %v", err)
+	}
+
+	// "go env GOMOD" might return an empty string (not module mode) or os.DevNull (in module
+	// mode but without a module root).
+	if gomodspec != "" && gomodspec != os.DevNull {
+		// i.e. we are in a module or a workspace
+		mw, err := newModWatcher(g, gomodspec)
+		if err != nil {
+			return fmt.Errorf("failed to create modWatcher for %v: %v", gomodspec, err)
+		}
+		g.modWatcher = mw
+	}
+
 	initParams := &protocol.ParamInitialize{}
-	initParams.RootURI = protocol.DocumentURI(span.URIFromPath(g.vimstate.workingDirectory))
+	initParams.WorkspaceFolders = []protocol.WorkspaceFolder{
+		{URI: string(span.URIFromPath(filepath.Dir(gomodspec)))},
+	}
 	initParams.Capabilities.TextDocument.Hover = protocol.HoverClientCapabilities{
 		ContentFormat: []protocol.MarkupKind{protocol.PlainText},
 	}
@@ -178,22 +199,6 @@ func (g *govimplugin) startGopls() error {
 
 	if err := g.server.Initialized(context.Background(), &protocol.InitializedParams{}); err != nil {
 		return fmt.Errorf("failed to call gopls.Initialized: %v", err)
-	}
-
-	gomodpath, err := goModPath(g.vimstate.workingDirectory)
-	if err != nil {
-		return fmt.Errorf("failed to derive go.mod path: %v", err)
-	}
-
-	// "go env GOMOD" might return an empty string (not module mode) or os.DevNull (in module
-	// mode but without a module root).
-	if gomodpath != "" && gomodpath != os.DevNull {
-		// i.e. we are in a module
-		mw, err := newModWatcher(g, gomodpath)
-		if err != nil {
-			return fmt.Errorf("failed to create modWatcher for %v: %v", gomodpath, err)
-		}
-		g.modWatcher = mw
 	}
 
 	return nil

@@ -111,6 +111,7 @@ type Config struct {
 type VimConfig struct {
 	InitialFile  string `json:",omitempty"`
 	WindowHeight int    `json:",omitempty"`
+	StartDir     string `json:",omitempty"`
 }
 
 type Debug struct {
@@ -209,6 +210,7 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		vimCmd = append(vimCmd, fmt.Sprintf("-V%d%s", c.Debug.VimLogLevel, c.VimLogPath))
 	}
 
+	var vimStartDir string
 	if c.Vim != nil {
 		if c.Vim.InitialFile != "" {
 			vimCmd = append(vimCmd, c.Vim.InitialFile)
@@ -218,6 +220,7 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 			// one line more than the desired vim window height.
 			res.ptySize = &pty.Winsize{Rows: uint16(c.Vim.WindowHeight) + 1}
 		}
+		vimStartDir = c.Vim.StartDir
 	}
 
 	// testscript prepends PATH with the directory that contain
@@ -238,7 +241,7 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 
 	res.cmd = exec.Command(vimCmd[0], vimCmd[1:]...)
 	res.cmd.Env = c.Env.Vars
-	res.cmd.Dir = c.Env.WorkDir
+	res.cmd.Dir = filepath.Join(c.Env.WorkDir, vimStartDir)
 
 	if res.debug.Enabled {
 		envlist := ""
