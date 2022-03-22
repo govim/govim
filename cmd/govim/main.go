@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -352,8 +353,10 @@ func (g *govimplugin) Init(gg govim.Govim, errCh chan error) error {
 	return nil
 }
 
-func goModPath(wd string) (string, error) {
-	cmd := exec.Command("go", "env", "GOMOD")
+func goModSpecPath(wd string) (string, error) {
+	// Workspace mode is prioritised as per https://go.dev/issue/50955 and https://go.dev/ref/mod#workspaces
+	// and "go env GOWORK" tells us if we are in workspace mode. If we aren't, we assume module mode.
+	cmd := exec.Command("go", "env", "-json", "GOWORK", "GOMOD")
 	cmd.Dir = wd
 
 	// From https://github.com/golang/tools/blob/fe37c9e135b934191089b245ac29325091462508/internal/gocommand/invoke.go#L208:
@@ -368,10 +371,21 @@ func goModPath(wd string) (string, error) {
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("failed to execute [%v] in %v: %v\n%s", strings.Join(cmd.Args, " "), wd, err, out)
+		return "", fmt.Errorf("failed to execute %q in %v: %v\n%s", cmd.Args, wd, err, out)
 	}
 
-	return strings.TrimSpace(string(out)), nil
+	envs := struct {
+		GOMOD  string `json:"GOMOD"`
+		GOWORK string `json:"GOWORK"`
+	}{}
+	if err := json.Unmarshal(out, &envs); err != nil {
+		return "", fmt.Errorf("failed to unmarshal output from 'go env -json': %v", err)
+	}
+
+	if envs.GOWORK != "" {
+		return envs.GOWORK, nil
+	}
+	return envs.GOMOD, nil
 }
 
 // Shutdown implements the govim.Plugin Shutdown method.

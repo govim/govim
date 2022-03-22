@@ -1,0 +1,96 @@
+# Test workspace mode where a go.work file exist in the parent directory.
+# Note that vim starts from within the "foobar" directory (as specified by vim_config.json).
+
+[!go1.18] skip 'workspace mode requires at least Go 1.18'
+
+vim ex 'e main.go'
+
+# Ensure that jumping to another module in the same workspace works.
+vim ex 'call cursor(9,8)'
+vim ex 'GOVIMGoToDef'
+vim expr 'expand(''%:p'')'
+stdout "$WORK/a/a.go"
+
+# example.com/b isn't a part of the workspace and shouldn't be found.
+[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- a/go.mod --
+module example.com/a
+
+go 1.12
+-- a/a.go --
+package a
+
+const A = 1
+-- b/go.mod --
+module example.com/b
+
+go 1.12
+-- b/b.go --
+package b
+
+const B = 2
+-- foobar/go.mod --
+module example.com/foobar
+
+go 1.12
+-- foobar/main.go --
+package main
+
+import (
+	"example.com/a"
+	"example.com/b"
+)
+
+func main() {
+	_ = a.A
+	_ = b.B
+}
+-- go.work --
+go 1.18
+
+use (
+	./a
+	./foobar
+)
+-- vim_config.json --
+{
+    "StartDir": "foobar"
+}
+-- errors.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "could not import example.com/b (no required module provides package \"example.com/b\")",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "could not import example.com/b (no required module provides package \"example.com/b\")",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
