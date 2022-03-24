@@ -133,7 +133,7 @@ func (l loggingGoplsServer) Completion(ctxt context.Context, params *protocol.Co
 	return res, err
 }
 
-func (l loggingGoplsServer) Resolve(ctxt context.Context, params *protocol.CompletionItem) (*protocol.CompletionItem, error) {
+func (l loggingGoplsServer) Resolve(ctxt context.Context, params *protocol.InlayHint) (*protocol.InlayHint, error) {
 	l.Logf("gopls.Resolve() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Resolve(ctxt, params)
 	l.Logf("gopls.Resolve() return; err: %v; res:\n%v", err, pretty.Sprint(res))
@@ -490,17 +490,17 @@ func (l loggingGoplsServer) Supertypes(ctxt context.Context, params *protocol.Ty
 	return res, err
 }
 
-func (l loggingGoplsServer) InlineValues(ctxt context.Context, params *protocol.InlineValuesParams) ([]protocol.InlineValue, error) {
-	l.Logf("gopls.InlineValues() call; params:\n", pretty.Sprint(params))
-	res, err := l.u.InlineValues(ctxt, params)
-	l.Logf("gopls.InlineValues() return; err: %v; res:\n%v", err, pretty.Sprint(res))
+func (l loggingGoplsServer) InlineValue(ctxt context.Context, params *protocol.InlineValueParams) ([]protocol.InlineValue, error) {
+	l.Logf("gopls.InlineValue() call; params:\n", pretty.Sprint(params))
+	res, err := l.u.InlineValue(ctxt, params)
+	l.Logf("gopls.InlineValue() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 
-func (l loggingGoplsServer) InlineValuesRefresh(ctxt context.Context) error {
-	l.Logf("gopls.InlineValuesRefresh() call")
-	err := l.u.InlineValuesRefresh(ctxt)
-	l.Logf("gopls.InlineValues() return; err: %v", err)
+func (l loggingGoplsServer) InlineValueRefresh(ctxt context.Context) error {
+	l.Logf("gopls.InlineValueRefresh() call")
+	err := l.u.InlineValueRefresh(ctxt)
+	l.Logf("gopls.InlineValueRefresh() return; err: %v", err)
 	return err
 }
 
@@ -530,4 +530,33 @@ func (l loggingGoplsServer) DidOpenNotebookDocument(ctxt context.Context, params
 	err := l.u.DidOpenNotebookDocument(ctxt, params)
 	l.Logf("gopls.DidOpenNotebookDocument() return; err: %v\n%v", err)
 	return err
+}
+
+func (l loggingGoplsServer) DidSaveNotebookDocument(ctxt context.Context, params *protocol.DidSaveNotebookDocumentParams) error {
+	l.Logf("gopls.DidSaveNotebookDocument() call; params:\n", pretty.Sprint(params))
+	err := l.u.DidSaveNotebookDocument(ctxt, params)
+	l.Logf("gopls.DidSaveNotebookDocument() return; err: %v\n%v", err)
+	return err
+}
+
+func (l loggingGoplsServer) InlayHint(ctxt context.Context, params *protocol.InlayHintParams) ([]protocol.InlayHint, error) {
+	l.Logf("gopls.InlayHint() call; params:\n", pretty.Sprint(params))
+	res, err := l.u.InlayHint(ctxt, params)
+	l.Logf("gopls.InlayHint() return; err: %v; res:\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) InlayHintRefresh(ctxt context.Context) error {
+	l.Logf("gopls.InlayHintRefresh() call")
+	err := l.u.InlayHintRefresh(ctxt)
+	l.Logf("gopls.InlayHintRefresh() return; err: %v\n%v", err)
+	return err
+}
+
+func (l loggingGoplsServer) ResolveCompletionItem(ctxt context.Context, params *protocol.CompletionItem) (*protocol.CompletionItem, error) {
+	l.Logf("gopls.ResolveCompletionItem() call; params:\n", pretty.Sprint(params))
+	res, err := l.u.ResolveCompletionItem(ctxt, params)
+	l.Logf("gopls.ResolveCompletionItem() return; err: %v; res:\n%v", err, pretty.Sprint(res))
+	return res, err
+
 }
