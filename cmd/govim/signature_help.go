@@ -15,10 +15,17 @@ import (
 )
 
 func (v *vimstate) signatureHelp(flags govim.CommandFlags, args ...string) error {
-	b, p, err := v.bufCursorPos()
+	p, err := v.cursorPos()
 	if err != nil {
 		return fmt.Errorf("failed to get current cursor position: %v", err)
 	}
+	if p.Point == nil {
+		// If p.Point is nil govim isn't tracking the buffer. This can happen
+		// when a user has the automatic signature help triggered before a buffer
+		// is loaded, for example as a CursorHold autocommand.
+		return nil
+	}
+	b := p.Buffer()
 	params := &protocol.SignatureHelpParams{
 		TextDocumentPositionParams: protocol.TextDocumentPositionParams{
 			TextDocument: protocol.TextDocumentIdentifier{
