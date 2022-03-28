@@ -101,9 +101,9 @@ func (v *vimstate) suggestFixes(flags govim.CommandFlags, args ...string) error 
 		opts["drag"] = 1
 		opts["mapping"] = 0
 		opts["cursorline"] = 1
-		opts["filter"] = "GOVIM_internal_SuggestedFixesFilter"
+		opts["filter"] = "g:GOVIM_internal_SuggestedFixesFilter"
 		opts["title"] = resolvableDiags[i].title
-		opts["callback"] = "GOVIM" + config.FunctionPopupSelection
+		opts["callback"] = "g:GOVIM" + config.FunctionPopupSelection
 		if i > 0 {
 			opts["hidden"] = 1
 		}

@@ -44,7 +44,7 @@ func (v *vimstate) handleProgress(popup *types.ProgressPopup, kind, title, messa
 			"maxheight": progressMaxHeight,
 			"firstline": firstline,
 			"scrollbar": false,
-			"callback":  "GOVIM" + config.FunctionProgressClosed,
+			"callback":  "g:GOVIM" + config.FunctionProgressClosed,
 		}
 		popup.ID = v.ParseInt(v.ChannelCall("popup_create", lines, opts))
 		v.lastProgressText = &popup.Text
