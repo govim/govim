@@ -14,8 +14,8 @@ require (
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20220209214540-3681064d5158
 	golang.org/x/text v0.3.7
-	golang.org/x/tools v0.1.11-0.20220322213029-87a8611856c1
-	golang.org/x/tools/gopls v0.0.0-20220322213029-87a8611856c1
+	golang.org/x/tools v0.1.11-0.20220401202527-153e30b3c7fa
+	golang.org/x/tools/gopls v0.0.0-20220401202527-153e30b3c7fa
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
@@ -29,6 +29,7 @@ require (
 	github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e // indirect
 	github.com/sergi/go-diff v1.1.0 // indirect
 	golang.org/x/net v0.0.0-20211015210444-4f30a5c0130f // indirect
+	golang.org/x/vuln v0.0.0-20220324005316-18fd808f5c7f // indirect
 	gopkg.in/errgo.v2 v2.1.0 // indirect
 	gopkg.in/yaml.v2 v2.2.8 // indirect
 	mvdan.cc/gofumpt v0.3.0 // indirect
