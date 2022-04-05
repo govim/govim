@@ -10,6 +10,7 @@ require (
 	github.com/kr/pretty v0.3.0
 	github.com/myitcv/vbash v0.0.4
 	github.com/rogpeppe/go-internal v1.8.1
+	golang.org/x/exp/typeparams v0.0.0-20220328175248-053ad81199eb
 	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20220209214540-3681064d5158
