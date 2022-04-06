@@ -11,6 +11,7 @@ import (
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
+	"golang.org/x/exp/typeparams"
 	"golang.org/x/tools/go/ast/astutil"
 )
 
@@ -97,7 +98,7 @@ FindCall:
 	// hence we need to adjust accordingly
 	var placePos token.Pos
 	switch f := callExpr.Fun.(type) {
-	case *ast.Ident, *ast.FuncLit:
+	case *ast.Ident, *ast.FuncLit, *ast.IndexExpr, *typeparams.IndexListExpr:
 		placePos = callExpr.Pos()
 	case *ast.SelectorExpr:
 		placePos = f.Sel.Pos()

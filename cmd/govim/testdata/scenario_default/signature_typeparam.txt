@@ -1,0 +1,43 @@
+# Test case that verifies signature help for functions with type parameters.
+
+[!go1.18] skip 'type parameters requires at least Go 1.18'
+
+# Open main.go
+vim ex 'e main.go'
+
+# Move cursor to the *ast.IndexExpr node
+vim ex 'call cursor(7,10)'
+
+# Trigger signature help
+vim ex ':GOVIMExperimentalSignatureHelp'
+
+# Trivial check to see if a popup is created
+errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\{.*\"text\":\"func\(x int\)\"'
+
+# Move cursor to the *ast.IndexListExpr node
+vim ex 'call cursor(8,15)'
+
+# Trigger signature help
+vim ex ':GOVIMExperimentalSignatureHelp'
+
+# Trivial check to see if a popup is created
+errlogmatch 'sendJSONMsg: .*\"call\",\"popup_create\",\[\{.*\"text\":\"func\(\)\"'
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.18
+-- main.go --
+package main
+
+func foo[T any](x T)  {}
+func bar[T, T2 any]() {}
+
+func main() {
+	foo[int](1)
+	bar[int, int]()
+}
