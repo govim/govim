@@ -13,7 +13,6 @@ import (
 	jsonrpc2_v2 "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2_v2"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
-	errors "golang.org/x/xerrors"
 )
 
 // The BinderFunc type adapts a bind function to implement the jsonrpc2.Binder
@@ -69,7 +68,7 @@ func (c *canceler) Preempt(ctx context.Context, req *jsonrpc2_v2.Request) (inter
 	}
 	var params protocol.CancelParams
 	if err := json.Unmarshal(req.Params, &params); err != nil {
-		return nil, errors.Errorf("%w: %v", jsonrpc2_v2.ErrParse, err)
+		return nil, fmt.Errorf("%w: %v", jsonrpc2_v2.ErrParse, err)
 	}
 	var id jsonrpc2_v2.ID
 	switch raw := params.ID.(type) {
@@ -78,7 +77,7 @@ func (c *canceler) Preempt(ctx context.Context, req *jsonrpc2_v2.Request) (inter
 	case string:
 		id = jsonrpc2_v2.StringID(raw)
 	default:
-		return nil, errors.Errorf("%w: invalid ID type %T", jsonrpc2_v2.ErrParse, params.ID)
+		return nil, fmt.Errorf("%w: invalid ID type %T", jsonrpc2_v2.ErrParse, params.ID)
 	}
 	c.conn.Cancel(id)
 	return nil, nil

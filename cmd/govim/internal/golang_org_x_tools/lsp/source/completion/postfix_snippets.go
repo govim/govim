@@ -21,7 +21,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/snippet"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
-	errors "golang.org/x/xerrors"
 )
 
 // Postfix snippets are artificial methods that allow the user to
@@ -200,7 +199,7 @@ func (a *postfixTmplArgs) Cursor() string {
 func (a *postfixTmplArgs) Import(path string) (string, error) {
 	name, edits, err := a.importIfNeeded(path, a.scope)
 	if err != nil {
-		return "", errors.Errorf("couldn't import %q: %w", path, err)
+		return "", fmt.Errorf("couldn't import %q: %w", path, err)
 	}
 	a.edits = append(a.edits, edits...)
 	return name, nil

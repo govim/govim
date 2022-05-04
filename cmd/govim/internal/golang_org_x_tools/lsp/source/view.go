@@ -7,6 +7,7 @@ package source
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/scanner"
@@ -24,7 +25,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/progress"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
-	errors "golang.org/x/xerrors"
 )
 
 // Snapshot represents the current state for the given view.
@@ -98,6 +98,10 @@ type Snapshot interface {
 
 	// RunGoCommandPiped runs the given `go` command, writing its output
 	// to stdout and stderr. Verb, Args, and WorkingDir must be specified.
+	//
+	// RunGoCommandPiped runs the command serially using gocommand.RunPiped,
+	// enforcing that this command executes exclusively to other commands on the
+	// server.
 	RunGoCommandPiped(ctx context.Context, mode InvocationFlags, inv *gocommand.Invocation, stdout, stderr io.Writer) error
 
 	// RunGoCommandDirect runs the given `go` command. Verb, Args, and
@@ -677,7 +681,7 @@ var (
 // The major version is not included, as that depends on the module path.
 //
 // If workspace module A is dependent on workspace module B, we need our
-// nonexistant version to be greater than the version A mentions.
+// nonexistent version to be greater than the version A mentions.
 // Otherwise, the go command will try to update to that version. Use a very
 // high minor version to make that more likely.
 const workspaceModuleVersion = ".9999999.0-goplsworkspace"

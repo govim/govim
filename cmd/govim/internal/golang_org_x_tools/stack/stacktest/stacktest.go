@@ -11,7 +11,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/stack"
 )
 
-//this is only needed to support pre 1.14 when testing.TB did not have Cleanup
+// this is only needed to support pre 1.14 when testing.TB did not have Cleanup
 type withCleanup interface {
 	Cleanup(func())
 }

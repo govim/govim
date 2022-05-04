@@ -6,6 +6,7 @@ package source
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -19,7 +20,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
-	errors "golang.org/x/xerrors"
 )
 
 // IdentifierInfo holds information about an identifier in Go source.
@@ -116,7 +116,7 @@ func Identifier(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 	return nil, findErr
 }
 
-// ErrNoIdentFound is error returned when no identifer is found at a particular position
+// ErrNoIdentFound is error returned when no identifier is found at a particular position
 var ErrNoIdentFound = errors.New("no identifier found")
 
 func findIdentifier(ctx context.Context, snapshot Snapshot, pkg Package, pgf *ParsedGoFile, pos token.Pos) (*IdentifierInfo, error) {
@@ -199,7 +199,7 @@ func findIdentifier(ctx context.Context, snapshot Snapshot, pkg Package, pgf *Pa
 			result.Declaration.typeSwitchImplicit = typ
 		} else {
 			// Probably a type error.
-			return nil, errors.Errorf("%w for ident %v", errNoObjectFound, result.Name)
+			return nil, fmt.Errorf("%w for ident %v", errNoObjectFound, result.Name)
 		}
 	}
 
@@ -215,7 +215,7 @@ func findIdentifier(ctx context.Context, snapshot Snapshot, pkg Package, pgf *Pa
 		}
 		decl, ok := builtinObj.Decl.(ast.Node)
 		if !ok {
-			return nil, errors.Errorf("no declaration for %s", result.Name)
+			return nil, fmt.Errorf("no declaration for %s", result.Name)
 		}
 		result.Declaration.node = decl
 		if typeSpec, ok := decl.(*ast.TypeSpec); ok {
@@ -247,7 +247,7 @@ func findIdentifier(ctx context.Context, snapshot Snapshot, pkg Package, pgf *Pa
 			}
 			decl, ok := builtinObj.Decl.(ast.Node)
 			if !ok {
-				return nil, errors.Errorf("no declaration for %s", errorName)
+				return nil, fmt.Errorf("no declaration for %s", errorName)
 			}
 			spec, ok := decl.(*ast.TypeSpec)
 			if !ok {
@@ -473,7 +473,7 @@ func importSpec(snapshot Snapshot, pkg Package, file *ast.File, pos token.Pos) (
 	}
 	importPath, err := strconv.Unquote(imp.Path.Value)
 	if err != nil {
-		return nil, errors.Errorf("import path not quoted: %s (%v)", imp.Path.Value, err)
+		return nil, fmt.Errorf("import path not quoted: %s (%v)", imp.Path.Value, err)
 	}
 	result := &IdentifierInfo{
 		Snapshot: snapshot,

@@ -12,6 +12,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
 
 // exprAtPos returns the index of the expression containing pos.
@@ -150,7 +151,7 @@ func isFunc(obj types.Object) bool {
 
 func isEmptyInterface(T types.Type) bool {
 	intf, _ := T.(*types.Interface)
-	return intf != nil && intf.NumMethods() == 0
+	return intf != nil && intf.NumMethods() == 0 && typeparams.IsMethodSet(intf)
 }
 
 func isUntyped(T types.Type) bool {
@@ -259,8 +260,8 @@ func fieldsAccessible(s *types.Struct, p *types.Package) bool {
 // prevStmt returns the statement that precedes the statement containing pos.
 // For example:
 //
-//     foo := 1
-//     bar(1 + 2<>)
+//	foo := 1
+//	bar(1 + 2<>)
 //
 // If "<>" is pos, prevStmt returns "foo := 1"
 func prevStmt(pos token.Pos, path []ast.Node) ast.Stmt {
