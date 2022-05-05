@@ -11,16 +11,15 @@ require (
 	github.com/myitcv/vbash v0.0.4
 	github.com/rogpeppe/go-internal v1.8.1
 	golang.org/x/exp/typeparams v0.0.0-20220328175248-053ad81199eb
-	golang.org/x/mod v0.6.0-dev.0.20220106191415-9b9b3d81d5e3
+	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20220209214540-3681064d5158
 	golang.org/x/text v0.3.7
-	golang.org/x/tools v0.1.11-0.20220401202527-153e30b3c7fa
-	golang.org/x/tools/gopls v0.0.0-20220401202527-153e30b3c7fa
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+	golang.org/x/tools v0.1.11-0.20220504162446-54c7ba520b92
+	golang.org/x/tools/gopls v0.0.0-20220504162446-54c7ba520b92
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
-	honnef.co/go/tools v0.3.0-0.dev.0.20220120121056-246e50be7597
+	honnef.co/go/tools v0.3.0
 )
 
 require (

@@ -7,6 +7,7 @@ package source
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/constant"
@@ -23,7 +24,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
-	errors "golang.org/x/xerrors"
 )
 
 // HoverContext contains context extracted from the syntax and type information
@@ -405,6 +405,12 @@ func linkData(obj types.Object, enclosing *types.TypeName) (name, importPath, an
 		return "", "", ""
 	}
 
+	// golang/go#52211: somehow we get here with a nil obj.Pkg
+	// TODO: allow using debug.Bug here, to catch this bug.
+	if obj.Pkg() == nil {
+		return "", "", ""
+	}
+
 	importPath = obj.Pkg().Path()
 	if recv != nil {
 		anchor = fmt.Sprintf("%s.%s", recv.Name(), obj.Name())
@@ -510,21 +516,25 @@ func FindHoverContext(ctx context.Context, s Snapshot, pkg Package, obj types.Ob
 		}
 	case *ast.ImportSpec:
 		// Try to find the package documentation for an imported package.
-		if pkgName, ok := obj.(*types.PkgName); ok {
-			imp, err := pkg.GetImport(pkgName.Imported().Path())
-			if err != nil {
-				return nil, err
-			}
-			// Assume that only one file will contain package documentation,
-			// so pick the first file that has a doc comment.
-			for _, file := range imp.GetSyntax() {
-				if file.Doc != nil {
-					info = &HoverContext{signatureSource: obj, Comment: file.Doc}
-					break
+		pkgPath, err := strconv.Unquote(node.Path.Value)
+		if err != nil {
+			return nil, err
+		}
+		imp, err := pkg.GetImport(pkgPath)
+		if err != nil {
+			return nil, err
+		}
+		// Assume that only one file will contain package documentation,
+		// so pick the first file that has a doc comment.
+		for _, file := range imp.GetSyntax() {
+			if file.Doc != nil {
+				info = &HoverContext{Comment: file.Doc}
+				if file.Name != nil {
+					info.signatureSource = "package " + file.Name.Name
 				}
+				break
 			}
 		}
-		info = &HoverContext{signatureSource: node}
 	case *ast.GenDecl:
 		switch obj := obj.(type) {
 		case *types.TypeName, *types.Var, *types.Const, *types.Func:
@@ -648,7 +658,7 @@ func isFunctionParam(obj types.Object, node *ast.FuncDecl) bool {
 // given nodes; fullPos is the position of obj in node's AST.
 func hoverGenDecl(node *ast.GenDecl, spec ast.Spec, fullPos token.Pos, obj types.Object) (*HoverContext, error) {
 	if spec == nil {
-		return nil, errors.Errorf("no spec for node %v at position %v", node, fullPos)
+		return nil, fmt.Errorf("no spec for node %v at position %v", node, fullPos)
 	}
 
 	// If we have a field or method.
@@ -665,7 +675,7 @@ func hoverGenDecl(node *ast.GenDecl, spec ast.Spec, fullPos token.Pos, obj types
 	case *ast.ImportSpec:
 		return &HoverContext{signatureSource: spec, Comment: spec.Doc}, nil
 	}
-	return nil, errors.Errorf("unable to format spec %v (%T)", spec, spec)
+	return nil, fmt.Errorf("unable to format spec %v (%T)", spec, spec)
 }
 
 // TODO(rfindley): rename this function.

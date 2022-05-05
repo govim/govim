@@ -7,6 +7,7 @@ package lsp
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -22,7 +23,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/template"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
-	errors "golang.org/x/xerrors"
 )
 
 // The LSP says that errors for the semantic token requests should only be returned
@@ -42,7 +42,7 @@ func (s *Server) semanticTokensFull(ctx context.Context, p *protocol.SemanticTok
 }
 
 func (s *Server) semanticTokensFullDelta(ctx context.Context, p *protocol.SemanticTokensDeltaParams) (interface{}, error) {
-	return nil, errors.Errorf("implement SemanticTokensFullDelta")
+	return nil, fmt.Errorf("implement SemanticTokensFullDelta")
 }
 
 func (s *Server) semanticTokensRange(ctx context.Context, p *protocol.SemanticTokensRangeParams) (*protocol.SemanticTokens, error) {
@@ -52,7 +52,7 @@ func (s *Server) semanticTokensRange(ctx context.Context, p *protocol.SemanticTo
 
 func (s *Server) semanticTokensRefresh(ctx context.Context) error {
 	// in the code, but not in the protocol spec
-	return errors.Errorf("implement SemanticTokensRefresh")
+	return fmt.Errorf("implement SemanticTokensRefresh")
 }
 
 func (s *Server) computeSemanticTokens(ctx context.Context, td protocol.TextDocumentIdentifier, rng *protocol.Range) (*protocol.SemanticTokens, error) {
@@ -68,7 +68,7 @@ func (s *Server) computeSemanticTokens(ctx context.Context, td protocol.TextDocu
 	if !vv.Options().SemanticTokens {
 		// return an error, so if the option changes
 		// the client won't remember the wrong answer
-		return nil, errors.Errorf("semantictokens are disabled")
+		return nil, fmt.Errorf("semantictokens are disabled")
 	}
 	kind := snapshot.View().FileKind(fh)
 	if kind == source.Tmpl {
@@ -328,12 +328,17 @@ func (e *encoded) inspector(n ast.Node) bool {
 		e.token(x.Case, len(iam), tokKeyword, nil)
 	case *ast.ChanType:
 		// chan | chan <- | <- chan
-		if x.Arrow == token.NoPos || x.Arrow != x.Begin {
+		switch {
+		case x.Arrow == token.NoPos:
 			e.token(x.Begin, len("chan"), tokKeyword, nil)
-			break
+		case x.Arrow == x.Begin:
+			e.token(x.Arrow, 2, tokOperator, nil)
+			pos := e.findKeyword("chan", x.Begin+2, x.Value.Pos())
+			e.token(pos, len("chan"), tokKeyword, nil)
+		case x.Arrow != x.Begin:
+			e.token(x.Begin, len("chan"), tokKeyword, nil)
+			e.token(x.Arrow, 2, tokOperator, nil)
 		}
-		pos := e.findKeyword("chan", x.Begin+2, x.Value.Pos())
-		e.token(pos, len("chan"), tokKeyword, nil)
 	case *ast.CommClause:
 		iam := len("case")
 		if x.Comm == nil {
@@ -809,7 +814,7 @@ func (e *encoded) init() error {
 	}
 	span, err := e.pgf.Mapper.RangeSpan(*e.rng)
 	if err != nil {
-		return errors.Errorf("range span (%w) error for %s", err, e.pgf.File.Name)
+		return fmt.Errorf("range span (%w) error for %s", err, e.pgf.File.Name)
 	}
 	e.end = e.start + token.Pos(span.End().Offset())
 	e.start += token.Pos(span.Start().Offset())

@@ -7,11 +7,11 @@ package lsprpc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sync"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	jsonrpc2_v2 "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2_v2"
-	"golang.org/x/xerrors"
 )
 
 // Metadata holds arbitrary data transferred between jsonrpc2 peers.
@@ -80,7 +80,7 @@ func (h *Handshaker) Middleware(inner jsonrpc2_v2.Binder) jsonrpc2_v2.Binder {
 			if req.Method == handshakeMethod {
 				var peerInfo PeerInfo
 				if err := json.Unmarshal(req.Params, &peerInfo); err != nil {
-					return nil, xerrors.Errorf("%w: unmarshaling client info: %v", jsonrpc2_v2.ErrInvalidParams, err)
+					return nil, fmt.Errorf("%w: unmarshaling client info: %v", jsonrpc2_v2.ErrInvalidParams, err)
 				}
 				peerInfo.LocalID = localID
 				peerInfo.IsClient = true

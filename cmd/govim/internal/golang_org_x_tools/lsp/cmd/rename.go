@@ -18,7 +18,6 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tool"
-	errors "golang.org/x/xerrors"
 )
 
 // rename implements the rename verb for gopls.
@@ -97,7 +96,7 @@ func (r *rename) Run(ctx context.Context, args ...string) error {
 		// convert LSP-style edits to []diff.TextEdit cuz Spans are handy
 		renameEdits, err := source.FromProtocolEdits(cmdFile.mapper, edits[uri])
 		if err != nil {
-			return errors.Errorf("%v: %v", edits, err)
+			return fmt.Errorf("%v: %v", edits, err)
 		}
 		newContent := diff.ApplyEdits(string(cmdFile.mapper.Content), renameEdits)
 
@@ -106,7 +105,7 @@ func (r *rename) Run(ctx context.Context, args ...string) error {
 			fmt.Fprintln(os.Stderr, filename)
 			if r.Preserve {
 				if err := os.Rename(filename, filename+".orig"); err != nil {
-					return errors.Errorf("%v: %v", edits, err)
+					return fmt.Errorf("%v: %v", edits, err)
 				}
 			}
 			ioutil.WriteFile(filename, []byte(newContent), 0644)
