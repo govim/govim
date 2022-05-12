@@ -63,7 +63,7 @@ const (
 
 var (
 	VimCommand  = Command{"vim"}
-	GvimCommand = Command{"xvfb-run", "-a", "gvim", "-f"}
+	GvimCommand = Command{"xvfb-run", "-a", "--server-args=-screen 0 640x480x16", "gvim", "-f"}
 )
 
 type Command []string

@@ -8,6 +8,6 @@ export MAX_VIM_VERSION=v8.2.4698
 export MAX_GVIM_VERSION=v8.2.4698
 
 export DEFAULT_VIM_COMMAND="vim"
-export DEFAULT_GVIM_COMMAND="xvfb-run -a gvim -f"
+export DEFAULT_GVIM_COMMAND="xvfb-run -a --server-args=-screen 0 640x480x16 gvim -f"
 
 export VALID_FLAVORS="vim gvim"
