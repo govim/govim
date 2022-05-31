@@ -23,6 +23,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/diff/myers"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -71,33 +72,41 @@ func (s *snapshot) parseGoHandle(ctx context.Context, fh source.FileHandle, mode
 }
 
 func (pgh *parseGoHandle) String() string {
-	return pgh.File().URI().Filename()
-}
-
-func (pgh *parseGoHandle) File() source.FileHandle {
-	return pgh.file
-}
-
-func (pgh *parseGoHandle) Mode() source.ParseMode {
-	return pgh.mode
+	return pgh.file.URI().Filename()
 }
 
 func (s *snapshot) ParseGo(ctx context.Context, fh source.FileHandle, mode source.ParseMode) (*source.ParsedGoFile, error) {
-	pgh := s.parseGoHandle(ctx, fh, mode)
-	pgf, _, err := s.parseGo(ctx, pgh)
+	pgf, _, err := s.parseGo(ctx, fh, mode)
 	return pgf, err
 }
 
-func (s *snapshot) parseGo(ctx context.Context, pgh *parseGoHandle) (*source.ParsedGoFile, bool, error) {
-	if pgh.mode == source.ParseExported {
+func (s *snapshot) parseGo(ctx context.Context, fh source.FileHandle, mode source.ParseMode) (*source.ParsedGoFile, bool, error) {
+	if mode == source.ParseExported {
 		panic("only type checking should use Exported")
 	}
+	pgh := s.parseGoHandle(ctx, fh, mode)
 	d, err := pgh.handle.Get(ctx, s.generation, s)
 	if err != nil {
 		return nil, false, err
 	}
 	data := d.(*parseGoData)
 	return data.parsed, data.fixed, data.err
+}
+
+// cachedPGF returns the cached ParsedGoFile for the given ParseMode, if it
+// has already been computed. Otherwise, it returns nil.
+func (s *snapshot) cachedPGF(fh source.FileHandle, mode source.ParseMode) *source.ParsedGoFile {
+	key := parseKey{file: fh.FileIdentity(), mode: mode}
+	if pgh := s.getGoFile(key); pgh != nil {
+		cached := pgh.handle.Cached(s.generation)
+		if cached != nil {
+			cached := cached.(*parseGoData)
+			if cached.parsed != nil {
+				return cached.parsed
+			}
+		}
+	}
+	return nil
 }
 
 type astCacheKey struct {
@@ -323,7 +332,7 @@ func parseGo(ctx context.Context, fset *token.FileSet, fh source.FileHandle, mod
 			Tok:  tok,
 			Mapper: &protocol.ColumnMapper{
 				URI:       fh.URI(),
-				Converter: span.NewTokenConverter(fset, tok),
+				Converter: span.NewTokenConverter(tok),
 				Content:   src,
 			},
 			ParseErr: parseErr,
@@ -786,7 +795,7 @@ func fixMissingCurlies(f *ast.File, b *ast.BlockStmt, parent ast.Node, tok *toke
 	// If the "{" is already in the source code, there isn't anything to
 	// fix since we aren't missing curlies.
 	if b.Lbrace.IsValid() {
-		braceOffset, err := source.Offset(tok, b.Lbrace)
+		braceOffset, err := safetoken.Offset(tok, b.Lbrace)
 		if err != nil {
 			return nil
 		}
@@ -841,7 +850,7 @@ func fixMissingCurlies(f *ast.File, b *ast.BlockStmt, parent ast.Node, tok *toke
 
 	var buf bytes.Buffer
 	buf.Grow(len(src) + 3)
-	offset, err := source.Offset(tok, insertPos)
+	offset, err := safetoken.Offset(tok, insertPos)
 	if err != nil {
 		return nil
 	}
@@ -898,7 +907,7 @@ func fixEmptySwitch(body *ast.BlockStmt, tok *token.File, src []byte) {
 
 	// If the right brace is actually in the source code at the
 	// specified position, don't mess with it.
-	braceOffset, err := source.Offset(tok, body.Rbrace)
+	braceOffset, err := safetoken.Offset(tok, body.Rbrace)
 	if err != nil {
 		return
 	}
@@ -937,7 +946,7 @@ func fixDanglingSelector(s *ast.SelectorExpr, tok *token.File, src []byte) []byt
 		return nil
 	}
 
-	insertOffset, err := source.Offset(tok, s.X.End())
+	insertOffset, err := safetoken.Offset(tok, s.X.End())
 	if err != nil {
 		return nil
 	}
@@ -1000,7 +1009,7 @@ func isPhantomUnderscore(id *ast.Ident, tok *token.File, src []byte) bool {
 
 	// Phantom underscore means the underscore is not actually in the
 	// program text.
-	offset, err := source.Offset(tok, id.Pos())
+	offset, err := safetoken.Offset(tok, id.Pos())
 	if err != nil {
 		return false
 	}
@@ -1020,11 +1029,11 @@ func fixInitStmt(bad *ast.BadExpr, parent ast.Node, tok *token.File, src []byte)
 	}
 
 	// Try to extract a statement from the BadExpr.
-	start, err := source.Offset(tok, bad.Pos())
+	start, err := safetoken.Offset(tok, bad.Pos())
 	if err != nil {
 		return
 	}
-	end, err := source.Offset(tok, bad.End()-1)
+	end, err := safetoken.Offset(tok, bad.End()-1)
 	if err != nil {
 		return
 	}
@@ -1068,7 +1077,7 @@ func fixInitStmt(bad *ast.BadExpr, parent ast.Node, tok *token.File, src []byte)
 // readKeyword reads the keyword starting at pos, if any.
 func readKeyword(pos token.Pos, tok *token.File, src []byte) string {
 	var kwBytes []byte
-	offset, err := source.Offset(tok, pos)
+	offset, err := safetoken.Offset(tok, pos)
 	if err != nil {
 		return ""
 	}
@@ -1109,11 +1118,11 @@ func fixArrayType(bad *ast.BadExpr, parent ast.Node, tok *token.File, src []byte
 	// Avoid doing tok.Offset(to) since that panics if badExpr ends at EOF.
 	// It also panics if the position is not in the range of the file, and
 	// badExprs may not necessarily have good positions, so check first.
-	fromOffset, err := source.Offset(tok, from)
+	fromOffset, err := safetoken.Offset(tok, from)
 	if err != nil {
 		return false
 	}
-	toOffset, err := source.Offset(tok, to-1)
+	toOffset, err := safetoken.Offset(tok, to-1)
 	if err != nil {
 		return false
 	}
@@ -1270,7 +1279,7 @@ FindTo:
 		}
 	}
 
-	fromOffset, err := source.Offset(tok, from)
+	fromOffset, err := safetoken.Offset(tok, from)
 	if err != nil {
 		return false
 	}
@@ -1278,7 +1287,7 @@ FindTo:
 		return false
 	}
 
-	toOffset, err := source.Offset(tok, to)
+	toOffset, err := safetoken.Offset(tok, to)
 	if err != nil {
 		return false
 	}

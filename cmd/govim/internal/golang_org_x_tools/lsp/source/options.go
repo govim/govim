@@ -49,6 +49,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/unusedresult"
 	"golang.org/x/tools/go/analysis/passes/unusedwrite"
 	"golang.org/x/tools/go/packages"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/embeddirective"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/fillreturns"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/fillstruct"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/infertypeargs"
@@ -540,11 +541,17 @@ type InternalOptions struct {
 	// }
 	// ```
 	//
-	// At the location of the `<>` in this program, deep completion would suggest the result `x.str`.
+	// At the location of the `<>` in this program, deep completion would suggest
+	// the result `x.str`.
 	DeepCompletion bool
 
 	// TempModfile controls the use of the -modfile flag in Go 1.14.
 	TempModfile bool
+
+	// ShowBugReports causes a message to be shown when the first bug is reported
+	// on the server.
+	// This option applies only during initialization.
+	ShowBugReports bool
 }
 
 type ImportShortcut string
@@ -952,6 +959,9 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 	case "tempModfile":
 		result.setBool(&o.TempModfile)
 
+	case "showBugReports":
+		result.setBool(&o.ShowBugReports)
+
 	case "gofumpt":
 		result.setBool(&o.Gofumpt)
 
@@ -1308,6 +1318,7 @@ func defaultAnalyzers() map[string]*Analyzer {
 		unusedwrite.Analyzer.Name:      {Analyzer: unusedwrite.Analyzer, Enabled: false},
 		useany.Analyzer.Name:           {Analyzer: useany.Analyzer, Enabled: false},
 		infertypeargs.Analyzer.Name:    {Analyzer: infertypeargs.Analyzer, Enabled: true},
+		embeddirective.Analyzer.Name:   {Analyzer: embeddirective.Analyzer, Enabled: true},
 
 		// gofmt -s suite:
 		simplifycompositelit.Analyzer.Name: {

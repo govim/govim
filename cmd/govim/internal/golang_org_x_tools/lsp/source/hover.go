@@ -22,7 +22,9 @@ import (
 
 	"golang.org/x/text/unicode/runenames"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
 
@@ -201,11 +203,11 @@ func findRune(ctx context.Context, snapshot Snapshot, fh FileHandle, position pr
 		// It's a string, scan only if it contains a unicode escape sequence under or before the
 		// current cursor position.
 		var found bool
-		litOffset, err := Offset(pgf.Tok, lit.Pos())
+		litOffset, err := safetoken.Offset(pgf.Tok, lit.Pos())
 		if err != nil {
 			return 0, MappedRange{}, err
 		}
-		offset, err := Offset(pgf.Tok, pos)
+		offset, err := safetoken.Offset(pgf.Tok, pos)
 		if err != nil {
 			return 0, MappedRange{}, err
 		}
@@ -406,8 +408,11 @@ func linkData(obj types.Object, enclosing *types.TypeName) (name, importPath, an
 	}
 
 	// golang/go#52211: somehow we get here with a nil obj.Pkg
-	// TODO: allow using debug.Bug here, to catch this bug.
 	if obj.Pkg() == nil {
+		bug.Report("object with nil pkg", bug.Data{
+			"name": obj.Name(),
+			"type": fmt.Sprintf("%T", obj),
+		})
 		return "", "", ""
 	}
 
@@ -546,7 +551,7 @@ func FindHoverContext(ctx context.Context, s Snapshot, pkg Package, obj types.Ob
 			// obj may not have been produced by type checking the AST containing
 			// node, so we need to be careful about using token.Pos.
 			tok := s.FileSet().File(obj.Pos())
-			offset, err := Offset(tok, obj.Pos())
+			offset, err := safetoken.Offset(tok, obj.Pos())
 			if err != nil {
 				return nil, err
 			}
@@ -554,7 +559,7 @@ func FindHoverContext(ctx context.Context, s Snapshot, pkg Package, obj types.Ob
 			// fullTok and fullPos are the *token.File and object position in for the
 			// full AST.
 			fullTok := s.FileSet().File(node.Pos())
-			fullPos, err := Pos(fullTok, offset)
+			fullPos, err := safetoken.Pos(fullTok, offset)
 			if err != nil {
 				return nil, err
 			}
@@ -562,11 +567,11 @@ func FindHoverContext(ctx context.Context, s Snapshot, pkg Package, obj types.Ob
 			var spec ast.Spec
 			for _, s := range node.Specs {
 				// Avoid panics by guarding the calls to token.Offset (golang/go#48249).
-				start, err := Offset(fullTok, s.Pos())
+				start, err := safetoken.Offset(fullTok, s.Pos())
 				if err != nil {
 					return nil, err
 				}
-				end, err := Offset(fullTok, s.End())
+				end, err := safetoken.Offset(fullTok, s.End())
 				if err != nil {
 					return nil, err
 				}
@@ -597,11 +602,9 @@ func FindHoverContext(ctx context.Context, s Snapshot, pkg Package, obj types.Ob
 				info.signatureSource = "func " + sig.name + sig.Format()
 			} else {
 				// Fall back on the object as a signature source.
-
-				// TODO(rfindley): refactor so that we can report bugs from the source
-				// package.
-
-				// debug.Bug(ctx, "invalid builtin hover", "did not find builtin signature: %v", err)
+				bug.Report("invalid builtin hover", bug.Data{
+					"err": err.Error(),
+				})
 				info.signatureSource = obj
 			}
 		case *types.Var:
