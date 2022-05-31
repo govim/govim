@@ -17,7 +17,9 @@ import (
 
 	"golang.org/x/tools/go/ast/astutil"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
@@ -97,6 +99,9 @@ func Identifier(ctx context.Context, snapshot Snapshot, fh FileHandle, pos proto
 	for _, pkg := range pkgs {
 		pgf, err := pkg.File(fh.URI())
 		if err != nil {
+			// We shouldn't get a package from PackagesForFile that doesn't actually
+			// contain the file.
+			bug.Report("missing package file", bug.Data{"pkg": pkg.ID(), "file": fh.URI()})
 			return nil, err
 		}
 		spn, err := pgf.Mapper.PointSpan(pos)
@@ -348,7 +353,7 @@ func fullNode(snapshot Snapshot, obj types.Object, pkg Package) (ast.Decl, error
 		fset := snapshot.FileSet()
 		file2, _ := parser.ParseFile(fset, tok.Name(), pgf.Src, parser.AllErrors|parser.ParseComments)
 		if file2 != nil {
-			offset, err := Offset(tok, obj.Pos())
+			offset, err := safetoken.Offset(tok, obj.Pos())
 			if err != nil {
 				return nil, err
 			}

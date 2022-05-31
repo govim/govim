@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
@@ -54,6 +56,21 @@ func (s *Server) initialize(ctx context.Context, params *protocol.ParamInitializ
 		return nil, err
 	}
 	options.ForClientCapabilities(params.Capabilities)
+
+	if options.ShowBugReports {
+		// Report the next bug that occurs on the server.
+		bugCh := bug.Notify()
+		go func() {
+			b := <-bugCh
+			msg := &protocol.ShowMessageParams{
+				Type:    protocol.Error,
+				Message: fmt.Sprintf("A bug occurred on the server: %s\nLocation:%s", b.Description, b.Key),
+			}
+			if err := s.eventuallyShowMessage(context.Background(), msg); err != nil {
+				log.Printf("error showing bug: %v", err)
+			}
+		}()
+	}
 
 	folders := params.WorkspaceFolders
 	if len(folders) == 0 {
@@ -439,6 +456,7 @@ func (s *Server) handleOptionResults(ctx context.Context, results source.OptionR
 // it to a snapshot.
 // We don't want to return errors for benign conditions like wrong file type,
 // so callers should do if !ok { return err } rather than if err != nil.
+// The returned cleanup function is non-nil even in case of false/error result.
 func (s *Server) beginFileRequest(ctx context.Context, pURI protocol.DocumentURI, expectKind source.FileKind) (source.Snapshot, source.VersionedFileHandle, bool, func(), error) {
 	uri := pURI.SpanURI()
 	if !uri.IsFile() {

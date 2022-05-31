@@ -18,9 +18,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/fuzzy"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
@@ -80,12 +81,18 @@ func packageCompletionSurrounding(ctx context.Context, fset *token.FileSet, pgf 
 		return nil, fmt.Errorf("unparseable file (%s)", pgf.URI)
 	}
 	tok := fset.File(expr.Pos())
-	offset, err := source.Offset(pgf.Tok, pos)
+	offset, err := safetoken.Offset(pgf.Tok, pos)
 	if err != nil {
 		return nil, err
 	}
 	if offset > tok.Size() {
-		debug.Bug(ctx, "out of bounds cursor", "cursor offset (%d) out of bounds for %s (size: %d)", offset, pgf.URI, tok.Size())
+		// internal bug: we should never get an offset that exceeds the size of our
+		// file.
+		bug.Report("out of bounds cursor", bug.Data{
+			"offset": offset,
+			"URI":    pgf.URI,
+			"size":   tok.Size(),
+		})
 		return nil, fmt.Errorf("cursor out of bounds")
 	}
 	cursor := tok.Pos(offset)
