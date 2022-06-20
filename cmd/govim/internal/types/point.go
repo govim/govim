@@ -26,8 +26,8 @@ type Point struct {
 }
 
 func PointFromOffset(b *Buffer, offset int) (Point, error) {
-	cc := b.tokenConvertor()
-	line, col, err := cc.ToPosition(offset)
+	tf := b.tokFile()
+	line, col, err := span.ToPosition(tf, offset)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate position within buffer %v: %v", b.Num, err)
 	}
@@ -47,8 +47,8 @@ func PointFromOffset(b *Buffer, offset int) (Point, error) {
 }
 
 func PointFromVim(b *Buffer, line, col int) (Point, error) {
-	cc := b.tokenConvertor()
-	off, err := cc.ToOffset(line, col)
+	tf := b.tokFile()
+	off, err := span.ToOffset(tf, line, col)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate offset within buffer %v: %v", b.Num, err)
 	}
@@ -68,10 +68,10 @@ func PointFromVim(b *Buffer, line, col int) (Point, error) {
 }
 
 func PointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
-	cc := b.tokenConvertor()
+	tf := b.tokFile()
 	sline := pos.Line + 1
 	scol := pos.Character
-	soff, err := cc.ToOffset(int(sline), 1)
+	soff, err := span.ToOffset(tf, int(sline), 1)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate offset within buffer %v: %v", b.Num, err)
 	}
@@ -98,9 +98,9 @@ func VisualPointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 	c := b.Contents()
 	l := len(c)
 	if p.Offset() == l && l > 0 && c[l-1] == '\n' {
-		cc := b.tokenConvertor()
+		tf := b.tokFile()
 		var newLine, newCol int
-		newLine, newCol, err = cc.ToPosition(l - 1)
+		newLine, newCol, err = span.ToPosition(tf, l-1)
 		if err != nil {
 			return p, err
 		}

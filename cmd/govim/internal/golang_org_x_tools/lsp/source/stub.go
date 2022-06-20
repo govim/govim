@@ -19,6 +19,7 @@ import (
 	"golang.org/x/tools/go/ast/astutil"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/analysis/stubmethods"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
@@ -57,8 +58,8 @@ func stubSuggestedFixFunc(ctx context.Context, snapshot Snapshot, fh VersionedFi
 	if err != nil {
 		return nil, fmt.Errorf("error reading concrete file source: %w", err)
 	}
-	insertPos := snapshot.FileSet().Position(nodes[1].End()).Offset
-	if insertPos >= len(concreteSrc) {
+	insertPos, err := safetoken.Offset(parsedConcreteFile.Tok, nodes[1].End())
+	if err != nil || insertPos >= len(concreteSrc) {
 		return nil, fmt.Errorf("insertion position is past the end of the file")
 	}
 	var buf bytes.Buffer
@@ -85,7 +86,7 @@ func stubSuggestedFixFunc(ctx context.Context, snapshot Snapshot, fh VersionedFi
 	}
 	var edits []analysis.TextEdit
 	for _, edit := range diffEdits {
-		rng, err := edit.Span.Range(parsedConcreteFile.Mapper.Converter)
+		rng, err := edit.Span.Range(parsedConcreteFile.Mapper.TokFile)
 		if err != nil {
 			return nil, err
 		}
@@ -218,7 +219,7 @@ func getStubNodes(pgf *ParsedGoFile, pRng protocol.Range) ([]ast.Node, token.Pos
 	if err != nil {
 		return nil, 0, err
 	}
-	rng, err := spn.Range(pgf.Mapper.Converter)
+	rng, err := spn.Range(pgf.Mapper.TokFile)
 	if err != nil {
 		return nil, 0, err
 	}

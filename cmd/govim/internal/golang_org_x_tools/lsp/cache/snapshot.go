@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,12 +26,12 @@ import (
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/module"
 	"golang.org/x/mod/semver"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/bug"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/log"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/memoize"
@@ -68,23 +69,15 @@ type snapshot struct {
 	// builtin pins the AST and package for builtin.go in memory.
 	builtin span.URI
 
-	// ids maps file URIs to package IDs.
-	// It may be invalidated on calls to go/packages.
-	ids map[span.URI][]PackageID
-
-	// metadata maps file IDs to their associated metadata.
-	// It may invalidated on calls to go/packages.
-	metadata map[PackageID]*KnownMetadata
-
-	// importedBy maps package IDs to the list of packages that import them.
-	importedBy map[PackageID][]PackageID
+	// meta holds loaded metadata.
+	meta *metadataGraph
 
 	// files maps file URIs to their corresponding FileHandles.
 	// It may invalidated when a file's content changes.
 	files map[span.URI]source.VersionedFileHandle
 
 	// goFiles maps a parseKey to its parseGoHandle.
-	goFiles map[parseKey]*parseGoHandle
+	goFiles *goFileMap
 
 	// TODO(rfindley): consider merging this with files to reduce burden on clone.
 	symbols map[span.URI]*symbolHandle
@@ -122,7 +115,8 @@ type snapshot struct {
 
 	// knownSubdirs is the set of subdirectories in the workspace, used to
 	// create glob patterns for file watching.
-	knownSubdirs map[span.URI]struct{}
+	knownSubdirs             map[span.URI]struct{}
+	knownSubdirsPatternCache string
 	// unprocessedSubdirChanges are any changes that might affect the set of
 	// subdirectories in the workspace. They are not reflected to knownSubdirs
 	// during the snapshot cloning step as it can slow down cloning.
@@ -474,7 +468,7 @@ func (s *snapshot) buildOverlay() map[string][]byte {
 	return overlays
 }
 
-func hashUnsavedOverlays(files map[span.URI]source.VersionedFileHandle) string {
+func hashUnsavedOverlays(files map[span.URI]source.VersionedFileHandle) source.Hash {
 	var unsaved []string
 	for uri, fh := range files {
 		if overlay, ok := fh.(*overlay); ok && !overlay.saved {
@@ -482,7 +476,7 @@ func hashUnsavedOverlays(files map[span.URI]source.VersionedFileHandle) string {
 		}
 	}
 	sort.Strings(unsaved)
-	return hashContents([]byte(strings.Join(unsaved, "")))
+	return source.Hashf("%s", unsaved)
 }
 
 func (s *snapshot) PackagesForFile(ctx context.Context, uri span.URI, mode source.TypecheckMode, includeTestVariants bool) ([]source.Package, error) {
@@ -671,16 +665,17 @@ func (s *snapshot) transitiveReverseDependencies(id PackageID, ids map[PackageID
 func (s *snapshot) getGoFile(key parseKey) *parseGoHandle {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.goFiles[key]
+	return s.goFiles.get(key)
 }
 
 func (s *snapshot) addGoFile(key parseKey, pgh *parseGoHandle) *parseGoHandle {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if existing, ok := s.goFiles[key]; ok {
-		return existing
+
+	if prev := s.goFiles.get(key); prev != nil {
+		return prev
 	}
-	s.goFiles[key] = pgh
+	s.goFiles.set(key, pgh)
 	return pgh
 }
 
@@ -711,32 +706,7 @@ func (s *snapshot) getModTidyHandle(uri span.URI) *modTidyHandle {
 func (s *snapshot) getImportedBy(id PackageID) []PackageID {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.getImportedByLocked(id)
-}
-
-func (s *snapshot) getImportedByLocked(id PackageID) []PackageID {
-	// If we haven't rebuilt the import graph since creating the snapshot.
-	if len(s.importedBy) == 0 {
-		s.rebuildImportGraph()
-	}
-	return s.importedBy[id]
-}
-
-func (s *snapshot) clearAndRebuildImportGraph() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Completely invalidate the original map.
-	s.importedBy = make(map[PackageID][]PackageID)
-	s.rebuildImportGraph()
-}
-
-func (s *snapshot) rebuildImportGraph() {
-	for id, m := range s.metadata {
-		for _, importID := range m.Deps {
-			s.importedBy[importID] = append(s.importedBy[importID], id)
-		}
-	}
+	return s.meta.importedBy[id]
 }
 
 func (s *snapshot) addPackageHandle(ph *packageHandle) *packageHandle {
@@ -789,7 +759,7 @@ func (s *snapshot) isActiveLocked(id PackageID, seen map[PackageID]bool) (active
 	defer func() {
 		seen[id] = active
 	}()
-	m, ok := s.metadata[id]
+	m, ok := s.meta.metadata[id]
 	if !ok {
 		return false
 	}
@@ -819,6 +789,8 @@ func (s *snapshot) fileWatchingGlobPatterns(ctx context.Context) map[string]stru
 	patterns := map[string]struct{}{
 		fmt.Sprintf("**/*.{%s}", extensions): {},
 	}
+
+	// Add a pattern for each Go module in the workspace that is not within the view.
 	dirs := s.workspace.dirs(ctx, s)
 	for _, dir := range dirs {
 		dirName := dir.Filename()
@@ -838,15 +810,37 @@ func (s *snapshot) fileWatchingGlobPatterns(ctx context.Context) map[string]stru
 	// contain Go code (golang/go#42348). To handle this, explicitly watch all
 	// of the directories in the workspace. We find them by adding the
 	// directories of every file in the snapshot's workspace directories.
-	var dirNames []string
-	for _, uri := range s.getKnownSubdirs(dirs) {
-		dirNames = append(dirNames, uri.Filename())
+	// There may be thousands.
+	if pattern := s.getKnownSubdirsPattern(dirs); pattern != "" {
+		patterns[pattern] = struct{}{}
 	}
-	sort.Strings(dirNames)
-	if len(dirNames) > 0 {
-		patterns[fmt.Sprintf("{%s}", strings.Join(dirNames, ","))] = struct{}{}
-	}
+
 	return patterns
+}
+
+func (s *snapshot) getKnownSubdirsPattern(wsDirs []span.URI) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// First, process any pending changes and update the set of known
+	// subdirectories.
+	// It may change list of known subdirs and therefore invalidate the cache.
+	s.applyKnownSubdirsChangesLocked(wsDirs)
+
+	if len(s.knownSubdirs) == 0 {
+		return ""
+	}
+
+	if s.knownSubdirsPatternCache == "" {
+		dirNames := make([]string, 0, len(s.knownSubdirs))
+		for uri := range s.knownSubdirs {
+			dirNames = append(dirNames, uri.Filename())
+		}
+		sort.Strings(dirNames)
+		s.knownSubdirsPatternCache = fmt.Sprintf("{%s}", strings.Join(dirNames, ","))
+	}
+
+	return s.knownSubdirsPatternCache
 }
 
 // collectAllKnownSubdirs collects all of the subdirectories within the
@@ -859,6 +853,7 @@ func (s *snapshot) collectAllKnownSubdirs(ctx context.Context) {
 	defer s.mu.Unlock()
 
 	s.knownSubdirs = map[span.URI]struct{}{}
+	s.knownSubdirsPatternCache = ""
 	for uri := range s.files {
 		s.addKnownSubdirLocked(uri, dirs)
 	}
@@ -870,6 +865,16 @@ func (s *snapshot) getKnownSubdirs(wsDirs []span.URI) []span.URI {
 
 	// First, process any pending changes and update the set of known
 	// subdirectories.
+	s.applyKnownSubdirsChangesLocked(wsDirs)
+
+	result := make([]span.URI, 0, len(s.knownSubdirs))
+	for uri := range s.knownSubdirs {
+		result = append(result, uri)
+	}
+	return result
+}
+
+func (s *snapshot) applyKnownSubdirsChangesLocked(wsDirs []span.URI) {
 	for _, c := range s.unprocessedSubdirChanges {
 		if c.isUnchanged {
 			continue
@@ -881,12 +886,6 @@ func (s *snapshot) getKnownSubdirs(wsDirs []span.URI) []span.URI {
 		}
 	}
 	s.unprocessedSubdirChanges = nil
-
-	var result []span.URI
-	for uri := range s.knownSubdirs {
-		result = append(result, uri)
-	}
-	return result
 }
 
 func (s *snapshot) addKnownSubdirLocked(uri span.URI, dirs []span.URI) {
@@ -917,6 +916,7 @@ func (s *snapshot) addKnownSubdirLocked(uri span.URI, dirs []span.URI) {
 		}
 		s.knownSubdirs[uri] = struct{}{}
 		dir = filepath.Dir(dir)
+		s.knownSubdirsPatternCache = ""
 	}
 }
 
@@ -929,6 +929,7 @@ func (s *snapshot) removeKnownSubdirLocked(uri span.URI) {
 		}
 		if info, _ := os.Stat(dir); info == nil {
 			delete(s.knownSubdirs, uri)
+			s.knownSubdirsPatternCache = ""
 		}
 		dir = filepath.Dir(dir)
 	}
@@ -995,26 +996,35 @@ func (s *snapshot) activePackageHandles(ctx context.Context) ([]*packageHandle, 
 	return phs, nil
 }
 
+// Symbols extracts and returns the symbols for each file in all the snapshot's views.
 func (s *snapshot) Symbols(ctx context.Context) (map[span.URI][]source.Symbol, error) {
-	result := make(map[span.URI][]source.Symbol)
-
-	// Keep going on errors, but log the first failure. Partial symbol results
-	// are better than no symbol results.
-	var firstErr error
+	// Keep going on errors, but log the first failure.
+	// Partial results are better than no symbol results.
+	var (
+		group    errgroup.Group
+		nprocs   = 2 * runtime.GOMAXPROCS(-1)  // symbolize is a mix of I/O and CPU
+		iolimit  = make(chan struct{}, nprocs) // I/O limiting counting semaphore
+		resultMu sync.Mutex
+		result   = make(map[span.URI][]source.Symbol)
+	)
 	for uri, f := range s.files {
-		sh := s.buildSymbolHandle(ctx, f)
-		v, err := sh.handle.Get(ctx, s.generation, s)
-		if err != nil {
-			if firstErr == nil {
-				firstErr = err
+		uri, f := uri, f
+		// TODO(adonovan): upgrade errgroup and use group.SetLimit(nprocs).
+		iolimit <- struct{}{} // acquire token
+		group.Go(func() error {
+			defer func() { <-iolimit }() // release token
+			v, err := s.buildSymbolHandle(ctx, f).handle.Get(ctx, s.generation, s)
+			if err != nil {
+				return err
 			}
-			continue
-		}
-		data := v.(*symbolData)
-		result[uri] = data.symbols
+			resultMu.Lock()
+			result[uri] = v.(*symbolData).symbols
+			resultMu.Unlock()
+			return nil
+		})
 	}
-	if firstErr != nil {
-		event.Error(ctx, "getting snapshot symbols", firstErr)
+	if err := group.Wait(); err != nil {
+		event.Error(ctx, "getting snapshot symbols", err)
 	}
 	return result, nil
 }
@@ -1045,7 +1055,7 @@ func (s *snapshot) KnownPackages(ctx context.Context) ([]source.Package, error) 
 	// workspace packages first.
 	ids := s.workspacePackageIDs()
 	s.mu.Lock()
-	for id := range s.metadata {
+	for id := range s.meta.metadata {
 		if _, ok := s.workspacePackages[id]; ok {
 			continue
 		}
@@ -1177,24 +1187,26 @@ func (s *snapshot) getIDsForURI(uri span.URI) []PackageID {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.ids[uri]
+	return s.meta.ids[uri]
 }
 
 func (s *snapshot) getMetadata(id PackageID) *KnownMetadata {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.metadata[id]
+	return s.meta.metadata[id]
 }
 
 func (s *snapshot) shouldLoad(scope interface{}) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	g := s.meta
+
 	switch scope := scope.(type) {
 	case PackagePath:
 		var meta *KnownMetadata
-		for _, m := range s.metadata {
+		for _, m := range g.metadata {
 			if m.PkgPath != scope {
 				continue
 			}
@@ -1206,12 +1218,12 @@ func (s *snapshot) shouldLoad(scope interface{}) bool {
 		return false
 	case fileURI:
 		uri := span.URI(scope)
-		ids := s.ids[uri]
+		ids := g.ids[uri]
 		if len(ids) == 0 {
 			return true
 		}
 		for _, id := range ids {
-			m, ok := s.metadata[id]
+			m, ok := g.metadata[id]
 			if !ok || m.ShouldLoad {
 				return true
 			}
@@ -1222,45 +1234,51 @@ func (s *snapshot) shouldLoad(scope interface{}) bool {
 	}
 }
 
-func (s *snapshot) clearShouldLoad(scope interface{}) {
+func (s *snapshot) clearShouldLoad(scopes ...interface{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	switch scope := scope.(type) {
-	case PackagePath:
-		var meta *KnownMetadata
-		for _, m := range s.metadata {
-			if m.PkgPath == scope {
-				meta = m
+	g := s.meta
+
+	var updates map[PackageID]*KnownMetadata
+	markLoaded := func(m *KnownMetadata) {
+		if updates == nil {
+			updates = make(map[PackageID]*KnownMetadata)
+		}
+		next := *m
+		next.ShouldLoad = false
+		updates[next.ID] = &next
+	}
+	for _, scope := range scopes {
+		switch scope := scope.(type) {
+		case PackagePath:
+			for _, m := range g.metadata {
+				if m.PkgPath == scope {
+					markLoaded(m)
+				}
 			}
-		}
-		if meta == nil {
-			return
-		}
-		meta.ShouldLoad = false
-	case fileURI:
-		uri := span.URI(scope)
-		ids := s.ids[uri]
-		if len(ids) == 0 {
-			return
-		}
-		for _, id := range ids {
-			if m, ok := s.metadata[id]; ok {
-				m.ShouldLoad = false
+		case fileURI:
+			uri := span.URI(scope)
+			ids := g.ids[uri]
+			for _, id := range ids {
+				if m, ok := g.metadata[id]; ok {
+					markLoaded(m)
+				}
 			}
 		}
 	}
+	s.meta = g.Clone(updates)
 }
 
 // noValidMetadataForURILocked reports whether there is any valid metadata for
 // the given URI.
 func (s *snapshot) noValidMetadataForURILocked(uri span.URI) bool {
-	ids, ok := s.ids[uri]
+	ids, ok := s.meta.ids[uri]
 	if !ok {
 		return true
 	}
 	for _, id := range ids {
-		if m, ok := s.metadata[id]; ok && m.Valid {
+		if m, ok := s.meta.metadata[id]; ok && m.Valid {
 			return false
 		}
 	}
@@ -1276,42 +1294,8 @@ func (s *snapshot) noValidMetadataForID(id PackageID) bool {
 }
 
 func (s *snapshot) noValidMetadataForIDLocked(id PackageID) bool {
-	m := s.metadata[id]
+	m := s.meta.metadata[id]
 	return m == nil || !m.Valid
-}
-
-// updateIDForURIsLocked adds the given ID to the set of known IDs for the given URI.
-// Any existing invalid IDs are removed from the set of known IDs. IDs that are
-// not "command-line-arguments" are preferred, so if a new ID comes in for a
-// URI that previously only had "command-line-arguments", the new ID will
-// replace the "command-line-arguments" ID.
-func (s *snapshot) updateIDForURIsLocked(id PackageID, uris map[span.URI]struct{}) {
-	for uri := range uris {
-		// Collect the new set of IDs, preserving any valid existing IDs.
-		newIDs := []PackageID{id}
-		for _, existingID := range s.ids[uri] {
-			// Don't set duplicates of the same ID.
-			if existingID == id {
-				continue
-			}
-			// If the package previously only had a command-line-arguments ID,
-			// delete the command-line-arguments workspace package.
-			if source.IsCommandLineArguments(string(existingID)) {
-				delete(s.workspacePackages, existingID)
-				continue
-			}
-			// If the metadata for an existing ID is invalid, and we are
-			// setting metadata for a new, valid ID--don't preserve the old ID.
-			if m, ok := s.metadata[existingID]; !ok || !m.Valid {
-				continue
-			}
-			newIDs = append(newIDs, existingID)
-		}
-		sort.Slice(newIDs, func(i, j int) bool {
-			return newIDs[i] < newIDs[j]
-		})
-		s.ids[uri] = newIDs
-	}
 }
 
 func (s *snapshot) isWorkspacePackage(id PackageID) bool {
@@ -1396,10 +1380,10 @@ func (s *snapshot) awaitLoaded(ctx context.Context) error {
 
 	// If we still have absolutely no metadata, check if the view failed to
 	// initialize and return any errors.
-	if s.useInvalidMetadata() && len(s.metadata) > 0 {
+	if s.useInvalidMetadata() && len(s.meta.metadata) > 0 {
 		return nil
 	}
-	for _, m := range s.metadata {
+	for _, m := range s.meta.metadata {
 		if m.Valid {
 			return nil
 		}
@@ -1485,14 +1469,14 @@ func (s *snapshot) awaitLoadedAllErrors(ctx context.Context) *source.CriticalErr
 	}
 
 	if err := s.reloadWorkspace(ctx); err != nil {
-		diags, _ := s.extractGoCommandErrors(ctx, err.Error())
+		diags := s.extractGoCommandErrors(ctx, err)
 		return &source.CriticalError{
 			MainError: err,
 			DiagList:  diags,
 		}
 	}
 	if err := s.reloadOrphanedFiles(ctx); err != nil {
-		diags, _ := s.extractGoCommandErrors(ctx, err.Error())
+		diags := s.extractGoCommandErrors(ctx, err)
 		return &source.CriticalError{
 			MainError: err,
 			DiagList:  diags,
@@ -1523,10 +1507,10 @@ func (s *snapshot) AwaitInitialized(ctx context.Context) {
 func (s *snapshot) reloadWorkspace(ctx context.Context) error {
 	// See which of the workspace packages are missing metadata.
 	s.mu.Lock()
-	missingMetadata := len(s.workspacePackages) == 0 || len(s.metadata) == 0
+	missingMetadata := len(s.workspacePackages) == 0 || len(s.meta.metadata) == 0
 	pkgPathSet := map[PackagePath]struct{}{}
 	for id, pkgPath := range s.workspacePackages {
-		if m, ok := s.metadata[id]; ok && m.Valid {
+		if m, ok := s.meta.metadata[id]; ok && m.Valid {
 			continue
 		}
 		missingMetadata = true
@@ -1664,29 +1648,6 @@ func generationName(v *View, snapshotID uint64) string {
 	return fmt.Sprintf("v%v/%v", v.id, snapshotID)
 }
 
-// checkSnapshotLocked verifies that some invariants are preserved on the
-// snapshot.
-func checkSnapshotLocked(ctx context.Context, s *snapshot) {
-	// Check that every go file for a workspace package is identified as
-	// belonging to that workspace package.
-	for wsID := range s.workspacePackages {
-		if m, ok := s.metadata[wsID]; ok {
-			for _, uri := range m.GoFiles {
-				found := false
-				for _, id := range s.ids[uri] {
-					if id == wsID {
-						found = true
-						break
-					}
-				}
-				if !found {
-					log.Error.Logf(ctx, "workspace package %v not associated with %v", wsID, uri)
-				}
-			}
-		}
-	}
-}
-
 // unappliedChanges is a file source that handles an uncloned snapshot.
 type unappliedChanges struct {
 	originalSnapshot *snapshot
@@ -1710,8 +1671,6 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	checkSnapshotLocked(ctx, s)
-
 	newGen := s.view.session.cache.store.Generation(generationName(s.view, s.id+1))
 	bgCtx, cancel := context.WithCancel(bgCtx)
 	result := &snapshot{
@@ -1723,13 +1682,10 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		builtin:           s.builtin,
 		initializeOnce:    s.initializeOnce,
 		initializedErr:    s.initializedErr,
-		ids:               make(map[span.URI][]PackageID, len(s.ids)),
-		importedBy:        make(map[PackageID][]PackageID, len(s.importedBy)),
-		metadata:          make(map[PackageID]*KnownMetadata, len(s.metadata)),
 		packages:          make(map[packageKey]*packageHandle, len(s.packages)),
 		actions:           make(map[actionKey]*actionHandle, len(s.actions)),
 		files:             make(map[span.URI]source.VersionedFileHandle, len(s.files)),
-		goFiles:           make(map[parseKey]*parseGoHandle, len(s.goFiles)),
+		goFiles:           s.goFiles.clone(),
 		symbols:           make(map[span.URI]*symbolHandle, len(s.symbols)),
 		workspacePackages: make(map[PackageID]PackagePath, len(s.workspacePackages)),
 		unloadableFiles:   make(map[span.URI]struct{}, len(s.unloadableFiles)),
@@ -1774,12 +1730,27 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		result.parseWorkHandles[k] = v
 	}
 
-	for k, v := range s.goFiles {
-		if _, ok := changes[k.file.URI]; ok {
-			continue
+	// Copy the handles of all Go source files.
+	// There may be tens of thousands of files,
+	// but changes are typically few, so we
+	// use a striped map optimized for this case
+	// and visit its stripes in parallel.
+	var (
+		toDeleteMu sync.Mutex
+		toDelete   []parseKey
+	)
+	s.goFiles.forEachConcurrent(func(k parseKey, v *parseGoHandle) {
+		if changes[k.file.URI] == nil {
+			// no change (common case)
+			newGen.Inherit(v.handle)
+		} else {
+			toDeleteMu.Lock()
+			toDelete = append(toDelete, k)
+			toDeleteMu.Unlock()
 		}
-		newGen.Inherit(v.handle)
-		result.goFiles[k] = v
+	})
+	for _, k := range toDelete {
+		result.goFiles.delete(k)
 	}
 
 	// Copy all of the go.mod-related handles. They may be invalidated later,
@@ -1803,6 +1774,7 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 	for k, v := range s.knownSubdirs {
 		result.knownSubdirs[k] = v
 	}
+	result.knownSubdirsPatternCache = s.knownSubdirsPatternCache
 	for _, c := range changes {
 		result.unprocessedSubdirChanges = append(result.unprocessedSubdirChanges, c)
 	}
@@ -1813,12 +1785,12 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 
 	// Invalidate all package metadata if the workspace module has changed.
 	if workspaceReload {
-		for k := range s.metadata {
+		for k := range s.meta.metadata {
 			directIDs[k] = true
 		}
 	}
 
-	changedPkgFiles := map[PackageID]struct{}{} // packages whose file set may have changed
+	changedPkgFiles := map[PackageID]bool{} // packages whose file set may have changed
 	anyImportDeleted := false
 	for uri, change := range changes {
 		// Maybe reinitialize the view if we see a change in the vendor
@@ -1843,10 +1815,10 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		anyImportDeleted = anyImportDeleted || importDeleted
 
 		// Mark all of the package IDs containing the given file.
-		filePackageIDs := invalidatedPackageIDs(uri, s.ids, pkgFileChanged)
+		filePackageIDs := invalidatedPackageIDs(uri, s.meta.ids, pkgFileChanged)
 		if pkgFileChanged {
 			for id := range filePackageIDs {
-				changedPkgFiles[id] = struct{}{}
+				changedPkgFiles[id] = true
 			}
 		}
 		for id := range filePackageIDs {
@@ -1892,7 +1864,7 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 	// from an unparseable state to a parseable state, as we don't have a
 	// starting point to compare with.
 	if anyImportDeleted {
-		for id, metadata := range s.metadata {
+		for id, metadata := range s.meta.metadata {
 			if len(metadata.Errors) > 0 {
 				directIDs[id] = true
 			}
@@ -1916,7 +1888,7 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 			return
 		}
 		idsToInvalidate[id] = newInvalidateMetadata
-		for _, rid := range s.getImportedByLocked(id) {
+		for _, rid := range s.meta.importedBy[id] {
 			addRevDeps(rid, invalidateMetadata)
 		}
 	}
@@ -1943,16 +1915,22 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 
 	// If the workspace mode has changed, we must delete all metadata, as it
 	// is unusable and may produce confusing or incorrect diagnostics.
-	// If a file has been deleted, we must delete metadata all packages
+	// If a file has been deleted, we must delete metadata for all packages
 	// containing that file.
 	workspaceModeChanged := s.workspaceMode() != result.workspaceMode()
+
+	// Don't keep package metadata for packages that have lost files.
+	//
+	// TODO(rfindley): why not keep invalid metadata in this case? If we
+	// otherwise allow operate on invalid metadata, why not continue to do so,
+	// skipping the missing file?
 	skipID := map[PackageID]bool{}
 	for _, c := range changes {
 		if c.exists {
 			continue
 		}
 		// The file has been deleted.
-		if ids, ok := s.ids[c.fileHandle.URI()]; ok {
+		if ids, ok := s.meta.ids[c.fileHandle.URI()]; ok {
 			for _, id := range ids {
 				skipID[id] = true
 			}
@@ -1968,7 +1946,7 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 			return
 		}
 		reachableID[id] = true
-		m, ok := s.metadata[id]
+		m, ok := s.meta.metadata[id]
 		if !ok {
 			return
 		}
@@ -1980,85 +1958,45 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		addForwardDeps(id)
 	}
 
-	// Copy the URI to package ID mappings, skipping only those URIs whose
-	// metadata will be reloaded in future calls to load.
+	// Compute which metadata updates are required. We only need to invalidate
+	// packages directly containing the affected file, and only if it changed in
+	// a relevant way.
+	metadataUpdates := make(map[PackageID]*KnownMetadata)
 	deleteInvalidMetadata := forceReloadMetadata || workspaceModeChanged
-	idsInSnapshot := map[PackageID]bool{} // track all known IDs
-	for uri, ids := range s.ids {
-		for _, id := range ids {
-			invalidateMetadata := idsToInvalidate[id]
-			if skipID[id] || (invalidateMetadata && deleteInvalidMetadata) {
-				continue
-			}
-			// The ID is not reachable from any workspace package, so it should
-			// be deleted.
-			if !reachableID[id] {
-				continue
-			}
-			idsInSnapshot[id] = true
-			result.ids[uri] = append(result.ids[uri], id)
-		}
-	}
-
-	// Copy the package metadata. We only need to invalidate packages directly
-	// containing the affected file, and only if it changed in a relevant way.
-	for k, v := range s.metadata {
-		if !idsInSnapshot[k] {
-			// Delete metadata for IDs that are no longer reachable from files
-			// in the snapshot.
-			continue
-		}
+	for k, v := range s.meta.metadata {
 		invalidateMetadata := idsToInvalidate[k]
-		// Mark invalidated metadata rather than deleting it outright.
-		result.metadata[k] = &KnownMetadata{
-			Metadata:   v.Metadata,
-			Valid:      v.Valid && !invalidateMetadata,
-			ShouldLoad: v.ShouldLoad || invalidateMetadata,
+		if skipID[k] || (invalidateMetadata && deleteInvalidMetadata) {
+			metadataUpdates[k] = nil
+			continue
+		}
+		// The ID is not reachable from any workspace package, so it should
+		// be deleted.
+		if !reachableID[k] {
+			metadataUpdates[k] = nil
+			continue
+		}
+		valid := v.Valid && !invalidateMetadata
+		pkgFilesChanged := v.PkgFilesChanged || changedPkgFiles[k]
+		shouldLoad := v.ShouldLoad || invalidateMetadata
+		if valid != v.Valid || pkgFilesChanged != v.PkgFilesChanged || shouldLoad != v.ShouldLoad {
+			// Mark invalidated metadata rather than deleting it outright.
+			metadataUpdates[k] = &KnownMetadata{
+				Metadata:        v.Metadata,
+				Valid:           valid,
+				PkgFilesChanged: pkgFilesChanged,
+				ShouldLoad:      shouldLoad,
+			}
 		}
 	}
 
-	// Copy the set of initially loaded packages.
-	for id, pkgPath := range s.workspacePackages {
-		// Packages with the id "command-line-arguments" are generated by the
-		// go command when the user is outside of GOPATH and outside of a
-		// module. Do not cache them as workspace packages for longer than
-		// necessary.
-		if source.IsCommandLineArguments(string(id)) {
-			if invalidateMetadata, ok := idsToInvalidate[id]; invalidateMetadata && ok {
-				continue
-			}
-		}
-
-		// If all the files we know about in a package have been deleted,
-		// the package is gone and we should no longer try to load it.
-		if m := s.metadata[id]; m != nil {
-			hasFiles := false
-			for _, uri := range s.metadata[id].GoFiles {
-				// For internal tests, we need _test files, not just the normal
-				// ones. External tests only have _test files, but we can check
-				// them anyway.
-				if m.ForTest != "" && !strings.HasSuffix(string(uri), "_test.go") {
-					continue
-				}
-				if _, ok := result.files[uri]; ok {
-					hasFiles = true
-					break
-				}
-			}
-			if !hasFiles {
-				continue
-			}
-		}
-
-		// If the package name of a file in the package has changed, it's
-		// possible that the package ID may no longer exist. Delete it from
-		// the set of workspace packages, on the assumption that we will add it
-		// back when the relevant files are reloaded.
-		if _, ok := changedPkgFiles[id]; ok {
-			continue
-		}
-
-		result.workspacePackages[id] = pkgPath
+	if len(metadataUpdates) > 0 {
+		result.meta = s.meta.Clone(metadataUpdates)
+		result.workspacePackages = computeWorkspacePackages(result.meta)
+	} else {
+		// No metadata changes. Since metadata is only updated by cloning, it is
+		// safe to re-use the existing metadata here.
+		result.meta = s.meta
+		result.workspacePackages = s.workspacePackages
 	}
 
 	// Inherit all of the go.mod-related handles.
@@ -2089,6 +2027,7 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 			result.initializeOnce = &sync.Once{}
 		}
 	}
+	result.dumpWorkspace("clone")
 	return result
 }
 
@@ -2268,7 +2207,7 @@ func metadataChanges(ctx context.Context, lockedSnapshot *snapshot, oldFH, newFH
 // lockedSnapshot must be locked.
 func peekOrParse(ctx context.Context, lockedSnapshot *snapshot, fh source.FileHandle, mode source.ParseMode) (*source.ParsedGoFile, error) {
 	key := parseKey{file: fh.FileIdentity(), mode: mode}
-	if pgh := lockedSnapshot.goFiles[key]; pgh != nil {
+	if pgh := lockedSnapshot.goFiles.get(key); pgh != nil {
 		cached := pgh.handle.Cached(lockedSnapshot.generation)
 		if cached != nil {
 			cached := cached.(*parseGoData)
@@ -2555,4 +2494,90 @@ func readGoSum(dst map[module.Version][]string, file string, data []byte) error 
 		dst[mod] = append(dst[mod], f[2])
 	}
 	return nil
+}
+
+// -- goFileMap --
+
+// A goFileMap is conceptually a map[parseKey]*parseGoHandle,
+// optimized for cloning all or nearly all entries.
+type goFileMap struct {
+	// The map is represented as a map of 256 stripes, one per
+	// distinct value of the top 8 bits of key.file.Hash.
+	// Each stripe has an associated boolean indicating whether it
+	// is shared, and thus immutable, and thus must be copied before any update.
+	// (The bits could be packed but it hasn't been worth it yet.)
+	stripes   [256]map[parseKey]*parseGoHandle
+	exclusive [256]bool // exclusive[i] means stripe[i] is not shared and may be safely mutated
+}
+
+// newGoFileMap returns a new empty goFileMap.
+func newGoFileMap() *goFileMap {
+	return new(goFileMap) // all stripes are shared (non-exclusive) nil maps
+}
+
+// clone returns a copy of m.
+// For concurrency, it counts as an update to m.
+func (m *goFileMap) clone() *goFileMap {
+	m.exclusive = [256]bool{} // original and copy are now nonexclusive
+	copy := *m
+	return &copy
+}
+
+// get returns the value for key k.
+func (m *goFileMap) get(k parseKey) *parseGoHandle {
+	return m.stripes[m.hash(k)][k]
+}
+
+// set updates the value for key k to v.
+func (m *goFileMap) set(k parseKey, v *parseGoHandle) {
+	m.unshare(k)[k] = v
+}
+
+// delete deletes the value for key k, if any.
+func (m *goFileMap) delete(k parseKey) {
+	// TODO(adonovan): opt?: skip unshare if k isn't present.
+	delete(m.unshare(k), k)
+}
+
+// forEachConcurrent calls f for each entry in the map.
+// Calls may be concurrent.
+// f must not modify m.
+func (m *goFileMap) forEachConcurrent(f func(parseKey, *parseGoHandle)) {
+	// Visit stripes in parallel chunks.
+	const p = 16 // concurrency level
+	var wg sync.WaitGroup
+	wg.Add(p)
+	for i := 0; i < p; i++ {
+		chunk := m.stripes[i*p : (i+1)*p]
+		go func() {
+			for _, stripe := range chunk {
+				for k, v := range stripe {
+					f(k, v)
+				}
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+}
+
+// -- internal--
+
+// hash returns 8 bits from the key's file digest.
+func (*goFileMap) hash(k parseKey) byte { return k.file.Hash[0] }
+
+// unshare makes k's stripe exclusive, allocating a copy if needed, and returns it.
+func (m *goFileMap) unshare(k parseKey) map[parseKey]*parseGoHandle {
+	i := m.hash(k)
+	if !m.exclusive[i] {
+		m.exclusive[i] = true
+
+		// Copy the map.
+		copy := make(map[parseKey]*parseGoHandle, len(m.stripes[i]))
+		for k, v := range m.stripes[i] {
+			copy[k] = v
+		}
+		m.stripes[i] = copy
+	}
+	return m.stripes[i]
 }
