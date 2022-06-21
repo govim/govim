@@ -165,7 +165,7 @@ func (v *View) ID() string { return v.id }
 // given go.mod file. It is the caller's responsibility to clean up the files
 // when they are done using them.
 func tempModFile(modFh source.FileHandle, gosum []byte) (tmpURI span.URI, cleanup func(), err error) {
-	filenameHash := hashContents([]byte(modFh.URI().Filename()))
+	filenameHash := source.Hashf("%s", modFh.URI().Filename())
 	tmpMod, err := ioutil.TempFile("", fmt.Sprintf("go.%s.*.mod", filenameHash))
 	if err != nil {
 		return "", nil, err
@@ -671,7 +671,7 @@ func (s *snapshot) loadWorkspace(ctx context.Context, firstAttempt bool) {
 		}
 	case err != nil:
 		event.Error(ctx, "initial workspace load failed", err)
-		extractedDiags, _ := s.extractGoCommandErrors(ctx, err.Error())
+		extractedDiags := s.extractGoCommandErrors(ctx, err)
 		criticalErr = &source.CriticalError{
 			MainError: err,
 			DiagList:  append(modDiagnostics, extractedDiags...),

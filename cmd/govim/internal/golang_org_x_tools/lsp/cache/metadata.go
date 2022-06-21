@@ -43,7 +43,37 @@ type Metadata struct {
 	// IsIntermediateTestVariant reports whether the given package is an
 	// intermediate test variant, e.g.
 	// "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache [github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source.test]".
+	//
+	// Such test variants arise when an x_test package (in this case source_test)
+	// imports a package (in this case cache) that itself imports the the
+	// non-x_test package (in this case source).
+	//
+	// This is done so that the forward transitive closure of source_test has
+	// only one package for the "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source" import.
+	// The intermediate test variant exists to hold the test variant import:
+	//
+	// github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source_test [github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source.test]
+	//  | "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache" -> github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache [github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source.test]
+	//  | "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source" -> github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source [github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source.test]
+	//  | ...
+	//
+	// github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/cache [github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source.test]
+	//  | "github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source" -> github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source [github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source.test]
+	//  | ...
+	//
+	// We filter these variants out in certain places. For example, there is
+	// generally no reason to run diagnostics or analysis on them.
+	//
+	// TODO(rfindley): this can probably just be a method, since it is derived
+	// from other fields.
 	IsIntermediateTestVariant bool
+
+	// HasWorkspaceFiles reports whether m contains any files that are considered
+	// part of the workspace.
+	//
+	// TODO(golang/go#48929): this should be a property of the workspace
+	// (the go.work file), not a constant.
+	HasWorkspaceFiles bool
 }
 
 // Name implements the source.Metadata interface.
@@ -69,6 +99,14 @@ type KnownMetadata struct {
 	// Invalid metadata can still be used if a metadata reload fails.
 	Valid bool
 
+	// PkgFilesChanged reports whether the file set of this metadata has
+	// potentially changed.
+	PkgFilesChanged bool
+
 	// ShouldLoad is true if the given metadata should be reloaded.
+	//
+	// Note that ShouldLoad is different from !Valid: when we try to load a
+	// package, we mark ShouldLoad = false regardless of whether the load
+	// succeeded, to prevent endless loads.
 	ShouldLoad bool
 }

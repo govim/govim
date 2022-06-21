@@ -48,8 +48,8 @@ type Buffer struct {
 	// ASTWait is used to sychronise access to AST and Fset.
 	ASTWait chan bool
 
-	// cc is lazily set whenever position information is required
-	cc *span.TokenConverter
+	// tf is lazily set whenever position information is required
+	tf *token.File
 }
 
 func NewBuffer(num int, name string, contents []byte, loaded bool) *Buffer {
@@ -70,7 +70,7 @@ func (b *Buffer) Contents() []byte {
 // SetContents updates a Buffer's contents to byts
 func (b *Buffer) SetContents(byts []byte) {
 	b.contents = byts
-	b.cc = nil
+	b.tf = nil
 }
 
 // URI returns the b's Name as a span.URI, assuming it is a file.
@@ -87,18 +87,18 @@ func (b *Buffer) ToTextDocumentIdentifier() protocol.TextDocumentIdentifier {
 	}
 }
 
-func (b *Buffer) tokenConvertor() *span.TokenConverter {
-	if b.cc == nil {
-		b.cc = span.NewContentConverter(b.Name, b.contents)
+func (b *Buffer) tokFile() *token.File {
+	if b.tf == nil {
+		b.tf = span.NewTokenFile(b.Name, b.contents)
 	}
-	return b.cc
+	return b.tf
 }
 
 // Line returns the 1-indexed line contents of b
 func (b *Buffer) Line(n int) (string, error) {
 	// TODO: this is inefficient because we are splitting the contents of
 	// the buffer again... even thought this may already have been done
-	// in the content converter, b.cc
+	// in the token file, b.tf
 	lines := bytes.Split(b.Contents(), []byte("\n"))
 	if n >= len(lines) {
 		return "", fmt.Errorf("line %v is beyond the end of the buffer (no. of lines %v)", n, len(lines))
