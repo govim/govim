@@ -7,7 +7,7 @@ import (
 )
 
 func (g *govimImpl) handleChannelError(ch unscheduledCallback, err error, format string, args ...interface{}) error {
-	_, err = g.handleChannelValueAndError(ch, err, format, args)
+	_, err = g.handleChannelValueAndError(ch, err, format, args...)
 	return err
 }
 
