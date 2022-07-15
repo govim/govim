@@ -66,9 +66,6 @@ type Runner struct {
 	mu        sync.Mutex
 	ts        *servertest.TCPServer
 	socketDir string
-	// closers is a queue of clean-up functions to run at the end of the entire
-	// test suite.
-	closers []io.Closer
 }
 
 type runConfig struct {
@@ -136,17 +133,27 @@ func Options(hook func(*source.Options)) RunOption {
 	})
 }
 
-func SendPID() RunOption {
+// WindowsLineEndings configures the editor to use windows line endings.
+func WindowsLineEndings() RunOption {
 	return optionSetter(func(opts *runConfig) {
-		opts.editor.SendPID = true
+		opts.editor.WindowsLineEndings = true
 	})
 }
 
-// EditorConfig is a RunOption option that configured the regtest editor.
-type EditorConfig fake.EditorConfig
+// Settings is a RunOption that sets user-provided configuration for the LSP
+// server.
+//
+// As a special case, the env setting must not be provided via Settings: use
+// EnvVars instead.
+type Settings map[string]interface{}
 
-func (c EditorConfig) set(opts *runConfig) {
-	opts.editor = fake.EditorConfig(c)
+func (s Settings) set(opts *runConfig) {
+	if opts.editor.Settings == nil {
+		opts.editor.Settings = make(map[string]interface{})
+	}
+	for k, v := range s {
+		opts.editor.Settings[k] = v
+	}
 }
 
 // WorkspaceFolders configures the workdir-relative workspace folders to send
@@ -161,6 +168,20 @@ func WorkspaceFolders(relFolders ...string) RunOption {
 	return optionSetter(func(opts *runConfig) {
 		opts.editor.WorkspaceFolders = relFolders
 	})
+}
+
+// EnvVars sets environment variables for the LSP session. When applying these
+// variables to the session, the special string $SANDBOX_WORKDIR is replaced by
+// the absolute path to the sandbox working directory.
+type EnvVars map[string]string
+
+func (e EnvVars) set(opts *runConfig) {
+	if opts.editor.Env == nil {
+		opts.editor.Env = make(map[string]string)
+	}
+	for k, v := range e {
+		opts.editor.Env[k] = v
+	}
 }
 
 // InGOPATH configures the workspace working directory to be GOPATH, rather
@@ -215,19 +236,14 @@ func GOPROXY(goproxy string) RunOption {
 	})
 }
 
-// LimitWorkspaceScope sets the LimitWorkspaceScope configuration.
-func LimitWorkspaceScope() RunOption {
-	return optionSetter(func(opts *runConfig) {
-		opts.editor.LimitWorkspaceScope = true
-	})
-}
-
 type TestFunc func(t *testing.T, env *Env)
 
 // Run executes the test function in the default configured gopls execution
 // modes. For each a test run, a new workspace is created containing the
 // un-txtared files specified by filedata.
 func (r *Runner) Run(t *testing.T, files string, test TestFunc, opts ...RunOption) {
+	// TODO(rfindley): this function has gotten overly complicated, and warrants
+	// refactoring.
 	t.Helper()
 	checkBuilder(t)
 
@@ -259,6 +275,10 @@ func (r *Runner) Run(t *testing.T, files string, test TestFunc, opts ...RunOptio
 		}
 
 		t.Run(tc.name, func(t *testing.T) {
+			// TODO(rfindley): once jsonrpc2 shutdown is fixed, we should not leak
+			// goroutines in this test function.
+			// stacktest.NoLeak(t)
+
 			ctx := context.Background()
 			if r.Timeout != 0 && !config.noDefaultTimeout {
 				var cancel context.CancelFunc
@@ -282,6 +302,7 @@ func (r *Runner) Run(t *testing.T, files string, test TestFunc, opts ...RunOptio
 			if err := os.MkdirAll(rootDir, 0755); err != nil {
 				t.Fatal(err)
 			}
+
 			files := fake.UnpackTxt(files)
 			if config.editor.WindowsLineEndings {
 				for name, data := range files {
@@ -294,13 +315,14 @@ func (r *Runner) Run(t *testing.T, files string, test TestFunc, opts ...RunOptio
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Deferring the closure of ws until the end of the entire test suite
-			// has, in testing, given the LSP server time to properly shutdown and
-			// release any file locks held in workspace, which is a problem on
-			// Windows. This may still be flaky however, and in the future we need a
-			// better solution to ensure that all Go processes started by gopls have
-			// exited before we clean up.
-			r.AddCloser(sandbox)
+			defer func() {
+				if !r.SkipCleanup {
+					if err := sandbox.Close(); err != nil {
+						pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
+						t.Errorf("closing the sandbox: %v", err)
+					}
+				}
+			}()
 			ss := tc.getServer(t, config.optionsHook)
 			framer := jsonrpc2.NewRawStream
 			ls := &loggingFramer{}
@@ -322,6 +344,7 @@ func (r *Runner) Run(t *testing.T, files string, test TestFunc, opts ...RunOptio
 				closeCtx, cancel := context.WithTimeout(xcontext.Detach(ctx), 5*time.Second)
 				defer cancel()
 				if err := env.Editor.Close(closeCtx); err != nil {
+					pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
 					t.Errorf("closing editor: %v", err)
 				}
 			}()
@@ -493,14 +516,6 @@ func (r *Runner) getRemoteSocket(t *testing.T) string {
 	return socket
 }
 
-// AddCloser schedules a closer to be closed at the end of the test run. This
-// is useful for Windows in particular, as
-func (r *Runner) AddCloser(closer io.Closer) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.closers = append(r.closers, closer)
-}
-
 // Close cleans up resource that have been allocated to this workspace.
 func (r *Runner) Close() error {
 	r.mu.Lock()
@@ -518,11 +533,6 @@ func (r *Runner) Close() error {
 		}
 	}
 	if !r.SkipCleanup {
-		for _, closer := range r.closers {
-			if err := closer.Close(); err != nil {
-				errmsgs = append(errmsgs, err.Error())
-			}
-		}
 		if err := os.RemoveAll(r.TempDir); err != nil {
 			errmsgs = append(errmsgs, err.Error())
 		}
