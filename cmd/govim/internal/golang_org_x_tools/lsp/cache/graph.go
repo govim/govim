@@ -24,14 +24,18 @@ type metadataGraph struct {
 	// importedBy maps package IDs to the list of packages that import them.
 	importedBy map[PackageID][]PackageID
 
-	// ids maps file URIs to package IDs. A single file may belong to multiple
-	// packages due to tests packages.
+	// ids maps file URIs to package IDs, sorted by (!valid, cli, packageID).
+	// A single file may belong to multiple packages due to tests packages.
 	ids map[span.URI][]PackageID
 }
 
 // Clone creates a new metadataGraph, applying the given updates to the
 // receiver.
 func (g *metadataGraph) Clone(updates map[PackageID]*KnownMetadata) *metadataGraph {
+	if len(updates) == 0 {
+		// Optimization: since the graph is immutable, we can return the receiver.
+		return g
+	}
 	result := &metadataGraph{metadata: make(map[PackageID]*KnownMetadata, len(g.metadata))}
 	// Copy metadata.
 	for id, m := range g.metadata {
@@ -85,21 +89,21 @@ func (g *metadataGraph) build() {
 	// 4: an invalid command-line-arguments package
 	for uri, ids := range g.ids {
 		sort.Slice(ids, func(i, j int) bool {
-			// Sort valid packages first.
+			// 1. valid packages appear earlier.
 			validi := g.metadata[ids[i]].Valid
 			validj := g.metadata[ids[j]].Valid
 			if validi != validj {
 				return validi
 			}
 
+			// 2. command-line-args packages appear later.
 			cli := source.IsCommandLineArguments(string(ids[i]))
 			clj := source.IsCommandLineArguments(string(ids[j]))
-			if cli && !clj {
-				return false
+			if cli != clj {
+				return clj
 			}
-			if !cli && clj {
-				return true
-			}
+
+			// 3. packages appear in name order.
 			return ids[i] < ids[j]
 		})
 
@@ -153,19 +157,4 @@ func (g *metadataGraph) reverseTransitiveClosure(includeInvalid bool, ids ...Pac
 	}
 	visitAll(ids)
 	return seen
-}
-
-func collectReverseTransitiveClosure(g *metadataGraph, includeInvalid bool, ids []PackageID, seen map[PackageID]struct{}) {
-	for _, id := range ids {
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		m := g.metadata[id]
-		// Only use invalid metadata if we support it.
-		if m == nil || !(m.Valid || includeInvalid) {
-			continue
-		}
-		seen[id] = struct{}{}
-		collectReverseTransitiveClosure(g, includeInvalid, g.importedBy[id], seen)
-	}
 }

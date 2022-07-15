@@ -15,11 +15,11 @@ require (
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	golang.org/x/sys v0.0.0-20220209214540-3681064d5158
 	golang.org/x/text v0.3.7
-	golang.org/x/tools v0.1.12-0.20220627194214-7404bd2ffdbc
-	golang.org/x/tools/gopls v0.0.0-20220627194214-7404bd2ffdbc
+	golang.org/x/tools v0.1.12-0.20220714014739-db8f89b39777
+	golang.org/x/tools/gopls v0.0.0-20220714014739-db8f89b39777
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
-	honnef.co/go/tools v0.3.0
+	honnef.co/go/tools v0.3.2
 )
 
 require (

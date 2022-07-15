@@ -16,6 +16,7 @@ import (
 	"strconv"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -48,6 +49,7 @@ func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Posit
 		return nil, err
 	}
 
+	packageName := pgf.File.Name.Name // from package decl
 	packageNameStart, err := safetoken.Offset(pgf.Tok, pgf.File.Name.Pos())
 	if err != nil {
 		return nil, err
@@ -75,8 +77,8 @@ func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Posit
 				for _, imp := range f.File.Imports {
 					if path, err := strconv.Unquote(imp.Path.Value); err == nil && path == renamingPkg.PkgPath() {
 						refs = append(refs, &ReferenceInfo{
-							Name:        pgf.File.Name.Name,
-							MappedRange: NewMappedRange(s.FileSet(), f.Mapper, imp.Pos(), imp.End()),
+							Name:        packageName,
+							MappedRange: NewMappedRange(f.Tok, f.Mapper, imp.Pos(), imp.End()),
 						})
 					}
 				}
@@ -86,8 +88,8 @@ func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Posit
 		// Find internal references to the package within the package itself
 		for _, f := range renamingPkg.CompiledGoFiles() {
 			refs = append(refs, &ReferenceInfo{
-				Name:        pgf.File.Name.Name,
-				MappedRange: NewMappedRange(s.FileSet(), f.Mapper, f.File.Name.Pos(), f.File.Name.End()),
+				Name:        packageName,
+				MappedRange: NewMappedRange(f.Tok, f.Mapper, f.File.Name.Pos(), f.File.Name.End()),
 			})
 		}
 
@@ -126,7 +128,7 @@ func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Posit
 func references(ctx context.Context, snapshot Snapshot, qos []qualifiedObject, includeDeclaration, includeInterfaceRefs, includeEmbeddedRefs bool) ([]*ReferenceInfo, error) {
 	var (
 		references []*ReferenceInfo
-		seen       = make(map[token.Pos]bool)
+		seen       = make(map[positionKey]bool)
 	)
 
 	pos := qos[0].obj.Pos()
@@ -188,10 +190,15 @@ func references(ctx context.Context, snapshot Snapshot, qos []qualifiedObject, i
 						continue
 					}
 				}
-				if seen[ident.Pos()] {
+				key, found := packagePositionKey(pkg, ident.Pos())
+				if !found {
+					bug.Reportf("ident %v (pos: %v) not found in package %v", ident.Name, ident.Pos(), pkg.Name())
 					continue
 				}
-				seen[ident.Pos()] = true
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
 				rng, err := posToMappedRange(snapshot, pkg, ident.Pos(), ident.End())
 				if err != nil {
 					return nil, err

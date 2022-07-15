@@ -16,6 +16,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/progress"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/persistent"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/xcontext"
 )
@@ -164,7 +165,7 @@ func (s *Session) NewView(ctx context.Context, name string, folder span.URI, opt
 	}
 	view, snapshot, release, err := s.createView(ctx, name, folder, options, 0)
 	if err != nil {
-		return nil, nil, func() {}, err
+		return nil, nil, nil, err
 	}
 	s.views = append(s.views, view)
 	// we always need to drop the view map
@@ -225,38 +226,46 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 		},
 	}
 	v.snapshot = &snapshot{
-		id:                snapshotID,
-		view:              v,
-		backgroundCtx:     backgroundCtx,
-		cancel:            cancel,
-		initializeOnce:    &sync.Once{},
-		generation:        s.cache.store.Generation(generationName(v, 0)),
-		packages:          make(map[packageKey]*packageHandle),
-		meta:              &metadataGraph{},
-		files:             newFilesMap(),
-		goFiles:           newGoFilesMap(),
-		parseKeysByURI:    newParseKeysByURIMap(),
-		symbols:           make(map[span.URI]*symbolHandle),
-		actions:           make(map[actionKey]*actionHandle),
-		workspacePackages: make(map[PackageID]PackagePath),
-		unloadableFiles:   make(map[span.URI]struct{}),
-		parseModHandles:   make(map[span.URI]*parseModHandle),
-		parseWorkHandles:  make(map[span.URI]*parseWorkHandle),
-		modTidyHandles:    make(map[span.URI]*modTidyHandle),
-		modWhyHandles:     make(map[span.URI]*modWhyHandle),
-		workspace:         workspace,
+		id:                   snapshotID,
+		view:                 v,
+		backgroundCtx:        backgroundCtx,
+		cancel:               cancel,
+		initializeOnce:       &sync.Once{},
+		store:                &s.cache.store,
+		packages:             persistent.NewMap(packageKeyLessInterface),
+		meta:                 &metadataGraph{},
+		files:                newFilesMap(),
+		isActivePackageCache: newIsActivePackageCacheMap(),
+		parsedGoFiles:        persistent.NewMap(parseKeyLessInterface),
+		parseKeysByURI:       newParseKeysByURIMap(),
+		symbolizeHandles:     persistent.NewMap(uriLessInterface),
+		actions:              persistent.NewMap(actionKeyLessInterface),
+		workspacePackages:    make(map[PackageID]PackagePath),
+		unloadableFiles:      make(map[span.URI]struct{}),
+		parseModHandles:      persistent.NewMap(uriLessInterface),
+		parseWorkHandles:     persistent.NewMap(uriLessInterface),
+		modTidyHandles:       persistent.NewMap(uriLessInterface),
+		modWhyHandles:        persistent.NewMap(uriLessInterface),
+		knownSubdirs:         newKnownDirsSet(),
+		workspace:            workspace,
 	}
+	// Save one reference in the view.
+	v.releaseSnapshot = v.snapshot.Acquire()
 
 	// Initialize the view without blocking.
 	initCtx, initCancel := context.WithCancel(xcontext.Detach(ctx))
 	v.initCancelFirstAttempt = initCancel
 	snapshot := v.snapshot
-	release := snapshot.generation.Acquire()
+
+	// Pass a second reference to the background goroutine.
+	bgRelease := snapshot.Acquire()
 	go func() {
-		defer release()
+		defer bgRelease()
 		snapshot.initialize(initCtx, true)
 	}()
-	return v, snapshot, snapshot.generation.Acquire(), nil
+
+	// Return a third reference to the caller.
+	return v, snapshot, snapshot.Acquire(), nil
 }
 
 // View returns the view by name.
@@ -290,19 +299,6 @@ func (s *Session) viewOf(uri span.URI) (*View, error) {
 	}
 	s.viewMap[uri] = bestViewForURI(uri, s.views)
 	return s.viewMap[uri], nil
-}
-
-func (s *Session) viewsOf(uri span.URI) []*View {
-	s.viewMu.RLock()
-	defer s.viewMu.RUnlock()
-
-	var views []*View
-	for _, view := range s.views {
-		if source.InDir(view.folder.Filename(), uri.Filename()) {
-			views = append(views, view)
-		}
-	}
-	return views
 }
 
 func (s *Session) Views() []source.View {
@@ -408,10 +404,8 @@ func (s *Session) dropView(ctx context.Context, v *View) (int, error) {
 }
 
 func (s *Session) ModifyFiles(ctx context.Context, changes []source.FileModification) error {
-	_, releases, err := s.DidModifyFiles(ctx, changes)
-	for _, release := range releases {
-		release()
-	}
+	_, release, err := s.DidModifyFiles(ctx, changes)
+	release()
 	return err
 }
 
@@ -426,7 +420,7 @@ type fileChange struct {
 	isUnchanged bool
 }
 
-func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModification) (map[source.Snapshot][]span.URI, []func(), error) {
+func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModification) (map[source.Snapshot][]span.URI, func(), error) {
 	s.viewMu.RLock()
 	defer s.viewMu.RUnlock()
 	views := make(map[*View]map[span.URI]*fileChange)
@@ -507,6 +501,14 @@ func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModif
 		viewToSnapshot[view] = snapshot
 	}
 
+	// The release function is called when the
+	// returned URIs no longer need to be valid.
+	release := func() {
+		for _, release := range releases {
+			release()
+		}
+	}
+
 	// We only want to diagnose each changed file once, in the view to which
 	// it "most" belongs. We do this by picking the best view for each URI,
 	// and then aggregating the set of snapshots and their URIs (to avoid
@@ -524,7 +526,8 @@ func (s *Session) DidModifyFiles(ctx context.Context, changes []source.FileModif
 		}
 		snapshotURIs[snapshot] = append(snapshotURIs[snapshot], mod.URI)
 	}
-	return snapshotURIs, releases, nil
+
+	return snapshotURIs, release, nil
 }
 
 func (s *Session) ExpandModificationsToDirectories(ctx context.Context, changes []source.FileModification) []source.FileModification {
@@ -536,10 +539,14 @@ func (s *Session) ExpandModificationsToDirectories(ctx context.Context, changes 
 		defer release()
 		snapshots = append(snapshots, snapshot)
 	}
+	// TODO(adonovan): opt: release lock here.
+
 	knownDirs := knownDirectories(ctx, snapshots)
+	defer knownDirs.Destroy()
+
 	var result []source.FileModification
 	for _, c := range changes {
-		if _, ok := knownDirs[c.URI]; !ok {
+		if !knownDirs.Contains(c.URI) {
 			result = append(result, c)
 			continue
 		}
@@ -561,16 +568,17 @@ func (s *Session) ExpandModificationsToDirectories(ctx context.Context, changes 
 
 // knownDirectories returns all of the directories known to the given
 // snapshots, including workspace directories and their subdirectories.
-func knownDirectories(ctx context.Context, snapshots []*snapshot) map[span.URI]struct{} {
-	result := map[span.URI]struct{}{}
+// It is responsibility of the caller to destroy the returned set.
+func knownDirectories(ctx context.Context, snapshots []*snapshot) knownDirsSet {
+	result := newKnownDirsSet()
 	for _, snapshot := range snapshots {
 		dirs := snapshot.workspace.dirs(ctx, snapshot)
 		for _, dir := range dirs {
-			result[dir] = struct{}{}
+			result.Insert(dir)
 		}
-		for _, dir := range snapshot.getKnownSubdirs(dirs) {
-			result[dir] = struct{}{}
-		}
+		knownSubdirs := snapshot.getKnownSubdirs(dirs)
+		result.SetAll(knownSubdirs)
+		knownSubdirs.Destroy()
 	}
 	return result
 }
