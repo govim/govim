@@ -7,7 +7,9 @@ package cache
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -180,21 +182,32 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 		s.cache.options(options)
 	}
 
-	// Set the module-specific information.
-	ws, err := s.getWorkspaceInformation(ctx, folder, options)
+	// Get immutable workspace configuration.
+	//
+	// TODO(rfindley): this info isn't actually immutable. For example, GOWORK
+	// could be changed, or a user's environment could be modified.
+	// We need a mechanism to invalidate it.
+	wsInfo, err := s.getWorkspaceInformation(ctx, folder, options)
 	if err != nil {
 		return nil, nil, func() {}, err
 	}
+
 	root := folder
 	if options.ExpandWorkspaceToModule {
-		root, err = findWorkspaceRoot(ctx, root, s, pathExcludedByFilterFunc(root.Filename(), ws.gomodcache, options), options.ExperimentalWorkspaceModule)
+		root, err = findWorkspaceRoot(ctx, root, s, pathExcludedByFilterFunc(root.Filename(), wsInfo.gomodcache, options), options.ExperimentalWorkspaceModule)
 		if err != nil {
 			return nil, nil, func() {}, err
 		}
 	}
 
+	explicitGowork := os.Getenv("GOWORK")
+	if v, ok := options.Env["GOWORK"]; ok {
+		explicitGowork = v
+	}
+	goworkURI := span.URIFromPath(explicitGowork)
+
 	// Build the gopls workspace, collecting active modules in the view.
-	workspace, err := newWorkspace(ctx, root, s, pathExcludedByFilterFunc(root.Filename(), ws.gomodcache, options), ws.userGo111Module == off, options.ExperimentalWorkspaceModule)
+	workspace, err := newWorkspace(ctx, root, goworkURI, s, pathExcludedByFilterFunc(root.Filename(), wsInfo.gomodcache, options), wsInfo.userGo111Module == off, options.ExperimentalWorkspaceModule)
 	if err != nil {
 		return nil, nil, func() {}, err
 	}
@@ -217,12 +230,24 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 		filesByURI:           map[span.URI]*fileBase{},
 		filesByBase:          map[string][]*fileBase{},
 		rootURI:              root,
-		workspaceInformation: *ws,
+		explicitGowork:       goworkURI,
+		workspaceInformation: *wsInfo,
 	}
 	v.importsState = &importsState{
 		ctx: backgroundCtx,
 		processEnv: &imports.ProcessEnv{
 			GocmdRunner: s.gocmdRunner,
+			SkipPathInScan: func(dir string) bool {
+				prefix := strings.TrimSuffix(string(v.folder), "/") + "/"
+				uri := strings.TrimSuffix(string(span.URIFromPath(dir)), "/")
+				if !strings.HasPrefix(uri+"/", prefix) {
+					return false
+				}
+				filterer := source.NewFilterer(options.DirectoryFilters)
+				rel := strings.TrimPrefix(uri, prefix)
+				disallow := filterer.Disallow(rel)
+				return disallow
+			},
 		},
 	}
 	v.snapshot = &snapshot{
@@ -230,8 +255,7 @@ func (s *Session) createView(ctx context.Context, name string, folder span.URI, 
 		view:                 v,
 		backgroundCtx:        backgroundCtx,
 		cancel:               cancel,
-		initializeOnce:       &sync.Once{},
-		store:                &s.cache.store,
+		store:                s.cache.store,
 		packages:             persistent.NewMap(packageKeyLessInterface),
 		meta:                 &metadataGraph{},
 		files:                newFilesMap(),
@@ -409,6 +433,8 @@ func (s *Session) ModifyFiles(ctx context.Context, changes []source.FileModifica
 	return err
 }
 
+// TODO(rfindley): fileChange seems redundant with source.FileModification.
+// De-dupe into a common representation for changes.
 type fileChange struct {
 	content    []byte
 	exists     bool

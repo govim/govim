@@ -49,6 +49,29 @@ type PrepareItem struct {
 // the prepare fails. Probably we could eliminate the redundancy in returning
 // two errors, but for now this is done defensively.
 func PrepareRename(ctx context.Context, snapshot Snapshot, f FileHandle, pp protocol.Position) (_ *PrepareItem, usererr, err error) {
+	fileRenameSupported := false
+	for _, op := range snapshot.View().Options().SupportedResourceOperations {
+		if op == protocol.Rename {
+			fileRenameSupported = true
+			break
+		}
+	}
+
+	// Find position of the package name declaration
+	pgf, err := snapshot.ParseGo(ctx, f, ParseFull)
+	if err != nil {
+		return nil, err, err
+	}
+	inPackageName, err := isInPackageName(ctx, snapshot, f, pgf, pp)
+	if err != nil {
+		return nil, err, err
+	}
+
+	if inPackageName && !fileRenameSupported {
+		err := errors.New("can't rename packages: LSP client does not support file renaming")
+		return nil, err, err
+	}
+
 	ctx, done := event.Start(ctx, "source.PrepareRename")
 	defer done()
 
@@ -94,6 +117,41 @@ func checkRenamable(obj types.Object) error {
 func Rename(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Position, newName string) (map[span.URI][]protocol.TextEdit, error) {
 	ctx, done := event.Start(ctx, "source.Rename")
 	defer done()
+
+	pgf, err := s.ParseGo(ctx, f, ParseFull)
+	if err != nil {
+		return nil, err
+	}
+	inPackageName, err := isInPackageName(ctx, s, f, pgf, pp)
+	if err != nil {
+		return nil, err
+	}
+
+	if inPackageName {
+		renamingPkg, err := s.PackageForFile(ctx, f.URI(), TypecheckAll, NarrowestPackage)
+		if err != nil {
+			return nil, err
+		}
+
+		result := make(map[span.URI][]protocol.TextEdit)
+		// Rename internal references to the package in the renaming package
+		// Todo(dle): need more investigation on case when pkg.GoFiles != pkg.CompiledGoFiles if using cgo.
+		for _, f := range renamingPkg.CompiledGoFiles() {
+			pkgNameMappedRange := NewMappedRange(f.Tok, f.Mapper, f.File.Name.Pos(), f.File.Name.End())
+			rng, err := pkgNameMappedRange.Range()
+			if err != nil {
+				return nil, err
+			}
+			result[f.URI] = []protocol.TextEdit{
+				{
+					Range:   rng,
+					NewText: newName,
+				},
+			}
+		}
+
+		return result, nil
+	}
 
 	qos, err := qualifiedObjsAtProtocolPos(ctx, s, f.URI(), pp)
 	if err != nil {
@@ -159,6 +217,7 @@ func Rename(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Position,
 	if err != nil {
 		return nil, err
 	}
+
 	result := make(map[span.URI][]protocol.TextEdit)
 	for uri, edits := range changes {
 		// These edits should really be associated with FileHandles for maximal correctness.

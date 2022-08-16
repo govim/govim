@@ -7,7 +7,6 @@ package cache
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -41,24 +40,10 @@ func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interf
 	var query []string
 	var containsDir bool // for logging
 
-	// Unless the context was canceled, set "shouldLoad" to false for all
-	// of the metadata we attempted to load.
-	defer func() {
-		if errors.Is(err, context.Canceled) {
-			return
-		}
-		// TODO(rfindley): merge these metadata updates with the updates below, to
-		// avoid updating the graph twice.
-		s.clearShouldLoad(scopes...)
-	}()
-
 	// Keep track of module query -> module path so that we can later correlate query
 	// errors with errors.
 	moduleQueries := make(map[string]string)
 	for _, scope := range scopes {
-		if !s.shouldLoad(scope) {
-			continue
-		}
 		switch scope := scope.(type) {
 		case PackagePath:
 			if source.IsCommandLineArguments(string(scope)) {
@@ -108,9 +93,7 @@ func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interf
 
 	if s.view.Options().VerboseWorkDoneProgress {
 		work := s.view.session.progress.Start(ctx, "Load", fmt.Sprintf("Loading query=%s", query), nil, nil)
-		defer func() {
-			work.End(ctx, "Done.")
-		}()
+		defer work.End(ctx, "Done.")
 	}
 
 	ctx, done := event.Start(ctx, "cache.view.load", tag.Query.Of(query))
@@ -156,6 +139,7 @@ func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interf
 	}
 
 	moduleErrs := make(map[string][]packages.Error) // module path -> errors
+	filterer := buildFilterer(s.view.rootURI.Filename(), s.view.gomodcache, s.view.Options())
 	newMetadata := make(map[PackageID]*KnownMetadata)
 	for _, pkg := range pkgs {
 		// The Go command returns synthetic list results for module queries that
@@ -201,7 +185,7 @@ func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interf
 		//
 		// TODO(rfindley): why exclude metadata arbitrarily here? It should be safe
 		// to capture all metadata.
-		if s.view.allFilesExcluded(pkg) {
+		if s.view.allFilesExcluded(pkg, filterer) {
 			continue
 		}
 		if err := buildMetadata(ctx, PackagePath(pkg.PkgPath), pkg, cfg, query, newMetadata, nil); err != nil {
@@ -255,14 +239,13 @@ func (s *snapshot) load(ctx context.Context, allowNetwork bool, scopes ...interf
 	s.dumpWorkspace("load")
 	s.mu.Unlock()
 
-	// Rebuild the workspace package handle for any packages we invalidated.
+	// Recompute the workspace package handle for any packages we invalidated.
 	//
-	// TODO(rfindley): what's the point of returning an error here? Probably we
-	// can simply remove this step: The package handle will be rebuilt as needed.
+	// This is (putatively) an optimization since handle
+	// construction prefetches the content of all Go source files.
+	// It is safe to ignore errors, or omit this step entirely.
 	for _, m := range updates {
-		if _, err := s.buildPackageHandle(ctx, m.ID, s.workspaceParseMode(m.ID)); err != nil {
-			return err
-		}
+		s.buildPackageHandle(ctx, m.ID, s.workspaceParseMode(m.ID)) // ignore error
 	}
 
 	if len(moduleErrs) > 0 {
@@ -297,15 +280,20 @@ func (m *moduleErrorMap) Error() string {
 // workspaceLayoutErrors returns a diagnostic for every open file, as well as
 // an error message if there are no open files.
 func (s *snapshot) workspaceLayoutError(ctx context.Context) *source.CriticalError {
+	// TODO(rfindley): do we really not want to show a critical error if the user
+	// has no go.mod files?
 	if len(s.workspace.getKnownModFiles()) == 0 {
 		return nil
 	}
+
+	// TODO(rfindley): both of the checks below should be delegated to the workspace.
 	if s.view.userGo111Module == off {
 		return nil
 	}
 	if s.workspace.moduleSource != legacyWorkspace {
 		return nil
 	}
+
 	// If the user has one module per view, there is nothing to warn about.
 	if s.ValidBuildConfiguration() && len(s.workspace.getKnownModFiles()) == 1 {
 		return nil
@@ -319,13 +307,24 @@ func (s *snapshot) workspaceLayoutError(ctx context.Context) *source.CriticalErr
 	// that the user has opened a directory that contains multiple modules.
 	// Check for that an warn about it.
 	if !s.ValidBuildConfiguration() {
-		msg := `gopls requires a module at the root of your workspace.
-You can work with multiple modules by opening each one as a workspace folder.
-Improvements to this workflow will be coming soon, and you can learn more here:
+		var msg string
+		if s.view.goversion >= 18 {
+			msg = `gopls was not able to find modules in your workspace.
+When outside of GOPATH, gopls needs to know which modules you are working on.
+You can fix this by opening your workspace to a folder inside a Go module, or
+by using a go.work file to specify multiple modules.
+See the documentation for more information on setting up your workspace:
 https://github.com/golang/tools/blob/master/gopls/doc/workspace.md.`
+		} else {
+			msg = `gopls requires a module at the root of your workspace.
+You can work with multiple modules by upgrading to Go 1.18 or later, and using
+go workspaces (go.work files).
+See the documentation for more information on setting up your workspace:
+https://github.com/golang/tools/blob/master/gopls/doc/workspace.md.`
+		}
 		return &source.CriticalError{
-			MainError: fmt.Errorf(msg),
-			DiagList:  s.applyCriticalErrorToFiles(ctx, msg, openFiles),
+			MainError:   fmt.Errorf(msg),
+			Diagnostics: s.applyCriticalErrorToFiles(ctx, msg, openFiles),
 		}
 	}
 
@@ -363,7 +362,7 @@ You can learn more here: https://github.com/golang/tools/blob/master/gopls/doc/w
 				MainError: fmt.Errorf(`You are working in a nested module.
 Please open it as a separate workspace folder. Learn more:
 https://github.com/golang/tools/blob/master/gopls/doc/workspace.md.`),
-				DiagList: srcDiags,
+				Diagnostics: srcDiags,
 			}
 		}
 	}
@@ -378,9 +377,12 @@ func (s *snapshot) applyCriticalErrorToFiles(ctx context.Context, msg string, fi
 		switch s.view.FileKind(fh) {
 		case source.Go:
 			if pgf, err := s.ParseGo(ctx, fh, source.ParseHeader); err == nil {
-				pkgDecl := span.NewRange(pgf.Tok, pgf.File.Package, pgf.File.Name.End())
-				if spn, err := pkgDecl.Span(); err == nil {
-					rng, _ = pgf.Mapper.Range(spn)
+				// Check that we have a valid `package foo` range to use for positioning the error.
+				if pgf.File.Package.IsValid() && pgf.File.Name != nil && pgf.File.Name.End().IsValid() {
+					pkgDecl := span.NewRange(pgf.Tok, pgf.File.Package, pgf.File.Name.End())
+					if spn, err := pkgDecl.Span(); err == nil {
+						rng, _ = pgf.Mapper.Range(spn)
+					}
 				}
 			}
 		case source.Mod:
@@ -581,10 +583,11 @@ func containsPackageLocked(s *snapshot, m *Metadata) bool {
 			uris[uri] = struct{}{}
 		}
 
+		filterFunc := s.view.filterFunc()
 		for uri := range uris {
 			// Don't use view.contains here. go.work files may include modules
 			// outside of the workspace folder.
-			if !strings.Contains(string(uri), "/vendor/") && !s.view.filters(uri) {
+			if !strings.Contains(string(uri), "/vendor/") && !filterFunc(uri) {
 				return true
 			}
 		}
@@ -648,17 +651,13 @@ func containsFileInWorkspaceLocked(s *snapshot, m *Metadata) bool {
 func computeWorkspacePackagesLocked(s *snapshot, meta *metadataGraph) map[PackageID]PackagePath {
 	workspacePackages := make(map[PackageID]PackagePath)
 	for _, m := range meta.metadata {
-		if !containsPackageLocked(s, m.Metadata) {
+		// Don't consider invalid packages to be workspace packages. Doing so can
+		// result in type-checking and diagnosing packages that no longer exist,
+		// which can lead to memory leaks and confusing errors.
+		if !m.Valid {
 			continue
 		}
-		if m.PkgFilesChanged {
-			// If a package name has changed, it's possible that the package no
-			// longer exists. Leaving it as a workspace package can result in
-			// persistent stale diagnostics.
-			//
-			// If there are still valid files in the package, it will be reloaded.
-			//
-			// There may be more precise heuristics.
+		if !containsPackageLocked(s, m.Metadata) {
 			continue
 		}
 
