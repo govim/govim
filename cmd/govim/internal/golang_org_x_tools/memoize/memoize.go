@@ -65,6 +65,10 @@ type RefCounted interface {
 type Promise struct {
 	debug string // for observability
 
+	// refcount is the reference count in the containing Store, used by
+	// Store.Promise. It is guarded by Store.promisesMu on the containing Store.
+	refcount int32
+
 	mu sync.Mutex
 
 	// A Promise starts out IDLE, waiting for something to demand
@@ -91,8 +95,6 @@ type Promise struct {
 	function Function
 	// value is set in completed state.
 	value interface{}
-
-	refcount int32 // accessed using atomic load/store
 }
 
 // NewPromise returns a promise for the future result of calling the
@@ -236,20 +238,44 @@ func (p *Promise) wait(ctx context.Context) (interface{}, error) {
 	}
 }
 
+// An EvictionPolicy controls the eviction behavior of keys in a Store when
+// they no longer have any references.
+type EvictionPolicy int
+
+const (
+	// ImmediatelyEvict evicts keys as soon as they no longer have references.
+	ImmediatelyEvict EvictionPolicy = iota
+
+	// NeverEvict does not evict keys.
+	NeverEvict
+)
+
 // A Store maps arbitrary keys to reference-counted promises.
+//
+// The zero value is a valid Store, though a store may also be created via
+// NewStore if a custom EvictionPolicy is required.
 type Store struct {
+	evictionPolicy EvictionPolicy
+
 	promisesMu sync.Mutex
 	promises   map[interface{}]*Promise
+}
+
+// NewStore creates a new store with the given eviction policy.
+func NewStore(policy EvictionPolicy) *Store {
+	return &Store{evictionPolicy: policy}
 }
 
 // Promise returns a reference-counted promise for the future result of
 // calling the specified function.
 //
-// Calls to Promise with the same key return the same promise,
-// incrementing its reference count.  The caller must call the
-// returned function to decrement the promise's reference count when
-// it is no longer needed. Once the last reference has been released,
-// the promise is removed from the store.
+// Calls to Promise with the same key return the same promise, incrementing its
+// reference count.  The caller must call the returned function to decrement
+// the promise's reference count when it is no longer needed. The returned
+// function must not be called more than once.
+//
+// Once the last reference has been released, the promise is removed from the
+// store.
 func (store *Store) Promise(key interface{}, function Function) (*Promise, func()) {
 	store.promisesMu.Lock()
 	p, ok := store.promises[key]
@@ -260,16 +286,24 @@ func (store *Store) Promise(key interface{}, function Function) (*Promise, func(
 		}
 		store.promises[key] = p
 	}
-	atomic.AddInt32(&p.refcount, 1)
+	p.refcount++
 	store.promisesMu.Unlock()
 
+	var released int32
 	release := func() {
-		if atomic.AddInt32(&p.refcount, -1) == 0 {
-			store.promisesMu.Lock()
-			delete(store.promises, key)
-			store.promisesMu.Unlock()
+		if !atomic.CompareAndSwapInt32(&released, 0, 1) {
+			panic("release called more than once")
 		}
+		store.promisesMu.Lock()
+
+		p.refcount--
+		if p.refcount == 0 && store.evictionPolicy != NeverEvict {
+			// Inv: if p.refcount > 0, then store.promises[key] == p.
+			delete(store.promises, key)
+		}
+		store.promisesMu.Unlock()
 	}
+
 	return p, release
 }
 

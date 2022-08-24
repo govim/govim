@@ -27,6 +27,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
@@ -88,11 +89,22 @@ type View struct {
 	// initializationSema is used limit concurrent initialization of snapshots in
 	// the view. We use a channel instead of a mutex to avoid blocking when a
 	// context is canceled.
+	//
+	// This field (along with snapshot.initialized) guards against duplicate
+	// initialization of snapshots. Do not change it without adjusting snapshot
+	// accordingly.
 	initializationSema chan struct{}
 
 	// rootURI is the rootURI directory of this view. If we are in GOPATH mode, this
 	// is just the folder. If we are in module mode, this is the module rootURI.
 	rootURI span.URI
+
+	// explicitGowork is, if non-empty, the URI for the explicit go.work file
+	// provided via the users environment.
+	//
+	// TODO(rfindley): this is duplicated in the workspace type. Refactor to
+	// eliminate this duplication.
+	explicitGowork span.URI
 
 	// workspaceInformation tracks various details about this view's
 	// environment variables, go version, and use of modules.
@@ -112,6 +124,9 @@ type workspaceInformation struct {
 	environmentVariables
 
 	// userGo111Module is the user's value of GO111MODULE.
+	//
+	// TODO(rfindley): is there really value in memoizing this variable? It seems
+	// simpler to make this a function/method.
 	userGo111Module go111module
 
 	// The value of GO111MODULE we want to run with.
@@ -385,13 +400,14 @@ func (s *snapshot) locateTemplateFiles(ctx context.Context) {
 	relativeTo := s.view.folder.Filename()
 
 	searched := 0
+	filterer := buildFilterer(dir, s.view.gomodcache, s.view.Options())
 	// Change to WalkDir when we move up to 1.16
 	err := filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		relpath := strings.TrimPrefix(path, relativeTo)
-		excluded := pathExcludedByFilter(relpath, dir, s.view.gomodcache, s.view.options)
+		excluded := pathExcludedByFilter(relpath, filterer)
 		if fileHasExtension(path, suffixes) && !excluded && !fi.IsDir() {
 			k := span.URIFromPath(path)
 			_, err := s.GetVersionedFile(ctx, k)
@@ -421,17 +437,20 @@ func (v *View) contains(uri span.URI) bool {
 		return false
 	}
 
-	return !v.filters(uri)
+	return !v.filterFunc()(uri)
 }
 
-// filters reports whether uri is filtered by the currently configured
+// filterFunc returns a func that reports whether uri is filtered by the currently configured
 // directoryFilters.
-func (v *View) filters(uri span.URI) bool {
-	// Only filter relative to the configured root directory.
-	if source.InDirLex(v.folder.Filename(), uri.Filename()) {
-		return pathExcludedByFilter(strings.TrimPrefix(uri.Filename(), v.folder.Filename()), v.rootURI.Filename(), v.gomodcache, v.Options())
+func (v *View) filterFunc() func(span.URI) bool {
+	filterer := buildFilterer(v.rootURI.Filename(), v.gomodcache, v.Options())
+	return func(uri span.URI) bool {
+		// Only filter relative to the configured root directory.
+		if source.InDirLex(v.folder.Filename(), uri.Filename()) {
+			return pathExcludedByFilter(strings.TrimPrefix(uri.Filename(), v.folder.Filename()), filterer)
+		}
+		return false
 	}
-	return false
 }
 
 func (v *View) mapFile(uri span.URI, f *fileBase) {
@@ -458,7 +477,7 @@ func (v *View) relevantChange(c source.FileModification) bool {
 	// TODO(rstambler): Make sure the go.work/gopls.mod files are always known
 	// to the view.
 	for _, src := range []workspaceSource{goWorkWorkspace, goplsModWorkspace} {
-		if c.URI == uriForSource(v.rootURI, src) {
+		if c.URI == uriForSource(v.rootURI, v.explicitGowork, src) {
 			return true
 		}
 	}
@@ -623,26 +642,36 @@ func (s *snapshot) initialize(ctx context.Context, firstAttempt bool) {
 		<-s.view.initializationSema
 	}()
 
-	if s.initializeOnce == nil {
+	s.mu.Lock()
+	initialized := s.initialized
+	s.mu.Unlock()
+
+	if initialized {
 		return
 	}
-	s.initializeOnce.Do(func() {
-		s.loadWorkspace(ctx, firstAttempt)
-		s.collectAllKnownSubdirs(ctx)
-	})
+
+	s.loadWorkspace(ctx, firstAttempt)
+	s.collectAllKnownSubdirs(ctx)
 }
 
 func (s *snapshot) loadWorkspace(ctx context.Context, firstAttempt bool) {
 	defer func() {
-		s.initializeOnce = nil
+		s.mu.Lock()
+		s.initialized = true
+		s.mu.Unlock()
 		if firstAttempt {
 			close(s.view.initialWorkspaceLoad)
 		}
 	}()
 
-	// If we have multiple modules, we need to load them by paths.
-	var scopes []interface{}
-	var modDiagnostics []*source.Diagnostic
+	// TODO(rFindley): we should only locate template files on the first attempt,
+	// or guard it via a different mechanism.
+	s.locateTemplateFiles(ctx)
+
+	// Collect module paths to load by parsing go.mod files. If a module fails to
+	// parse, capture the parsing failure as a critical diagnostic.
+	var scopes []interface{}                // scopes to load
+	var modDiagnostics []*source.Diagnostic // diagnostics for broken go.mod files
 	addError := func(uri span.URI, err error) {
 		modDiagnostics = append(modDiagnostics, &source.Diagnostic{
 			URI:      uri,
@@ -651,17 +680,23 @@ func (s *snapshot) loadWorkspace(ctx context.Context, firstAttempt bool) {
 			Message:  err.Error(),
 		})
 	}
-	s.locateTemplateFiles(ctx)
+
 	if len(s.workspace.getActiveModFiles()) > 0 {
 		for modURI := range s.workspace.getActiveModFiles() {
+			// Be careful not to add context cancellation errors as critical module
+			// errors.
 			fh, err := s.GetFile(ctx, modURI)
 			if err != nil {
-				addError(modURI, err)
+				if ctx.Err() == nil {
+					addError(modURI, err)
+				}
 				continue
 			}
 			parsed, err := s.ParseMod(ctx, fh)
 			if err != nil {
-				addError(modURI, err)
+				if ctx.Err() == nil {
+					addError(modURI, err)
+				}
 				continue
 			}
 			if parsed.File == nil || parsed.File.Module == nil {
@@ -675,12 +710,13 @@ func (s *snapshot) loadWorkspace(ctx context.Context, firstAttempt bool) {
 		scopes = append(scopes, viewLoadScope("LOAD_VIEW"))
 	}
 
-	// If we're loading anything, ensure we also load builtin.
-	// TODO(rstambler): explain the rationale for this.
+	// If we're loading anything, ensure we also load builtin,
+	// since it provides fake definitions (and documentation)
+	// for types like int that are used everywhere.
 	if len(scopes) > 0 {
 		scopes = append(scopes, PackagePath("builtin"))
 	}
-	err := s.load(ctx, firstAttempt, scopes...)
+	err := s.load(ctx, true, scopes...)
 
 	// If the context is canceled on the first attempt, loading has failed
 	// because the go command has timed out--that should be a critical error.
@@ -699,18 +735,18 @@ func (s *snapshot) loadWorkspace(ctx context.Context, firstAttempt bool) {
 		event.Error(ctx, "initial workspace load failed", err)
 		extractedDiags := s.extractGoCommandErrors(ctx, err)
 		criticalErr = &source.CriticalError{
-			MainError: err,
-			DiagList:  append(modDiagnostics, extractedDiags...),
+			MainError:   err,
+			Diagnostics: append(modDiagnostics, extractedDiags...),
 		}
 	case len(modDiagnostics) == 1:
 		criticalErr = &source.CriticalError{
-			MainError: fmt.Errorf(modDiagnostics[0].Message),
-			DiagList:  modDiagnostics,
+			MainError:   fmt.Errorf(modDiagnostics[0].Message),
+			Diagnostics: modDiagnostics,
 		}
 	case len(modDiagnostics) > 1:
 		criticalErr = &source.CriticalError{
-			MainError: fmt.Errorf("error loading module names"),
-			DiagList:  modDiagnostics,
+			MainError:   fmt.Errorf("error loading module names"),
+			Diagnostics: modDiagnostics,
 		}
 	}
 
@@ -786,9 +822,13 @@ func (s *Session) getWorkspaceInformation(ctx context.Context, folder span.URI, 
 	}
 	// The value of GOPACKAGESDRIVER is not returned through the go command.
 	gopackagesdriver := os.Getenv("GOPACKAGESDRIVER")
+	// TODO(rfindley): this looks wrong, or at least overly defensive. If the
+	// value of GOPACKAGESDRIVER is not returned from the go command... why do we
+	// look it up here?
 	for _, s := range env {
 		split := strings.SplitN(s, "=", 2)
 		if split[0] == "GOPACKAGESDRIVER" {
+			bug.Reportf("found GOPACKAGESDRIVER from the go command") // see note above
 			gopackagesdriver = split[1]
 		}
 	}
@@ -899,27 +939,6 @@ func defaultCheckPathCase(path string) error {
 	return nil
 }
 
-func validBuildConfiguration(folder span.URI, ws *workspaceInformation, modFiles map[span.URI]struct{}) bool {
-	// Since we only really understand the `go` command, if the user has a
-	// different GOPACKAGESDRIVER, assume that their configuration is valid.
-	if ws.hasGopackagesDriver {
-		return true
-	}
-	// Check if the user is working within a module or if we have found
-	// multiple modules in the workspace.
-	if len(modFiles) > 0 {
-		return true
-	}
-	// The user may have a multiple directories in their GOPATH.
-	// Check if the workspace is within any of them.
-	for _, gp := range filepath.SplitList(ws.gopath) {
-		if source.InDir(filepath.Join(gp, "src"), folder.Filename()) {
-			return true
-		}
-	}
-	return false
-}
-
 // getGoEnv gets the view's various GO* values.
 func (s *Session) getGoEnv(ctx context.Context, folder string, goversion int, go111module string, configEnv []string) (environmentVariables, map[string]string, error) {
 	envVars := environmentVariables{}
@@ -937,6 +956,12 @@ func (s *Session) getGoEnv(ctx context.Context, folder string, goversion int, go
 	for k := range vars {
 		args = append(args, k)
 	}
+	// TODO(rfindley): GOWORK is not a property of the session. It may change
+	// when a workfile is added or removed.
+	//
+	// We need to distinguish between GOWORK values that are set by the GOWORK
+	// environment variable, and GOWORK values that are computed based on the
+	// location of a go.work file in the directory hierarchy.
 	args = append(args, "GOWORK")
 
 	inv := gocommand.Invocation{
@@ -1070,15 +1095,14 @@ func (s *snapshot) vendorEnabled(ctx context.Context, modURI span.URI, modConten
 	return vendorEnabled, nil
 }
 
-func (v *View) allFilesExcluded(pkg *packages.Package) bool {
-	opts := v.Options()
+func (v *View) allFilesExcluded(pkg *packages.Package, filterer *source.Filterer) bool {
 	folder := filepath.ToSlash(v.folder.Filename())
 	for _, f := range pkg.GoFiles {
 		f = filepath.ToSlash(f)
 		if !strings.HasPrefix(f, folder) {
 			return false
 		}
-		if !pathExcludedByFilter(strings.TrimPrefix(f, folder), v.rootURI.Filename(), v.gomodcache, opts) {
+		if !pathExcludedByFilter(strings.TrimPrefix(f, folder), filterer) {
 			return false
 		}
 	}
@@ -1086,8 +1110,9 @@ func (v *View) allFilesExcluded(pkg *packages.Package) bool {
 }
 
 func pathExcludedByFilterFunc(root, gomodcache string, opts *source.Options) func(string) bool {
+	filterer := buildFilterer(root, gomodcache, opts)
 	return func(path string) bool {
-		return pathExcludedByFilter(path, root, gomodcache, opts)
+		return pathExcludedByFilter(path, filterer)
 	}
 }
 
@@ -1097,12 +1122,18 @@ func pathExcludedByFilterFunc(root, gomodcache string, opts *source.Options) fun
 // TODO(rfindley): passing root and gomodcache here makes it confusing whether
 // path should be absolute or relative, and has already caused at least one
 // bug.
-func pathExcludedByFilter(path, root, gomodcache string, opts *source.Options) bool {
+func pathExcludedByFilter(path string, filterer *source.Filterer) bool {
 	path = strings.TrimPrefix(filepath.ToSlash(path), "/")
+	return filterer.Disallow(path)
+}
+
+func buildFilterer(root, gomodcache string, opts *source.Options) *source.Filterer {
+	// TODO(rfindley): this looks wrong. If gomodcache isn't actually nested
+	// under root, this will do the wrong thing.
 	gomodcache = strings.TrimPrefix(filepath.ToSlash(strings.TrimPrefix(gomodcache, root)), "/")
 	filters := opts.DirectoryFilters
 	if gomodcache != "" {
 		filters = append(filters, "-"+gomodcache)
 	}
-	return source.FiltersDisallow(path, filters)
+	return source.NewFilterer(filters)
 }

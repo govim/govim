@@ -55,12 +55,11 @@ type snapshot struct {
 	refcount    sync.WaitGroup // number of references
 	destroyedBy *string        // atomically set to non-nil in Destroy once refcount = 0
 
-	// The snapshot's initialization state is controlled by the fields below.
-	//
-	// initializeOnce guards snapshot initialization. Each snapshot is
-	// initialized at most once: reinitialization is triggered on later snapshots
-	// by invalidating this field.
-	initializeOnce *sync.Once
+	// initialized reports whether the snapshot has been initialized. Concurrent
+	// initialization is guarded by the view.initializationSema. Each snapshot is
+	// initialized at most once: concurrent initialization is guarded by
+	// view.initializationSema.
+	initialized bool
 	// initializedErr holds the last error resulting from initialization. If
 	// initialization fails, we only retry when the the workspace modules change,
 	// to avoid too many go/packages calls.
@@ -116,6 +115,13 @@ type snapshot struct {
 	// workspacePackages contains the workspace's packages, which are loaded
 	// when the view is created.
 	workspacePackages map[PackageID]PackagePath
+
+	// shouldLoad tracks packages that need to be reloaded, mapping a PackageID
+	// to the package paths that should be used to reload it
+	//
+	// When we try to load a package, we clear it from the shouldLoad map
+	// regardless of whether the load succeeded, to prevent endless loads.
+	shouldLoad map[PackageID][]PackagePath
 
 	// unloadableFiles keeps track of files that we've failed to load.
 	unloadableFiles map[span.URI]struct{}
@@ -268,7 +274,24 @@ func (s *snapshot) Templates() map[span.URI]source.VersionedFileHandle {
 }
 
 func (s *snapshot) ValidBuildConfiguration() bool {
-	return validBuildConfiguration(s.view.rootURI, &s.view.workspaceInformation, s.workspace.getActiveModFiles())
+	// Since we only really understand the `go` command, if the user has a
+	// different GOPACKAGESDRIVER, assume that their configuration is valid.
+	if s.view.hasGopackagesDriver {
+		return true
+	}
+	// Check if the user is working within a module or if we have found
+	// multiple modules in the workspace.
+	if len(s.workspace.getActiveModFiles()) > 0 {
+		return true
+	}
+	// The user may have a multiple directories in their GOPATH.
+	// Check if the workspace is within any of them.
+	for _, gp := range filepath.SplitList(s.view.gopath) {
+		if source.InDir(filepath.Join(gp, "src"), s.view.rootURI.Filename()) {
+			return true
+		}
+	}
+	return false
 }
 
 // workspaceMode describes the way in which the snapshot's workspace should
@@ -413,6 +436,12 @@ func (s *snapshot) goCommandInvocation(ctx context.Context, flags source.Invocat
 	s.view.optionsMu.Lock()
 	allowModfileModificationOption := s.view.options.AllowModfileModifications
 	allowNetworkOption := s.view.options.AllowImplicitNetworkAccess
+
+	// TODO(rfindley): this is very hard to follow, and may not even be doing the
+	// right thing: should inv.Env really trample view.options? Do we ever invoke
+	// this with a non-empty inv.Env?
+	//
+	// We should refactor to make it clearer that the correct env is being used.
 	inv.Env = append(append(append(os.Environ(), s.view.options.EnvSlice()...), inv.Env...), "GO111MODULE="+s.view.effectiveGo111Module)
 	inv.BuildFlags = append([]string{}, s.view.options.BuildFlags...)
 	s.view.optionsMu.Unlock()
@@ -601,7 +630,7 @@ func (s *snapshot) PackagesForFile(ctx context.Context, uri span.URI, mode sourc
 	}
 	var pkgs []source.Package
 	for _, ph := range phs {
-		pkg, err := ph.check(ctx, s)
+		pkg, err := ph.await(ctx, s)
 		if err != nil {
 			return nil, err
 		}
@@ -639,10 +668,14 @@ func (s *snapshot) PackageForFile(ctx context.Context, uri span.URI, mode source
 		return nil, fmt.Errorf("no packages in input")
 	}
 
-	return ph.check(ctx, s)
+	return ph.await(ctx, s)
 }
 
 func (s *snapshot) packageHandlesForFile(ctx context.Context, uri span.URI, mode source.TypecheckMode, includeTestVariants bool) ([]*packageHandle, error) {
+	// TODO(rfindley): why can't/shouldn't we awaitLoaded here? It seems that if
+	// we ask for package handles for a file, we should wait for pending loads.
+	// Else we will reload orphaned files before the initial load completes.
+
 	// Check if we should reload metadata for the file. We don't invalidate IDs
 	// (though we should), so the IDs will be a better source of truth than the
 	// metadata. If there are no IDs for the file, then we should also reload.
@@ -691,13 +724,13 @@ func (s *snapshot) packageHandlesForFile(ctx context.Context, uri span.URI, mode
 }
 
 func (s *snapshot) getOrLoadIDsForURI(ctx context.Context, uri span.URI) ([]PackageID, error) {
-	knownIDs := s.getIDsForURI(uri)
-	reload := len(knownIDs) == 0
-	for _, id := range knownIDs {
-		// Reload package metadata if any of the metadata has missing
-		// dependencies, in case something has changed since the last time we
-		// reloaded it.
-		if s.noValidMetadataForID(id) {
+	s.mu.Lock()
+	ids := s.meta.ids[uri]
+	reload := len(ids) == 0
+	for _, id := range ids {
+		// If the file is part of a package that needs reloading, reload it now to
+		// improve our responsiveness.
+		if len(s.shouldLoad[id]) > 0 {
 			reload = true
 			break
 		}
@@ -705,20 +738,38 @@ func (s *snapshot) getOrLoadIDsForURI(ctx context.Context, uri span.URI) ([]Pack
 		// missing dependencies. This is expensive and results in too many
 		// calls to packages.Load. Determine what we should do instead.
 	}
-	if reload {
-		err := s.load(ctx, false, fileURI(uri))
+	s.mu.Unlock()
 
+	if reload {
+		scope := fileURI(uri)
+		err := s.load(ctx, false, scope)
+
+		// As in reloadWorkspace, we must clear scopes after loading.
+		//
+		// TODO(rfindley): simply call reloadWorkspace here, first, to avoid this
+		// duplication.
+		if !errors.Is(err, context.Canceled) {
+			s.clearShouldLoad(scope)
+		}
+
+		// TODO(rfindley): this doesn't look right. If we don't reload, we use
+		// invalid metadata anyway, but if we DO reload and it fails, we don't?
 		if !s.useInvalidMetadata() && err != nil {
 			return nil, err
 		}
+
+		s.mu.Lock()
+		ids = s.meta.ids[uri]
+		s.mu.Unlock()
+
 		// We've tried to reload and there are still no known IDs for the URI.
 		// Return the load error, if there was one.
-		knownIDs = s.getIDsForURI(uri)
-		if len(knownIDs) == 0 {
+		if len(ids) == 0 {
 			return nil, err
 		}
 	}
-	return knownIDs, nil
+
+	return ids, nil
 }
 
 // Only use invalid metadata for Go versions >= 1.13. Go 1.12 and below has
@@ -756,7 +807,7 @@ func (s *snapshot) checkedPackage(ctx context.Context, id PackageID, mode source
 	if err != nil {
 		return nil, err
 	}
-	return ph.check(ctx, s)
+	return ph.await(ctx, s)
 }
 
 func (s *snapshot) getImportedBy(id PackageID) []PackageID {
@@ -834,6 +885,10 @@ func (s *snapshot) fileWatchingGlobPatterns(ctx context.Context) map[string]stru
 	// applied to every folder in the workspace.
 	patterns := map[string]struct{}{
 		fmt.Sprintf("**/*.{%s}", extensions): {},
+	}
+
+	if s.view.explicitGowork != "" {
+		patterns[s.view.explicitGowork.Filename()] = struct{}{}
 	}
 
 	// Add a pattern for each Go module in the workspace that is not within the view.
@@ -996,21 +1051,6 @@ func (s *snapshot) knownFilesInDir(ctx context.Context, dir span.URI) []span.URI
 	return files
 }
 
-func (s *snapshot) workspacePackageHandles(ctx context.Context) ([]*packageHandle, error) {
-	if err := s.awaitLoaded(ctx); err != nil {
-		return nil, err
-	}
-	var phs []*packageHandle
-	for _, pkgID := range s.workspacePackageIDs() {
-		ph, err := s.buildPackageHandle(ctx, pkgID, s.workspaceParseMode(pkgID))
-		if err != nil {
-			return nil, err
-		}
-		phs = append(phs, ph)
-	}
-	return phs, nil
-}
-
 func (s *snapshot) ActivePackages(ctx context.Context) ([]source.Package, error) {
 	phs, err := s.activePackageHandles(ctx)
 	if err != nil {
@@ -1018,7 +1058,7 @@ func (s *snapshot) ActivePackages(ctx context.Context) ([]source.Package, error)
 	}
 	var pkgs []source.Package
 	for _, ph := range phs {
-		pkg, err := ph.check(ctx, s)
+		pkg, err := ph.await(ctx, s)
 		if err != nil {
 			return nil, err
 		}
@@ -1168,13 +1208,6 @@ func moduleForURI(modFiles map[span.URI]struct{}, uri span.URI) span.URI {
 	return match
 }
 
-func (s *snapshot) getIDsForURI(uri span.URI) []PackageID {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.meta.ids[uri]
-}
-
 func (s *snapshot) getMetadata(id PackageID) *KnownMetadata {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1182,78 +1215,34 @@ func (s *snapshot) getMetadata(id PackageID) *KnownMetadata {
 	return s.meta.metadata[id]
 }
 
-func (s *snapshot) shouldLoad(scope interface{}) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	g := s.meta
-
-	switch scope := scope.(type) {
-	case PackagePath:
-		var meta *KnownMetadata
-		for _, m := range g.metadata {
-			if m.PkgPath != scope {
-				continue
-			}
-			meta = m
-		}
-		if meta == nil || meta.ShouldLoad {
-			return true
-		}
-		return false
-	case fileURI:
-		uri := span.URI(scope)
-		ids := g.ids[uri]
-		if len(ids) == 0 {
-			return true
-		}
-		for _, id := range ids {
-			m, ok := g.metadata[id]
-			if !ok || m.ShouldLoad {
-				return true
-			}
-		}
-		return false
-	default:
-		return true
-	}
-}
-
+// clearShouldLoad clears package IDs that no longer need to be reloaded after
+// scopes has been loaded.
 func (s *snapshot) clearShouldLoad(scopes ...interface{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	g := s.meta
-
-	var updates map[PackageID]*KnownMetadata
-	markLoaded := func(m *KnownMetadata) {
-		if updates == nil {
-			updates = make(map[PackageID]*KnownMetadata)
-		}
-		next := *m
-		next.ShouldLoad = false
-		updates[next.ID] = &next
-	}
 	for _, scope := range scopes {
 		switch scope := scope.(type) {
 		case PackagePath:
-			for _, m := range g.metadata {
-				if m.PkgPath == scope {
-					markLoaded(m)
+			var toDelete []PackageID
+			for id, pkgPaths := range s.shouldLoad {
+				for _, pkgPath := range pkgPaths {
+					if pkgPath == scope {
+						toDelete = append(toDelete, id)
+					}
 				}
+			}
+			for _, id := range toDelete {
+				delete(s.shouldLoad, id)
 			}
 		case fileURI:
 			uri := span.URI(scope)
-			ids := g.ids[uri]
+			ids := s.meta.ids[uri]
 			for _, id := range ids {
-				if m, ok := g.metadata[id]; ok {
-					markLoaded(m)
-				}
+				delete(s.shouldLoad, id)
 			}
 		}
 	}
-	s.meta = g.Clone(updates)
-	s.resetIsActivePackageLocked()
 }
 
 // noValidMetadataForURILocked reports whether there is any valid metadata for
@@ -1269,16 +1258,6 @@ func (s *snapshot) noValidMetadataForURILocked(uri span.URI) bool {
 		}
 	}
 	return true
-}
-
-// noValidMetadataForID reports whether there is no valid metadata for the
-// given ID.
-func (s *snapshot) noValidMetadataForID(id PackageID) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	m := s.meta.metadata[id]
-	return m == nil || !m.Valid
 }
 
 func (s *snapshot) isWorkspacePackage(id PackageID) bool {
@@ -1384,6 +1363,10 @@ func (s *snapshot) awaitLoaded(ctx context.Context) error {
 }
 
 func (s *snapshot) GetCriticalError(ctx context.Context) *source.CriticalError {
+	if wsErr := s.workspace.criticalError(ctx, s); wsErr != nil {
+		return wsErr
+	}
+
 	loadErr := s.awaitLoadedAllErrors(ctx)
 	if loadErr != nil && errors.Is(loadErr.MainError, context.Canceled) {
 		return nil
@@ -1402,6 +1385,8 @@ func (s *snapshot) GetCriticalError(ctx context.Context) *source.CriticalError {
 		// with the user's workspace layout. Workspace packages that only have the
 		// ID "command-line-arguments" are usually a symptom of a bad workspace
 		// configuration.
+		//
+		// TODO(rfindley): re-evaluate this heuristic.
 		if containsCommandLineArguments(wsPkgs) {
 			return s.workspaceLayoutError(ctx)
 		}
@@ -1443,32 +1428,45 @@ func (s *snapshot) awaitLoadedAllErrors(ctx context.Context) *source.CriticalErr
 	// Do not return results until the snapshot's view has been initialized.
 	s.AwaitInitialized(ctx)
 
-	// TODO(rstambler): Should we be more careful about returning the
+	// TODO(rfindley): Should we be more careful about returning the
 	// initialization error? Is it possible for the initialization error to be
 	// corrected without a successful reinitialization?
 	s.mu.Lock()
 	initializedErr := s.initializedErr
 	s.mu.Unlock()
+
 	if initializedErr != nil {
 		return initializedErr
 	}
 
+	// TODO(rfindley): revisit this handling. Calling reloadWorkspace with a
+	// cancelled context should have the same effect, so this preemptive handling
+	// should not be necessary.
+	//
+	// Also: GetCriticalError ignores context cancellation errors. Should we be
+	// returning nil here?
 	if ctx.Err() != nil {
 		return &source.CriticalError{MainError: ctx.Err()}
 	}
 
+	// TODO(rfindley): reloading is not idempotent: if we try to reload or load
+	// orphaned files below and fail, we won't try again. For that reason, we
+	// could get different results from subsequent calls to this function, which
+	// may cause critical errors to be suppressed.
+
 	if err := s.reloadWorkspace(ctx); err != nil {
 		diags := s.extractGoCommandErrors(ctx, err)
 		return &source.CriticalError{
-			MainError: err,
-			DiagList:  diags,
+			MainError:   err,
+			Diagnostics: diags,
 		}
 	}
+
 	if err := s.reloadOrphanedFiles(ctx); err != nil {
 		diags := s.extractGoCommandErrors(ctx, err)
 		return &source.CriticalError{
-			MainError: err,
-			DiagList:  diags,
+			MainError:   err,
+			Diagnostics: diags,
 		}
 	}
 	return nil
@@ -1494,39 +1492,42 @@ func (s *snapshot) AwaitInitialized(ctx context.Context) {
 
 // reloadWorkspace reloads the metadata for all invalidated workspace packages.
 func (s *snapshot) reloadWorkspace(ctx context.Context) error {
-	// See which of the workspace packages are missing metadata.
+	var scopes []interface{}
+	var seen map[PackagePath]bool
 	s.mu.Lock()
-	missingMetadata := len(s.workspacePackages) == 0 || len(s.meta.metadata) == 0
-	pkgPathSet := map[PackagePath]struct{}{}
-	for id, pkgPath := range s.workspacePackages {
-		if m, ok := s.meta.metadata[id]; ok && m.Valid {
-			continue
+	for _, pkgPaths := range s.shouldLoad {
+		for _, pkgPath := range pkgPaths {
+			if seen == nil {
+				seen = make(map[PackagePath]bool)
+			}
+			if seen[pkgPath] {
+				continue
+			}
+			seen[pkgPath] = true
+			scopes = append(scopes, pkgPath)
 		}
-		missingMetadata = true
-
-		// Don't try to reload "command-line-arguments" directly.
-		if source.IsCommandLineArguments(string(pkgPath)) {
-			continue
-		}
-		pkgPathSet[pkgPath] = struct{}{}
 	}
 	s.mu.Unlock()
 
-	// If the view's build configuration is invalid, we cannot reload by
-	// package path. Just reload the directory instead.
-	if missingMetadata && !s.ValidBuildConfiguration() {
-		return s.load(ctx, false, viewLoadScope("LOAD_INVALID_VIEW"))
-	}
-
-	if len(pkgPathSet) == 0 {
+	if len(scopes) == 0 {
 		return nil
 	}
 
-	var pkgPaths []interface{}
-	for pkgPath := range pkgPathSet {
-		pkgPaths = append(pkgPaths, pkgPath)
+	// If the view's build configuration is invalid, we cannot reload by
+	// package path. Just reload the directory instead.
+	if !s.ValidBuildConfiguration() {
+		scopes = []interface{}{viewLoadScope("LOAD_INVALID_VIEW")}
 	}
-	return s.load(ctx, false, pkgPaths...)
+
+	err := s.load(ctx, false, scopes...)
+
+	// Unless the context was canceled, set "shouldLoad" to false for all
+	// of the metadata we attempted to load.
+	if !errors.Is(err, context.Canceled) {
+		s.clearShouldLoad(scopes...)
+	}
+
+	return err
 }
 
 func (s *snapshot) reloadOrphanedFiles(ctx context.Context) error {
@@ -1620,6 +1621,13 @@ func contains(views []*View, view *View) bool {
 	return false
 }
 
+// TODO(golang/go#53756): this function needs to consider more than just the
+// absolute URI, for example:
+//   - the position of /vendor/ with respect to the relevant module root
+//   - whether or not go.work is in use (as vendoring isn't supported in workspace mode)
+//
+// Most likely, each call site of inVendor needs to be reconsidered to
+// understand and correctly implement the desired behavior.
 func inVendor(uri span.URI) bool {
 	if !strings.Contains(string(uri), "/vendor/") {
 		return false
@@ -1650,14 +1658,24 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 	ctx, done := event.Start(ctx, "snapshot.clone")
 	defer done()
 
-	var vendorChanged bool
-	newWorkspace, workspaceChanged, workspaceReload := s.workspace.invalidate(ctx, changes, &unappliedChanges{
+	newWorkspace, reinit := s.workspace.Clone(ctx, changes, &unappliedChanges{
 		originalSnapshot: s,
 		changes:          changes,
 	})
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// If there is an initialization error and a vendor directory changed, try to
+	// reinit.
+	if s.initializedErr != nil {
+		for uri := range changes {
+			if inVendor(uri) {
+				reinit = true
+				break
+			}
+		}
+	}
 
 	bgCtx, cancel := context.WithCancel(bgCtx)
 	result := &snapshot{
@@ -1667,7 +1685,7 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		backgroundCtx:        bgCtx,
 		cancel:               cancel,
 		builtin:              s.builtin,
-		initializeOnce:       s.initializeOnce,
+		initialized:          s.initialized,
 		initializedErr:       s.initializedErr,
 		packages:             s.packages.Clone(),
 		isActivePackageCache: s.isActivePackageCache.Clone(),
@@ -1685,12 +1703,23 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		knownSubdirs:         s.knownSubdirs.Clone(),
 		workspace:            newWorkspace,
 	}
+
+	// The snapshot should be initialized if either s was uninitialized, or we've
+	// detected a change that triggers reinitialization.
+	if reinit {
+		result.initialized = false
+	}
+
 	// Create a lease on the new snapshot.
 	// (Best to do this early in case the code below hides an
 	// incref/decref operation that might destroy it prematurely.)
 	release := result.Acquire()
 
 	// Copy the set of unloadable files.
+	//
+	// TODO(rfindley): this looks wrong. Shouldn't we clear unloadableFiles on
+	// changes to environment or workspace layout, or more generally on any
+	// metadata change?
 	for k, v := range s.unloadableFiles {
 		result.unloadableFiles[k] = v
 	}
@@ -1727,29 +1756,25 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 	directIDs := map[PackageID]bool{}
 
 	// Invalidate all package metadata if the workspace module has changed.
-	if workspaceReload {
+	if reinit {
 		for k := range s.meta.metadata {
 			directIDs[k] = true
 		}
 	}
 
 	// Compute invalidations based on file changes.
-	changedPkgFiles := map[PackageID]bool{} // packages whose file set may have changed
-	anyImportDeleted := false
-	anyFileOpenedOrClosed := false
-	for uri, change := range changes {
-		// Maybe reinitialize the view if we see a change in the vendor
-		// directory.
-		if inVendor(uri) {
-			vendorChanged = true
-		}
+	anyImportDeleted := false      // import deletions can resolve cycles
+	anyFileOpenedOrClosed := false // opened files affect workspace packages
+	anyFileAdded := false          // adding a file can resolve missing dependencies
 
+	for uri, change := range changes {
 		// The original FileHandle for this URI is cached on the snapshot.
 		originalFH, _ := s.files.Get(uri)
 		var originalOpen, newOpen bool
 		_, originalOpen = originalFH.(*overlay)
 		_, newOpen = change.fileHandle.(*overlay)
-		anyFileOpenedOrClosed = originalOpen != newOpen
+		anyFileOpenedOrClosed = anyFileOpenedOrClosed || (originalOpen != newOpen)
+		anyFileAdded = anyFileAdded || (originalFH == nil && change.fileHandle != nil)
 
 		// If uri is a Go file, check if it has changed in a way that would
 		// invalidate metadata. Note that we can't use s.view.FileKind here,
@@ -1760,16 +1785,11 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 			invalidateMetadata, pkgFileChanged, importDeleted = metadataChanges(ctx, s, originalFH, change.fileHandle)
 		}
 
-		invalidateMetadata = invalidateMetadata || forceReloadMetadata || workspaceReload
+		invalidateMetadata = invalidateMetadata || forceReloadMetadata || reinit
 		anyImportDeleted = anyImportDeleted || importDeleted
 
 		// Mark all of the package IDs containing the given file.
 		filePackageIDs := invalidatedPackageIDs(uri, s.meta.ids, pkgFileChanged)
-		if pkgFileChanged {
-			for id := range filePackageIDs {
-				changedPkgFiles[id] = true
-			}
-		}
 		for id := range filePackageIDs {
 			directIDs[id] = directIDs[id] || invalidateMetadata
 		}
@@ -1814,6 +1834,19 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 	if anyImportDeleted {
 		for id, metadata := range s.meta.metadata {
 			if len(metadata.Errors) > 0 {
+				directIDs[id] = true
+			}
+		}
+	}
+
+	// Adding a file can resolve missing dependencies from existing packages.
+	//
+	// We could be smart here and try to guess which packages may have been
+	// fixed, but until that proves necessary, just invalidate metadata for any
+	// package with missing dependencies.
+	if anyFileAdded {
+		for id, metadata := range s.meta.metadata {
+			if len(metadata.MissingDeps) > 0 {
 				directIDs[id] = true
 			}
 		}
@@ -1864,13 +1897,8 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		result.actions.Delete(key)
 	}
 
-	// If the workspace mode has changed, we must delete all metadata, as it
-	// is unusable and may produce confusing or incorrect diagnostics.
 	// If a file has been deleted, we must delete metadata for all packages
 	// containing that file.
-	workspaceModeChanged := s.workspaceMode() != result.workspaceMode()
-
-	// Don't keep package metadata for packages that have lost files.
 	//
 	// TODO(rfindley): why not keep invalid metadata in this case? If we
 	// otherwise allow operate on invalid metadata, why not continue to do so,
@@ -1888,39 +1916,77 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 		}
 	}
 
+	// Any packages that need loading in s still need loading in the new
+	// snapshot.
+	for k, v := range s.shouldLoad {
+		if result.shouldLoad == nil {
+			result.shouldLoad = make(map[PackageID][]PackagePath)
+		}
+		result.shouldLoad[k] = v
+	}
+
+	// TODO(rfindley): consolidate the this workspace mode detection with
+	// workspace invalidation.
+	workspaceModeChanged := s.workspaceMode() != result.workspaceMode()
+
+	// We delete invalid metadata in the following cases:
+	// - If we are forcing a reload of metadata.
+	// - If the workspace mode has changed, as stale metadata may produce
+	//   confusing or incorrect diagnostics.
+	//
+	// TODO(rfindley): we should probably also clear metadata if we are
+	// reinitializing the workspace, as otherwise we could leave around a bunch
+	// of irrelevant and duplicate metadata (for example, if the module path
+	// changed). However, this breaks the "experimentalUseInvalidMetadata"
+	// feature, which relies on stale metadata when, for example, a go.mod file
+	// is broken via invalid syntax.
+	deleteInvalidMetadata := forceReloadMetadata || workspaceModeChanged
+
 	// Compute which metadata updates are required. We only need to invalidate
 	// packages directly containing the affected file, and only if it changed in
 	// a relevant way.
 	metadataUpdates := make(map[PackageID]*KnownMetadata)
-	deleteInvalidMetadata := forceReloadMetadata || workspaceModeChanged
 	for k, v := range s.meta.metadata {
 		invalidateMetadata := idsToInvalidate[k]
+
+		// For metadata that has been newly invalidated, capture package paths
+		// requiring reloading in the shouldLoad map.
+		if invalidateMetadata && !source.IsCommandLineArguments(string(v.ID)) {
+			if result.shouldLoad == nil {
+				result.shouldLoad = make(map[PackageID][]PackagePath)
+			}
+			needsReload := []PackagePath{v.PkgPath}
+			if v.ForTest != "" && v.ForTest != v.PkgPath {
+				// When reloading test variants, always reload their ForTest package as
+				// well. Otherwise, we may miss test variants in the resulting load.
+				//
+				// TODO(rfindley): is this actually sufficient? Is it possible that
+				// other test variants may be invalidated? Either way, we should
+				// determine exactly what needs to be reloaded here.
+				needsReload = append(needsReload, v.ForTest)
+			}
+			result.shouldLoad[k] = needsReload
+		}
+
+		// Check whether the metadata should be deleted.
 		if skipID[k] || (invalidateMetadata && deleteInvalidMetadata) {
 			metadataUpdates[k] = nil
 			continue
 		}
+
+		// Check if the metadata has changed.
 		valid := v.Valid && !invalidateMetadata
-		pkgFilesChanged := v.PkgFilesChanged || changedPkgFiles[k]
-		shouldLoad := v.ShouldLoad || invalidateMetadata
-		if valid != v.Valid || pkgFilesChanged != v.PkgFilesChanged || shouldLoad != v.ShouldLoad {
+		if valid != v.Valid {
 			// Mark invalidated metadata rather than deleting it outright.
 			metadataUpdates[k] = &KnownMetadata{
-				Metadata:        v.Metadata,
-				Valid:           valid,
-				PkgFilesChanged: pkgFilesChanged,
-				ShouldLoad:      shouldLoad,
+				Metadata: v.Metadata,
+				Valid:    valid,
 			}
 		}
 	}
 
 	// Update metadata, if necessary.
-	if len(metadataUpdates) > 0 {
-		result.meta = s.meta.Clone(metadataUpdates)
-	} else {
-		// No metadata changes. Since metadata is only updated by cloning, it is
-		// safe to re-use the existing metadata here.
-		result.meta = s.meta
-	}
+	result.meta = s.meta.Clone(metadataUpdates)
 
 	// Update workspace and active packages, if necessary.
 	if result.meta != s.meta || anyFileOpenedOrClosed {
@@ -1937,13 +2003,6 @@ func (s *snapshot) clone(ctx, bgCtx context.Context, changes map[span.URI]*fileC
 	// the previous mode are no longer relevant, so clear them out.
 	if workspaceModeChanged {
 		result.workspacePackages = map[PackageID]PackagePath{}
-	}
-
-	// The snapshot may need to be reinitialized.
-	if workspaceReload || vendorChanged {
-		if workspaceChanged || result.initializedErr != nil {
-			result.initializeOnce = &sync.Once{}
-		}
 	}
 	result.dumpWorkspace("clone")
 	return result, release
@@ -2229,7 +2288,7 @@ func (s *snapshot) BuildGoplsMod(ctx context.Context) (*modfile.File, error) {
 	return buildWorkspaceModFile(ctx, allModules, s)
 }
 
-// TODO(rfindley): move this to workspacemodule.go
+// TODO(rfindley): move this to workspace.go
 func buildWorkspaceModFile(ctx context.Context, modFiles map[span.URI]struct{}, fs source.FileSource) (*modfile.File, error) {
 	file := &modfile.File{}
 	file.AddModuleStmt("gopls-workspace")
@@ -2267,8 +2326,8 @@ func buildWorkspaceModFile(ctx context.Context, modFiles map[span.URI]struct{}, 
 			goVersion = parsed.Go.Version
 		}
 		path := parsed.Module.Mod.Path
-		if _, ok := paths[path]; ok {
-			return nil, fmt.Errorf("found module %q twice in the workspace", path)
+		if seen, ok := paths[path]; ok {
+			return nil, fmt.Errorf("found module %q multiple times in the workspace, at:\n\t%q\n\t%q", path, seen, modURI)
 		}
 		paths[path] = modURI
 		// If the module's path includes a major version, we expect it to have

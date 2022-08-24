@@ -1,7 +1,8 @@
-# Verify that we don't receive any diagnostics when there are files with no
-# errors in the package.
+# Verify that we only receive diagnostics after the file is opened when there
+# are files with no errors in the package. See govim/govim#1163 (and CL 420539)
+# for details.
 
-[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to verify we haven''t received diagnostics'
+[short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to verify received diagnostics'
 
 sleep $GOVIM_ERRLOGMATCH_WAIT
 errlogmatch -count=0 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams'
@@ -10,8 +11,10 @@ vim ex 'e main.go'
 
 vim ex 'e other.go'
 
-errlogmatch -count=0 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
-errlogmatch -count=0 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
+errlogmatch -count=1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/main.go
+errlogmatch -count=1 -start 'PublishDiagnostics callback: &protocol.PublishDiagnosticsParams{\n\S+:\s+URI:\s+"file://'$WORK/other.go
+
+vimexprwait errors.empty GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -25,3 +28,5 @@ go 1.12
 package main
 -- other.go --
 package main
+-- errors.empty --
+[]
