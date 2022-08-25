@@ -1,9 +1,14 @@
 # Test that the vim sidecar ex command can be used to make feedkeys calls
 
+# Populate the buffer to ensure that write doesn't fail with "E749: empty buffer".
+# That can happen if vim hasn't set the internal memfile yet, see bufwrite() in
+# vim's src/bufwrite.c.
+vim ex 'call setline(1, \"foo\")'
+
 # If we need special keys in feedkeys we need to use ex call
 vim ex 'call feedkeys(\"i1234\\<ESC>\")'
 vim ex 'w test'
 cmp test test.golden
 
 -- test.golden --
-1234
+1234foo

@@ -137,14 +137,14 @@ func (v *vimstate) ignoreErrorInBatch(args ...json.RawMessage) (interface{}, err
 	v.Parse(args[0], &fail)
 	v.BatchStart()
 	defer v.BatchCancelIfNotEnded()
-	assert := AssertIsErrorOrNil("E971: Property type number does not exist")
+	assert := AssertIsErrorOrNil("E971: Property type foobar does not exist")
 	if fail {
-		var props = struct {
+		props := struct {
 			Length int    `json:"length"`
 			Type   string `json:"type"`
 		}{
 			Length: 101,
-			Type:   "number",
+			Type:   "foobar",
 		}
 		v.BatchAssertChannelCall(assert, "prop_add", 100, 101, props)
 	} else {

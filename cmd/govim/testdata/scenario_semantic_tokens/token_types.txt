@@ -1,0 +1,1400 @@
+# Tests that govim adds properties for different LSP semantic token types
+
+[!v8.2.3356] skip 'semantic tokens requires prop_add_list() support'
+
+[gvim] vim ex 'set lines=90'
+vim ex 'e main.go'
+vimexprwait semantic_token_properties.golden 'map(range(1,line(\"$\")), \"prop_list(v:val)\")'
+
+# Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
+# Disabled pending resolution to https://github.com/golang/go/issues/34103
+# errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
+
+-- go.mod --
+module mod.com
+
+go 1.12
+-- main.go --
+package main
+
+import (
+	"encoding/hex"
+	"fmt"
+)
+
+var (
+	a             = 1
+	b <-chan bool = make(chan bool)
+	c func(d int, e string) (f float64, g error)
+)
+
+const h = "+123"
+
+type i struct {
+	Aaaa func(x int) error
+	bbb  string
+	cc   int
+	d    int
+}
+
+func (j i) K() {
+}
+
+type Lll interface {
+	Mm()
+	NnnnnNn(oo bool) (uint32, float64)
+}
+
+// This is a comment
+func main() {
+	var pPp string
+	fmt.Printf("This is a test %v %s %d\n", a, pPp, 1234)
+	QQ := hex.Dump([]byte("12345"))
+	if QQ == "..." {
+		go func(r string) error {
+			return nil
+		}(QQ)
+	}
+	rr, t := Sss()
+	u := &rr
+	v := &t
+	select {
+	case <-*v:
+	default:
+	}
+	switch *u {
+	case nil:
+		/* Multi-lined..
+		   .. comment
+		*/
+		fmt.Println(i{
+			bbb: "",
+			cc:  0,
+			d:   0,
+		})
+	}
+}
+
+func Sss() ([]i, <-chan struct{}) {
+	return make([]i, 1), make(<-chan struct{})
+}
+-- vim_config.json --
+{
+        "WindowHeight": 90
+}
+-- semantic_token_properties.golden --
+[
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 7,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 9,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "namespace",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 12,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "namespace",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 3,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "namespace",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 18,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "number",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 4,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 6,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 11,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 18,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "function",
+      "type_bufnr": 0
+    },
+    {
+      "col": 23,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 28,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 4,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 9,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "parameter",
+      "type_bufnr": 0
+    },
+    {
+      "col": 11,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 16,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "parameter",
+      "type_bufnr": 0
+    },
+    {
+      "col": 18,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 27,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "parameter",
+      "type_bufnr": 0
+    },
+    {
+      "col": 29,
+      "end": 1,
+      "id": 2,
+      "length": 7,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 38,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "parameter",
+      "type_bufnr": 0
+    },
+    {
+      "col": 40,
+      "end": 1,
+      "id": 2,
+      "length": 5,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 5,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 11,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "string",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 6,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 8,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 12,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "parameter",
+      "type_bufnr": 0
+    },
+    {
+      "col": 14,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 19,
+      "end": 1,
+      "id": 2,
+      "length": 5,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 9,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 12,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "method",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 6,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 10,
+      "end": 1,
+      "id": 2,
+      "length": 9,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "method",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 7,
+      "start": 1,
+      "type": "method",
+      "type_bufnr": 0
+    },
+    {
+      "col": 10,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "parameter",
+      "type_bufnr": 0
+    },
+    {
+      "col": 13,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 20,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 28,
+      "end": 1,
+      "id": 2,
+      "length": 7,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 20,
+      "start": 1,
+      "type": "comment",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 6,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "function",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 6,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 10,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "namespace",
+      "type_bufnr": 0
+    },
+    {
+      "col": 6,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "function",
+      "type_bufnr": 0
+    },
+    {
+      "col": 13,
+      "end": 1,
+      "id": 2,
+      "length": 27,
+      "start": 1,
+      "type": "string",
+      "type_bufnr": 0
+    },
+    {
+      "col": 42,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 45,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 50,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "number",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 5,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 8,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "namespace",
+      "type_bufnr": 0
+    },
+    {
+      "col": 12,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "function",
+      "type_bufnr": 0
+    },
+    {
+      "col": 19,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 24,
+      "end": 1,
+      "id": 2,
+      "length": 7,
+      "start": 1,
+      "type": "string",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 5,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 8,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 11,
+      "end": 1,
+      "id": 2,
+      "length": 5,
+      "start": 1,
+      "type": "string",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 3,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 6,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 11,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "parameter",
+      "type_bufnr": 0
+    },
+    {
+      "col": 13,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 21,
+      "end": 1,
+      "id": 2,
+      "length": 5,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 4,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 11,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 5,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 6,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 8,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 11,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "function",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 4,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 8,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 4,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 8,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 9,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 10,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 7,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 9,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 10,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 3,
+      "end": 1,
+      "id": 2,
+      "length": 16,
+      "start": 1,
+      "type": "comment",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 15,
+      "start": 1,
+      "type": "comment",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "comment",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 3,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "namespace",
+      "type_bufnr": 0
+    },
+    {
+      "col": 7,
+      "end": 1,
+      "id": 2,
+      "length": 7,
+      "start": 1,
+      "type": "function",
+      "type_bufnr": 0
+    },
+    {
+      "col": 15,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 4,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 9,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "string",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 4,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 9,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "number",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 4,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "variable",
+      "type_bufnr": 0
+    },
+    {
+      "col": 9,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "number",
+      "type_bufnr": 0
+    }
+  ],
+  [],
+  [],
+  [],
+  [],
+  [
+    {
+      "col": 1,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 6,
+      "end": 1,
+      "id": 2,
+      "length": 3,
+      "start": 1,
+      "type": "function",
+      "type_bufnr": 0
+    },
+    {
+      "col": 15,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 18,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 20,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 25,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    }
+  ],
+  [
+    {
+      "col": 2,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 9,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "function",
+      "type_bufnr": 0
+    },
+    {
+      "col": 16,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "type",
+      "type_bufnr": 0
+    },
+    {
+      "col": 19,
+      "end": 1,
+      "id": 2,
+      "length": 1,
+      "start": 1,
+      "type": "number",
+      "type_bufnr": 0
+    },
+    {
+      "col": 23,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "function",
+      "type_bufnr": 0
+    },
+    {
+      "col": 28,
+      "end": 1,
+      "id": 2,
+      "length": 2,
+      "start": 1,
+      "type": "operator",
+      "type_bufnr": 0
+    },
+    {
+      "col": 30,
+      "end": 1,
+      "id": 2,
+      "length": 4,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    },
+    {
+      "col": 35,
+      "end": 1,
+      "id": 2,
+      "length": 6,
+      "start": 1,
+      "type": "keyword",
+      "type_bufnr": 0
+    }
+  ],
+  []
+]

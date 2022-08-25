@@ -85,4 +85,7 @@ func (r *Config) Apply(v *Config) {
 	if v.ExperimentalGoplsMemoryMode != nil {
 		r.ExperimentalGoplsMemoryMode = v.ExperimentalGoplsMemoryMode
 	}
+	if v.ExperimentalSemanticTokens != nil {
+		r.ExperimentalSemanticTokens = v.ExperimentalSemanticTokens
+	}
 }

@@ -89,4 +89,32 @@ type TextPropID int
 const (
 	DiagnosticTextPropID = 0
 	ReferencesTextPropID = 1
+	SemanticTokenPropID  = 2
 )
+
+// SemanticTokenHighlight returns corresponding highlight name for a semantic token.
+// It also acts as a list of all semantic tokens supported by govim.
+var SemanticTokenHighlight = map[string]string{
+	"namespace":     config.HighlightSemTokNamespace,
+	"type":          config.HighlightSemTokType,
+	"class":         config.HighlightSemTokClass,
+	"enum":          config.HighlightSemTokEnum,
+	"interface":     config.HighlightSemTokInterface,
+	"struct":        config.HighlightSemTokStruct,
+	"typeParameter": config.HighlightSemTokTypeParameter,
+	"parameter":     config.HighlightSemTokParameter,
+	"variable":      config.HighlightSemTokVariable,
+	"property":      config.HighlightSemTokProperty,
+	"enumMember":    config.HighlightSemTokEnumMember,
+	"event":         config.HighlightSemTokEvent,
+	"function":      config.HighlightSemTokFunction,
+	"method":        config.HighlightSemTokMethod,
+	"macro":         config.HighlightSemTokMacro,
+	"keyword":       config.HighlightSemTokKeyword,
+	"modifier":      config.HighlightSemTokModifier,
+	"comment":       config.HighlightSemTokComment,
+	"string":        config.HighlightSemTokString,
+	"number":        config.HighlightSemTokNumber,
+	"regexp":        config.HighlightSemTokRegexp,
+	"operator":      config.HighlightSemTokOperator,
+}

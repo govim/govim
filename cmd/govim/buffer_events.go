@@ -75,6 +75,10 @@ func (v *vimstate) addBuffer(nb *types.Buffer) error {
 		v.Logf("failed to update highlights for buffer %d: %v", nb.Num, err)
 	}
 
+	if err := v.updateSemanticTokens(nb); err != nil {
+		v.Logf("failed to update semantic tokens for buffer %d: %v", nb.Num, err)
+	}
+
 	return v.handleBufferEvent(nb)
 }
 
@@ -170,6 +174,9 @@ func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 	v.triggerBufferASTUpdate(b)
 	if err := v.server.DidChange(context.Background(), params); err != nil {
 		return nil, fmt.Errorf("failed to notify gopls of change: %v", err)
+	}
+	if err := v.updateSemanticTokens(b); err != nil {
+		v.Logf("failed to update semantic tokens for buffer %d: %v", b.Num, err)
 	}
 	return nil, nil
 }
