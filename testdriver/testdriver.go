@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -139,7 +138,7 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 		res.readLog = c.ReadLog
 		res.log = c.Log
 	} else {
-		res.log = ioutil.Discard
+		res.log = io.Discard
 	}
 	gl, err := net.Listen("tcp4", "localhost:0")
 	if err != nil {
@@ -173,7 +172,7 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 
 	var dstVimrcBuf bytes.Buffer
 	// add srcVimrc
-	if contents, err := ioutil.ReadFile(srcVimrc); err != nil {
+	if contents, err := os.ReadFile(srcVimrc); err != nil {
 		return nil, fmt.Errorf("failed to read %v: %v", srcVimrc, err)
 	} else {
 		dstVimrcBuf.Write(contents)
@@ -182,12 +181,12 @@ func NewTestDriver(c *Config) (*TestDriver, error) {
 	dstVimrcBuf.WriteString("\n\" ======== TEST-ONLY ADDITIONS =======\n\n")
 	// add test-only VimScript
 	testFns := filepath.Join(c.GovimPath, "testdriver", "test_functions.vim")
-	if contents, err := ioutil.ReadFile(testFns); err != nil {
+	if contents, err := os.ReadFile(testFns); err != nil {
 		return nil, fmt.Errorf("failed to read %v: %v", testFns, err)
 	} else {
 		dstVimrcBuf.Write(contents)
 	}
-	if err := ioutil.WriteFile(dstVimrc, dstVimrcBuf.Bytes(), 0666); err != nil {
+	if err := os.WriteFile(dstVimrc, dstVimrcBuf.Bytes(), 0666); err != nil {
 		return nil, fmt.Errorf("failed to write %v: %v", dstVimrc, err)
 	}
 
@@ -377,7 +376,7 @@ func (d *TestDriver) runVim() error {
 	if d.debug.Enabled {
 		d.LogStripANSI(thepty)
 	} else {
-		io.Copy(ioutil.Discard, thepty)
+		io.Copy(io.Discard, thepty)
 	}
 
 	return nil
@@ -475,7 +474,7 @@ func (d *TestDriver) listenGovim() error {
 		return fmt.Errorf("failed to close listener: %v", err)
 	}
 
-	var log io.Writer = ioutil.Discard
+	var log io.Writer = io.Discard
 	if d.log != nil {
 		log = d.log
 	}
@@ -666,7 +665,7 @@ func VimExprWait() (exitCode int) {
 		ef("invalid arguments")
 	}
 	fileName := args[0]
-	want, err := ioutil.ReadFile(fileName)
+	want, err := os.ReadFile(fileName)
 	if err != nil {
 		ef("failed to read %v: %v", fileName, err)
 	}
@@ -891,7 +890,6 @@ func Sleep(ts *testscript.TestScript, neg bool, args []string) {
 //
 // [v1.2.3]
 // Satisfied if we are running vim/gvim/whatever version >=v1.2.3
-//
 func Condition(cond string) (bool, error) {
 	// Does this condition match any of the issue tracker regexps? If so, return
 	// true unless the GOVIM_TESTSCRIPT_ISSUES specifies a regexp that matches
@@ -1125,6 +1123,6 @@ func EnvSubst(ts *testscript.TestScript, neg bool, args []string) {
 		fc = os.Expand(fc, func(v string) string {
 			return ts.Getenv(v)
 		})
-		ts.Check(ioutil.WriteFile(f, []byte(fc), 0666))
+		ts.Check(os.WriteFile(f, []byte(fc), 0666))
 	}
 }

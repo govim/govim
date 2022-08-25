@@ -2,7 +2,7 @@
 //
 // Usage:
 //
-//    txtarutil (add|drop)footer [-unless PATTERN] GLOB [FILE]
+//	txtarutil (add|drop)footer [-unless PATTERN] GLOB [FILE]
 //
 // where GLOB is a pattern per path/filepath.Glob. If FILE is not supplied for
 // those commands where one is required, then stdin is read for the content. add
@@ -13,24 +13,23 @@
 //
 // For example:
 //
-// 	txtarutil (add|drop)footer ./cmd/govim/testdata/scenario_*/*.txt footer.txt
+//	txtarutil (add|drop)footer ./cmd/govim/testdata/scenario_*/*.txt footer.txt
 //
 // Or using a heredoc:
 //
-// 	txtarutil addfooter ./cmd/govim/testdata/scenario_*/*.txt << EOD
+//	txtarutil addfooter ./cmd/govim/testdata/scenario_*/*.txt << EOD
 //
-// 	# Common footer
-// 	exec echo Hello, World!
+//	# Common footer
+//	exec echo Hello, World!
 //
-// 	EOD
-//
+//	EOD
 package main
 
 import (
 	"bytes"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -177,13 +176,13 @@ func transformEachMatchWithFooter(fn string, args []string, txfms ...func(archiv
 	var footer []byte
 	if len(args) == 2 {
 		fn := args[1]
-		contents, err := ioutil.ReadFile(fn)
+		contents, err := os.ReadFile(fn)
 		if err != nil {
 			return errf("failed to load %v: %v", fn, err)
 		}
 		footer = contents
 	} else {
-		contents, err := ioutil.ReadAll(os.Stdin)
+		contents, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return errf("failed to read from stdin: %v", err)
 		}
@@ -191,7 +190,7 @@ func transformEachMatchWithFooter(fn string, args []string, txfms ...func(archiv
 	}
 Matches:
 	for _, m := range matches {
-		f, err := ioutil.ReadFile(m)
+		f, err := os.ReadFile(m)
 		if err != nil {
 			return errf("failed to read %v: %v", f, err)
 		}
@@ -214,7 +213,7 @@ Matches:
 		for _, f := range archive.Files {
 			fmt.Fprintf(&b, "-- %v --\n%s", f.Name, f.Data)
 		}
-		if err := ioutil.WriteFile(m, b.Bytes(), 0666); err != nil {
+		if err := os.WriteFile(m, b.Bytes(), 0666); err != nil {
 			return fmt.Errorf("failed to write back to %v: %v", m, err)
 		}
 	}

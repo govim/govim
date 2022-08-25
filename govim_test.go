@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -89,13 +88,13 @@ func TestScripts(t *testing.T) {
 				if *fDebugLog {
 					fmt.Printf("Vim home path is at %s\n", home)
 
-					vimDebugLog, err := ioutil.TempFile("", "govim_test_script_vim_debug_log*")
+					vimDebugLog, err := os.CreateTemp("", "govim_test_script_vim_debug_log*")
 					if err != nil {
 						return fmt.Errorf("failed to create govim log file: %v", err)
 					}
 					vimDebugLogPath = vimDebugLog.Name()
 					fmt.Printf("Vim debug logging enabled for %v at %v\n", filepath.Base(e.WorkDir), vimDebugLog.Name())
-					tf, err := ioutil.TempFile("", "govim_test_script_govim_log*")
+					tf, err := os.CreateTemp("", "govim_test_script_govim_log*")
 					if err != nil {
 						return fmt.Errorf("failed to create govim log file: %v", err)
 					}

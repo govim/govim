@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -106,7 +106,7 @@ func (v *vimstate) locationToQuickfix(loc protocol.Location, rel bool) (qf quick
 	}
 	fn := span.URI(loc.URI).Filename()
 	if buf == nil {
-		byts, err := ioutil.ReadFile(fn)
+		byts, err := os.ReadFile(fn)
 		if err != nil {
 			return qf, fmt.Errorf("failed to read contents of %v: %v", fn, err)
 		}

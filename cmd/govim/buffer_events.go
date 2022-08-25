@@ -112,7 +112,6 @@ type bufChangedChange struct {
 // exclusive with bufTextChanged. args are:
 //
 // bufChanged(bufnr, start, end, added, changes)
-//
 func (v *vimstate) bufChanged(args ...json.RawMessage) (interface{}, error) {
 	// For now, if we are "manually" highlighting, any change (in a .go file)
 	// causes an existing highlights to be removed.

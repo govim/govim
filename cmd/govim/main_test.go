@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -84,7 +83,7 @@ func TestScripts(t *testing.T) {
 		t.Fatalf("cannot start proxy: %v", err)
 	}
 
-	entries, err := ioutil.ReadDir("testdata")
+	entries, err := os.ReadDir("testdata")
 	if err != nil {
 		t.Fatalf("failed to list testdata: %v", err)
 	}
@@ -144,7 +143,7 @@ func TestScripts(t *testing.T) {
 					var err error
 					var tf *os.File
 					if workdir == "" {
-						tf, err = ioutil.TempFile(tmp, "govim.log*")
+						tf, err = os.CreateTemp(tmp, "govim.log*")
 						if err != nil {
 							return fmt.Errorf("failed to create govim log file: %v", err)
 						}
@@ -358,7 +357,7 @@ func execvim() int {
 		fmt.Fprintf(os.Stderr, "failed to start %v: %v", strings.Join(cmd.Args, " "), err)
 		return 1
 	}
-	go io.Copy(ioutil.Discard, thepty)
+	go io.Copy(io.Discard, thepty)
 	if err := cmd.Wait(); err != nil {
 		return 1
 	}
@@ -366,7 +365,7 @@ func execvim() int {
 }
 
 func installGoplsToTempDir() (string, error) {
-	td, err := ioutil.TempDir("", "gobin-gopls-installdir")
+	td, err := os.MkdirTemp("", "gobin-gopls-installdir")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp install directory for gopls: %v", err)
 	}
@@ -407,7 +406,7 @@ func readConfig(path string, res interface{}) error {
 	if err != nil || !fi.Mode().IsRegular() {
 		return nil
 	}
-	configByts, err := ioutil.ReadFile(path)
+	configByts, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read %v: %v", path, err)
 	}
