@@ -90,13 +90,12 @@ func (m *modWatcher) watch() {
 // eventFilter return a function that is used to filter events according to the Go specific
 // rules described by https://golang.org/cmd/go/#hdr-Package_lists_and_patterns:
 //
-//  > Directory and file names that begin with "." or "_" are ignored by the go
-//    tool, as are directories named "testdata".
+//	> Directory and file names that begin with "." or "_" are ignored by the go
+//	  tool, as are directories named "testdata".
 //
 // and the module boundary described by https://golang.org/ref/mod#modules-overview:
 //
-//  > The module root directory is the directory that contains the go.mod file.
-//
+//	> The module root directory is the directory that contains the go.mod file.
 func eventFilter(root string) func(string) bool {
 	return func(path string) bool {
 		path = filepath.Clean(path)

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -128,7 +127,7 @@ func (g *govimplugin) createLogFile(prefix string) (*os.File, error) {
 	logfiletmpl = strings.Replace(logfiletmpl, "%v", time.Now().Format("20060102_1504_05"), 1)
 	if strings.Contains(logfiletmpl, "%v") {
 		logfiletmpl = strings.Replace(logfiletmpl, "%v", "*", 1)
-		tf, err = ioutil.TempFile(g.tmpDir, logfiletmpl)
+		tf, err = os.CreateTemp(g.tmpDir, logfiletmpl)
 	} else {
 		// append to existing file
 		tf, err = os.OpenFile(filepath.Join(g.tmpDir, logfiletmpl), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

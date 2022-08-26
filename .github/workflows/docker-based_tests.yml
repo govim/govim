@@ -35,7 +35,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-18.04]
-        go_version: ["go1.17.8", "go1.18"]
+        go_version: ["go1.18.5", "go1.19"]
         vim_flavor: ["vim", "gvim"]
         vim_version: ["v8.1.1711", "v8.1.2056", "v8.2.4698"]
     runs-on: ${{ matrix.os }}

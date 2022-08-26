@@ -1,7 +1,7 @@
 package main
 
 import (
-	"io/ioutil"
+	"os"
 	"sort"
 	"strings"
 
@@ -39,7 +39,7 @@ func (v *vimstate) diagnostics() *[]types.Diagnostic {
 			}
 		}
 		if buf == nil {
-			byts, err := ioutil.ReadFile(fn)
+			byts, err := os.ReadFile(fn)
 			if err != nil {
 				v.Logf("redefineDiagnostics: failed to read contents of %v: %v", fn, err)
 				continue
