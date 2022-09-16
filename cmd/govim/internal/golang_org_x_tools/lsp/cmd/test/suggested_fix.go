@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/tests"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/tests/compare"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -32,6 +33,6 @@ func (r *runner) SuggestedFix(t *testing.T, spn span.Span, suggestedFixes []test
 		return []byte(got), nil
 	}))
 	if want != got {
-		t.Errorf("suggested fixes failed for %s:\n%s", filename, tests.Diff(t, want, got))
+		t.Errorf("suggested fixes failed for %s:\n%s", filename, compare.Text(want, got))
 	}
 }

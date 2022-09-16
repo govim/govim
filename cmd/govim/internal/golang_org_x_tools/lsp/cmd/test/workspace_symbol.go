@@ -13,6 +13,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/source"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/tests"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/tests/compare"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
@@ -48,6 +49,6 @@ func (r *runner) runWorkspaceSymbols(t *testing.T, uri span.URI, matcher, query 
 	}))
 
 	if expect != got {
-		t.Errorf("workspace_symbol failed for %s:\n%s", query, tests.Diff(t, expect, got))
+		t.Errorf("workspace_symbol failed for %s:\n%s", query, compare.Text(expect, got))
 	}
 }

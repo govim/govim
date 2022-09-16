@@ -37,7 +37,7 @@ func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
 	return v.applyMultiBufTextedits(flags.Mods, res.DocumentChanges)
 }
 
-func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes []protocol.TextDocumentEdit) error {
+func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes []protocol.DocumentChanges) error {
 	allChanges := changes
 	if len(allChanges) == 0 {
 		v.Logf("No changes to apply for rename")
@@ -53,8 +53,14 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 	var fps []string
 	uriMap := make(map[protocol.DocumentURI]protocol.TextDocumentEdit)
 	for _, c := range allChanges {
-		uriMap[c.TextDocument.TextDocumentIdentifier.URI] = c
-		fps = append(fps, string(c.TextDocument.TextDocumentIdentifier.URI))
+		// TODO: protocol.DocumentChanges is a union that (currently) must have
+		// either TextDocumentEdit or RenameFile set. We should add support for
+		// renaming files as well.
+		if c.TextDocumentEdit == nil {
+			return fmt.Errorf("file renaming not supported")
+		}
+		uriMap[c.TextDocumentEdit.TextDocument.TextDocumentIdentifier.URI] = *c.TextDocumentEdit
+		fps = append(fps, string(c.TextDocumentEdit.TextDocument.TextDocumentIdentifier.URI))
 	}
 	// So that we have reproducible behaviour
 	sort.Strings(fps)
