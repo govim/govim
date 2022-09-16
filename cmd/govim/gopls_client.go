@@ -10,9 +10,9 @@ import (
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/command"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/command"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 	"github.com/kr/pretty"
 )
@@ -336,6 +336,16 @@ func (g *govimplugin) WorkDoneProgressCreate(ctxt context.Context, params *proto
 		return nil
 	})
 	return nil
+}
+
+func (g *govimplugin) CodeLensRefresh(context.Context) error {
+	defer absorbShutdownErr()
+	panic("CodeLensRefresh not implemented yet")
+}
+
+func (g *govimplugin) LogTrace(context.Context, *protocol.LogTraceParams) error {
+	defer absorbShutdownErr()
+	panic("LogTrace not implemented yet")
 }
 
 func absorbShutdownErr() {

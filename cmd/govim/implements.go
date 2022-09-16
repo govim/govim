@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/govim/govim"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 )
 
 func (v *vimstate) implements(flags govim.CommandFlags, args ...string) error {

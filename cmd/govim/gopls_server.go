@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/kr/pretty"
 )
 
@@ -217,13 +217,6 @@ func (l loggingGoplsServer) ResolveCodeLens(ctxt context.Context, params *protoc
 	return res, err
 }
 
-func (l loggingGoplsServer) CodeLensRefresh(ctxt context.Context) error {
-	l.Logf("gopls.CodeLensRefresh() call\n%v")
-	err := l.u.CodeLensRefresh(ctxt)
-	l.Logf("gopls.CodeLensRefresh() return; err: %v\n%v", err)
-	return err
-}
-
 func (l loggingGoplsServer) DocumentLink(ctxt context.Context, params *protocol.DocumentLinkParams) ([]protocol.DocumentLink, error) {
 	l.Logf("gopls.DocumentLink() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.DocumentLink(ctxt, params)
@@ -287,18 +280,11 @@ func (l loggingGoplsServer) FoldingRange(ctxt context.Context, params *protocol.
 	return res, err
 }
 
-func (l loggingGoplsServer) Declaration(ctxt context.Context, params *protocol.DeclarationParams) (protocol.Declaration, error) {
+func (l loggingGoplsServer) Declaration(ctxt context.Context, params *protocol.DeclarationParams) (*protocol.Or_textDocument_declaration, error) {
 	l.Logf("gopls.Declaration() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Declaration(ctxt, params)
 	l.Logf("gopls.Declaration() return; err: %v; res\n%v%v", err, pretty.Sprint(res))
 	return res, err
-}
-
-func (l loggingGoplsServer) LogTrace(ctxt context.Context, params *protocol.LogTraceParams) error {
-	l.Logf("gopls.LogTrace() call; params:\n%v", pretty.Sprint(params))
-	err := l.u.LogTrace(ctxt, params)
-	l.Logf("gopls.LogTrace() return; err: %v", err)
-	return err
 }
 
 func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.PrepareRenameParams) (*protocol.PrepareRename2Gn, error) {
@@ -402,21 +388,21 @@ func (l loggingGoplsServer) ResolveCodeAction(ctxt context.Context, params *prot
 func (l loggingGoplsServer) DidCreateFiles(ctxt context.Context, params *protocol.CreateFilesParams) error {
 	l.Logf("gopls.DidCreateFiles() call; params:\n%v", pretty.Sprint(params))
 	err := l.u.DidCreateFiles(ctxt, params)
-	l.Logf("gopls.DidCreateFiles() return; err: %v\n%v", err)
+	l.Logf("gopls.DidCreateFiles() return; err: %v", err)
 	return err
 }
 
 func (l loggingGoplsServer) DidDeleteFiles(ctxt context.Context, params *protocol.DeleteFilesParams) error {
 	l.Logf("gopls.DidDeleteFiles() call; params:\n%v", pretty.Sprint(params))
 	err := l.u.DidDeleteFiles(ctxt, params)
-	l.Logf("gopls.DidDeleteFiles() return; err: %v\n%v", err)
+	l.Logf("gopls.DidDeleteFiles() return; err: %v", err)
 	return err
 }
 
 func (l loggingGoplsServer) DidRenameFiles(ctxt context.Context, params *protocol.RenameFilesParams) error {
 	l.Logf("gopls.DidRenameFiles() call; params:\n%v", pretty.Sprint(params))
 	err := l.u.DidRenameFiles(ctxt, params)
-	l.Logf("gopls.DidRenameFiles() return; err: %v\n%v", err)
+	l.Logf("gopls.DidRenameFiles() return; err: %v", err)
 	return err
 }
 
@@ -535,7 +521,7 @@ func (l loggingGoplsServer) DidOpenNotebookDocument(ctxt context.Context, params
 func (l loggingGoplsServer) DidSaveNotebookDocument(ctxt context.Context, params *protocol.DidSaveNotebookDocumentParams) error {
 	l.Logf("gopls.DidSaveNotebookDocument() call; params:\n", pretty.Sprint(params))
 	err := l.u.DidSaveNotebookDocument(ctxt, params)
-	l.Logf("gopls.DidSaveNotebookDocument() return; err: %v\n%v", err)
+	l.Logf("gopls.DidSaveNotebookDocument() return; err: %v", err)
 	return err
 }
 
@@ -549,7 +535,7 @@ func (l loggingGoplsServer) InlayHint(ctxt context.Context, params *protocol.Inl
 func (l loggingGoplsServer) InlayHintRefresh(ctxt context.Context) error {
 	l.Logf("gopls.InlayHintRefresh() call")
 	err := l.u.InlayHintRefresh(ctxt)
-	l.Logf("gopls.InlayHintRefresh() return; err: %v\n%v", err)
+	l.Logf("gopls.InlayHintRefresh() return; err: %v", err)
 	return err
 }
 
@@ -558,5 +544,13 @@ func (l loggingGoplsServer) ResolveCompletionItem(ctxt context.Context, params *
 	res, err := l.u.ResolveCompletionItem(ctxt, params)
 	l.Logf("gopls.ResolveCompletionItem() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
+
+}
+
+func (l loggingGoplsServer) Progress(ctxt context.Context, params *protocol.ProgressParams) error {
+	l.Logf("gopls.Progress() call; params:\n", pretty.Sprint(params))
+	err := l.u.Progress(ctxt, params)
+	l.Logf("gopls.Progress() return; err: %v", err)
+	return err
 
 }
