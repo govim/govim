@@ -259,11 +259,13 @@ type View interface {
 	// by the GOPRIVATE environment variable.
 	IsGoPrivatePath(path string) bool
 
-	// ModuleUpgrades returns known module upgrades.
-	ModuleUpgrades() map[string]string
+	// ModuleUpgrades returns known module upgrades for the dependencies of
+	// modfile.
+	ModuleUpgrades(modfile span.URI) map[string]string
 
-	// RegisterModuleUpgrades registers that upgrades exist for the given modules.
-	RegisterModuleUpgrades(upgrades map[string]string)
+	// RegisterModuleUpgrades registers that upgrades exist for the given modules
+	// required by modfile.
+	RegisterModuleUpgrades(modfile span.URI, upgrades map[string]string)
 
 	// FileKind returns the type of a file
 	FileKind(FileHandle) FileKind
@@ -637,7 +639,6 @@ type Package interface {
 	GetTypes() *types.Package
 	GetTypesInfo() *types.Info
 	GetTypesSizes() types.Sizes
-	IsIllTyped() bool
 	ForTest() string
 	GetImport(pkgPath string) (Package, error)
 	MissingDependencies() []string
@@ -681,6 +682,10 @@ type Diagnostic struct {
 	// part of the LSP spec and don't leave the server.
 	SuggestedFixes []SuggestedFix
 	Analyzer       *Analyzer
+}
+
+func (d *Diagnostic) String() string {
+	return fmt.Sprintf("%v: %s", d.Range, d.Message)
 }
 
 type DiagnosticSource string

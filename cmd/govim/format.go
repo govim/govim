@@ -100,16 +100,21 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 			switch len(dcs) {
 			case 1:
 				dc := dcs[0]
+				// We expect organize imports to have text document edits and not file renaming for example.
+				if dc.TextDocumentEdit == nil {
+					return fmt.Errorf("missing TextDocumentEdit for organizeImports")
+				}
+
 				// verify that the URI and version of the edits match the buffer
-				euri := span.URI(dc.TextDocument.TextDocumentIdentifier.URI)
+				euri := span.URI(dc.TextDocumentEdit.TextDocument.URI)
 				buri := b.URI()
 				if euri != buri {
 					return fmt.Errorf("got edits for file %v, but buffer is %v", euri, buri)
 				}
-				if ev := dc.TextDocument.Version; ev > 0 && ev != b.Version {
+				if ev := dc.TextDocumentEdit.TextDocument.Version; ev > 0 && ev != b.Version {
 					return fmt.Errorf("got edits for version %v, but current buffer version is %v", ev, b.Version)
 				}
-				edits := dc.Edits
+				edits := dc.TextDocumentEdit.Edits
 				if len(edits) != 0 {
 					if err := v.applyProtocolTextEdits(b, edits); err != nil {
 						return err

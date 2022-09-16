@@ -9,6 +9,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/types"
 	"github.com/govim/govim/cmd/govim/internal/vimconfig"
 	"github.com/govim/govim/internal/plugin"
@@ -285,4 +286,64 @@ func (v *vimstate) setUserBusy(args ...json.RawMessage) (interface{}, error) {
 		return nil, err
 	}
 	return nil, nil
+}
+
+// applyEditCall represents a single LSP ApplyEdit call including a channel used
+// to pass a response back.
+type applyEditCall struct {
+	params     *protocol.ApplyWorkspaceEditParams
+	responseCh chan applyEditResponse
+}
+
+// applyEditResponse represents a LSP ApplyEdit response
+type applyEditResponse struct {
+	res *protocol.ApplyWorkspaceEditResult
+	err error
+}
+
+func (v *vimstate) applyWorkspaceEdit(params *protocol.ApplyWorkspaceEditParams) (*protocol.ApplyWorkspaceEditResult, error) {
+	res := &protocol.ApplyWorkspaceEditResult{Applied: true}
+
+	edits := make(map[*types.Buffer][]protocol.TextEdit)
+	for _, dc := range params.Edit.DocumentChanges {
+		// TODO: protocol.DocumentChanges is a union that (currently) must have
+		// either TextDocumentEdit or RenameFile set. We should add support for
+		// renaming files as well.
+		if dc.TextDocumentEdit == nil {
+			return nil, fmt.Errorf("got unsupported workspace edit from gopls (e.g. file rename)")
+		}
+		textDoc := dc.TextDocumentEdit.TextDocument
+
+		// verify that the version of the edits matches a buffer
+		var buf *types.Buffer
+		for _, b := range v.buffers {
+			if b.URI() != span.URI(textDoc.URI) {
+				continue
+			}
+
+			if ev := textDoc.Version; ev > 0 && ev != b.Version {
+				return nil, fmt.Errorf("got edits for buffer version %v, found matching buffer with version %v", ev, b.Version)
+			}
+
+			buf = b
+		}
+
+		if buf == nil {
+			// TODO: we might get edits for files that we don't have open so we need to support that
+			// as well. For fillstruct this isn't an issue since the user calls it within an open file.
+			res.FailureReason = fmt.Sprintf("got edits for buffer %v, but didn't find it", textDoc.URI)
+			res.Applied = false
+			return res, nil
+		}
+		edits[buf] = append(edits[buf], dc.TextDocumentEdit.Edits...)
+	}
+
+	for b, e := range edits {
+		if err := v.applyProtocolTextEdits(b, e); err != nil {
+			res.FailureReason = err.Error()
+			res.Applied = false
+			return res, nil
+		}
+	}
+	return res, nil
 }
