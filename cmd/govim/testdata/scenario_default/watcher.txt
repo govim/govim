@@ -3,7 +3,7 @@
 # New file in the same package
 vim ex 'e main.go'
 cp const.go.orig const.go
-errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const.go'", Type:1\}'
+errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const.go'", Type:0x1\}'
 vim ex 'call cursor(6,16)'
 vim ex 'call feedkeys(\"iConst2\\<ESC>\", \"x\")'
 vim ex 'w'
@@ -12,19 +12,19 @@ cmp main.go main.go.golden
 
 # Update const.go with an error
 cp const.go.updated const.go
-errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const.go'", Type:2\}'
+errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const.go'", Type:0x2\}'
 [v8.2.3019] vimexprwait errors.v8.2.3019.undeclared GOVIMTest_getqflist()
 [!v8.2.3019] vimexprwait errors.undeclared GOVIMTest_getqflist()
 
 # Add a const2.go that conflicts with const.go
 cp const2.go.orig const2.go
-errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const2.go'", Type:1\}'
+errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const2.go'", Type:0x1\}'
 [v8.2.3019] vimexprwait errors.v8.2.3019.otherdeclaration GOVIMTest_getqflist()
 [!v8.2.3019] vimexprwait errors.otherdeclaration GOVIMTest_getqflist()
 
 # Remove const.go to resolve the conflict
 rm const.go
-errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const.go'", Type:3\}'
+errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const.go'", Type:0x3\}'
 vimexprwait errors.empty GOVIMTest_getqflist()
 
 # No warnings or errors during the test

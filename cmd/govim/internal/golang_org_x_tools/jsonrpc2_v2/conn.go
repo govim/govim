@@ -13,7 +13,7 @@ import (
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/label"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/debug/tag"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/tag"
 )
 
 // Binder builds a connection configuration.

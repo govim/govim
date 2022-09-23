@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/govim/govim"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/command"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/command"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 )
 
 // toggleGCDetails calls gopls CommandToggleDetails (via CodeLens) that enable/disable

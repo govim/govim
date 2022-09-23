@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"go/token"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/lsp/bug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 )
 
 // Range represents a source code range in token.Pos form.

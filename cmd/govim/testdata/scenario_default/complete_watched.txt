@@ -3,7 +3,7 @@
 
 vim ex 'e main.go'
 cp const.go.orig const.go
-errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const.go'", Type:1\}'
+errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/const.go'", Type:0x1\}'
 vim ex 'call cursor(6,17)'
 vim ex 'call feedkeys(\"i\\<C-X>\\<C-O>\\<C-N>\\<ESC>\", \"x\")'
 vim ex 'w'

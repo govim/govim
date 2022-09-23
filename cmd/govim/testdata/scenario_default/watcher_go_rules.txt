@@ -6,13 +6,13 @@ vim ex 'e main.go'
 # New packages should be watched
 mkdir a
 cp a.orig a/a.go
-errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/a/a.go'", Type:1\}'
+errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/a/a.go'", Type:0x1\}'
 rm a/a.go
-errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/a/a.go'", Type:3\}'
+errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/a/a.go'", Type:0x3\}'
 
 # Root go.mod should also be watched
 cp go.mod.other go.mod
-errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/go.mod'", Type:2\}'
+errlogmatch '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/go.mod'", Type:0x2\}'
 
 [short] skip 'Skip short because we sleep for GOVIM_ERRLOGMATCH_WAIT to ensure we don''t have any errors'
 
@@ -47,10 +47,10 @@ cp c.orig submod/nowatch.go
 rm submod/a.go
 
 sleep $GOVIM_ERRLOGMATCH_WAIT
-errlogmatch -start -count=0 '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/.*/nowatch.go'", Type:1\}'
-errlogmatch -start -count=0 '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/.*/.nowatch.go'", Type:1\}'
-errlogmatch -start -count=0 '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/.*/_nowatch.go'", Type:1\}'
-errlogmatch -start -count=0 '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/submod/a.go'", Type:3\}'
+errlogmatch -start -count=0 '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/.*/nowatch.go'", Type:0x1\}'
+errlogmatch -start -count=0 '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/.*/.nowatch.go'", Type:0x1\}'
+errlogmatch -start -count=0 '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/.*/_nowatch.go'", Type:0x1\}'
+errlogmatch -start -count=0 '&protocol\.DidChangeWatchedFilesParams\{\n\S+:\s+Changes: \{\n\S+:\s+\{URI:"file://'$WORK/submod/a.go'", Type:0x3\}'
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
