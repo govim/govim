@@ -59,7 +59,7 @@ var GeneratedAPIJSON = &APIJSON{
 			{
 				Name:      "experimentalWorkspaceModule",
 				Type:      "bool",
-				Doc:       "experimentalWorkspaceModule opts a user into the experimental support\nfor multi-module workspaces.\n",
+				Doc:       "experimentalWorkspaceModule opts a user into the experimental support\nfor multi-module workspaces.\n\nDeprecated: this feature is deprecated and will be removed in a future\nversion of gopls (https://go.dev/issue/55331).\n",
 				Default:   "false",
 				Status:    "experimental",
 				Hierarchy: "build",
@@ -91,7 +91,7 @@ var GeneratedAPIJSON = &APIJSON{
 			{
 				Name:      "experimentalUseInvalidMetadata",
 				Type:      "bool",
-				Doc:       "experimentalUseInvalidMetadata enables gopls to fall back on outdated\npackage metadata to provide editor features if the go command fails to\nload packages for some reason (like an invalid go.mod file). This will\neventually be the default behavior, and this setting will be removed.\n",
+				Doc:       "experimentalUseInvalidMetadata enables gopls to fall back on outdated\npackage metadata to provide editor features if the go command fails to\nload packages for some reason (like an invalid go.mod file).\n\nDeprecated: this setting is deprecated and will be removed in a future\nversion of gopls (https://go.dev/issue/55333).\n",
 				Default:   "false",
 				Status:    "experimental",
 				Hierarchy: "build",
@@ -300,7 +300,7 @@ var GeneratedAPIJSON = &APIJSON{
 						},
 						{
 							Name:    "\"loopclosure\"",
-							Doc:     "check references to loop variables from within nested functions\n\nThis analyzer checks for references to loop variables from within a\nfunction literal inside the loop body. It checks only instances where\nthe function literal is called in a defer or go statement that is the\nlast statement in the loop body, as otherwise we would need whole\nprogram analysis.\n\nFor example:\n\n\tfor i, v := range s {\n\t\tgo func() {\n\t\t\tprintln(i, v) // not what you might expect\n\t\t}()\n\t}\n\nSee: https://golang.org/doc/go_faq.html#closures_and_goroutines",
+							Doc:     "check references to loop variables from within nested functions\n\nThis analyzer checks for references to loop variables from within a function\nliteral inside the loop body. It checks for patterns where access to a loop\nvariable is known to escape the current loop iteration:\n 1. a call to go or defer at the end of the loop body\n 2. a call to golang.org/x/sync/errgroup.Group.Go at the end of the loop body\n\nThe analyzer only considers references in the last statement of the loop body\nas it is not deep enough to understand the effects of subsequent statements\nwhich might render the reference benign.\n\nFor example:\n\n\tfor i, v := range s {\n\t\tgo func() {\n\t\t\tprintln(i, v) // not what you might expect\n\t\t}()\n\t}\n\nSee: https://golang.org/doc/go_faq.html#closures_and_goroutines",
 							Default: "true",
 						},
 						{
@@ -510,7 +510,7 @@ var GeneratedAPIJSON = &APIJSON{
 			{
 				Name:      "experimentalWatchedFileDelay",
 				Type:      "time.Duration",
-				Doc:       "experimentalWatchedFileDelay controls the amount of time that gopls waits\nfor additional workspace/didChangeWatchedFiles notifications to arrive,\nbefore processing all such notifications in a single batch. This is\nintended for use by LSP clients that don't support their own batching of\nfile system notifications.\n\nThis option must be set to a valid duration string, for example `\"100ms\"`.\n",
+				Doc:       "experimentalWatchedFileDelay controls the amount of time that gopls waits\nfor additional workspace/didChangeWatchedFiles notifications to arrive,\nbefore processing all such notifications in a single batch. This is\nintended for use by LSP clients that don't support their own batching of\nfile system notifications.\n\nThis option must be set to a valid duration string, for example `\"100ms\"`.\n\nDeprecated: this setting is deprecated and will be removed in a future\nversion of gopls (https://go.dev/issue/55332)\n",
 				Default:   "\"0s\"",
 				Status:    "experimental",
 				Hierarchy: "ui.diagnostic",
@@ -926,7 +926,7 @@ var GeneratedAPIJSON = &APIJSON{
 		},
 		{
 			Name:    "loopclosure",
-			Doc:     "check references to loop variables from within nested functions\n\nThis analyzer checks for references to loop variables from within a\nfunction literal inside the loop body. It checks only instances where\nthe function literal is called in a defer or go statement that is the\nlast statement in the loop body, as otherwise we would need whole\nprogram analysis.\n\nFor example:\n\n\tfor i, v := range s {\n\t\tgo func() {\n\t\t\tprintln(i, v) // not what you might expect\n\t\t}()\n\t}\n\nSee: https://golang.org/doc/go_faq.html#closures_and_goroutines",
+			Doc:     "check references to loop variables from within nested functions\n\nThis analyzer checks for references to loop variables from within a function\nliteral inside the loop body. It checks for patterns where access to a loop\nvariable is known to escape the current loop iteration:\n 1. a call to go or defer at the end of the loop body\n 2. a call to golang.org/x/sync/errgroup.Group.Go at the end of the loop body\n\nThe analyzer only considers references in the last statement of the loop body\nas it is not deep enough to understand the effects of subsequent statements\nwhich might render the reference benign.\n\nFor example:\n\n\tfor i, v := range s {\n\t\tgo func() {\n\t\t\tprintln(i, v) // not what you might expect\n\t\t}()\n\t}\n\nSee: https://golang.org/doc/go_faq.html#closures_and_goroutines",
 			Default: true,
 		},
 		{

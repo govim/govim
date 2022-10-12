@@ -7,10 +7,12 @@
 package protocol
 
 import (
+	"bytes"
 	"fmt"
 	"go/token"
+	"unicode/utf8"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 )
 
 // A ColumnMapper maps between UTF-8 oriented positions (e.g. token.Pos,
@@ -19,6 +21,16 @@ type ColumnMapper struct {
 	URI     span.URI
 	TokFile *token.File
 	Content []byte
+
+	// File content is only really needed for UTF-16 column
+	// computation, which could be be achieved more compactly.
+	// For example, one could record only the lines for which
+	// UTF-16 columns differ from the UTF-8 ones, or only the
+	// indices of the non-ASCII characters.
+	//
+	// TODO(adonovan): consider not retaining the entire file
+	// content, or at least not exposing the fact that we
+	// currently retain it.
 }
 
 // NewColumnMapper creates a new column mapper for the given uri and content.
@@ -70,15 +82,81 @@ func (m *ColumnMapper) Range(s span.Span) (Range, error) {
 	return Range{Start: start, End: end}, nil
 }
 
-func (m *ColumnMapper) Position(p span.Point) (Position, error) {
-	chr, err := span.ToUTF16Column(p, m.Content)
+// OffsetRange returns a Range for the byte-offset interval Content[start:end],
+func (m *ColumnMapper) OffsetRange(start, end int) (Range, error) {
+	startPosition, err := m.OffsetPosition(start)
 	if err != nil {
-		return Position{}, err
+		return Range{}, fmt.Errorf("start: %v", err)
+	}
+
+	endPosition, err := m.OffsetPosition(end)
+	if err != nil {
+		return Range{}, fmt.Errorf("end: %v", err)
+	}
+
+	return Range{Start: startPosition, End: endPosition}, nil
+}
+
+// Position returns the protocol position for the specified point,
+// which must have a byte offset.
+func (m *ColumnMapper) Position(p span.Point) (Position, error) {
+	if !p.HasOffset() {
+		return Position{}, fmt.Errorf("point is missing offset")
+	}
+	return m.OffsetPosition(p.Offset())
+}
+
+// OffsetPosition returns the protocol position of the specified
+// offset within m.Content.
+func (m *ColumnMapper) OffsetPosition(offset int) (Position, error) {
+	// We use span.ToPosition for its "line+1 at EOF" workaround.
+	// TODO(adonovan): ToPosition honors //line directives. It probably shouldn't.
+	line, _, err := span.ToPosition(m.TokFile, offset)
+	if err != nil {
+		return Position{}, fmt.Errorf("OffsetPosition: %v", err)
+	}
+	// If that workaround executed, skip the usual column computation.
+	char := 0
+	if offset != m.TokFile.Size() {
+		char = m.utf16Column(offset)
 	}
 	return Position{
-		Line:      uint32(p.Line() - 1),
-		Character: uint32(chr - 1),
+		Line:      uint32(line - 1),
+		Character: uint32(char),
 	}, nil
+}
+
+// utf16Column returns the zero-based column index of the
+// specified file offset, measured in UTF-16 codes.
+// Precondition: 0 <= offset <= len(m.Content).
+func (m *ColumnMapper) utf16Column(offset int) int {
+	s := m.Content[:offset]
+	if i := bytes.LastIndex(s, []byte("\n")); i >= 0 {
+		s = s[i+1:]
+	}
+	// s is the prefix of the line before offset.
+	return utf16len(s)
+}
+
+// utf16len returns the number of codes in the UTF-16 transcoding of s.
+func utf16len(s []byte) int {
+	var n int
+	for len(s) > 0 {
+		n++
+
+		// Fast path for ASCII.
+		if s[0] < 0x80 {
+			s = s[1:]
+			continue
+		}
+
+		r, size := utf8.DecodeRune(s)
+		if r >= 0x10000 {
+			n++ // surrogate pair
+		}
+		s = s[size:]
+	}
+	return n
 }
 
 func (m *ColumnMapper) Span(l Location) (span.Span, error) {
@@ -148,6 +226,11 @@ func IsPoint(r Range) bool {
 	return r.Start.Line == r.End.Line && r.Start.Character == r.End.Character
 }
 
+// CompareRange returns -1 if a is before b, 0 if a == b, and 1 if a is after
+// b.
+//
+// A range a is defined to be 'before' b if a.Start is before b.Start, or
+// a.Start == b.Start and a.End is before b.End.
 func CompareRange(a, b Range) int {
 	if r := ComparePosition(a.Start, b.Start); r != 0 {
 		return r
@@ -155,6 +238,8 @@ func CompareRange(a, b Range) int {
 	return ComparePosition(a.End, b.End)
 }
 
+// ComparePosition returns -1 if a is before b, 0 if a == b, and 1 if a is
+// after b.
 func ComparePosition(a, b Position) int {
 	if a.Line < b.Line {
 		return -1
@@ -179,6 +264,18 @@ func Intersect(a, b Range) bool {
 		(a.End.Line == b.Start.Line) && a.End.Character < b.Start.Character)
 }
 
+// Format implements fmt.Formatter.
+//
+// Note: Formatter is implemented instead of Stringer (presumably) for
+// performance reasons, though it is not clear that it matters in practice.
 func (r Range) Format(f fmt.State, _ rune) {
-	fmt.Fprintf(f, "%v:%v-%v:%v", r.Start.Line, r.Start.Character, r.End.Line, r.End.Character)
+	fmt.Fprintf(f, "%v-%v", r.Start, r.End)
+}
+
+// Format implements fmt.Formatter.
+//
+// See Range.Format for discussion of why the Formatter interface is
+// implemented rather than Stringer.
+func (p Position) Format(f fmt.State, _ rune) {
+	fmt.Fprintf(f, "%v:%v", p.Line, p.Character)
 }

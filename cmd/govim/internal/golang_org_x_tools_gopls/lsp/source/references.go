@@ -15,10 +15,10 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 )
 
 // ReferenceInfo holds information about reference to an identifier in Go source.
@@ -62,7 +62,7 @@ func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Posit
 	}
 
 	if inPackageName {
-		renamingPkg, err := s.PackageForFile(ctx, f.URI(), TypecheckAll, NarrowestPackage)
+		renamingPkg, err := s.PackageForFile(ctx, f.URI(), TypecheckWorkspace, NarrowestPackage)
 		if err != nil {
 			return nil, err
 		}
@@ -126,6 +126,10 @@ func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Posit
 }
 
 // references is a helper function to avoid recomputing qualifiedObjsAtProtocolPos.
+// The first element of qos is considered to be the declaration;
+// if isDeclaration, the first result is an extra item for it.
+// Only the definition-related fields of qualifiedObject are used.
+// (Arguably it should accept a smaller data type.)
 func references(ctx context.Context, snapshot Snapshot, qos []qualifiedObject, includeDeclaration, includeInterfaceRefs, includeEmbeddedRefs bool) ([]*ReferenceInfo, error) {
 	var (
 		references []*ReferenceInfo
@@ -134,8 +138,10 @@ func references(ctx context.Context, snapshot Snapshot, qos []qualifiedObject, i
 
 	pos := qos[0].obj.Pos()
 	if pos == token.NoPos {
-		return nil, fmt.Errorf("no position for %s", qos[0].obj)
+		return nil, fmt.Errorf("no position for %s", qos[0].obj) // e.g. error.Error
 	}
+	// Inv: qos[0].pkg != nil, since Pos is valid.
+	// Inv: qos[*].pkg != nil, since all qos are logically the same declaration.
 	filename := snapshot.FileSet().Position(pos).Filename
 	pgf, err := qos[0].pkg.File(span.URIFromPath(filename))
 	if err != nil {
@@ -200,7 +206,7 @@ func references(ctx context.Context, snapshot Snapshot, qos []qualifiedObject, i
 					continue
 				}
 				seen[key] = true
-				rng, err := posToMappedRange(snapshot, pkg, ident.Pos(), ident.End())
+				rng, err := posToMappedRange(snapshot.FileSet(), pkg, ident.Pos(), ident.End())
 				if err != nil {
 					return nil, err
 				}
@@ -220,6 +226,8 @@ func references(ctx context.Context, snapshot Snapshot, qos []qualifiedObject, i
 	// happened to have a String method.
 	_, isType := declIdent.Declaration.obj.(*types.TypeName)
 	if includeInterfaceRefs && !isType {
+		// TODO(adonovan): opt: don't go back into the position domain:
+		// we have complete type information already.
 		declRange, err := declIdent.Range()
 		if err != nil {
 			return nil, err
@@ -256,6 +264,8 @@ func interfaceReferences(ctx context.Context, s Snapshot, f FileHandle, pp proto
 		return nil, err
 	}
 
+	// Make a separate call to references() for each element
+	// since it treats the first qualifiedObject as a definition.
 	var refs []*ReferenceInfo
 	for _, impl := range implementations {
 		implRefs, err := references(ctx, s, []qualifiedObject{impl}, false, false, false)

@@ -2,8 +2,8 @@ package types
 
 import (
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 )
 
 // CursorPosition represents a cursor position within a window

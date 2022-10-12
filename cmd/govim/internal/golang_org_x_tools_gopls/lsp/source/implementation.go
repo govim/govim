@@ -13,10 +13,10 @@ import (
 	"go/types"
 	"sort"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 )
 
 func Implementation(ctx context.Context, snapshot Snapshot, f FileHandle, pp protocol.Position) ([]protocol.Location, error) {
@@ -32,7 +32,7 @@ func Implementation(ctx context.Context, snapshot Snapshot, f FileHandle, pp pro
 		if impl.pkg == nil || len(impl.pkg.CompiledGoFiles()) == 0 {
 			continue
 		}
-		rng, err := objToMappedRange(snapshot, impl.pkg, impl.obj)
+		rng, err := objToMappedRange(snapshot.FileSet(), impl.pkg, impl.obj)
 		if err != nil {
 			return nil, err
 		}
@@ -59,23 +59,48 @@ var ErrNotAType = errors.New("not a type name or method")
 
 // implementations returns the concrete implementations of the specified
 // interface, or the interfaces implemented by the specified concrete type.
+// It populates only the definition-related fields of qualifiedObject.
+// (Arguably it should return a smaller data type.)
 func implementations(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Position) ([]qualifiedObject, error) {
+	// Find all named types, even local types
+	// (which can have methods due to promotion).
 	var (
-		impls []qualifiedObject
-		seen  = make(map[token.Position]bool)
-		fset  = s.FileSet()
+		allNamed []*types.Named
+		pkgs     = make(map[*types.Package]Package)
 	)
+	knownPkgs, err := s.KnownPackages(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, pkg := range knownPkgs {
+		pkgs[pkg.GetTypes()] = pkg
+		for _, obj := range pkg.GetTypesInfo().Defs {
+			obj, ok := obj.(*types.TypeName)
+			// We ignore aliases 'type M = N' to avoid duplicate reporting
+			// of the Named type N.
+			if !ok || obj.IsAlias() {
+				continue
+			}
+			if named, ok := obj.Type().(*types.Named); ok {
+				allNamed = append(allNamed, named)
+			}
+		}
+	}
 
 	qos, err := qualifiedObjsAtProtocolPos(ctx, s, f.URI(), pp)
 	if err != nil {
 		return nil, err
 	}
+	var (
+		impls []qualifiedObject
+		seen  = make(map[token.Position]bool)
+	)
 	for _, qo := range qos {
+		// Ascertain the query identifier (type or method).
 		var (
 			queryType   types.Type
 			queryMethod *types.Func
 		)
-
 		switch obj := qo.obj.(type) {
 		case *types.Func:
 			queryMethod = obj
@@ -92,32 +117,6 @@ func implementations(ctx context.Context, s Snapshot, f FileHandle, pp protocol.
 
 		if types.NewMethodSet(queryType).Len() == 0 {
 			return nil, nil
-		}
-
-		// Find all named types, even local types (which can have methods
-		// due to promotion).
-		var (
-			allNamed []*types.Named
-			pkgs     = make(map[*types.Package]Package)
-		)
-		knownPkgs, err := s.KnownPackages(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, pkg := range knownPkgs {
-			pkgs[pkg.GetTypes()] = pkg
-			info := pkg.GetTypesInfo()
-			for _, obj := range info.Defs {
-				obj, ok := obj.(*types.TypeName)
-				// We ignore aliases 'type M = N' to avoid duplicate reporting
-				// of the Named type N.
-				if !ok || obj.IsAlias() {
-					continue
-				}
-				if named, ok := obj.Type().(*types.Named); ok {
-					allNamed = append(allNamed, named)
-				}
-			}
 		}
 
 		// Find all the named types that match our query.
@@ -146,7 +145,7 @@ func implementations(ctx context.Context, s Snapshot, f FileHandle, pp protocol.
 				candObj = sel.Obj()
 			}
 
-			pos := fset.Position(candObj.Pos())
+			pos := s.FileSet().Position(candObj.Pos())
 			if candObj == queryMethod || seen[pos] {
 				continue
 			}
@@ -155,7 +154,7 @@ func implementations(ctx context.Context, s Snapshot, f FileHandle, pp protocol.
 
 			impls = append(impls, qualifiedObject{
 				obj: candObj,
-				pkg: pkgs[candObj.Pkg()],
+				pkg: pkgs[candObj.Pkg()], // may be nil (e.g. error)
 			})
 		}
 	}
@@ -192,17 +191,16 @@ func ensurePointer(T types.Type) types.Type {
 	return T
 }
 
+// A qualifiedObject is the result of resolving a reference from an
+// identifier to an object.
 type qualifiedObject struct {
-	obj types.Object
+	// definition
+	obj types.Object // the referenced object
+	pkg Package      // the Package that defines the object (nil => universe)
 
-	// pkg is the Package that contains obj's definition.
-	pkg Package
-
-	// node is the *ast.Ident or *ast.ImportSpec we followed to find obj, if any.
-	node ast.Node
-
-	// sourcePkg is the Package that contains node, if any.
-	sourcePkg Package
+	// reference (optional)
+	node      ast.Node // the reference (*ast.Ident or *ast.ImportSpec) to the object
+	sourcePkg Package  // the Package containing node
 }
 
 var (
@@ -210,28 +208,27 @@ var (
 	errNoObjectFound = errors.New("no object found")
 )
 
-// qualifiedObjsAtProtocolPos returns info for all the type.Objects
-// referenced at the given position. An object will be returned for
-// every package that the file belongs to, in every typechecking mode
-// applicable.
+// qualifiedObjsAtProtocolPos returns info for all the types.Objects referenced
+// at the given position, for the following selection of packages:
+//
+// 1. all packages (including all test variants), in their workspace parse mode
+// 2. if not included above, at least one package containing uri in full parse mode
+//
+// Finding objects in (1) ensures that we locate references within all
+// workspace packages, including in x_test packages. Including (2) ensures that
+// we find local references in the current package, for non-workspace packages
+// that may be open.
 func qualifiedObjsAtProtocolPos(ctx context.Context, s Snapshot, uri span.URI, pp protocol.Position) ([]qualifiedObject, error) {
-	pkgs, err := s.PackagesForFile(ctx, uri, TypecheckAll, false)
+	fh, err := s.GetFile(ctx, uri)
 	if err != nil {
 		return nil, err
 	}
-	if len(pkgs) == 0 {
-		return nil, errNoObjectFound
-	}
-	pkg := pkgs[0]
-	pgf, err := pkg.File(uri)
+	content, err := fh.Read()
 	if err != nil {
 		return nil, err
 	}
-	pos, err := pgf.Mapper.Pos(pp)
-	if err != nil {
-		return nil, err
-	}
-	offset, err := safetoken.Offset(pgf.Tok, pos)
+	m := protocol.NewColumnMapper(uri, content)
+	offset, err := m.Offset(pp)
 	if err != nil {
 		return nil, err
 	}
@@ -249,8 +246,8 @@ type positionKey struct {
 	offset int
 }
 
-// qualifiedObjsAtLocation finds all objects referenced at offset in uri, across
-// all packages in the snapshot.
+// qualifiedObjsAtLocation finds all objects referenced at offset in uri,
+// across all packages in the snapshot.
 func qualifiedObjsAtLocation(ctx context.Context, s Snapshot, key positionKey, seen map[positionKey]bool) ([]qualifiedObject, error) {
 	if seen[key] {
 		return nil, nil
@@ -266,9 +263,29 @@ func qualifiedObjsAtLocation(ctx context.Context, s Snapshot, key positionKey, s
 	// try to be comprehensive in case we ever support variations on build
 	// constraints.
 
-	pkgs, err := s.PackagesForFile(ctx, key.uri, TypecheckAll, false)
+	pkgs, err := s.PackagesForFile(ctx, key.uri, TypecheckWorkspace, true)
 	if err != nil {
 		return nil, err
+	}
+
+	// In order to allow basic references/rename/implementations to function when
+	// non-workspace packages are open, ensure that we have at least one fully
+	// parsed package for the current file. This allows us to find references
+	// inside the open package. Use WidestPackage to capture references in test
+	// files.
+	hasFullPackage := false
+	for _, pkg := range pkgs {
+		if pkg.ParseMode() == ParseFull {
+			hasFullPackage = true
+			break
+		}
+	}
+	if !hasFullPackage {
+		pkg, err := s.PackageForFile(ctx, key.uri, TypecheckFull, WidestPackage)
+		if err != nil {
+			return nil, err
+		}
+		pkgs = append(pkgs, pkg)
 	}
 
 	// report objects in the order we encounter them. This ensures that the first

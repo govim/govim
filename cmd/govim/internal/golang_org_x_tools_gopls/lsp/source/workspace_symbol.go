@@ -16,10 +16,10 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/fuzzy"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 // Symbol holds a precomputed symbol value. Note: we avoid using the

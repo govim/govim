@@ -14,10 +14,10 @@ import (
 	"path/filepath"
 
 	"golang.org/x/tools/go/ast/astutil"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/tag"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 // PrepareCallHierarchy returns an array of CallHierarchyItem for a file and the position within the file.

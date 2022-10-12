@@ -9,8 +9,8 @@ import (
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/internal/fswatcher"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 )
 
 type modWatcher struct {

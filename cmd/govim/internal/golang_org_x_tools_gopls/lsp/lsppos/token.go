@@ -6,6 +6,7 @@ package lsppos
 
 import (
 	"errors"
+	"go/ast"
 	"go/token"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
@@ -24,7 +25,7 @@ type TokenMapper struct {
 	mapper *Mapper
 }
 
-// NewMapper creates a new TokenMapper for the given content, using the
+// NewTokenMapper creates a new TokenMapper for the given content, using the
 // provided file to compute offsets.
 func NewTokenMapper(content []byte, file *token.File) *TokenMapper {
 	return &TokenMapper{
@@ -57,4 +58,10 @@ func (m *TokenMapper) Range(start, end token.Pos) (protocol.Range, error) {
 	}
 
 	return protocol.Range{Start: startPos, End: endPos}, nil
+}
+
+// NodeRange returns the protocol range corresponding to the span of the given
+// node.
+func (m *TokenMapper) NodeRange(n ast.Node) (protocol.Range, error) {
+	return m.Range(n.Pos(), n.End())
 }

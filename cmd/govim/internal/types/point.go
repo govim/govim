@@ -3,8 +3,8 @@ package types
 import (
 	"fmt"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 )
 
 // Point represents a position within a Buffer

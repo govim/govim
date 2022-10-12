@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 	"github.com/govim/govim/cmd/govim/internal/types"
 	"github.com/govim/govim/cmd/govim/internal/vimconfig"
 	"github.com/govim/govim/internal/plugin"

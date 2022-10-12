@@ -13,8 +13,8 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/ast/astutil"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 )
 
 func Highlight(ctx context.Context, snapshot Snapshot, fh FileHandle, position protocol.Position) ([]protocol.Range, error) {
@@ -59,7 +59,7 @@ func Highlight(ctx context.Context, snapshot Snapshot, fh FileHandle, position p
 	}
 	var ranges []protocol.Range
 	for rng := range result {
-		mRng, err := posToMappedRange(snapshot, pkg, rng.start, rng.end)
+		mRng, err := posToMappedRange(snapshot.FileSet(), pkg, rng.start, rng.end)
 		if err != nil {
 			return nil, err
 		}

@@ -31,8 +31,8 @@ import (
 	_ "golang.org/x/tools/gopls/internal/lsp/protocol"
 	_ "golang.org/x/tools/gopls/internal/lsp/source"
 	_ "golang.org/x/tools/gopls/internal/lsp/command"
+	_ "golang.org/x/tools/gopls/internal/span"
 	_ "golang.org/x/tools/internal/fakenet"
-	_ "golang.org/x/tools/internal/span"
 	_ "golang.org/x/tools/internal/jsonrpc2"
 )
 EOD
