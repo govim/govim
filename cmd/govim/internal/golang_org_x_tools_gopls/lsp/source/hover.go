@@ -22,10 +22,10 @@ import (
 
 	"golang.org/x/text/unicode/runenames"
 	"golang.org/x/tools/go/types/typeutil"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
 
@@ -237,7 +237,7 @@ func findRune(ctx context.Context, snapshot Snapshot, fh FileHandle, position pr
 		return 0, MappedRange{}, ErrNoRuneFound
 	}
 
-	mappedRange, err := posToMappedRange(snapshot, pkg, start, end)
+	mappedRange, err := posToMappedRange(snapshot.FileSet(), pkg, start, end)
 	if err != nil {
 		return 0, MappedRange{}, err
 	}

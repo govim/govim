@@ -20,7 +20,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/analysis/stubmethods"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
 
@@ -80,20 +80,14 @@ func stubSuggestedFixFunc(ctx context.Context, snapshot Snapshot, fh VersionedFi
 	if err != nil {
 		return nil, fmt.Errorf("format.Node: %w", err)
 	}
-	diffEdits, err := snapshot.View().Options().ComputeEdits(parsedConcreteFile.URI, string(parsedConcreteFile.Src), source.String())
-	if err != nil {
-		return nil, err
-	}
+	diffs := snapshot.View().Options().ComputeEdits(string(parsedConcreteFile.Src), source.String())
+	tf := parsedConcreteFile.Mapper.TokFile
 	var edits []analysis.TextEdit
-	for _, edit := range diffEdits {
-		rng, err := edit.Span.Range(parsedConcreteFile.Mapper.TokFile)
-		if err != nil {
-			return nil, err
-		}
+	for _, edit := range diffs {
 		edits = append(edits, analysis.TextEdit{
-			Pos:     rng.Start,
-			End:     rng.End,
-			NewText: []byte(edit.NewText),
+			Pos:     tf.Pos(edit.Start),
+			End:     tf.Pos(edit.End),
+			NewText: []byte(edit.New),
 		})
 	}
 	return &analysis.SuggestedFix{

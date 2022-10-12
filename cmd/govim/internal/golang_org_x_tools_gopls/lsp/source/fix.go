@@ -14,9 +14,9 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/analysis/fillstruct"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/analysis/undeclaredname"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 )
 
 type (

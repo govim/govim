@@ -18,8 +18,8 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/ast/astutil"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/analysisinternal"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 )
 
 const Doc = `suggested fixes for "undeclared name: <>"
@@ -45,7 +45,8 @@ var Analyzer = &analysis.Analyzer{
 	RunDespiteErrors: true,
 }
 
-const undeclaredNamePrefix = "undeclared name: "
+// The prefix for this error message changed in Go 1.20.
+var undeclaredNamePrefixes = []string{"undeclared name: ", "undefined: "}
 
 func run(pass *analysis.Pass) (interface{}, error) {
 	for _, err := range analysisinternal.GetTypeErrors(pass) {
@@ -55,10 +56,16 @@ func run(pass *analysis.Pass) (interface{}, error) {
 }
 
 func runForError(pass *analysis.Pass, err types.Error) {
-	if !strings.HasPrefix(err.Msg, undeclaredNamePrefix) {
+	var name string
+	for _, prefix := range undeclaredNamePrefixes {
+		if !strings.HasPrefix(err.Msg, prefix) {
+			continue
+		}
+		name = strings.TrimPrefix(err.Msg, prefix)
+	}
+	if name == "" {
 		return
 	}
-	name := strings.TrimPrefix(err.Msg, undeclaredNamePrefix)
 	var file *ast.File
 	for _, f := range pass.Files {
 		if f.Pos() <= err.Pos && err.Pos < f.End() {

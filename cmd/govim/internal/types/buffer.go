@@ -6,8 +6,8 @@ import (
 	"go/ast"
 	"go/token"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 )
 
 // A Buffer is govim's representation of the current state of a buffer in Vim

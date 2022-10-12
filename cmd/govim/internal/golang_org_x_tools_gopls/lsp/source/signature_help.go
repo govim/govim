@@ -12,8 +12,8 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/ast/astutil"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 )
 
 func SignatureHelp(ctx context.Context, snapshot Snapshot, fh FileHandle, position protocol.Position) (*protocol.SignatureInformation, int, error) {
@@ -94,7 +94,7 @@ FindCall:
 		comment *ast.CommentGroup
 	)
 	if obj != nil {
-		declPkg, err := FindPackageFromPos(ctx, snapshot, obj.Pos())
+		declPkg, err := FindPackageFromPos(snapshot.FileSet(), pkg, obj.Pos())
 		if err != nil {
 			return nil, 0, err
 		}

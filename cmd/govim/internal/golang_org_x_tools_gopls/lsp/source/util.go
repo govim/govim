@@ -18,9 +18,10 @@ import (
 	"strings"
 
 	"golang.org/x/mod/modfile"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
 
 // MappedRange provides mapped protocol.Range for a span.Range, accounting for
@@ -122,17 +123,7 @@ func IsGenerated(ctx context.Context, snapshot Snapshot, uri span.URI) bool {
 	return false
 }
 
-func nodeToProtocolRange(snapshot Snapshot, pkg Package, n ast.Node) (protocol.Range, error) {
-	mrng, err := posToMappedRange(snapshot, pkg, n.Pos(), n.End())
-	if err != nil {
-		return protocol.Range{}, err
-	}
-	return mrng.Range()
-}
-
-// objToMappedRange returns the MappedRange for the object's declaring
-// identifier (or string literal, for an import).
-func objToMappedRange(snapshot Snapshot, pkg Package, obj types.Object) (MappedRange, error) {
+func objToMappedRange(fset *token.FileSet, pkg Package, obj types.Object) (MappedRange, error) {
 	nameLen := len(obj.Name())
 	if pkgName, ok := obj.(*types.PkgName); ok {
 		// An imported Go package has a package-local, unqualified name.
@@ -149,13 +140,20 @@ func objToMappedRange(snapshot Snapshot, pkg Package, obj types.Object) (MappedR
 			nameLen = len(pkgName.Imported().Path()) + len(`""`)
 		}
 	}
-	return posToMappedRange(snapshot, pkg, obj.Pos(), obj.Pos()+token.Pos(nameLen))
+	return posToMappedRange(fset, pkg, obj.Pos(), obj.Pos()+token.Pos(nameLen))
 }
 
 // posToMappedRange returns the MappedRange for the given [start, end) span,
 // which must be among the transitive dependencies of pkg.
-func posToMappedRange(snapshot Snapshot, pkg Package, pos, end token.Pos) (MappedRange, error) {
-	tokFile := snapshot.FileSet().File(pos)
+func posToMappedRange(fset *token.FileSet, pkg Package, pos, end token.Pos) (MappedRange, error) {
+	if !pos.IsValid() {
+		return MappedRange{}, fmt.Errorf("invalid start position")
+	}
+	if !end.IsValid() {
+		return MappedRange{}, fmt.Errorf("invalid end position")
+	}
+
+	tokFile := fset.File(pos)
 	// Subtle: it is not safe to simplify this to tokFile.Name
 	// because, due to //line directives, a Position within a
 	// token.File may have a different filename than the File itself.
@@ -164,17 +162,33 @@ func posToMappedRange(snapshot Snapshot, pkg Package, pos, end token.Pos) (Mappe
 	if err != nil {
 		return MappedRange{}, err
 	}
-	if !pos.IsValid() {
-		return MappedRange{}, fmt.Errorf("invalid start position")
-	}
-	if !end.IsValid() {
-		return MappedRange{}, fmt.Errorf("invalid end position")
-	}
-	// It is fishy that pgf.Mapper (from the parsed Go file) is
+	// It is problematic that pgf.Mapper (from the parsed Go file) is
 	// accompanied here not by pgf.Tok but by tokFile from the global
 	// FileSet, which is a distinct token.File that doesn't
-	// contain [pos,end). TODO(adonovan): clean this up.
+	// contain [pos,end).
+	//
+	// This is done because tokFile is the *token.File for the compiled go file
+	// containing pos, whereas Mapper is the UTF16 mapper for the go file pointed
+	// to by line directives.
+	//
+	// TODO(golang/go#55043): clean this up.
 	return NewMappedRange(tokFile, pgf.Mapper, pos, end), nil
+}
+
+// FindPackageFromPos returns the Package for the given position, which must be
+// among the transitive dependencies of pkg.
+//
+// TODO(rfindley): is this the best factoring of this API? This function is
+// really a trivial wrapper around findFileInDeps, which may be a more useful
+// function to expose.
+func FindPackageFromPos(fset *token.FileSet, pkg Package, pos token.Pos) (Package, error) {
+	if !pos.IsValid() {
+		return nil, fmt.Errorf("invalid position")
+	}
+	fileName := fset.File(pos).Name()
+	uri := span.URIFromPath(fileName)
+	_, pkg, err := findFileInDeps(pkg, uri)
+	return pkg, err
 }
 
 // Matches cgo generated comment as well as the proposed standard:
@@ -293,35 +307,6 @@ func CompareDiagnostic(a, b *Diagnostic) int {
 		return +1
 	}
 	return 0
-}
-
-// FindPackageFromPos finds the first package containing pos in its
-// type-checked AST.
-func FindPackageFromPos(ctx context.Context, snapshot Snapshot, pos token.Pos) (Package, error) {
-	tok := snapshot.FileSet().File(pos)
-	if tok == nil {
-		return nil, fmt.Errorf("no file for pos %v", pos)
-	}
-	uri := span.URIFromPath(tok.Name())
-	pkgs, err := snapshot.PackagesForFile(ctx, uri, TypecheckAll, true)
-	if err != nil {
-		return nil, err
-	}
-	// Only return the package if it actually type-checked the given position.
-	for _, pkg := range pkgs {
-		parsed, err := pkg.File(uri)
-		if err != nil {
-			// TODO(adonovan): should this be a bug.Report or log.Fatal?
-			// The logic in Identifier seems to think so.
-			// Should it be a postcondition of PackagesForFile?
-			// And perhaps PackagesForFile should return the PGFs too.
-			return nil, err
-		}
-		if parsed != nil && parsed.Tok.Base() == tok.Base() {
-			return pkg, nil
-		}
-	}
-	return nil, fmt.Errorf("no package for given file position")
 }
 
 // findFileInDeps finds uri in pkg or its dependencies.
@@ -588,4 +573,52 @@ func ByteOffsetsToRange(m *protocol.ColumnMapper, uri span.URI, start, end int) 
 	}
 	e := span.NewPoint(line, col, end)
 	return m.Range(span.New(uri, s, e))
+}
+
+// RecvIdent returns the type identifier of a method receiver.
+// e.g. A for all of A, *A, A[T], *A[T], etc.
+func RecvIdent(recv *ast.FieldList) *ast.Ident {
+	if recv == nil || len(recv.List) == 0 {
+		return nil
+	}
+	x := recv.List[0].Type
+	if star, ok := x.(*ast.StarExpr); ok {
+		x = star.X
+	}
+	switch ix := x.(type) { // check for instantiated receivers
+	case *ast.IndexExpr:
+		x = ix.X
+	case *typeparams.IndexListExpr:
+		x = ix.X
+	}
+	if ident, ok := x.(*ast.Ident); ok {
+		return ident
+	}
+	return nil
+}
+
+// embeddedIdent returns the type name identifier for an embedding x, if x in a
+// valid embedding. Otherwise, it returns nil.
+//
+// Spec: An embedded field must be specified as a type name T or as a pointer
+// to a non-interface type name *T
+func embeddedIdent(x ast.Expr) *ast.Ident {
+	if star, ok := x.(*ast.StarExpr); ok {
+		x = star.X
+	}
+	switch ix := x.(type) { // check for instantiated receivers
+	case *ast.IndexExpr:
+		x = ix.X
+	case *typeparams.IndexListExpr:
+		x = ix.X
+	}
+	switch x := x.(type) {
+	case *ast.Ident:
+		return x
+	case *ast.SelectorExpr:
+		if _, ok := x.X.(*ast.Ident); ok {
+			return x.Sel
+		}
+	}
+	return nil
 }
