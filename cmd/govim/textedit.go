@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -23,6 +24,11 @@ type textEdit struct {
 }
 
 func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.TextEdit) error {
+	// The protocol doesn't require edits to be sorted, so sort them.
+	if !sort.IsSorted(editsSort(edits)) {
+		edits = append([]protocol.TextEdit(nil), edits...)
+		sortEdits(edits)
+	}
 
 	// prepare the changes to make in Vim
 	blines := bytes.Split(b.Contents()[:len(b.Contents())-1], []byte("\n"))
@@ -161,6 +167,31 @@ func (v *vimstate) applyProtocolTextEdits(b *types.Buffer, edits []protocol.Text
 
 	return v.server.DidChange(context.Background(), params)
 }
+
+// sortEdits orders edits by (start, end) offset.
+// This ordering puts insertions (end = start) before deletions
+// (end > start) at the same point, but uses a stable sort to preserve
+// the order of multiple insertions at the same point.
+func sortEdits(edits editsSort) {
+	sort.Stable(edits)
+}
+
+type editsSort []protocol.TextEdit
+
+func (a editsSort) Len() int { return len(a) }
+func (a editsSort) Less(i, j int) bool {
+	positionCmp := func(x, y protocol.Position) int {
+		if cmp := int(x.Line) - int(y.Line); cmp != 0 {
+			return cmp
+		}
+		return int(x.Character) - int(y.Character)
+	}
+	if cmp := positionCmp(a[i].Range.Start, a[j].Range.Start); cmp != 0 {
+		return cmp < 0
+	}
+	return positionCmp(a[i].Range.End, a[j].Range.End) < 0
+}
+func (a editsSort) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 
 func min(i, j int) int {
 	if i < j {
