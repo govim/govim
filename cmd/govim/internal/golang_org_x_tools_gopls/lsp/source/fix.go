@@ -26,7 +26,7 @@ type (
 	// suggested fixes with their diagnostics, so we have to compute them
 	// separately. Such analyzers should provide a function with a signature of
 	// SuggestedFixFunc.
-	SuggestedFixFunc  func(ctx context.Context, snapshot Snapshot, fh VersionedFileHandle, pRng protocol.Range) (*analysis.SuggestedFix, error)
+	SuggestedFixFunc  func(ctx context.Context, snapshot Snapshot, fh VersionedFileHandle, pRng protocol.Range) (*token.FileSet, *analysis.SuggestedFix, error)
 	singleFileFixFunc func(fset *token.FileSet, rng span.Range, src []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error)
 )
 
@@ -51,12 +51,13 @@ var suggestedFixes = map[string]SuggestedFixFunc{
 
 // singleFile calls analyzers that expect inputs for a single file
 func singleFile(sf singleFileFixFunc) SuggestedFixFunc {
-	return func(ctx context.Context, snapshot Snapshot, fh VersionedFileHandle, pRng protocol.Range) (*analysis.SuggestedFix, error) {
+	return func(ctx context.Context, snapshot Snapshot, fh VersionedFileHandle, pRng protocol.Range) (*token.FileSet, *analysis.SuggestedFix, error) {
 		fset, rng, src, file, pkg, info, err := getAllSuggestedFixInputs(ctx, snapshot, fh, pRng)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return sf(fset, rng, src, file, pkg, info)
+		fix, err := sf(fset, rng, src, file, pkg, info)
+		return fset, fix, err
 	}
 }
 
@@ -75,14 +76,13 @@ func ApplyFix(ctx context.Context, fix string, snapshot Snapshot, fh VersionedFi
 	if !ok {
 		return nil, fmt.Errorf("no suggested fix function for %s", fix)
 	}
-	suggestion, err := handler(ctx, snapshot, fh, pRng)
+	fset, suggestion, err := handler(ctx, snapshot, fh, pRng)
 	if err != nil {
 		return nil, err
 	}
 	if suggestion == nil {
 		return nil, nil
 	}
-	fset := snapshot.FileSet()
 	editsPerFile := map[span.URI]*protocol.TextDocumentEdit{}
 	for _, edit := range suggestion.TextEdits {
 		tokFile := fset.File(edit.Pos)
@@ -93,15 +93,11 @@ func ApplyFix(ctx context.Context, fix string, snapshot Snapshot, fh VersionedFi
 		if !end.IsValid() {
 			end = edit.Pos
 		}
-		spn, err := span.NewRange(tokFile, edit.Pos, end).Span()
+		fh, err := snapshot.GetVersionedFile(ctx, span.URIFromPath(tokFile.Name()))
 		if err != nil {
 			return nil, err
 		}
-		fh, err := snapshot.GetVersionedFile(ctx, spn.URI())
-		if err != nil {
-			return nil, err
-		}
-		te, ok := editsPerFile[spn.URI()]
+		te, ok := editsPerFile[fh.URI()]
 		if !ok {
 			te = &protocol.TextDocumentEdit{
 				TextDocument: protocol.OptionalVersionedTextDocumentIdentifier{
@@ -111,13 +107,13 @@ func ApplyFix(ctx context.Context, fix string, snapshot Snapshot, fh VersionedFi
 					},
 				},
 			}
-			editsPerFile[spn.URI()] = te
+			editsPerFile[fh.URI()] = te
 		}
 		_, pgf, err := GetParsedFile(ctx, snapshot, fh, NarrowestPackage)
 		if err != nil {
 			return nil, err
 		}
-		rng, err := pgf.Mapper.Range(spn)
+		rng, err := pgf.Mapper.PosRange(edit.Pos, end)
 		if err != nil {
 			return nil, err
 		}
@@ -144,5 +140,5 @@ func getAllSuggestedFixInputs(ctx context.Context, snapshot Snapshot, fh FileHan
 	if err != nil {
 		return nil, span.Range{}, nil, nil, nil, nil, err
 	}
-	return snapshot.FileSet(), rng, pgf.Src, pgf.File, pkg.GetTypes(), pkg.GetTypesInfo(), nil
+	return pkg.FileSet(), rng, pgf.Src, pgf.File, pkg.GetTypes(), pkg.GetTypesInfo(), nil
 }

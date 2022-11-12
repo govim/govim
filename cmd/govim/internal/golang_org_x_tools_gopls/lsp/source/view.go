@@ -40,6 +40,11 @@ type Snapshot interface {
 	BackgroundContext() context.Context
 
 	// Fileset returns the Fileset used to parse all the Go files in this snapshot.
+	//
+	// If the files are known to belong to a specific Package, use
+	// Package.FileSet instead. (We plan to eliminate the
+	// Snapshot's cache of parsed files, and thus the need for a
+	// snapshot-wide FileSet.)
 	FileSet() *token.FileSet
 
 	// ValidBuildConfiguration returns true if there is some error in the
@@ -84,7 +89,7 @@ type Snapshot interface {
 	DiagnosePackage(ctx context.Context, pkg Package) (map[span.URI][]*Diagnostic, error)
 
 	// Analyze runs the analyses for the given package at this snapshot.
-	Analyze(ctx context.Context, pkgID string, analyzers []*Analyzer) ([]*Diagnostic, error)
+	Analyze(ctx context.Context, pkgID PackageID, analyzers []*Analyzer) ([]*Diagnostic, error)
 
 	// RunGoCommandPiped runs the given `go` command, writing its output
 	// to stdout and stderr. Verb, Args, and WorkingDir must be specified.
@@ -149,12 +154,12 @@ type Snapshot interface {
 
 	// GetActiveReverseDeps returns the active files belonging to the reverse
 	// dependencies of this file's package, checked in TypecheckWorkspace mode.
-	GetReverseDependencies(ctx context.Context, id string) ([]Package, error)
+	GetReverseDependencies(ctx context.Context, id PackageID) ([]Package, error)
 
 	// CachedImportPaths returns all the imported packages loaded in this
-	// snapshot, indexed by their import path and checked in TypecheckWorkspace
-	// mode.
-	CachedImportPaths(ctx context.Context) (map[string]Package, error)
+	// snapshot, indexed by their package path (not import path, despite the name)
+	// and checked in TypecheckWorkspace mode.
+	CachedImportPaths(ctx context.Context) (map[PackagePath]Package, error)
 
 	// KnownPackages returns all the packages loaded in this snapshot, checked
 	// in TypecheckWorkspace mode.
@@ -165,6 +170,13 @@ type Snapshot interface {
 	// In normal memory mode, this is all workspace packages. In degraded memory
 	// mode, this is just the reverse transitive closure of open packages.
 	ActivePackages(ctx context.Context) ([]Package, error)
+
+	// AllValidMetadata returns all valid metadata loaded for the snapshot.
+	AllValidMetadata(ctx context.Context) ([]Metadata, error)
+
+	// WorkspacePackageByID returns the workspace package with id, type checked
+	// in 'workspace' mode.
+	WorkspacePackageByID(ctx context.Context, id PackageID) (Package, error)
 
 	// Symbols returns all symbols in the snapshot.
 	Symbols(ctx context.Context) map[span.URI][]Symbol
@@ -271,11 +283,11 @@ type View interface {
 	// Vulnerabilites returns known vulnerabilities for the given modfile.
 	// TODO(suzmue): replace command.Vuln with a different type, maybe
 	// https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck/govulnchecklib#Summary?
-	Vulnerabilities(modfile span.URI) []govulncheck.Vuln
+	Vulnerabilities(modfile span.URI) []*govulncheck.Vuln
 
 	// SetVulnerabilities resets the list of vulnerabilites that exists for the given modules
 	// required by modfile.
-	SetVulnerabilities(modfile span.URI, vulnerabilities []govulncheck.Vuln)
+	SetVulnerabilities(modfile span.URI, vulnerabilities []*govulncheck.Vuln)
 
 	// FileKind returns the type of a file
 	FileKind(FileHandle) FileKind
@@ -332,11 +344,14 @@ type TidiedModule struct {
 
 // Metadata represents package metadata retrieved from go/packages.
 type Metadata interface {
+	// PackageID is the unique package id.
+	PackageID() PackageID
+
 	// PackageName is the package name.
-	PackageName() string
+	PackageName() PackageName
 
 	// PackagePath is the package path.
-	PackagePath() string
+	PackagePath() PackagePath
 
 	// ModuleInfo returns the go/packages module information for the given package.
 	ModuleInfo() *packages.Module
@@ -505,6 +520,14 @@ func (h Hash) Less(other Hash) bool {
 	return bytes.Compare(h[:], other[:]) < 0
 }
 
+// XORWith updates *h to *h XOR h2.
+func (h *Hash) XORWith(h2 Hash) {
+	// Small enough that we don't need crypto/subtle.XORBytes.
+	for i := range h {
+		h[i] ^= h2[i]
+	}
+}
+
 // FileIdentity uniquely identifies a file at a version from a FileSystem.
 type FileIdentity struct {
 	URI  span.URI
@@ -573,21 +596,34 @@ func (a Analyzer) IsEnabled(view View) bool {
 	return a.Enabled
 }
 
+// Declare explicit types for package paths, names, and IDs to ensure that we
+// never use an ID where a path belongs, and vice versa. If we confused these,
+// it would result in confusing errors because package IDs often look like
+// package paths.
+type (
+	PackageID   string // go list's unique identifier for a package (e.g. "vendor/example.com/foo [vendor/example.com/bar.test]")
+	PackagePath string // name used to prefix linker symbols (e.g. "vendor/example.com/foo")
+	PackageName string // identifier in 'package' declaration (e.g. "foo")
+	ImportPath  string // path that appears in an import declaration (e.g. "example.com/foo")
+)
+
 // Package represents a Go package that has been type-checked. It maintains
 // only the relevant fields of a *go/packages.Package.
 type Package interface {
-	ID() string
-	Name() string
-	PkgPath() string
+	ID() PackageID
+	Name() PackageName
+	PkgPath() PackagePath
 	CompiledGoFiles() []*ParsedGoFile
 	File(uri span.URI) (*ParsedGoFile, error)
+	FileSet() *token.FileSet
 	GetSyntax() []*ast.File
 	GetTypes() *types.Package
 	GetTypesInfo() *types.Info
 	GetTypesSizes() types.Sizes
 	ForTest() string
-	GetImport(pkgPath string) (Package, error)
-	MissingDependencies() []string
+	DirectDep(path PackagePath) (Package, error)
+	ResolveImportPath(path ImportPath) (Package, error)
+	MissingDependencies() []ImportPath // unordered
 	Imports() []Package
 	Version() *module.Version
 	HasListOrParseErrors() bool
@@ -652,10 +688,6 @@ const (
 func AnalyzerErrorKind(name string) DiagnosticSource {
 	return DiagnosticSource(name)
 }
-
-var (
-	PackagesLoadError = errors.New("packages.Load error")
-)
 
 // WorkspaceModuleVersion is the nonexistent pseudoversion suffix used in the
 // construction of the workspace module. It is exported so that we can make

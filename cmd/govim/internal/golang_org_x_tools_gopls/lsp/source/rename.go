@@ -28,7 +28,6 @@ import (
 
 type renamer struct {
 	ctx                context.Context
-	fset               *token.FileSet
 	refs               []*ReferenceInfo
 	objsToUpdate       map[types.Object]bool
 	hadConflicts       bool
@@ -76,26 +75,44 @@ func PrepareRename(ctx context.Context, snapshot Snapshot, f FileHandle, pp prot
 			err := errors.New("can't rename package: LSP client does not support file renaming")
 			return nil, err, err
 		}
-		renamingPkg, err := snapshot.PackageForFile(ctx, f.URI(), TypecheckWorkspace, NarrowestPackage)
+		fileMeta, err := snapshot.MetadataForFile(ctx, f.URI())
 		if err != nil {
 			return nil, err, err
 		}
 
-		if renamingPkg.Name() == "main" {
+		if len(fileMeta) == 0 {
+			err := fmt.Errorf("no packages found for file %q", f.URI())
+			return nil, err, err
+		}
+
+		meta := fileMeta[0]
+
+		if meta.PackageName() == "main" {
 			err := errors.New("can't rename package \"main\"")
 			return nil, err, err
 		}
 
-		if renamingPkg.Version() == nil {
-			err := fmt.Errorf("can't rename package: missing module information for package %q", renamingPkg.PkgPath())
+		if strings.HasSuffix(string(meta.PackageName()), "_test") {
+			err := errors.New("can't rename x_test packages")
 			return nil, err, err
 		}
 
-		if renamingPkg.Version().Path == renamingPkg.PkgPath() {
-			err := fmt.Errorf("can't rename package: package path %q is the same as module path %q", renamingPkg.PkgPath(), renamingPkg.Version().Path)
+		if meta.ModuleInfo() == nil {
+			err := fmt.Errorf("can't rename package: missing module information for package %q", meta.PackagePath())
 			return nil, err, err
 		}
-		result, err := computePrepareRenameResp(snapshot, renamingPkg, pgf.File.Name, renamingPkg.Name())
+
+		if meta.ModuleInfo().Path == string(meta.PackagePath()) {
+			err := fmt.Errorf("can't rename package: package path %q is the same as module path %q", meta.PackagePath(), meta.ModuleInfo().Path)
+			return nil, err, err
+		}
+		// TODO(rfindley): we should not need the package here.
+		pkg, err := snapshot.WorkspacePackageByID(ctx, meta.PackageID())
+		if err != nil {
+			err = fmt.Errorf("error building package to rename: %v", err)
+			return nil, err, err
+		}
+		result, err := computePrepareRenameResp(snapshot, pkg, pgf.File.Name, string(pkg.Name()))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -118,7 +135,7 @@ func PrepareRename(ctx context.Context, snapshot Snapshot, f FileHandle, pp prot
 }
 
 func computePrepareRenameResp(snapshot Snapshot, pkg Package, node ast.Node, text string) (*PrepareItem, error) {
-	mr, err := posToMappedRange(snapshot.FileSet(), pkg, node.Pos(), node.End())
+	mr, err := posToMappedRange(pkg, node.Pos(), node.End())
 	if err != nil {
 		return nil, err
 	}
@@ -164,64 +181,45 @@ func Rename(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Position,
 	}
 
 	if inPackageName {
-		// Since we only take one package below, no need to include test variants.
+		if !isValidIdentifier(newName) {
+			return nil, true, fmt.Errorf("%q is not a valid identifier", newName)
+		}
+
+		fileMeta, err := s.MetadataForFile(ctx, f.URI())
+		if err != nil {
+			return nil, true, err
+		}
+
+		if len(fileMeta) == 0 {
+			return nil, true, fmt.Errorf("no packages found for file %q", f.URI())
+		}
+
+		// We need metadata for the relevant package and module paths. These should
+		// be the same for all packages containing the file.
 		//
-		// TODO(rfindley): but is this correct? What about x_test packages that
-		// import the renaming package?
-		const includeTestVariants = false
-		pkgs, err := s.PackagesForFile(ctx, f.URI(), TypecheckWorkspace, includeTestVariants)
+		// TODO(rfindley): we mix package path and import path here haphazardly.
+		// Fix this.
+		meta := fileMeta[0]
+		oldPath := meta.PackagePath()
+		var modulePath PackagePath
+		if mi := meta.ModuleInfo(); mi == nil {
+			return nil, true, fmt.Errorf("cannot rename package: missing module information for package %q", meta.PackagePath())
+		} else {
+			modulePath = PackagePath(mi.Path)
+		}
+
+		if strings.HasSuffix(newName, "_test") {
+			return nil, true, fmt.Errorf("cannot rename to _test package")
+		}
+
+		metadata, err := s.AllValidMetadata(ctx)
 		if err != nil {
 			return nil, true, err
 		}
-		var pkg Package // TODO(rfindley): we should consider all packages, so that we get the full reverse transitive closure.
-		for _, p := range pkgs {
-			// pgf.File.Name must not be nil, else this will panic.
-			if pgf.File.Name.Name == p.Name() {
-				pkg = p
-				break
-			}
-		}
-		activePkgs, err := s.ActivePackages(ctx)
+
+		renamingEdits, err := renamePackage(ctx, s, modulePath, oldPath, PackageName(newName), metadata)
 		if err != nil {
 			return nil, true, err
-		}
-		renamingEdits, err := computeImportRenamingEdits(ctx, s, pkg, activePkgs, newName)
-		if err != nil {
-			return nil, true, err
-		}
-		pkgNameEdits, err := computePackageNameRenamingEdits(pkg, newName)
-		if err != nil {
-			return nil, true, err
-		}
-		for uri, edits := range pkgNameEdits {
-			renamingEdits[uri] = edits
-		}
-		// Rename test packages
-		for _, activePkg := range activePkgs {
-			if activePkg.ForTest() != pkg.PkgPath() {
-				continue
-			}
-			// Filter out intermediate test variants.
-			if activePkg.PkgPath() != pkg.PkgPath() && activePkg.PkgPath() != pkg.PkgPath()+"_test" {
-				continue
-			}
-			newTestPkgName := newName
-			if strings.HasSuffix(activePkg.Name(), "_test") {
-				newTestPkgName += "_test"
-			}
-			perPackageEdits, err := computeRenamePackageImportEditsPerPackage(ctx, s, activePkg, newTestPkgName, pkg.PkgPath())
-			for uri, edits := range perPackageEdits {
-				renamingEdits[uri] = append(renamingEdits[uri], edits...)
-			}
-			pkgNameEdits, err := computePackageNameRenamingEdits(activePkg, newTestPkgName)
-			if err != nil {
-				return nil, true, err
-			}
-			for uri, edits := range pkgNameEdits {
-				if _, ok := renamingEdits[uri]; !ok {
-					renamingEdits[uri] = edits
-				}
-			}
 		}
 
 		return renamingEdits, true, nil
@@ -239,98 +237,188 @@ func Rename(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Position,
 	return result, false, nil
 }
 
-// computeImportRenamingEdits computes all edits to files in other packages that import
-// the renaming package.
-func computeImportRenamingEdits(ctx context.Context, s Snapshot, renamingPkg Package, pkgs []Package, newName string) (map[span.URI][]protocol.TextEdit, error) {
-	result := make(map[span.URI][]protocol.TextEdit)
+// renamePackage computes all workspace edits required to rename the package
+// described by the given metadata, to newName, by renaming its package
+// directory.
+//
+// It updates package clauses and import paths for the renamed package as well
+// as any other packages affected by the directory renaming among packages
+// described by allMetadata.
+func renamePackage(ctx context.Context, s Snapshot, modulePath, oldPath PackagePath, newName PackageName, allMetadata []Metadata) (map[span.URI][]protocol.TextEdit, error) {
+	if modulePath == oldPath {
+		return nil, fmt.Errorf("cannot rename package: module path %q is the same as the package path, so renaming the package directory would have no effect", modulePath)
+	}
+
+	newPathPrefix := path.Join(path.Dir(string(oldPath)), string(newName))
+
+	edits := make(map[span.URI][]protocol.TextEdit)
+	seen := make(seenPackageRename) // track per-file import renaming we've already processed
+
 	// Rename imports to the renamed package from other packages.
-	for _, pkg := range pkgs {
-		if renamingPkg.Version() == nil {
-			return nil, fmt.Errorf("cannot rename package: missing module information for package %q", renamingPkg.PkgPath())
-		}
-		renamingPkgModulePath := renamingPkg.Version().Path
-		activePkgModulePath := pkg.Version().Path
-		if !strings.HasPrefix(pkg.PkgPath()+"/", renamingPkg.PkgPath()+"/") {
-			continue // not a nested package or the renaming package.
+	for _, m := range allMetadata {
+		// Special case: x_test packages for the renamed package will not have the
+		// package path as as a dir prefix, but still need their package clauses
+		// renamed.
+		if m.PackagePath() == oldPath+"_test" {
+			newTestName := newName + "_test"
+
+			if err := renamePackageClause(ctx, m, s, newTestName, seen, edits); err != nil {
+				return nil, err
+			}
+			continue
 		}
 
-		if activePkgModulePath == pkg.PkgPath() {
-			continue // don't edit imports to nested package whose path and module path is the same.
+		// Subtle: check this condition before checking for valid module info
+		// below, because we should not fail this operation if unrelated packages
+		// lack module info.
+		if !strings.HasPrefix(string(m.PackagePath())+"/", string(oldPath)+"/") {
+			continue // not affected by the package renaming
 		}
 
-		if renamingPkgModulePath != "" && renamingPkgModulePath != activePkgModulePath {
-			continue // don't edit imports if nested package and renaming package has different module path.
+		if m.ModuleInfo() == nil {
+			return nil, fmt.Errorf("cannot rename package: missing module information for package %q", m.PackagePath())
 		}
 
-		// Compute all edits for other files that import this nested package
-		// when updating the its path.
-		perFileEdits, err := computeRenamePackageImportEditsPerPackage(ctx, s, pkg, newName, renamingPkg.PkgPath())
-		if err != nil {
+		if modulePath != PackagePath(m.ModuleInfo().Path) {
+			continue // don't edit imports if nested package and renaming package have different module paths
+		}
+
+		// Renaming a package consists of changing its import path and package name.
+		suffix := strings.TrimPrefix(string(m.PackagePath()), string(oldPath))
+		newPath := newPathPrefix + suffix
+
+		pkgName := m.PackageName()
+		if m.PackagePath() == PackagePath(oldPath) {
+			pkgName = newName
+
+			if err := renamePackageClause(ctx, m, s, newName, seen, edits); err != nil {
+				return nil, err
+			}
+		}
+
+		imp := ImportPath(newPath) // TODO(adonovan): what if newPath has vendor/ prefix?
+		if err := renameImports(ctx, s, m, imp, pkgName, seen, edits); err != nil {
 			return nil, err
-		}
-		for uri, edits := range perFileEdits {
-			result[uri] = append(result[uri], edits...)
 		}
 	}
 
-	return result, nil
+	return edits, nil
 }
 
-// computePackageNameRenamingEdits computes all edits to files within the renming packages.
-func computePackageNameRenamingEdits(renamingPkg Package, newName string) (map[span.URI][]protocol.TextEdit, error) {
-	result := make(map[span.URI][]protocol.TextEdit)
+// seenPackageRename tracks import path renamings that have already been
+// processed.
+//
+// Due to test variants, files may appear multiple times in the reverse
+// transitive closure of a renamed package, or in the reverse transitive
+// closure of different variants of a renamed package (both are possible).
+// However, in all cases the resulting edits will be the same.
+type seenPackageRename map[seenPackageKey]bool
+type seenPackageKey struct {
+	uri  span.URI
+	path PackagePath
+}
+
+// add reports whether uri and importPath have been seen, and records them as
+// seen if not.
+func (s seenPackageRename) add(uri span.URI, path PackagePath) bool {
+	key := seenPackageKey{uri, path}
+	seen := s[key]
+	if !seen {
+		s[key] = true
+	}
+	return seen
+}
+
+// renamePackageClause computes edits renaming the package clause of files in
+// the package described by the given metadata, to newName.
+//
+// As files may belong to multiple packages, the seen map tracks files whose
+// package clause has already been updated, to prevent duplicate edits.
+//
+// Edits are written into the edits map.
+func renamePackageClause(ctx context.Context, m Metadata, s Snapshot, newName PackageName, seen seenPackageRename, edits map[span.URI][]protocol.TextEdit) error {
+	pkg, err := s.WorkspacePackageByID(ctx, m.PackageID())
+	if err != nil {
+		return err
+	}
+
 	// Rename internal references to the package in the renaming package.
-	for _, f := range renamingPkg.CompiledGoFiles() {
+	for _, f := range pkg.CompiledGoFiles() {
+		if seen.add(f.URI, m.PackagePath()) {
+			continue
+		}
+
 		if f.File.Name == nil {
 			continue
 		}
 		pkgNameMappedRange := NewMappedRange(f.Tok, f.Mapper, f.File.Name.Pos(), f.File.Name.End())
-		// Invalid range for the package name.
 		rng, err := pkgNameMappedRange.Range()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		result[f.URI] = append(result[f.URI], protocol.TextEdit{
+		edits[f.URI] = append(edits[f.URI], protocol.TextEdit{
 			Range:   rng,
-			NewText: newName,
+			NewText: string(newName),
 		})
 	}
 
-	return result, nil
+	return nil
 }
 
-// computeRenamePackageImportEditsPerPackage computes the set of edits (to imports)
-// among the files of package nestedPkg that are necessary when package renamedPkg
-// is renamed to newName.
-func computeRenamePackageImportEditsPerPackage(ctx context.Context, s Snapshot, nestedPkg Package, newName, renamingPath string) (map[span.URI][]protocol.TextEdit, error) {
-	rdeps, err := s.GetReverseDependencies(ctx, nestedPkg.ID())
+// renameImports computes the set of edits to imports resulting from renaming
+// the package described by the given metadata, to a package with import path
+// newPath and name newName.
+//
+// Edits are written into the edits map.
+func renameImports(ctx context.Context, s Snapshot, m Metadata, newPath ImportPath, newName PackageName, seen seenPackageRename, edits map[span.URI][]protocol.TextEdit) error {
+	// TODO(rfindley): we should get reverse dependencies as metadata first,
+	// rather then building the package immediately. We don't need reverse
+	// dependencies if they are intermediate test variants.
+	rdeps, err := s.GetReverseDependencies(ctx, m.PackageID())
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	result := make(map[span.URI][]protocol.TextEdit)
 	for _, dep := range rdeps {
+		// Subtle: don't perform renaming in this package if it is not fully
+		// parsed. This can occur inside the workspace if dep is an intermediate
+		// test variant. ITVs are only ever parsed in export mode, and no file is
+		// found only in an ITV. Therefore the renaming will eventually occur in a
+		// full package.
+		//
+		// An alternative algorithm that may be more robust would be to first
+		// collect *files* that need to have their imports updated, and then
+		// perform the rename using s.PackageForFile(..., NarrowestPackage).
+		if dep.ParseMode() != ParseFull {
+			continue
+		}
+
 		for _, f := range dep.CompiledGoFiles() {
+			if seen.add(f.URI, m.PackagePath()) {
+				continue
+			}
+
 			for _, imp := range f.File.Imports {
-				if impPath, _ := strconv.Unquote(imp.Path.Value); impPath != nestedPkg.PkgPath() {
-					continue // not the import we're looking for.
+				// TODO(adonovan): what if RHS has "vendor/" prefix?
+				if UnquoteImportPath(imp) != ImportPath(m.PackagePath()) {
+					continue // not the import we're looking for
 				}
 
 				// Create text edit for the import path (string literal).
 				impPathMappedRange := NewMappedRange(f.Tok, f.Mapper, imp.Path.Pos(), imp.Path.End())
 				rng, err := impPathMappedRange.Range()
 				if err != nil {
-					return nil, err
+					return err
 				}
-				newText := strconv.Quote(path.Join(path.Dir(renamingPath), newName) + strings.TrimPrefix(nestedPkg.PkgPath(), renamingPath))
-				result[f.URI] = append(result[f.URI], protocol.TextEdit{
+				edits[f.URI] = append(edits[f.URI], protocol.TextEdit{
 					Range:   rng,
-					NewText: newText,
+					NewText: strconv.Quote(string(newPath)),
 				})
 
-				// If the nested package is not the renaming package or its import path already
-				// has an local package name then we don't need to update the local package name.
-				if nestedPkg.PkgPath() != renamingPath || imp.Name != nil {
+				// If the package name of an import has not changed or if its import
+				// path already has a local package name, then we don't need to update
+				// the local package name.
+				if newName == m.PackageName() || imp.Name != nil {
 					continue
 				}
 
@@ -342,8 +430,9 @@ func computeRenamePackageImportEditsPerPackage(ctx context.Context, s Snapshot, 
 				fileScope := dep.GetTypesInfo().Scopes[f.File]
 
 				var changes map[span.URI][]protocol.TextEdit
-				localName := newName
+				localName := string(newName)
 				try := 0
+
 				// Keep trying with fresh names until one succeeds.
 				for fileScope.Lookup(localName) != nil || pkgScope.Lookup(localName) != nil {
 					try++
@@ -351,26 +440,27 @@ func computeRenamePackageImportEditsPerPackage(ctx context.Context, s Snapshot, 
 				}
 				changes, err = renameObj(ctx, s, localName, qos)
 				if err != nil {
-					return nil, err
+					return err
 				}
+
 				// If the chosen local package name matches the package's new name, delete the
 				// change that would have inserted an explicit local name, which is always
 				// the lexically first change.
-				if localName == newName {
+				if localName == string(newName) {
 					v := changes[f.URI]
 					sort.Slice(v, func(i, j int) bool {
 						return protocol.CompareRange(v[i].Range, v[j].Range) < 0
 					})
 					changes[f.URI] = v[1:]
 				}
-				for uri, edits := range changes {
-					result[uri] = append(result[uri], edits...)
+				for uri, changeEdits := range changes {
+					edits[uri] = append(edits[uri], changeEdits...)
 				}
 			}
 		}
 	}
 
-	return result, nil
+	return nil
 }
 
 // renameObj returns a map of TextEdits for renaming an identifier within a file
@@ -393,7 +483,6 @@ func renameObj(ctx context.Context, s Snapshot, newName string, qos []qualifiedO
 	}
 	r := renamer{
 		ctx:          ctx,
-		fset:         s.FileSet(),
 		refs:         refs,
 		objsToUpdate: make(map[types.Object]bool),
 		from:         obj.Name(),
@@ -513,7 +602,7 @@ func (r *renamer) update() (map[span.URI][]diff.Edit, error) {
 			// TODO(adonovan): why are we looping over lines?
 			// Just run the loop body once over the entire multiline comment.
 			lines := strings.Split(comment.Text, "\n")
-			tokFile := r.fset.File(comment.Pos())
+			tokFile := ref.pkg.FileSet().File(comment.Pos())
 			commentLine := tokFile.Line(comment.Pos())
 			uri := span.URIFromPath(tokFile.Name())
 			for i, line := range lines {
@@ -541,7 +630,7 @@ func (r *renamer) update() (map[span.URI][]diff.Edit, error) {
 
 // docComment returns the doc for an identifier.
 func (r *renamer) docComment(pkg Package, id *ast.Ident) *ast.CommentGroup {
-	_, tokFile, nodes, _ := pathEnclosingInterval(r.fset, pkg, id.Pos(), id.End())
+	_, tokFile, nodes, _ := pathEnclosingInterval(pkg, id.Pos(), id.End())
 	for _, node := range nodes {
 		switch decl := node.(type) {
 		case *ast.FuncDecl:
@@ -594,7 +683,7 @@ func (r *renamer) docComment(pkg Package, id *ast.Ident) *ast.CommentGroup {
 func (r *renamer) updatePkgName(pkgName *types.PkgName) (*diff.Edit, error) {
 	// Modify ImportSpec syntax to add or remove the Name as needed.
 	pkg := r.packages[pkgName.Pkg()]
-	_, tokFile, path, _ := pathEnclosingInterval(r.fset, pkg, pkgName.Pos(), pkgName.Pos())
+	_, tokFile, path, _ := pathEnclosingInterval(pkg, pkgName.Pos(), pkgName.Pos())
 	if len(path) < 2 {
 		return nil, fmt.Errorf("no path enclosing interval for %s", pkgName.Name())
 	}
