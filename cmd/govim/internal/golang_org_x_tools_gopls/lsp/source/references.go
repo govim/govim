@@ -62,6 +62,8 @@ func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Posit
 	}
 
 	if inPackageName {
+		// TODO(rfindley): this is inaccurate, excluding test variants, and
+		// redundant with package renaming. Refactor to share logic.
 		renamingPkg, err := s.PackageForFile(ctx, f.URI(), TypecheckWorkspace, NarrowestPackage)
 		if err != nil {
 			return nil, err
@@ -76,7 +78,7 @@ func References(ctx context.Context, s Snapshot, f FileHandle, pp protocol.Posit
 		for _, dep := range rdeps {
 			for _, f := range dep.CompiledGoFiles() {
 				for _, imp := range f.File.Imports {
-					if path, err := strconv.Unquote(imp.Path.Value); err == nil && path == renamingPkg.PkgPath() {
+					if path, err := strconv.Unquote(imp.Path.Value); err == nil && path == string(renamingPkg.PkgPath()) {
 						refs = append(refs, &ReferenceInfo{
 							Name:        packageName,
 							MappedRange: NewMappedRange(f.Tok, f.Mapper, imp.Pos(), imp.End()),
@@ -142,7 +144,7 @@ func references(ctx context.Context, snapshot Snapshot, qos []qualifiedObject, i
 	}
 	// Inv: qos[0].pkg != nil, since Pos is valid.
 	// Inv: qos[*].pkg != nil, since all qos are logically the same declaration.
-	filename := snapshot.FileSet().Position(pos).Filename
+	filename := qos[0].pkg.FileSet().File(pos).Name()
 	pgf, err := qos[0].pkg.File(span.URIFromPath(filename))
 	if err != nil {
 		return nil, err
@@ -206,7 +208,7 @@ func references(ctx context.Context, snapshot Snapshot, qos []qualifiedObject, i
 					continue
 				}
 				seen[key] = true
-				rng, err := posToMappedRange(snapshot.FileSet(), pkg, ident.Pos(), ident.End())
+				rng, err := posToMappedRange(pkg, ident.Pos(), ident.End())
 				if err != nil {
 					return nil, err
 				}

@@ -92,20 +92,26 @@ type symbolizer func(space []string, name string, pkg Metadata, m matcherFunc) (
 
 func fullyQualifiedSymbolMatch(space []string, name string, pkg Metadata, matcher matcherFunc) ([]string, float64) {
 	if _, score := dynamicSymbolMatch(space, name, pkg, matcher); score > 0 {
-		return append(space, pkg.PackagePath(), ".", name), score
+		return append(space, string(pkg.PackagePath()), ".", name), score
 	}
 	return nil, 0
 }
 
 func dynamicSymbolMatch(space []string, name string, pkg Metadata, matcher matcherFunc) ([]string, float64) {
+	if IsCommandLineArguments(pkg.PackageID()) {
+		// command-line-arguments packages have a non-sensical package path, so
+		// just use their package name.
+		return packageSymbolMatch(space, name, pkg, matcher)
+	}
+
 	var score float64
 
-	endsInPkgName := strings.HasSuffix(pkg.PackagePath(), pkg.PackageName())
+	endsInPkgName := strings.HasSuffix(string(pkg.PackagePath()), string(pkg.PackageName()))
 
 	// If the package path does not end in the package name, we need to check the
 	// package-qualified symbol as an extra pass first.
 	if !endsInPkgName {
-		pkgQualified := append(space, pkg.PackageName(), ".", name)
+		pkgQualified := append(space, string(pkg.PackageName()), ".", name)
 		idx, score := matcher(pkgQualified)
 		nameStart := len(pkg.PackageName()) + 1
 		if score > 0 {
@@ -120,7 +126,7 @@ func dynamicSymbolMatch(space []string, name string, pkg Metadata, matcher match
 	}
 
 	// Now try matching the fully qualified symbol.
-	fullyQualified := append(space, pkg.PackagePath(), ".", name)
+	fullyQualified := append(space, string(pkg.PackagePath()), ".", name)
 	idx, score := matcher(fullyQualified)
 
 	// As above, check if we matched just the unqualified symbol name.
@@ -135,7 +141,7 @@ func dynamicSymbolMatch(space []string, name string, pkg Metadata, matcher match
 	if endsInPkgName && idx >= 0 {
 		pkgStart := len(pkg.PackagePath()) - len(pkg.PackageName())
 		if idx >= pkgStart {
-			return append(space, pkg.PackageName(), ".", name), score
+			return append(space, string(pkg.PackageName()), ".", name), score
 		}
 	}
 
@@ -145,7 +151,7 @@ func dynamicSymbolMatch(space []string, name string, pkg Metadata, matcher match
 }
 
 func packageSymbolMatch(space []string, name string, pkg Metadata, matcher matcherFunc) ([]string, float64) {
-	qualified := append(space, pkg.PackageName(), ".", name)
+	qualified := append(space, string(pkg.PackageName()), ".", name)
 	if _, s := matcher(qualified); s > 0 {
 		return qualified, s
 	}
@@ -373,6 +379,7 @@ func NewFilterer(rawFilters []string) *Filterer {
 	var f Filterer
 	for _, filter := range rawFilters {
 		filter = path.Clean(filepath.ToSlash(filter))
+		// TODO(dungtuanle): fix: validate [+-] prefix.
 		op, prefix := filter[0], filter[1:]
 		// convertFilterToRegexp adds "/" at the end of prefix to handle cases where a filter is a prefix of another filter.
 		// For example, it prevents [+foobar, -foo] from excluding "foobar".
@@ -385,20 +392,19 @@ func NewFilterer(rawFilters []string) *Filterer {
 
 // Disallow return true if the path is excluded from the filterer's filters.
 func (f *Filterer) Disallow(path string) bool {
+	// Ensure trailing but not leading slash.
 	path = strings.TrimPrefix(path, "/")
-	var excluded bool
-
-	for i, filter := range f.filters {
-		path := path
-		if !strings.HasSuffix(path, "/") {
-			path += "/"
-		}
-		if !filter.MatchString(path) {
-			continue
-		}
-		excluded = f.excluded[i]
+	if !strings.HasSuffix(path, "/") {
+		path += "/"
 	}
 
+	// TODO(adonovan): opt: iterate in reverse and break at first match.
+	excluded := false
+	for i, filter := range f.filters {
+		if filter.MatchString(path) {
+			excluded = f.excluded[i] // last match wins
+		}
+	}
 	return excluded
 }
 
@@ -413,6 +419,7 @@ func convertFilterToRegexp(filter string) *regexp.Regexp {
 	ret.WriteString("^")
 	segs := strings.Split(filter, "/")
 	for _, seg := range segs {
+		// Inv: seg != "" since path is clean.
 		if seg == "**" {
 			ret.WriteString(".*")
 		} else {
@@ -420,8 +427,15 @@ func convertFilterToRegexp(filter string) *regexp.Regexp {
 		}
 		ret.WriteString("/")
 	}
+	pattern := ret.String()
 
-	return regexp.MustCompile(ret.String())
+	// Remove unnecessary "^.*" prefix, which increased
+	// BenchmarkWorkspaceSymbols time by ~20% (even though
+	// filter CPU time increased by only by ~2.5%) when the
+	// default filter was changed to "**/node_modules".
+	pattern = strings.TrimPrefix(pattern, "^.*")
+
+	return regexp.MustCompile(pattern)
 }
 
 // symbolFile holds symbol information for a single file.
@@ -512,7 +526,7 @@ func matchFile(store *symbolStore, symbolizer symbolizer, matcher matcherFunc, r
 			kind:      sym.Kind,
 			uri:       i.uri,
 			rng:       sym.Range,
-			container: i.md.PackagePath(),
+			container: string(i.md.PackagePath()),
 		}
 		store.store(si)
 	}
