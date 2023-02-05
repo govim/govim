@@ -19,16 +19,15 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/ast/astutil"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/analysisinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 )
 
-func extractVariable(fset *token.FileSet, rng span.Range, src []byte, file *ast.File, _ *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
+func extractVariable(fset *token.FileSet, start, end token.Pos, src []byte, file *ast.File, _ *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
 	tokFile := fset.File(file.Pos())
-	expr, path, ok, err := CanExtractVariable(rng, file)
+	expr, path, ok, err := CanExtractVariable(start, end, file)
 	if !ok {
-		return nil, fmt.Errorf("extractVariable: cannot extract %s: %v", fset.Position(rng.Start), err)
+		return nil, fmt.Errorf("extractVariable: cannot extract %s: %v", safetoken.StartPosition(fset, start), err)
 	}
 
 	// Create new AST node for extracted code.
@@ -89,8 +88,8 @@ func extractVariable(fset *token.FileSet, rng span.Range, src []byte, file *ast.
 				NewText: []byte(assignment),
 			},
 			{
-				Pos:     rng.Start,
-				End:     rng.End,
+				Pos:     start,
+				End:     end,
 				NewText: []byte(lhs),
 			},
 		},
@@ -99,11 +98,11 @@ func extractVariable(fset *token.FileSet, rng span.Range, src []byte, file *ast.
 
 // CanExtractVariable reports whether the code in the given range can be
 // extracted to a variable.
-func CanExtractVariable(rng span.Range, file *ast.File) (ast.Expr, []ast.Node, bool, error) {
-	if rng.Start == rng.End {
+func CanExtractVariable(start, end token.Pos, file *ast.File) (ast.Expr, []ast.Node, bool, error) {
+	if start == end {
 		return nil, nil, false, fmt.Errorf("start and end are equal")
 	}
-	path, _ := astutil.PathEnclosingInterval(file, rng.Start, rng.End)
+	path, _ := astutil.PathEnclosingInterval(file, start, end)
 	if len(path) == 0 {
 		return nil, nil, false, fmt.Errorf("no path enclosing interval")
 	}
@@ -113,7 +112,7 @@ func CanExtractVariable(rng span.Range, file *ast.File) (ast.Expr, []ast.Node, b
 		}
 	}
 	node := path[0]
-	if rng.Start != node.Pos() || rng.End != node.End() {
+	if start != node.Pos() || end != node.End() {
 		return nil, nil, false, fmt.Errorf("range does not map to an AST node")
 	}
 	expr, ok := node.(ast.Expr)
@@ -134,11 +133,7 @@ func CanExtractVariable(rng span.Range, file *ast.File) (ast.Expr, []ast.Node, b
 // line of code on which the insertion occurs.
 func calculateIndentation(content []byte, tok *token.File, insertBeforeStmt ast.Node) (string, error) {
 	line := tok.Line(insertBeforeStmt.Pos())
-	lineOffset, err := safetoken.Offset(tok, tok.LineStart(line))
-	if err != nil {
-		return "", err
-	}
-	stmtOffset, err := safetoken.Offset(tok, insertBeforeStmt.Pos())
+	lineOffset, stmtOffset, err := safetoken.Offsets(tok, tok.LineStart(line), insertBeforeStmt.Pos())
 	if err != nil {
 		return "", err
 	}
@@ -194,13 +189,13 @@ type returnVariable struct {
 }
 
 // extractMethod refactors the selected block of code into a new method.
-func extractMethod(fset *token.FileSet, rng span.Range, src []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
-	return extractFunctionMethod(fset, rng, src, file, pkg, info, true)
+func extractMethod(fset *token.FileSet, start, end token.Pos, src []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
+	return extractFunctionMethod(fset, start, end, src, file, pkg, info, true)
 }
 
 // extractFunction refactors the selected block of code into a new function.
-func extractFunction(fset *token.FileSet, rng span.Range, src []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
-	return extractFunctionMethod(fset, rng, src, file, pkg, info, false)
+func extractFunction(fset *token.FileSet, start, end token.Pos, src []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
+	return extractFunctionMethod(fset, start, end, src, file, pkg, info, false)
 }
 
 // extractFunctionMethod refactors the selected block of code into a new function/method.
@@ -211,7 +206,7 @@ func extractFunction(fset *token.FileSet, rng span.Range, src []byte, file *ast.
 // and return values of the extracted function/method. Lastly, we construct the call
 // of the function/method and insert this call as well as the extracted function/method into
 // their proper locations.
-func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file *ast.File, pkg *types.Package, info *types.Info, isMethod bool) (*analysis.SuggestedFix, error) {
+func extractFunctionMethod(fset *token.FileSet, start, end token.Pos, src []byte, file *ast.File, pkg *types.Package, info *types.Info, isMethod bool) (*analysis.SuggestedFix, error) {
 	errorPrefix := "extractFunction"
 	if isMethod {
 		errorPrefix = "extractMethod"
@@ -221,12 +216,12 @@ func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file
 	if tok == nil {
 		return nil, bug.Errorf("no file for position")
 	}
-	p, ok, methodOk, err := CanExtractFunction(tok, rng, src, file)
+	p, ok, methodOk, err := CanExtractFunction(tok, start, end, src, file)
 	if (!ok && !isMethod) || (!methodOk && isMethod) {
 		return nil, fmt.Errorf("%s: cannot extract %s: %v", errorPrefix,
-			fset.Position(rng.Start), err)
+			safetoken.StartPosition(fset, start), err)
 	}
-	tok, path, rng, outer, start := p.tok, p.path, p.rng, p.outer, p.start
+	tok, path, start, end, outer, node := p.tok, p.path, p.start, p.end, p.outer, p.node
 	fileScope := info.Scopes[file]
 	if fileScope == nil {
 		return nil, fmt.Errorf("%s: file scope is empty", errorPrefix)
@@ -241,13 +236,13 @@ func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file
 	// non-nested return statements are guaranteed to execute.
 	var retStmts []*ast.ReturnStmt
 	var hasNonNestedReturn bool
-	startParent := findParent(outer, start)
+	startParent := findParent(outer, node)
 	ast.Inspect(outer, func(n ast.Node) bool {
 		if n == nil {
 			return false
 		}
-		if n.Pos() < rng.Start || n.End() > rng.End {
-			return n.Pos() <= rng.End
+		if n.Pos() < start || n.End() > end {
+			return n.Pos() <= end
 		}
 		ret, ok := n.(*ast.ReturnStmt)
 		if !ok {
@@ -265,7 +260,7 @@ func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file
 	// we must determine the signature of the extracted function. We will then replace
 	// the block with an assignment statement that calls the extracted function with
 	// the appropriate parameters and return values.
-	variables, err := collectFreeVars(info, file, fileScope, pkgScope, rng, path[0])
+	variables, err := collectFreeVars(info, file, fileScope, pkgScope, start, end, path[0])
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +343,7 @@ func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file
 		if v.obj.Parent() == nil {
 			return nil, fmt.Errorf("parent nil")
 		}
-		isUsed, firstUseAfter := objUsed(info, span.NewRange(tok, rng.End, v.obj.Parent().End()), v.obj)
+		isUsed, firstUseAfter := objUsed(info, end, v.obj.Parent().End(), v.obj)
 		if v.assigned && isUsed && !varOverridden(info, firstUseAfter, v.obj, v.free, outer) {
 			returnTypes = append(returnTypes, &ast.Field{Type: typ})
 			returns = append(returns, identifier)
@@ -405,11 +400,7 @@ func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file
 
 	// We put the selection in a constructed file. We can then traverse and edit
 	// the extracted selection without modifying the original AST.
-	startOffset, err := safetoken.Offset(tok, rng.Start)
-	if err != nil {
-		return nil, err
-	}
-	endOffset, err := safetoken.Offset(tok, rng.End)
+	startOffset, endOffset, err := safetoken.Offsets(tok, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -508,7 +499,7 @@ func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file
 		// statements in the selection. Update the type signature of the extracted
 		// function and construct the if statement that will be inserted in the enclosing
 		// function.
-		retVars, ifReturn, err = generateReturnInfo(enclosing, pkg, path, file, info, fset, rng.Start, hasNonNestedReturn)
+		retVars, ifReturn, err = generateReturnInfo(enclosing, pkg, path, file, info, fset, start, hasNonNestedReturn)
 		if err != nil {
 			return nil, err
 		}
@@ -543,7 +534,7 @@ func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file
 		funName = name
 	} else {
 		name = "newFunction"
-		funName, _ = generateAvailableIdentifier(rng.Start, file, path, info, name, 0)
+		funName, _ = generateAvailableIdentifier(start, file, path, info, name, 0)
 	}
 	extractedFunCall := generateFuncCall(hasNonNestedReturn, hasReturnValues, params,
 		append(returns, getNames(retVars)...), funName, sym, receiverName)
@@ -596,7 +587,7 @@ func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file
 	// Find all the comments within the range and print them to be put somewhere.
 	// TODO(suzmue): print these in the extracted function at the correct place.
 	for _, cg := range file.Comments {
-		if cg.Pos().IsValid() && cg.Pos() < rng.End && cg.Pos() >= rng.Start {
+		if cg.Pos().IsValid() && cg.Pos() < end && cg.Pos() >= start {
 			for _, c := range cg.List {
 				fmt.Fprintln(&commentBuf, c.Text)
 			}
@@ -605,17 +596,13 @@ func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file
 
 	// We're going to replace the whole enclosing function,
 	// so preserve the text before and after the selected block.
-	outerStart, err := safetoken.Offset(tok, outer.Pos())
-	if err != nil {
-		return nil, err
-	}
-	outerEnd, err := safetoken.Offset(tok, outer.End())
+	outerStart, outerEnd, err := safetoken.Offsets(tok, outer.Pos(), outer.End())
 	if err != nil {
 		return nil, err
 	}
 	before := src[outerStart:startOffset]
 	after := src[endOffset:outerEnd]
-	indent, err := calculateIndentation(src, tok, start)
+	indent, err := calculateIndentation(src, tok, node)
 	if err != nil {
 		return nil, err
 	}
@@ -665,12 +652,12 @@ func extractFunctionMethod(fset *token.FileSet, rng span.Range, src []byte, file
 // their cursors for whitespace. To support this use case, we must manually adjust the
 // ranges to match the correct AST node. In this particular example, we would adjust
 // rng.Start forward to the start of 'if' and rng.End backward to after '}'.
-func adjustRangeForCommentsAndWhiteSpace(rng span.Range, tok *token.File, content []byte, file *ast.File) (span.Range, error) {
+func adjustRangeForCommentsAndWhiteSpace(tok *token.File, start, end token.Pos, content []byte, file *ast.File) (token.Pos, token.Pos, error) {
 	// Adjust the end of the range to after leading whitespace and comments.
-	prevStart, start := token.NoPos, rng.Start
+	prevStart := token.NoPos
 	startComment := sort.Search(len(file.Comments), func(i int) bool {
 		// Find the index for the first comment that ends after range start.
-		return file.Comments[i].End() > rng.Start
+		return file.Comments[i].End() > start
 	})
 	for prevStart != start {
 		prevStart = start
@@ -683,7 +670,7 @@ func adjustRangeForCommentsAndWhiteSpace(rng span.Range, tok *token.File, conten
 		// Move forwards to find a non-whitespace character.
 		offset, err := safetoken.Offset(tok, start)
 		if err != nil {
-			return span.Range{}, err
+			return 0, 0, err
 		}
 		for offset < len(content) && isGoWhiteSpace(content[offset]) {
 			offset++
@@ -692,10 +679,10 @@ func adjustRangeForCommentsAndWhiteSpace(rng span.Range, tok *token.File, conten
 	}
 
 	// Adjust the end of the range to before trailing whitespace and comments.
-	prevEnd, end := token.NoPos, rng.End
+	prevEnd := token.NoPos
 	endComment := sort.Search(len(file.Comments), func(i int) bool {
 		// Find the index for the first comment that ends after the range end.
-		return file.Comments[i].End() >= rng.End
+		return file.Comments[i].End() >= end
 	})
 	// Search will return n if not found, so we need to adjust if there are no
 	// comments that would match.
@@ -713,7 +700,7 @@ func adjustRangeForCommentsAndWhiteSpace(rng span.Range, tok *token.File, conten
 		// Move backwards to find a non-whitespace character.
 		offset, err := safetoken.Offset(tok, end)
 		if err != nil {
-			return span.Range{}, err
+			return 0, 0, err
 		}
 		for offset > 0 && isGoWhiteSpace(content[offset-1]) {
 			offset--
@@ -721,7 +708,7 @@ func adjustRangeForCommentsAndWhiteSpace(rng span.Range, tok *token.File, conten
 		end = tok.Pos(offset)
 	}
 
-	return span.NewRange(tok, start, end), nil
+	return start, end, nil
 }
 
 // isGoWhiteSpace returns true if b is a considered white space in
@@ -765,7 +752,7 @@ type variable struct {
 // variables will be used as arguments in the extracted function. It also returns a
 // list of identifiers that may need to be returned by the extracted function.
 // Some of the code in this function has been adapted from tools/cmd/guru/freevars.go.
-func collectFreeVars(info *types.Info, file *ast.File, fileScope, pkgScope *types.Scope, rng span.Range, node ast.Node) ([]*variable, error) {
+func collectFreeVars(info *types.Info, file *ast.File, fileScope, pkgScope *types.Scope, start, end token.Pos, node ast.Node) ([]*variable, error) {
 	// id returns non-nil if n denotes an object that is referenced by the span
 	// and defined either within the span or in the lexical environment. The bool
 	// return value acts as an indicator for where it was defined.
@@ -790,7 +777,7 @@ func collectFreeVars(info *types.Info, file *ast.File, fileScope, pkgScope *type
 		if scope == fileScope || scope == pkgScope {
 			return nil, false // defined at file or package scope
 		}
-		if rng.Start <= obj.Pos() && obj.Pos() <= rng.End {
+		if start <= obj.Pos() && obj.Pos() <= end {
 			return obj, false // defined within selection => not free
 		}
 		return obj, true
@@ -815,7 +802,7 @@ func collectFreeVars(info *types.Info, file *ast.File, fileScope, pkgScope *type
 		if n == nil {
 			return false
 		}
-		if rng.Start <= n.Pos() && n.End() <= rng.End {
+		if start <= n.Pos() && n.End() <= end {
 			var obj types.Object
 			var isFree, prune bool
 			switch n := n.(type) {
@@ -841,7 +828,7 @@ func collectFreeVars(info *types.Info, file *ast.File, fileScope, pkgScope *type
 				}
 			}
 		}
-		return n.Pos() <= rng.End
+		return n.Pos() <= end
 	})
 
 	// Find identifiers that are initialized or whose values are altered at some
@@ -858,8 +845,8 @@ func collectFreeVars(info *types.Info, file *ast.File, fileScope, pkgScope *type
 		if n == nil {
 			return false
 		}
-		if n.Pos() < rng.Start || n.End() > rng.End {
-			return n.Pos() <= rng.End
+		if n.Pos() < start || n.End() > end {
+			return n.Pos() <= end
 		}
 		switch n := n.(type) {
 		case *ast.AssignStmt:
@@ -972,25 +959,25 @@ func referencesObj(info *types.Info, expr ast.Expr, obj types.Object) bool {
 }
 
 type fnExtractParams struct {
-	tok   *token.File
-	path  []ast.Node
-	rng   span.Range
-	outer *ast.FuncDecl
-	start ast.Node
+	tok        *token.File
+	start, end token.Pos
+	path       []ast.Node
+	outer      *ast.FuncDecl
+	node       ast.Node
 }
 
 // CanExtractFunction reports whether the code in the given range can be
 // extracted to a function.
-func CanExtractFunction(tok *token.File, rng span.Range, src []byte, file *ast.File) (*fnExtractParams, bool, bool, error) {
-	if rng.Start == rng.End {
+func CanExtractFunction(tok *token.File, start, end token.Pos, src []byte, file *ast.File) (*fnExtractParams, bool, bool, error) {
+	if start == end {
 		return nil, false, false, fmt.Errorf("start and end are equal")
 	}
 	var err error
-	rng, err = adjustRangeForCommentsAndWhiteSpace(rng, tok, src, file)
+	start, end, err = adjustRangeForCommentsAndWhiteSpace(tok, start, end, src, file)
 	if err != nil {
 		return nil, false, false, err
 	}
-	path, _ := astutil.PathEnclosingInterval(file, rng.Start, rng.End)
+	path, _ := astutil.PathEnclosingInterval(file, start, end)
 	if len(path) == 0 {
 		return nil, false, false, fmt.Errorf("no path enclosing interval")
 	}
@@ -1014,52 +1001,53 @@ func CanExtractFunction(tok *token.File, rng span.Range, src []byte, file *ast.F
 	}
 
 	// Find the nodes at the start and end of the selection.
-	var start, end ast.Node
+	var startNode, endNode ast.Node
 	ast.Inspect(outer, func(n ast.Node) bool {
 		if n == nil {
 			return false
 		}
 		// Do not override 'start' with a node that begins at the same location
 		// but is nested further from 'outer'.
-		if start == nil && n.Pos() == rng.Start && n.End() <= rng.End {
-			start = n
+		if startNode == nil && n.Pos() == start && n.End() <= end {
+			startNode = n
 		}
-		if end == nil && n.End() == rng.End && n.Pos() >= rng.Start {
-			end = n
+		if endNode == nil && n.End() == end && n.Pos() >= start {
+			endNode = n
 		}
-		return n.Pos() <= rng.End
+		return n.Pos() <= end
 	})
-	if start == nil || end == nil {
+	if startNode == nil || endNode == nil {
 		return nil, false, false, fmt.Errorf("range does not map to AST nodes")
 	}
 	// If the region is a blockStmt, use the first and last nodes in the block
 	// statement.
 	// <rng.start>{ ... }<rng.end> => { <rng.start>...<rng.end> }
-	if blockStmt, ok := start.(*ast.BlockStmt); ok {
+	if blockStmt, ok := startNode.(*ast.BlockStmt); ok {
 		if len(blockStmt.List) == 0 {
 			return nil, false, false, fmt.Errorf("range maps to empty block statement")
 		}
-		start, end = blockStmt.List[0], blockStmt.List[len(blockStmt.List)-1]
-		rng.Start, rng.End = start.Pos(), end.End()
+		startNode, endNode = blockStmt.List[0], blockStmt.List[len(blockStmt.List)-1]
+		start, end = startNode.Pos(), endNode.End()
 	}
 	return &fnExtractParams{
 		tok:   tok,
-		path:  path,
-		rng:   rng,
-		outer: outer,
 		start: start,
+		end:   end,
+		path:  path,
+		outer: outer,
+		node:  startNode,
 	}, true, outer.Recv != nil, nil
 }
 
 // objUsed checks if the object is used within the range. It returns the first
 // occurrence of the object in the range, if it exists.
-func objUsed(info *types.Info, rng span.Range, obj types.Object) (bool, *ast.Ident) {
+func objUsed(info *types.Info, start, end token.Pos, obj types.Object) (bool, *ast.Ident) {
 	var firstUse *ast.Ident
 	for id, objUse := range info.Uses {
 		if obj != objUse {
 			continue
 		}
-		if id.Pos() < rng.Start || id.End() > rng.End {
+		if id.Pos() < start || id.End() > end {
 			continue
 		}
 		if firstUse == nil || id.Pos() < firstUse.Pos() {

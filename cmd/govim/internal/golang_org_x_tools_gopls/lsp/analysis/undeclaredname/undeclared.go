@@ -18,7 +18,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/ast/astutil"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/analysisinternal"
 )
 
@@ -38,7 +38,7 @@ func <>(inferred parameters) {
 `
 
 var Analyzer = &analysis.Analyzer{
-	Name:             string(analysisinternal.UndeclaredName),
+	Name:             "undeclaredname",
 	Doc:              Doc,
 	Requires:         []*analysis.Analyzer{},
 	Run:              run,
@@ -49,7 +49,7 @@ var Analyzer = &analysis.Analyzer{
 var undeclaredNamePrefixes = []string{"undeclared name: ", "undefined: "}
 
 func run(pass *analysis.Pass) (interface{}, error) {
-	for _, err := range analysisinternal.GetTypeErrors(pass) {
+	for _, err := range pass.TypeErrors {
 		runForError(pass, err)
 	}
 	return nil, nil
@@ -112,8 +112,8 @@ func runForError(pass *analysis.Pass, err types.Error) {
 	if tok == nil {
 		return
 	}
-	offset := pass.Fset.Position(err.Pos).Offset
-	end := tok.Pos(offset + len(name))
+	offset := safetoken.StartPosition(pass.Fset, err.Pos).Offset
+	end := tok.Pos(offset + len(name)) // TODO(adonovan): dubious! err.Pos + len(name)??
 	pass.Report(analysis.Diagnostic{
 		Pos:     err.Pos,
 		End:     end,
@@ -121,8 +121,8 @@ func runForError(pass *analysis.Pass, err types.Error) {
 	})
 }
 
-func SuggestedFix(fset *token.FileSet, rng span.Range, content []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
-	pos := rng.Start // don't use the end
+func SuggestedFix(fset *token.FileSet, start, end token.Pos, content []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
+	pos := start // don't use the end
 	path, _ := astutil.PathEnclosingInterval(file, pos, pos)
 	if len(path) < 2 {
 		return nil, fmt.Errorf("no expression found")
@@ -146,7 +146,7 @@ func SuggestedFix(fset *token.FileSet, rng span.Range, content []byte, file *ast
 		return nil, fmt.Errorf("could not locate insertion point")
 	}
 
-	insertBefore := fset.Position(insertBeforeStmt.Pos()).Offset
+	insertBefore := safetoken.StartPosition(fset, insertBeforeStmt.Pos()).Offset
 
 	// Get the indent to add on the line after the new statement.
 	// Since this will have a parse error, we can not use format.Source().

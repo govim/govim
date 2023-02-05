@@ -11,9 +11,25 @@ import (
 	"fmt"
 	"go/token"
 	"path"
+	"sort"
+	"strings"
+
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
 )
 
-// Span represents a source code range in standardized form.
+// A Span represents a range of text within a source file.  The start
+// and end points of a valid span may be hold either its byte offset,
+// or its (line, column) pair, or both.  Columns are measured in bytes.
+//
+// Spans are appropriate in user interfaces (e.g. command-line tools)
+// and tests where a position is notated without access to the content
+// of the file.
+//
+// Use protocol.Mapper to convert between Span and other
+// representations, such as go/token (also UTF-8) or the LSP protocol
+// (UTF-16). The latter requires access to file contents.
+//
+// See overview comments at ../lsp/protocol/mapper.go.
 type Span struct {
 	v span
 }
@@ -25,6 +41,12 @@ type Point struct {
 	v point
 }
 
+// The private span/point types have public fields to support JSON
+// encoding, but the public Span/Point types hide these fields by
+// defining methods that shadow them. (This is used by a few of the
+// command-line tool subcommands, which emit spans and have a -json
+// flag.)
+
 type span struct {
 	URI   URI   `json:"uri"`
 	Start point `json:"start"`
@@ -32,9 +54,9 @@ type span struct {
 }
 
 type point struct {
-	Line   int `json:"line"`
-	Column int `json:"column"`
-	Offset int `json:"offset"`
+	Line   int `json:"line"`   // 1-based line number
+	Column int `json:"column"` // 1-based, UTF-8 codes (bytes)
+	Offset int `json:"offset"` // 0-based byte offset
 }
 
 // Invalid is a span that reports false from IsValid
@@ -54,12 +76,23 @@ func NewPoint(line, col, offset int) Point {
 	return p
 }
 
-func Compare(a, b Span) int {
-	if r := CompareURI(a.URI(), b.URI()); r != 0 {
-		return r
+// SortSpans sorts spans into a stable but unspecified order.
+func SortSpans(spans []Span) {
+	sort.SliceStable(spans, func(i, j int) bool {
+		return compare(spans[i], spans[j]) < 0
+	})
+}
+
+// compare implements a three-valued ordered comparison of Spans.
+func compare(a, b Span) int {
+	// This is a textual comparison. It does not peform path
+	// cleaning, case folding, resolution of symbolic links,
+	// testing for existence, or any I/O.
+	if cmp := strings.Compare(string(a.URI()), string(b.URI())); cmp != 0 {
+		return cmp
 	}
-	if r := comparePoint(a.v.Start, b.v.Start); r != 0 {
-		return r
+	if cmp := comparePoint(a.v.Start, b.v.Start); cmp != 0 {
+		return cmp
 	}
 	return comparePoint(a.v.End, b.v.End)
 }
@@ -209,79 +242,11 @@ func (s Span) Format(f fmt.State, c rune) {
 	}
 }
 
-// (Currently unused, but we gain little yet by deleting it.)
-func (s Span) withPosition(tf *token.File) (Span, error) {
-	if err := s.update(tf, true, false); err != nil {
-		return Span{}, err
-	}
-	return s, nil
-}
-
-func (s Span) WithOffset(tf *token.File) (Span, error) {
-	if err := s.update(tf, false, true); err != nil {
-		return Span{}, err
-	}
-	return s, nil
-}
-
-func (s Span) WithAll(tf *token.File) (Span, error) {
-	if err := s.update(tf, true, true); err != nil {
-		return Span{}, err
-	}
-	return s, nil
-}
-
-func (s *Span) update(tf *token.File, withPos, withOffset bool) error {
-	if !s.IsValid() {
-		return fmt.Errorf("cannot add information to an invalid span")
-	}
-	if withPos && !s.HasPosition() {
-		if err := s.v.Start.updatePosition(tf); err != nil {
-			return err
-		}
-		if s.v.End.Offset == s.v.Start.Offset {
-			s.v.End = s.v.Start
-		} else if err := s.v.End.updatePosition(tf); err != nil {
-			return err
-		}
-	}
-	if withOffset && (!s.HasOffset() || (s.v.End.hasPosition() && !s.v.End.hasOffset())) {
-		if err := s.v.Start.updateOffset(tf); err != nil {
-			return err
-		}
-		if s.v.End.Line == s.v.Start.Line && s.v.End.Column == s.v.Start.Column {
-			s.v.End.Offset = s.v.Start.Offset
-		} else if err := s.v.End.updateOffset(tf); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (p *point) updatePosition(tf *token.File) error {
-	line, col, err := ToPosition(tf, p.Offset)
-	if err != nil {
-		return err
-	}
-	p.Line = line
-	p.Column = col
-	return nil
-}
-
-func (p *point) updateOffset(tf *token.File) error {
-	offset, err := ToOffset(tf, p.Line, p.Column)
-	if err != nil {
-		return err
-	}
-	p.Offset = offset
-	return nil
-}
-
 // SetRange implements packagestest.rangeSetter, allowing
 // gopls' test suites to use Spans instead of Range in parameters.
 func (span *Span) SetRange(file *token.File, start, end token.Pos) {
 	point := func(pos token.Pos) Point {
-		posn := file.Position(pos)
+		posn := safetoken.Position(file, pos)
 		return NewPoint(posn.Line, posn.Column, posn.Offset)
 	}
 	*span = New(URIFromPath(file.Name()), point(start), point(end))

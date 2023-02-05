@@ -7,6 +7,8 @@ package source
 import (
 	"context"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"sort"
 	"strings"
 	"sync"
@@ -16,95 +18,110 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 )
 
-// KnownPackages returns a list of all known packages
-// in the package graph that could potentially be imported
-// by the given file.
-func KnownPackages(ctx context.Context, snapshot Snapshot, fh VersionedFileHandle) ([]PackagePath, error) {
-	pkg, pgf, err := GetParsedFile(ctx, snapshot, fh, NarrowestPackage)
+// KnownPackagePaths returns a new list of package paths of all known
+// packages in the package graph that could potentially be imported by
+// the given file. The list is ordered lexicographically, except that
+// all dot-free paths (standard packages) appear before dotful ones.
+//
+// It is part of the gopls.list_known_packages command.
+func KnownPackagePaths(ctx context.Context, snapshot Snapshot, fh FileHandle) ([]PackagePath, error) {
+	// This algorithm is expressed in terms of Metadata, not Packages,
+	// so it doesn't cause or wait for type checking.
+
+	// Find a Metadata containing the file.
+	metas, err := snapshot.MetadataForFile(ctx, fh.URI())
 	if err != nil {
-		return nil, fmt.Errorf("GetParsedFile: %w", err)
+		return nil, err // e.g. context cancelled
 	}
-	alreadyImported := map[PackagePath]struct{}{}
-	for _, imp := range pgf.File.Imports {
-		// TODO(adonovan): the correct PackagePath might need a "vendor/" prefix.
-		alreadyImported[PackagePath(imp.Path.Value)] = struct{}{}
+	if len(metas) == 0 {
+		return nil, fmt.Errorf("no loaded package contain file %s", fh.URI())
 	}
-	// TODO(adonovan): this whole algorithm could be more
-	// simply expressed in terms of Metadata, not Packages.
-	pkgs, err := snapshot.CachedImportPaths(ctx)
+	current := metas[0] // pick one arbitrarily (they should all have the same package path)
+
+	// Parse the file's imports so we can compute which
+	// PackagePaths are imported by this specific file.
+	src, err := fh.Read()
 	if err != nil {
 		return nil, err
 	}
-	var (
-		seen  = make(map[PackagePath]struct{})
-		paths []PackagePath
-	)
-	for path, knownPkg := range pkgs {
-		gofiles := knownPkg.CompiledGoFiles()
-		if len(gofiles) == 0 || gofiles[0].File.Name == nil {
-			continue
+	file, err := parser.ParseFile(token.NewFileSet(), fh.URI().Filename(), src, parser.ImportsOnly)
+	if err != nil {
+		return nil, err
+	}
+	imported := make(map[PackagePath]bool)
+	for _, imp := range file.Imports {
+		if id := current.DepsByImpPath[UnquoteImportPath(imp)]; id != "" {
+			if m := snapshot.Metadata(id); m != nil {
+				imported[m.PkgPath] = true
+			}
 		}
-		pkgName := gofiles[0].File.Name.Name
+	}
+
+	// Now find candidates among known packages.
+	knownPkgs, err := snapshot.AllMetadata(ctx)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[PackagePath]bool)
+	for _, knownPkg := range knownPkgs {
 		// package main cannot be imported
-		if pkgName == "main" {
+		if knownPkg.Name == "main" {
 			continue
 		}
 		// test packages cannot be imported
-		if knownPkg.ForTest() != "" {
+		if knownPkg.ForTest != "" {
 			continue
 		}
-		// no need to import what the file already imports
-		if _, ok := alreadyImported[path]; ok {
+		// No need to import what the file already imports.
+		// This check is based on PackagePath, not PackageID,
+		// so that all test variants are filtered out too.
+		if imported[knownPkg.PkgPath] {
 			continue
 		}
-		// snapshot.KnownPackages could have multiple versions of a pkg
-		if _, ok := seen[path]; ok {
-			continue
-		}
-		seen[path] = struct{}{}
 		// make sure internal packages are importable by the file
-		if !IsValidImport(pkg.PkgPath(), path) {
+		if !IsValidImport(current.PkgPath, knownPkg.PkgPath) {
 			continue
 		}
 		// naive check on cyclical imports
-		if isDirectlyCyclical(pkg, knownPkg) {
+		if isDirectlyCyclical(current, knownPkg) {
 			continue
 		}
-		paths = append(paths, path)
-		seen[path] = struct{}{}
+		// AllMetadata may have multiple variants of a pkg.
+		seen[knownPkg.PkgPath] = true
 	}
-	err = snapshot.RunProcessEnvFunc(ctx, func(o *imports.Options) error {
-		var mu sync.Mutex
+
+	// Augment the set by invoking the goimports algorithm.
+	if err := snapshot.RunProcessEnvFunc(ctx, func(o *imports.Options) error {
 		ctx, cancel := context.WithTimeout(ctx, time.Millisecond*80)
 		defer cancel()
-		return imports.GetAllCandidates(ctx, func(ifix imports.ImportFix) {
-			mu.Lock()
-			defer mu.Unlock()
+		var seenMu sync.Mutex
+		wrapped := func(ifix imports.ImportFix) {
+			seenMu.Lock()
+			defer seenMu.Unlock()
 			// TODO(adonovan): what if the actual package path has a vendor/ prefix?
-			path := PackagePath(ifix.StmtInfo.ImportPath)
-			if _, ok := seen[path]; ok {
-				return
-			}
-			paths = append(paths, path)
-		}, "", pgf.URI.Filename(), pkg.GetTypes().Name(), o.Env)
-	})
-	if err != nil {
-		// if an error occurred, we still have a decent list we can
-		// show to the user through snapshot.CachedImportPaths
+			seen[PackagePath(ifix.StmtInfo.ImportPath)] = true
+		}
+		return imports.GetAllCandidates(ctx, wrapped, "", fh.URI().Filename(), string(current.Name), o.Env)
+	}); err != nil {
+		// If goimports failed, proceed with just the candidates from the metadata.
 		event.Error(ctx, "imports.GetAllCandidates", err)
+	}
+
+	// Sort lexicographically, but with std before non-std packages.
+	paths := make([]PackagePath, 0, len(seen))
+	for path := range seen {
+		paths = append(paths, path)
 	}
 	sort.Slice(paths, func(i, j int) bool {
 		importI, importJ := paths[i], paths[j]
 		iHasDot := strings.Contains(string(importI), ".")
 		jHasDot := strings.Contains(string(importJ), ".")
-		if iHasDot && !jHasDot {
-			return false
-		}
-		if jHasDot && !iHasDot {
-			return true
+		if iHasDot != jHasDot {
+			return jHasDot // dot-free paths (standard packages) compare less
 		}
 		return importI < importJ
 	})
+
 	return paths, nil
 }
 
@@ -113,11 +130,11 @@ func KnownPackages(ctx context.Context, snapshot Snapshot, fh VersionedFileHandl
 // a list of importable packages already generates a very large list
 // and having a few false positives in there could be worth the
 // performance snappiness.
-func isDirectlyCyclical(pkg, imported Package) bool {
-	for _, imp := range imported.Imports() {
-		if imp.PkgPath() == pkg.PkgPath() {
-			return true
-		}
-	}
-	return false
+//
+// TODO(adonovan): ensure that metadata graph is always cyclic!
+// Many algorithms will get confused or even stuck in the
+// presence of cycles. Then replace this function by 'false'.
+func isDirectlyCyclical(pkg, imported *Metadata) bool {
+	_, ok := imported.DepsByPkgPath[pkg.PkgPath]
+	return ok
 }

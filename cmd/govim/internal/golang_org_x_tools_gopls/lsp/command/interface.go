@@ -17,6 +17,7 @@ package command
 import (
 	"context"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/govulncheck"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 )
 
@@ -101,7 +102,7 @@ type Interface interface {
 	// ResetGoModDiagnostics: Reset go.mod diagnostics
 	//
 	// Reset diagnostics in the go.mod file of a module.
-	ResetGoModDiagnostics(context.Context, URIArg) error
+	ResetGoModDiagnostics(context.Context, ResetGoModDiagnosticsArgs) error
 
 	// GoGetPackage: go get a package
 	//
@@ -119,11 +120,6 @@ type Interface interface {
 	//
 	// Toggle the calculation of gc annotations.
 	ToggleGCDetails(context.Context, URIArg) error
-
-	// GenerateGoplsMod: Generate gopls.mod
-	//
-	// (Re)generate the gopls.mod file for a workspace.
-	GenerateGoplsMod(context.Context, URIArg) error
 
 	// ListKnownPackages: List known packages
 	//
@@ -149,10 +145,15 @@ type Interface interface {
 	// address.
 	StartDebugging(context.Context, DebuggingArgs) (DebuggingResult, error)
 
-	// RunVulncheckExp: Run vulncheck (experimental)
+	// RunGovulncheck: Run govulncheck.
 	//
 	// Run vulnerability check (`govulncheck`).
-	RunVulncheckExp(context.Context, VulncheckArgs) error
+	RunGovulncheck(context.Context, VulncheckArgs) (RunVulncheckResult, error)
+
+	// FetchVulncheckResult: Get known vulncheck result
+	//
+	// Fetch the result of latest vulnerability check (`govulncheck`).
+	FetchVulncheckResult(context.Context, URIArg) (map[protocol.DocumentURI]*govulncheck.Result, error)
 }
 
 type RunTestsArgs struct {
@@ -303,6 +304,14 @@ type DebuggingResult struct {
 	URLs []string
 }
 
+type ResetGoModDiagnosticsArgs struct {
+	URIArg
+
+	// Optional: source of the diagnostics to reset.
+	// If not set, all resettable go.mod diagnostics will be cleared.
+	DiagnosticSource string
+}
+
 type VulncheckArgs struct {
 	// Any document in the directory from which govulncheck will run.
 	URI protocol.DocumentURI
@@ -311,6 +320,14 @@ type VulncheckArgs struct {
 	Pattern string
 
 	// TODO: -tests
+}
+
+// RunVulncheckResult holds the result of asynchronously starting the vulncheck
+// command.
+type RunVulncheckResult struct {
+	// Token holds the progress token for LSP workDone reporting of the vulncheck
+	// invocation.
+	Token protocol.ProgressToken
 }
 
 type VulncheckResult struct {

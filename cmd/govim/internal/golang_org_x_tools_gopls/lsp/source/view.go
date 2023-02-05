@@ -15,22 +15,45 @@ import (
 	"go/token"
 	"go/types"
 	"io"
-	"strings"
 
 	"golang.org/x/mod/modfile"
-	"golang.org/x/mod/module"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/types/objectpath"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/govulncheck"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/source/methodsets"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/label"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/packagesinternal"
 )
+
+// A GlobalSnapshotID uniquely identifies a snapshot within this process and
+// increases monotonically with snapshot creation time.
+//
+// We use a distinct integral type for global IDs to help enforce correct
+// usage.
+type GlobalSnapshotID uint64
 
 // Snapshot represents the current state for the given view.
 type Snapshot interface {
-	ID() uint64
+	// SequenceID is the sequence id of this snapshot within its containing
+	// view.
+	//
+	// Relative to their view sequence ids are monotonically increasing, but this
+	// does not hold globally: when new views are created their initial snapshot
+	// has sequence ID 0. For operations that span multiple views, use global
+	// IDs.
+	SequenceID() uint64
+
+	// GlobalID is a globally unique identifier for this snapshot. Global IDs are
+	// monotonic: subsequent snapshots will have higher global ID, though
+	// subsequent snapshots in a view may not have adjacent global IDs.
+	GlobalID() GlobalSnapshotID
 
 	// View returns the View associated with this snapshot.
 	View() View
@@ -52,16 +75,9 @@ type Snapshot interface {
 	// and their GOPATH.
 	ValidBuildConfiguration() bool
 
-	// WriteEnv writes the view-specific environment to the io.Writer.
-	WriteEnv(ctx context.Context, w io.Writer) error
-
 	// FindFile returns the FileHandle for the given URI, if it is already
 	// in the given snapshot.
-	FindFile(uri span.URI) VersionedFileHandle
-
-	// GetVersionedFile returns the VersionedFileHandle for a given URI,
-	// initializing it if it is not already part of the snapshot.
-	GetVersionedFile(ctx context.Context, uri span.URI) (VersionedFileHandle, error)
+	FindFile(uri span.URI) FileHandle
 
 	// GetFile returns the FileHandle for a given URI, initializing it if it is
 	// not already part of the snapshot.
@@ -78,18 +94,15 @@ type Snapshot interface {
 	IgnoredFile(uri span.URI) bool
 
 	// Templates returns the .tmpl files
-	Templates() map[span.URI]VersionedFileHandle
+	Templates() map[span.URI]FileHandle
 
 	// ParseGo returns the parsed AST for the file.
 	// If the file is not available, returns nil and an error.
+	// Position information is added to FileSet().
 	ParseGo(ctx context.Context, fh FileHandle, mode ParseMode) (*ParsedGoFile, error)
 
-	// DiagnosePackage returns basic diagnostics, including list, parse, and type errors
-	// for pkg, grouped by file.
-	DiagnosePackage(ctx context.Context, pkg Package) (map[span.URI][]*Diagnostic, error)
-
-	// Analyze runs the analyses for the given package at this snapshot.
-	Analyze(ctx context.Context, pkgID PackageID, analyzers []*Analyzer) ([]*Diagnostic, error)
+	// Analyze runs the specified analyzers on the given package at this snapshot.
+	Analyze(ctx context.Context, id PackageID, analyzers []*Analyzer) ([]*Diagnostic, error)
 
 	// RunGoCommandPiped runs the given `go` command, writing its output
 	// to stdout and stderr. Verb, Args, and WorkingDir must be specified.
@@ -126,6 +139,10 @@ type Snapshot interface {
 	// the given go.mod file.
 	ModTidy(ctx context.Context, pm *ParsedModule) (*TidiedModule, error)
 
+	// ModVuln returns import vulnerability analysis for the given go.mod URI.
+	// Concurrent requests are combined into a single command.
+	ModVuln(ctx context.Context, modURI span.URI) (*govulncheck.Result, error)
+
 	// GoModForFile returns the URI of the go.mod file for the given URI.
 	GoModForFile(uri span.URI) span.URI
 
@@ -141,67 +158,104 @@ type Snapshot interface {
 	// IsBuiltin reports whether uri is part of the builtin package.
 	IsBuiltin(ctx context.Context, uri span.URI) bool
 
-	// PackagesForFile returns an unordered list of packages that contain
-	// the file denoted by uri, type checked in the specified mode.
-	//
-	// If withIntermediateTestVariants is set, the resulting package set includes
-	// intermediate test variants.
-	PackagesForFile(ctx context.Context, uri span.URI, mode TypecheckMode, withIntermediateTestVariants bool) ([]Package, error)
-
-	// PackageForFile returns a single package that this file belongs to,
-	// checked in mode and filtered by the package policy.
-	PackageForFile(ctx context.Context, uri span.URI, mode TypecheckMode, selectPackage PackageFilter) (Package, error)
-
-	// GetActiveReverseDeps returns the active files belonging to the reverse
-	// dependencies of this file's package, checked in TypecheckWorkspace mode.
-	GetReverseDependencies(ctx context.Context, id PackageID) ([]Package, error)
+	// ReverseDependencies returns a new mapping whose entries are
+	// the ID and Metadata of each package in the workspace that
+	// directly or transitively depend on the package denoted by id,
+	// excluding id itself.
+	ReverseDependencies(ctx context.Context, id PackageID, transitive bool) (map[PackageID]*Metadata, error)
 
 	// CachedImportPaths returns all the imported packages loaded in this
 	// snapshot, indexed by their package path (not import path, despite the name)
 	// and checked in TypecheckWorkspace mode.
-	CachedImportPaths(ctx context.Context) (map[PackagePath]Package, error)
+	//
+	// To reduce latency, it does not wait for type-checking to complete.
+	// It is intended for use only in completions.
+	CachedImportPaths(ctx context.Context) (map[PackagePath]*types.Package, error)
 
-	// KnownPackages returns all the packages loaded in this snapshot, checked
-	// in TypecheckWorkspace mode.
-	KnownPackages(ctx context.Context) ([]Package, error)
-
-	// ActivePackages returns the packages considered 'active' in the workspace.
+	// ActiveMetadata returns a new, unordered slice containing
+	// metadata for all packages considered 'active' in the workspace.
 	//
 	// In normal memory mode, this is all workspace packages. In degraded memory
 	// mode, this is just the reverse transitive closure of open packages.
-	ActivePackages(ctx context.Context) ([]Package, error)
+	ActiveMetadata(ctx context.Context) ([]*Metadata, error)
 
-	// AllValidMetadata returns all valid metadata loaded for the snapshot.
-	AllValidMetadata(ctx context.Context) ([]Metadata, error)
-
-	// WorkspacePackageByID returns the workspace package with id, type checked
-	// in 'workspace' mode.
-	WorkspacePackageByID(ctx context.Context, id PackageID) (Package, error)
+	// AllMetadata returns a new unordered array of metadata for all packages in the workspace.
+	AllMetadata(ctx context.Context) ([]*Metadata, error)
 
 	// Symbols returns all symbols in the snapshot.
 	Symbols(ctx context.Context) map[span.URI][]Symbol
 
-	// Metadata returns package metadata associated with the given file URI.
-	MetadataForFile(ctx context.Context, uri span.URI) ([]Metadata, error)
+	// Metadata returns the metadata for the specified package,
+	// or nil if it was not found.
+	Metadata(id PackageID) *Metadata
+
+	// MetadataForFile returns a new slice containing metadata for each
+	// package containing the Go file identified by uri, ordered by the
+	// number of CompiledGoFiles (i.e. "narrowest" to "widest" package).
+	// The result may include tests and intermediate test variants of
+	// importable packages.
+	// It returns an error if the context was cancelled.
+	MetadataForFile(ctx context.Context, uri span.URI) ([]*Metadata, error)
+
+	// TypeCheck parses and type-checks the specified packages,
+	// and returns them in the same order as the ids.
+	TypeCheck(ctx context.Context, mode TypecheckMode, ids ...PackageID) ([]Package, error)
 
 	// GetCriticalError returns any critical errors in the workspace.
+	//
+	// A nil result may mean success, or context cancellation.
 	GetCriticalError(ctx context.Context) *CriticalError
-
-	// BuildGoplsMod generates a go.mod file for all modules in the workspace.
-	// It bypasses any existing gopls.mod.
-	BuildGoplsMod(ctx context.Context) (*modfile.File, error)
 }
 
-// PackageFilter sets how a package is filtered out from a set of packages
+// SnapshotLabels returns a new slice of labels that should be used for events
+// related to a snapshot.
+func SnapshotLabels(snapshot Snapshot) []label.Label {
+	return []label.Label{tag.Snapshot.Of(snapshot.SequenceID()), tag.Directory.Of(snapshot.View().Folder())}
+}
+
+// PackageForFile is a convenience function that selects a package to
+// which this file belongs (narrowest or widest), type-checks it in
+// the requested mode (full or workspace), and returns it, along with
+// the parse tree of that file.
+//
+// Type-checking is expensive. Call snapshot.ParseGo if all you need
+// is a parse tree, or snapshot.MetadataForFile if you only need metadata.
+func PackageForFile(ctx context.Context, snapshot Snapshot, uri span.URI, mode TypecheckMode, pkgSel PackageSelector) (Package, *ParsedGoFile, error) {
+	metas, err := snapshot.MetadataForFile(ctx, uri)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(metas) == 0 {
+		return nil, nil, fmt.Errorf("no package metadata for file %s", uri)
+	}
+	switch pkgSel {
+	case NarrowestPackage:
+		metas = metas[:1]
+	case WidestPackage:
+		metas = metas[len(metas)-1:]
+	}
+	pkgs, err := snapshot.TypeCheck(ctx, mode, metas[0].ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	pkg := pkgs[0]
+	pgf, err := pkg.File(uri)
+	if err != nil {
+		return nil, nil, err // "can't happen"
+	}
+	return pkg, pgf, err
+}
+
+// PackageSelector sets how a package is selected out from a set of packages
 // containing a given file.
-type PackageFilter int
+type PackageSelector int
 
 const (
 	// NarrowestPackage picks the "narrowest" package for a given file.
 	// By "narrowest" package, we mean the package with the fewest number of
 	// files that includes the given file. This solves the problem of test
 	// variants, as the test will have more files than the non-test package.
-	NarrowestPackage PackageFilter = iota
+	NarrowestPackage PackageSelector = iota
 
 	// WidestPackage returns the Package containing the most files.
 	// This is useful for something like diagnostics, where we'd prefer to
@@ -248,22 +302,16 @@ type View interface {
 	// Folder returns the folder with which this view was created.
 	Folder() span.URI
 
-	// Shutdown closes this view, and detaches it from its session.
-	Shutdown(ctx context.Context)
-
 	// Options returns a copy of the Options for this view.
 	Options() *Options
-
-	// SetOptions sets the options of this view to new values.
-	// Calling this may cause the view to be invalidated and a replacement view
-	// added to the session. If so the new view will be returned, otherwise the
-	// original one will be.
-	SetOptions(context.Context, *Options) (View, error)
 
 	// Snapshot returns the current snapshot for the view, and a
 	// release function that must be called when the Snapshot is
 	// no longer needed.
-	Snapshot(ctx context.Context) (Snapshot, func())
+	//
+	// If the view is shut down, the resulting error will be non-nil, and the
+	// release function need not be called.
+	Snapshot() (Snapshot, func(), error)
 
 	// IsGoPrivatePath reports whether target is a private import path, as identified
 	// by the GOPRIVATE environment variable.
@@ -283,25 +331,43 @@ type View interface {
 	// Vulnerabilites returns known vulnerabilities for the given modfile.
 	// TODO(suzmue): replace command.Vuln with a different type, maybe
 	// https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck/govulnchecklib#Summary?
-	Vulnerabilities(modfile span.URI) []*govulncheck.Vuln
+	Vulnerabilities(modfile ...span.URI) map[span.URI]*govulncheck.Result
 
 	// SetVulnerabilities resets the list of vulnerabilites that exists for the given modules
 	// required by modfile.
-	SetVulnerabilities(modfile span.URI, vulnerabilities []*govulncheck.Vuln)
+	SetVulnerabilities(modfile span.URI, vulncheckResult *govulncheck.Result)
 
-	// FileKind returns the type of a file
+	// FileKind returns the type of a file.
+	//
+	// We can't reliably deduce the kind from the file name alone,
+	// as some editors can be told to interpret a buffer as
+	// language different from the file name heuristic, e.g. that
+	// an .html file actually contains Go "html/template" syntax,
+	// or even that a .go file contains Python.
 	FileKind(FileHandle) FileKind
 
 	// GoVersion returns the configured Go version for this view.
 	GoVersion() int
+
+	// GoVersionString returns the go version string configured for this view.
+	// Unlike [GoVersion], this encodes the minor version and commit hash information.
+	GoVersionString() string
 }
 
-// A FileSource maps uris to FileHandles. This abstraction exists both for
-// testability, and so that algorithms can be run equally on session and
-// snapshot files.
+// A FileSource maps uris to FileHandles.
 type FileSource interface {
 	// GetFile returns the FileHandle for a given URI.
 	GetFile(ctx context.Context, uri span.URI) (FileHandle, error)
+}
+
+// A MetadataSource maps package IDs to metadata.
+//
+// TODO(rfindley): replace this with a concrete metadata graph, once it is
+// exposed from the snapshot.
+type MetadataSource interface {
+	// Metadata returns Metadata for the given package ID, or nil if it does not
+	// exist.
+	Metadata(PackageID) *Metadata
 }
 
 // A ParsedGoFile contains the results of parsing a Go file.
@@ -314,15 +380,67 @@ type ParsedGoFile struct {
 	// actual content of the file if we have fixed the AST.
 	Src      []byte
 	Fixed    bool
-	Mapper   *protocol.ColumnMapper
+	Mapper   *protocol.Mapper // may map fixed Src, not file content
 	ParseErr scanner.ErrorList
+}
+
+// -- go/token domain convenience helpers --
+
+// PositionPos returns the token.Pos of protocol position p within the file.
+func (pgf *ParsedGoFile) PositionPos(p protocol.Position) (token.Pos, error) {
+	offset, err := pgf.Mapper.PositionOffset(p)
+	if err != nil {
+		return token.NoPos, err
+	}
+	return safetoken.Pos(pgf.Tok, offset)
+}
+
+// PosRange returns a protocol Range for the token.Pos interval in this file.
+func (pgf *ParsedGoFile) PosRange(start, end token.Pos) (protocol.Range, error) {
+	return pgf.Mapper.PosRange(pgf.Tok, start, end)
+}
+
+// PosMappedRange returns a MappedRange for the token.Pos interval in this file.
+// A MappedRange can be converted to any other form.
+func (pgf *ParsedGoFile) PosMappedRange(start, end token.Pos) (protocol.MappedRange, error) {
+	return pgf.Mapper.PosMappedRange(pgf.Tok, start, end)
+}
+
+// PosLocation returns a protocol Location for the token.Pos interval in this file.
+func (pgf *ParsedGoFile) PosLocation(start, end token.Pos) (protocol.Location, error) {
+	return pgf.Mapper.PosLocation(pgf.Tok, start, end)
+}
+
+// NodeRange returns a protocol Range for the ast.Node interval in this file.
+func (pgf *ParsedGoFile) NodeRange(node ast.Node) (protocol.Range, error) {
+	return pgf.Mapper.NodeRange(pgf.Tok, node)
+}
+
+// NodeMappedRange returns a MappedRange for the ast.Node interval in this file.
+// A MappedRange can be converted to any other form.
+func (pgf *ParsedGoFile) NodeMappedRange(node ast.Node) (protocol.MappedRange, error) {
+	return pgf.Mapper.NodeMappedRange(pgf.Tok, node)
+}
+
+// NodeLocation returns a protocol Location for the ast.Node interval in this file.
+func (pgf *ParsedGoFile) NodeLocation(node ast.Node) (protocol.Location, error) {
+	return pgf.Mapper.PosLocation(pgf.Tok, node.Pos(), node.End())
+}
+
+// RangePos parses a protocol Range back into the go/token domain.
+func (pgf *ParsedGoFile) RangePos(r protocol.Range) (token.Pos, token.Pos, error) {
+	start, end, err := pgf.Mapper.RangeOffsets(r)
+	if err != nil {
+		return token.NoPos, token.NoPos, err
+	}
+	return pgf.Tok.Pos(start), pgf.Tok.Pos(end), nil
 }
 
 // A ParsedModule contains the results of parsing a go.mod file.
 type ParsedModule struct {
 	URI         span.URI
 	File        *modfile.File
-	Mapper      *protocol.ColumnMapper
+	Mapper      *protocol.Mapper
 	ParseErrors []*Diagnostic
 }
 
@@ -330,7 +448,7 @@ type ParsedModule struct {
 type ParsedWorkFile struct {
 	URI         span.URI
 	File        *modfile.WorkFile
-	Mapper      *protocol.ColumnMapper
+	Mapper      *protocol.Mapper
 	ParseErrors []*Diagnostic
 }
 
@@ -343,27 +461,68 @@ type TidiedModule struct {
 }
 
 // Metadata represents package metadata retrieved from go/packages.
-type Metadata interface {
-	// PackageID is the unique package id.
-	PackageID() PackageID
+type Metadata struct {
+	ID              PackageID
+	PkgPath         PackagePath
+	Name            PackageName
+	GoFiles         []span.URI
+	CompiledGoFiles []span.URI
+	ForTest         PackagePath // package path under test, or ""
+	TypesSizes      types.Sizes
+	Errors          []packages.Error
+	DepsByImpPath   map[ImportPath]PackageID  // may contain dups; empty ID => missing
+	DepsByPkgPath   map[PackagePath]PackageID // values are unique and non-empty
+	Module          *packages.Module
+	DepsErrors      []*packagesinternal.PackageError
+	LoadDir         string // directory from which go/packages was run
+}
 
-	// PackageName is the package name.
-	PackageName() PackageName
+// IsIntermediateTestVariant reports whether the given package is an
+// intermediate test variant, e.g. "net/http [net/url.test]".
+//
+// Such test variants arise when an x_test package (in this case net/url_test)
+// imports a package (in this case net/http) that itself imports the the
+// non-x_test package (in this case net/url).
+//
+// This is done so that the forward transitive closure of net/url_test has
+// only one package for the "net/url" import.
+// The intermediate test variant exists to hold the test variant import:
+//
+// net/url_test [net/url.test]
+//
+//	| "net/http" -> net/http [net/url.test]
+//	| "net/url" -> net/url [net/url.test]
+//	| ...
+//
+// net/http [net/url.test]
+//
+//	| "net/url" -> net/url [net/url.test]
+//	| ...
+//
+// This restriction propagates throughout the import graph of net/http: for
+// every package imported by net/http that imports net/url, there must be an
+// intermediate test variant that instead imports "net/url [net/url.test]".
+//
+// As one can see from the example of net/url and net/http, intermediate test
+// variants can result in many additional packages that are essentially (but
+// not quite) identical. For this reason, we filter these variants wherever
+// possible.
+func (m *Metadata) IsIntermediateTestVariant() bool {
+	return m.ForTest != "" && m.ForTest != m.PkgPath && m.ForTest+"_test" != m.PkgPath
+}
 
-	// PackagePath is the package path.
-	PackagePath() PackagePath
-
-	// ModuleInfo returns the go/packages module information for the given package.
-	ModuleInfo() *packages.Module
+// RemoveIntermediateTestVariants removes intermediate test variants, modifying the array.
+func RemoveIntermediateTestVariants(metas []*Metadata) []*Metadata {
+	res := metas[:0]
+	for _, m := range metas {
+		if !m.IsIntermediateTestVariant() {
+			res = append(res, m)
+		}
+	}
+	return res
 }
 
 var ErrViewExists = errors.New("view already exists for session")
-
-// Overlay is the type for a file held in memory on a session.
-type Overlay interface {
-	Kind() FileKind
-	VersionedFileHandle
-}
 
 // FileModification represents a modification to a file.
 type FileModification struct {
@@ -459,38 +618,26 @@ const (
 	TypecheckWorkspace
 )
 
-type VersionedFileHandle interface {
-	FileHandle
-	Version() int32
-	Session() string
-
-	// LSPIdentity returns the version identity of a file.
-	VersionedFileIdentity() VersionedFileIdentity
-}
-
-type VersionedFileIdentity struct {
-	URI span.URI
-
-	// SessionID is the ID of the LSP session.
-	SessionID string
-
-	// Version is the version of the file, as specified by the client. It should
-	// only be set in combination with SessionID.
-	Version int32
-}
-
-// FileHandle represents a handle to a specific version of a single file.
+// A FileHandle is an interface to files tracked by the LSP session, which may
+// be either files read from disk, or open in the editor session (overlays).
 type FileHandle interface {
+	// URI is the URI for this file handle.
+	// TODO(rfindley): this is not actually well-defined. In some cases, there
+	// may be more than one URI that resolve to the same FileHandle. Which one is
+	// this?
 	URI() span.URI
-
 	// FileIdentity returns a FileIdentity for the file, even if there was an
 	// error reading it.
 	FileIdentity() FileIdentity
+	// Saved reports whether the file has the same content on disk.
+	// For on-disk files, this is trivially true.
+	Saved() bool
+	// Version returns the file version, as defined by the LSP client.
+	// For on-disk file handles, Version returns 0.
+	Version() int32
 	// Read reads the contents of a file.
 	// If the file is not available, returns a nil slice and an error.
 	Read() ([]byte, error)
-	// Saved reports whether the file has the same content on disk.
-	Saved() bool
 }
 
 // A Hash is a cryptographic digest of the contents of a file.
@@ -558,6 +705,23 @@ const (
 	Work
 )
 
+func (k FileKind) String() string {
+	switch k {
+	case Go:
+		return "go"
+	case Mod:
+		return "go.mod"
+	case Sum:
+		return "go.sum"
+	case Tmpl:
+		return "tmpl"
+	case Work:
+		return "go.work"
+	default:
+		return fmt.Sprintf("internal error: unknown file kind %d", k)
+	}
+}
+
 // Analyzer represents a go/analysis analyzer with some boolean properties
 // that let the user know how to use the analyzer.
 type Analyzer struct {
@@ -566,6 +730,8 @@ type Analyzer struct {
 	// Enabled reports whether the analyzer is enabled. This value can be
 	// configured per-analysis in user settings. For staticcheck analyzers,
 	// the value of the Staticcheck setting overrides this field.
+	//
+	// Most clients should use the IsEnabled method.
 	Enabled bool
 
 	// Fix is the name of the suggested fix name used to invoke the suggested
@@ -583,14 +749,17 @@ type Analyzer struct {
 	Severity protocol.DiagnosticSeverity
 }
 
-func (a Analyzer) IsEnabled(view View) bool {
+func (a *Analyzer) String() string { return a.Analyzer.String() }
+
+// IsEnabled reports whether this analyzer is enabled by the given options.
+func (a Analyzer) IsEnabled(options *Options) bool {
 	// Staticcheck analyzers can only be enabled when staticcheck is on.
-	if _, ok := view.Options().StaticcheckAnalyzers[a.Analyzer.Name]; ok {
-		if !view.Options().Staticcheck {
+	if _, ok := options.StaticcheckAnalyzers[a.Analyzer.Name]; ok {
+		if !options.Staticcheck {
 			return false
 		}
 	}
-	if enabled, ok := view.Options().Analyses[a.Analyzer.Name]; ok {
+	if enabled, ok := options.Analyses[a.Analyzer.Name]; ok {
 		return enabled
 	}
 	return a.Enabled
@@ -607,29 +776,29 @@ type (
 	ImportPath  string // path that appears in an import declaration (e.g. "example.com/foo")
 )
 
-// Package represents a Go package that has been type-checked. It maintains
-// only the relevant fields of a *go/packages.Package.
+// Package represents a Go package that has been parsed and type-checked.
+// It maintains only the relevant fields of a *go/packages.Package.
 type Package interface {
-	ID() PackageID
-	Name() PackageName
-	PkgPath() PackagePath
-	CompiledGoFiles() []*ParsedGoFile
-	File(uri span.URI) (*ParsedGoFile, error)
+	Metadata() *Metadata
+
+	// Results of parsing:
 	FileSet() *token.FileSet
-	GetSyntax() []*ast.File
+	ParseMode() ParseMode
+	CompiledGoFiles() []*ParsedGoFile // (borrowed)
+	File(uri span.URI) (*ParsedGoFile, error)
+	GetSyntax() []*ast.File // (borrowed)
+	HasParseErrors() bool
+
+	// Results of type checking:
 	GetTypes() *types.Package
 	GetTypesInfo() *types.Info
-	GetTypesSizes() types.Sizes
-	ForTest() string
-	DirectDep(path PackagePath) (Package, error)
-	ResolveImportPath(path ImportPath) (Package, error)
-	MissingDependencies() []ImportPath // unordered
-	Imports() []Package
-	Version() *module.Version
-	HasListOrParseErrors() bool
 	HasTypeErrors() bool
-	ParseMode() ParseMode
+	DiagnosticsForFile(ctx context.Context, s Snapshot, uri span.URI) ([]*Diagnostic, error)
+	ReferencesTo(map[PackagePath]map[objectpath.Path]unit) []protocol.Location
+	MethodSetsIndex() *methodsets.Index
 }
+
+type unit = struct{}
 
 // A CriticalError is a workspace-wide error that generally prevents gopls from
 // functioning correctly. In the presence of critical errors, other diagnostics
@@ -663,7 +832,6 @@ type Diagnostic struct {
 	// Fields below are used internally to generate quick fixes. They aren't
 	// part of the LSP spec and don't leave the server.
 	SuggestedFixes []SuggestedFix
-	Analyzer       *Analyzer
 }
 
 func (d *Diagnostic) String() string {
@@ -680,36 +848,12 @@ const (
 	ModTidyError             DiagnosticSource = "go mod tidy"
 	OptimizationDetailsError DiagnosticSource = "optimizer details"
 	UpgradeNotification      DiagnosticSource = "upgrade available"
-	Vulncheck                DiagnosticSource = "govulncheck"
+	Vulncheck                DiagnosticSource = "vulncheck imports"
+	Govulncheck              DiagnosticSource = "govulncheck"
 	TemplateError            DiagnosticSource = "template"
 	WorkFileError            DiagnosticSource = "go.work file"
 )
 
 func AnalyzerErrorKind(name string) DiagnosticSource {
 	return DiagnosticSource(name)
-}
-
-// WorkspaceModuleVersion is the nonexistent pseudoversion suffix used in the
-// construction of the workspace module. It is exported so that we can make
-// sure not to show this version to end users in error messages, to avoid
-// confusion.
-// The major version is not included, as that depends on the module path.
-//
-// If workspace module A is dependent on workspace module B, we need our
-// nonexistent version to be greater than the version A mentions.
-// Otherwise, the go command will try to update to that version. Use a very
-// high minor version to make that more likely.
-const workspaceModuleVersion = ".9999999.0-goplsworkspace"
-
-func IsWorkspaceModuleVersion(version string) bool {
-	return strings.HasSuffix(version, workspaceModuleVersion)
-}
-
-func WorkspaceModuleVersion(majorVersion string) string {
-	// Use the highest compatible major version to avoid unwanted upgrades.
-	// See the comment on workspaceModuleVersion.
-	if majorVersion == "v0" {
-		majorVersion = "v1"
-	}
-	return majorVersion + workspaceModuleVersion
 }

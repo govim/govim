@@ -7,13 +7,13 @@ package source
 import (
 	"context"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
 )
 
 // AddImport adds a single import statement to the given file
-func AddImport(ctx context.Context, snapshot Snapshot, fh VersionedFileHandle, importPath string) ([]protocol.TextEdit, error) {
-	_, pgf, err := GetParsedFile(ctx, snapshot, fh, NarrowestPackage)
+func AddImport(ctx context.Context, snapshot Snapshot, fh FileHandle, importPath string) ([]protocol.TextEdit, error) {
+	pgf, err := snapshot.ParseGo(ctx, fh, ParseFull)
 	if err != nil {
 		return nil, err
 	}

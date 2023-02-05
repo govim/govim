@@ -59,11 +59,19 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 	} else {
 		var matches []govim.CompleteItem
 		for _, i := range v.lastCompleteResults.Items {
+			var info string
+			if v := i.Documentation; v != nil {
+				// TODO: The value can be either a string or markdown, we do not support
+				// markdown for now.
+				if s, ok := v.Value.(string); ok {
+					info = s
+				}
+			}
 			matches = append(matches, govim.CompleteItem{
 				Abbr:     i.Label,
 				Menu:     i.Detail,
 				Word:     i.TextEdit.NewText,
-				Info:     i.Documentation,
+				Info:     info,
 				Dup:      1,
 				UserData: "govim",
 			})

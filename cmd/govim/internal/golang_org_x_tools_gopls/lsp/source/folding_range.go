@@ -12,12 +12,13 @@ import (
 	"strings"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 )
 
 // FoldingRangeInfo holds range and kind info of folding for an ast.Node
 type FoldingRangeInfo struct {
-	MappedRange
-	Kind protocol.FoldingRangeKind
+	MappedRange protocol.MappedRange
+	Kind        protocol.FoldingRangeKind
 }
 
 // FoldingRange gets all of the folding range for f.
@@ -42,10 +43,10 @@ func FoldingRange(ctx context.Context, snapshot Snapshot, fh FileHandle, lineFol
 	}
 
 	// Get folding ranges for comments separately as they are not walked by ast.Inspect.
-	ranges = append(ranges, commentsFoldingRange(pgf.Tok, pgf.Mapper, pgf.File)...)
+	ranges = append(ranges, commentsFoldingRange(pgf)...)
 
 	visit := func(n ast.Node) bool {
-		rng := foldingRangeFunc(pgf.Tok, pgf.Mapper, n, lineFoldingOnly)
+		rng := foldingRangeFunc(pgf, n, lineFoldingOnly)
 		if rng != nil {
 			ranges = append(ranges, rng)
 		}
@@ -55,8 +56,8 @@ func FoldingRange(ctx context.Context, snapshot Snapshot, fh FileHandle, lineFol
 	ast.Inspect(pgf.File, visit)
 
 	sort.Slice(ranges, func(i, j int) bool {
-		irng, _ := ranges[i].Range()
-		jrng, _ := ranges[j].Range()
+		irng := ranges[i].MappedRange.Range()
+		jrng := ranges[j].MappedRange.Range()
 		return protocol.CompareRange(irng, jrng) < 0
 	})
 
@@ -64,7 +65,7 @@ func FoldingRange(ctx context.Context, snapshot Snapshot, fh FileHandle, lineFol
 }
 
 // foldingRangeFunc calculates the line folding range for ast.Node n
-func foldingRangeFunc(tokFile *token.File, m *protocol.ColumnMapper, n ast.Node, lineFoldingOnly bool) *FoldingRangeInfo {
+func foldingRangeFunc(pgf *ParsedGoFile, n ast.Node, lineFoldingOnly bool) *FoldingRangeInfo {
 	// TODO(suzmue): include trailing empty lines before the closing
 	// parenthesis/brace.
 	var kind protocol.FoldingRangeKind
@@ -76,7 +77,7 @@ func foldingRangeFunc(tokFile *token.File, m *protocol.ColumnMapper, n ast.Node,
 		if num := len(n.List); num != 0 {
 			startList, endList = n.List[0].Pos(), n.List[num-1].End()
 		}
-		start, end = validLineFoldingRange(tokFile, n.Lbrace, n.Rbrace, startList, endList, lineFoldingOnly)
+		start, end = validLineFoldingRange(pgf.Tok, n.Lbrace, n.Rbrace, startList, endList, lineFoldingOnly)
 	case *ast.CaseClause:
 		// Fold from position of ":" to end.
 		start, end = n.Colon+1, n.End()
@@ -92,7 +93,7 @@ func foldingRangeFunc(tokFile *token.File, m *protocol.ColumnMapper, n ast.Node,
 		if num := len(n.List); num != 0 {
 			startList, endList = n.List[0].Pos(), n.List[num-1].End()
 		}
-		start, end = validLineFoldingRange(tokFile, n.Opening, n.Closing, startList, endList, lineFoldingOnly)
+		start, end = validLineFoldingRange(pgf.Tok, n.Opening, n.Closing, startList, endList, lineFoldingOnly)
 	case *ast.GenDecl:
 		// If this is an import declaration, set the kind to be protocol.Imports.
 		if n.Tok == token.IMPORT {
@@ -103,7 +104,7 @@ func foldingRangeFunc(tokFile *token.File, m *protocol.ColumnMapper, n ast.Node,
 		if num := len(n.Specs); num != 0 {
 			startSpecs, endSpecs = n.Specs[0].Pos(), n.Specs[num-1].End()
 		}
-		start, end = validLineFoldingRange(tokFile, n.Lparen, n.Rparen, startSpecs, endSpecs, lineFoldingOnly)
+		start, end = validLineFoldingRange(pgf.Tok, n.Lparen, n.Rparen, startSpecs, endSpecs, lineFoldingOnly)
 	case *ast.BasicLit:
 		// Fold raw string literals from position of "`" to position of "`".
 		if n.Kind == token.STRING && len(n.Value) >= 2 && n.Value[0] == '`' && n.Value[len(n.Value)-1] == '`' {
@@ -115,7 +116,7 @@ func foldingRangeFunc(tokFile *token.File, m *protocol.ColumnMapper, n ast.Node,
 		if num := len(n.Elts); num != 0 {
 			startElts, endElts = n.Elts[0].Pos(), n.Elts[num-1].End()
 		}
-		start, end = validLineFoldingRange(tokFile, n.Lbrace, n.Rbrace, startElts, endElts, lineFoldingOnly)
+		start, end = validLineFoldingRange(pgf.Tok, n.Lbrace, n.Rbrace, startElts, endElts, lineFoldingOnly)
 	}
 
 	// Check that folding positions are valid.
@@ -123,11 +124,15 @@ func foldingRangeFunc(tokFile *token.File, m *protocol.ColumnMapper, n ast.Node,
 		return nil
 	}
 	// in line folding mode, do not fold if the start and end lines are the same.
-	if lineFoldingOnly && tokFile.Line(start) == tokFile.Line(end) {
+	if lineFoldingOnly && pgf.Tok.Line(start) == pgf.Tok.Line(end) {
 		return nil
 	}
+	mrng, err := pgf.PosMappedRange(start, end)
+	if err != nil {
+		bug.Errorf("%w", err) // can't happen
+	}
 	return &FoldingRangeInfo{
-		MappedRange: NewMappedRange(tokFile, m, start, end),
+		MappedRange: mrng,
 		Kind:        kind,
 	}
 }
@@ -157,8 +162,9 @@ func validLineFoldingRange(tokFile *token.File, open, close, start, end token.Po
 // commentsFoldingRange returns the folding ranges for all comment blocks in file.
 // The folding range starts at the end of the first line of the comment block, and ends at the end of the
 // comment block and has kind protocol.Comment.
-func commentsFoldingRange(tokFile *token.File, m *protocol.ColumnMapper, file *ast.File) (comments []*FoldingRangeInfo) {
-	for _, commentGrp := range file.Comments {
+func commentsFoldingRange(pgf *ParsedGoFile) (comments []*FoldingRangeInfo) {
+	tokFile := pgf.Tok
+	for _, commentGrp := range pgf.File.Comments {
 		startGrpLine, endGrpLine := tokFile.Line(commentGrp.Pos()), tokFile.Line(commentGrp.End())
 		if startGrpLine == endGrpLine {
 			// Don't fold single line comments.
@@ -173,9 +179,13 @@ func commentsFoldingRange(tokFile *token.File, m *protocol.ColumnMapper, file *a
 			// folding range start at the end of the first line.
 			endLinePos = token.Pos(int(startPos) + len(strings.Split(firstComment.Text, "\n")[0]))
 		}
+		mrng, err := pgf.PosMappedRange(endLinePos, commentGrp.End())
+		if err != nil {
+			bug.Errorf("%w", err) // can't happen
+		}
 		comments = append(comments, &FoldingRangeInfo{
 			// Fold from the end of the first line comment to the end of the comment block.
-			MappedRange: NewMappedRange(tokFile, m, endLinePos, commentGrp.End()),
+			MappedRange: mrng,
 			Kind:        protocol.Comment,
 		})
 	}

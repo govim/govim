@@ -26,66 +26,57 @@ type Point struct {
 }
 
 func PointFromOffset(b *Buffer, offset int) (Point, error) {
-	tf := b.tokFile()
-	line, col, err := span.ToPosition(tf, offset)
+	m := b.mapper()
+	p, err := m.OffsetPoint(offset)
 	if err != nil {
-		return Point{}, fmt.Errorf("failed to calculate position within buffer %v: %v", b.Num, err)
+		return Point{}, fmt.Errorf("failed to calculate point within buffer %v: %v", b.Num, err)
 	}
-	p := span.NewPoint(line, col, offset)
-	utf16col, err := span.ToUTF16Column(p, b.contents)
+	pos, err := m.PointPosition(p)
 	if err != nil {
-		return Point{}, fmt.Errorf("failed to calculate UTF16 char value: %v", err)
+		return Point{}, fmt.Errorf("failed to calculate UTF16 char value within buffer %v: %v", b.Num, err)
 	}
 	res := Point{
 		buffer:   b,
-		line:     line,
-		col:      col,
+		line:     p.Line(),
+		col:      p.Column(),
 		offset:   offset,
-		utf16Col: utf16col - 1,
+		utf16Col: int(pos.Character),
 	}
 	return res, nil
 }
 
 func PointFromVim(b *Buffer, line, col int) (Point, error) {
-	tf := b.tokFile()
-	off, err := span.ToOffset(tf, line, col)
+	m := b.mapper()
+	pos, err := m.PointPosition(span.NewPoint(line, col, 0))
+	if err != nil {
+		return Point{}, fmt.Errorf("failed to calculate UTF16 pos within buffer %v: %v", b.Num, err)
+	}
+	off, err := m.PositionOffset(pos)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate offset within buffer %v: %v", b.Num, err)
-	}
-	p := span.NewPoint(int(line), int(col), off)
-	utf16col, err := span.ToUTF16Column(p, b.contents)
-	if err != nil {
-		return Point{}, fmt.Errorf("failed to calculate UTF16 char value: %v", err)
 	}
 	res := Point{
 		buffer:   b,
 		line:     line,
 		col:      col,
 		offset:   off,
-		utf16Col: utf16col - 1,
+		utf16Col: int(pos.Character),
 	}
 	return res, nil
 }
 
 func PointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
-	tf := b.tokFile()
-	sline := pos.Line + 1
-	scol := pos.Character
-	soff, err := span.ToOffset(tf, int(sline), 1)
+	m := b.mapper()
+	p, err := m.PositionPoint(pos)
 	if err != nil {
-		return Point{}, fmt.Errorf("failed to calculate offset within buffer %v: %v", b.Num, err)
-	}
-	p := span.NewPoint(int(sline), 1, soff)
-	p, err = span.FromUTF16Column(p, int(scol)+1, b.contents)
-	if err != nil {
-		return Point{}, fmt.Errorf("failed to translate char colum for buffer %v: %v", b.Num, err)
+		return Point{}, fmt.Errorf("failed to calculate point within buffer %v: %v", b.Num, err)
 	}
 	res := Point{
 		buffer:   b,
 		line:     p.Line(),
 		col:      p.Column(),
 		offset:   p.Offset(),
-		utf16Col: int(scol),
+		utf16Col: int(pos.Character),
 	}
 	return res, nil
 }
@@ -98,13 +89,16 @@ func VisualPointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 	c := b.Contents()
 	l := len(c)
 	if p.Offset() == l && l > 0 && c[l-1] == '\n' {
-		tf := b.tokFile()
-		var newLine, newCol int
-		newLine, newCol, err = span.ToPosition(tf, l-1)
+		m := b.mapper()
+		np, err := m.OffsetPoint(l - 1)
+		if err != nil {
+			return Point{}, err
+		}
+		p, err = PointFromVim(b, np.Line(), np.Column())
 		if err != nil {
 			return p, err
 		}
-		p, err = PointFromVim(b, newLine, newCol)
+
 	}
 	return p, err
 }

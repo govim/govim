@@ -62,12 +62,12 @@ func runTestCodeLens(ctx context.Context, snapshot Snapshot, fh FileHandle) ([]p
 	}
 
 	if len(fns.Benchmarks) > 0 {
-		_, pgf, err := GetParsedFile(ctx, snapshot, fh, WidestPackage)
+		pgf, err := snapshot.ParseGo(ctx, fh, ParseFull)
 		if err != nil {
 			return nil, err
 		}
 		// add a code lens to the top of the file which runs all benchmarks in the file
-		rng, err := NewMappedRange(pgf.Tok, pgf.Mapper, pgf.File.Package, pgf.File.Package).Range()
+		rng, err := pgf.PosRange(pgf.File.Package, pgf.File.Package)
 		if err != nil {
 			return nil, err
 		}
@@ -100,7 +100,7 @@ func TestsAndBenchmarks(ctx context.Context, snapshot Snapshot, fh FileHandle) (
 	if !strings.HasSuffix(fh.URI().Filename(), "_test.go") {
 		return out, nil
 	}
-	pkg, pgf, err := GetParsedFile(ctx, snapshot, fh, WidestPackage)
+	pkg, pgf, err := PackageForFile(ctx, snapshot, fh.URI(), TypecheckFull, NarrowestPackage)
 	if err != nil {
 		return out, err
 	}
@@ -111,7 +111,7 @@ func TestsAndBenchmarks(ctx context.Context, snapshot Snapshot, fh FileHandle) (
 			continue
 		}
 
-		rng, err := NewMappedRange(pgf.Tok, pgf.Mapper, fn.Pos(), fn.End()).Range()
+		rng, err := pgf.NodeRange(fn)
 		if err != nil {
 			return out, err
 		}
@@ -177,7 +177,7 @@ func goGenerateCodeLens(ctx context.Context, snapshot Snapshot, fh FileHandle) (
 			if !strings.HasPrefix(l.Text, ggDirective) {
 				continue
 			}
-			rng, err := NewMappedRange(pgf.Tok, pgf.Mapper, l.Pos(), l.Pos()+token.Pos(len(ggDirective))).Range()
+			rng, err := pgf.PosRange(l.Pos(), l.Pos()+token.Pos(len(ggDirective)))
 			if err != nil {
 				return nil, err
 			}
@@ -214,7 +214,7 @@ func regenerateCgoLens(ctx context.Context, snapshot Snapshot, fh FileHandle) ([
 	if c == nil {
 		return nil, nil
 	}
-	rng, err := NewMappedRange(pgf.Tok, pgf.Mapper, c.Pos(), c.End()).Range()
+	rng, err := pgf.NodeRange(c)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func regenerateCgoLens(ctx context.Context, snapshot Snapshot, fh FileHandle) ([
 }
 
 func toggleDetailsCodeLens(ctx context.Context, snapshot Snapshot, fh FileHandle) ([]protocol.CodeLens, error) {
-	_, pgf, err := GetParsedFile(ctx, snapshot, fh, WidestPackage)
+	pgf, err := snapshot.ParseGo(ctx, fh, ParseFull)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +235,7 @@ func toggleDetailsCodeLens(ctx context.Context, snapshot Snapshot, fh FileHandle
 		// Without a package name we have nowhere to put the codelens, so give up.
 		return nil, nil
 	}
-	rng, err := NewMappedRange(pgf.Tok, pgf.Mapper, pgf.File.Package, pgf.File.Package).Range()
+	rng, err := pgf.PosRange(pgf.File.Package, pgf.File.Package)
 	if err != nil {
 		return nil, err
 	}
