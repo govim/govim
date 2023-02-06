@@ -322,10 +322,6 @@ type Config struct {
 	// Default: false
 	ExperimentalAllowModfileModifications *bool `json:",omitempty"`
 
-	// ExperimentalWorkspaceModule opts a user into the experimental gopls
-	// support for multi-module workspaces
-	ExperimentalWorkspaceModule *bool `json:",omitempty"`
-
 	// ExperimentalGoplsMemoryMode is used to configures gopls experimental
 	// feature "memoryMode". As of gopls v0.7.3 there are two options:
 	//

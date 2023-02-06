@@ -18,25 +18,24 @@ import (
 )
 
 const (
-	goplsConfigNoDocsOnHover         = "noDocsOnHover"
-	goplsConfigHoverKind             = "hoverKind"
-	goplsDeepCompletion              = "deepCompletion"
-	goplsCompletionMatcher           = "matcher"
-	goplsStaticcheck                 = "staticcheck"
-	goplsCompleteUnimported          = "completeUnimported"
-	goplsGoImportsLocalPrefix        = "local"
-	goplsCompletionBudget            = "completionBudget"
-	goplsTempModfile                 = "tempModfile"
-	goplsVerboseOutput               = "verboseOutput"
-	goplsEnv                         = "env"
-	goplsAnalyses                    = "analyses"
-	goplsCodeLenses                  = "codelenses"
-	goplsSymbolMatcher               = "symbolMatcher"
-	goplsSymbolStyle                 = "symbolStyle"
-	goplsGofumpt                     = "gofumpt"
-	goplsExperimentalWorkspaceModule = "experimentalWorkspaceModule"
-	goplsDirectoryFilters            = "directoryFilters"
-	goplsMemoryMode                  = "memoryMode"
+	goplsConfigNoDocsOnHover  = "noDocsOnHover"
+	goplsConfigHoverKind      = "hoverKind"
+	goplsDeepCompletion       = "deepCompletion"
+	goplsCompletionMatcher    = "matcher"
+	goplsStaticcheck          = "staticcheck"
+	goplsCompleteUnimported   = "completeUnimported"
+	goplsGoImportsLocalPrefix = "local"
+	goplsCompletionBudget     = "completionBudget"
+	goplsTempModfile          = "tempModfile"
+	goplsVerboseOutput        = "verboseOutput"
+	goplsEnv                  = "env"
+	goplsAnalyses             = "analyses"
+	goplsCodeLenses           = "codelenses"
+	goplsSymbolMatcher        = "symbolMatcher"
+	goplsSymbolStyle          = "symbolStyle"
+	goplsGofumpt              = "gofumpt"
+	goplsDirectoryFilters     = "directoryFilters"
+	goplsMemoryMode           = "memoryMode"
 )
 
 var _ protocol.Client = (*govimplugin)(nil)
@@ -178,9 +177,6 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if conf.Gofumpt != nil {
 		goplsConfig[goplsGofumpt] = *conf.Gofumpt
-	}
-	if conf.ExperimentalWorkspaceModule != nil {
-		goplsConfig[goplsExperimentalWorkspaceModule] = *conf.ExperimentalWorkspaceModule
 	}
 	if conf.ExperimentalGoplsMemoryMode != nil {
 		goplsConfig[goplsMemoryMode] = *conf.ExperimentalGoplsMemoryMode

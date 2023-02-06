@@ -203,7 +203,7 @@ function! s:validExperimentalAllowModfileModifications(v)
 endfunction
 
 function! s:validExperimentalWorkspaceModule(v)
-  return s:validBool(a:v)
+  return [v:false, "feature has been removed from gopls"]
 endfunction
 
 function! s:validExperimentalGoplsMemoryMode(v)
