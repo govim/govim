@@ -207,11 +207,7 @@ function! s:validExperimentalWorkspaceModule(v)
 endfunction
 
 function! s:validExperimentalGoplsMemoryMode(v)
-  let valid = ["Normal", "DegradeClosed"]
-  if index(valid, a:v) < 0
-    return [v:false, "must be one of: ".string(valid)]
-  endif
-  return [v:true, ""]
+  return [v:false, "feature has been removed from gopls"]
 endfunction
 
 let s:validators = {

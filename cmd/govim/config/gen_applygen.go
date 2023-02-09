@@ -79,7 +79,4 @@ func (r *Config) Apply(v *Config) {
 	if v.ExperimentalAllowModfileModifications != nil {
 		r.ExperimentalAllowModfileModifications = v.ExperimentalAllowModfileModifications
 	}
-	if v.ExperimentalGoplsMemoryMode != nil {
-		r.ExperimentalGoplsMemoryMode = v.ExperimentalGoplsMemoryMode
-	}
 }

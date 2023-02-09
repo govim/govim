@@ -33,7 +33,6 @@ type VimConfig struct {
 	ExperimentalWorkaroundCompleteoptLongest     *int
 	ExperimentalProgressPopups                   *int
 	ExperimentalAllowModfileModifications        *int
-	ExperimentalGoplsMemoryMode                  *config.GoplsMemoryMode
 }
 
 func (c *VimConfig) ToConfig(d config.Config) config.Config {
@@ -64,7 +63,6 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		ExperimentalWorkaroundCompleteoptLongest:     boolVal(c.ExperimentalWorkaroundCompleteoptLongest, d.ExperimentalWorkaroundCompleteoptLongest),
 		ExperimentalProgressPopups:                   boolVal(c.ExperimentalProgressPopups, d.ExperimentalProgressPopups),
 		ExperimentalAllowModfileModifications:        boolVal(c.ExperimentalAllowModfileModifications, d.ExperimentalAllowModfileModifications),
-		ExperimentalGoplsMemoryMode:                  c.ExperimentalGoplsMemoryMode,
 	}
 	if v.FormatOnSave == nil {
 		v.FormatOnSave = d.FormatOnSave
@@ -77,9 +75,6 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 	}
 	if v.SymbolStyle == nil {
 		v.SymbolStyle = d.SymbolStyle
-	}
-	if v.ExperimentalGoplsMemoryMode == nil {
-		v.ExperimentalGoplsMemoryMode = d.ExperimentalGoplsMemoryMode
 	}
 	return v
 }
