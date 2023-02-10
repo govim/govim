@@ -321,24 +321,6 @@ type Config struct {
 	//
 	// Default: false
 	ExperimentalAllowModfileModifications *bool `json:",omitempty"`
-
-	// ExperimentalGoplsMemoryMode is used to configures gopls experimental
-	// feature "memoryMode". As of gopls v0.7.3 there are two options:
-	//
-	// * "Normal"        - default
-	// * "DegradeClosed" - gopls will collect less information about packages
-	//                     without open files. As a result, features like
-	//                     Find References and Rename will miss results in
-	//                     such packages.
-	//
-	// For details see:
-	// https://github.com/golang/tools/blob/master/gopls/doc/settings.md#memorymode-enum
-	//
-	// Note that this is an experimental feature in gopls that might go away
-	// in the future.
-	//
-	// Default: "Normal"
-	ExperimentalGoplsMemoryMode *GoplsMemoryMode `json:",omitempty"`
 }
 
 type Command string

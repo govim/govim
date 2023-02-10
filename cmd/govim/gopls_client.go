@@ -178,9 +178,6 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	if conf.Gofumpt != nil {
 		goplsConfig[goplsGofumpt] = *conf.Gofumpt
 	}
-	if conf.ExperimentalGoplsMemoryMode != nil {
-		goplsConfig[goplsMemoryMode] = *conf.ExperimentalGoplsMemoryMode
-	}
 	if os.Getenv(string(config.EnvVarGoplsVerbose)) == "true" {
 		goplsConfig[goplsVerboseOutput] = true
 	}
