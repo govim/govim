@@ -357,13 +357,6 @@ func (l loggingGoplsServer) SemanticTokensRange(ctxt context.Context, params *pr
 	return res, err
 }
 
-func (l loggingGoplsServer) SemanticTokensRefresh(ctxt context.Context) error {
-	l.Logf("gopls.SemanticTokensRefresh() call\n")
-	err := l.u.SemanticTokensRefresh(ctxt)
-	l.Logf("gopls.SemanticTokensRefresh() return; err: %v", err)
-	return err
-}
-
 func (l loggingGoplsServer) WorkDoneProgressCancel(ctxt context.Context, params *protocol.WorkDoneProgressCancelParams) error {
 	l.Logf("gopls.WorkDoneProgressCancel() call; params:\n%v", pretty.Sprint(params))
 	err := l.u.WorkDoneProgressCancel(ctxt, params)
@@ -448,13 +441,6 @@ func (l loggingGoplsServer) DiagnosticWorkspace(ctxt context.Context, params *pr
 	return res, err
 }
 
-func (l loggingGoplsServer) DiagnosticRefresh(ctxt context.Context) error {
-	l.Logf("gopls.DiagnosticRefresh() call")
-	err := l.u.DiagnosticRefresh(ctxt)
-	l.Logf("gopls.DiagnosticRefresh() return; err: %v", err)
-	return err
-}
-
 func (l loggingGoplsServer) PrepareTypeHierarchy(ctxt context.Context, params *protocol.TypeHierarchyPrepareParams) ([]protocol.TypeHierarchyItem, error) {
 	l.Logf("gopls.PrepareTypeHierarchy() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.PrepareTypeHierarchy(ctxt, params)
@@ -481,13 +467,6 @@ func (l loggingGoplsServer) InlineValue(ctxt context.Context, params *protocol.I
 	res, err := l.u.InlineValue(ctxt, params)
 	l.Logf("gopls.InlineValue() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
-}
-
-func (l loggingGoplsServer) InlineValueRefresh(ctxt context.Context) error {
-	l.Logf("gopls.InlineValueRefresh() call")
-	err := l.u.InlineValueRefresh(ctxt)
-	l.Logf("gopls.InlineValueRefresh() return; err: %v", err)
-	return err
 }
 
 func (l loggingGoplsServer) ResolveWorkspaceSymbol(ctxt context.Context, params *protocol.WorkspaceSymbol) (*protocol.WorkspaceSymbol, error) {
@@ -532,19 +511,11 @@ func (l loggingGoplsServer) InlayHint(ctxt context.Context, params *protocol.Inl
 	return res, err
 }
 
-func (l loggingGoplsServer) InlayHintRefresh(ctxt context.Context) error {
-	l.Logf("gopls.InlayHintRefresh() call")
-	err := l.u.InlayHintRefresh(ctxt)
-	l.Logf("gopls.InlayHintRefresh() return; err: %v", err)
-	return err
-}
-
 func (l loggingGoplsServer) ResolveCompletionItem(ctxt context.Context, params *protocol.CompletionItem) (*protocol.CompletionItem, error) {
 	l.Logf("gopls.ResolveCompletionItem() call; params:\n", pretty.Sprint(params))
 	res, err := l.u.ResolveCompletionItem(ctxt, params)
 	l.Logf("gopls.ResolveCompletionItem() return; err: %v; res:\n%v", err, pretty.Sprint(res))
 	return res, err
-
 }
 
 func (l loggingGoplsServer) Progress(ctxt context.Context, params *protocol.ProgressParams) error {
@@ -552,5 +523,4 @@ func (l loggingGoplsServer) Progress(ctxt context.Context, params *protocol.Prog
 	err := l.u.Progress(ctxt, params)
 	l.Logf("gopls.Progress() return; err: %v", err)
 	return err
-
 }

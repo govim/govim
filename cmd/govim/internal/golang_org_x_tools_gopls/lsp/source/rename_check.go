@@ -7,6 +7,7 @@
 package source
 
 import (
+	"context"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -371,7 +372,7 @@ func (r *renamer) checkStructField(from *types.Var) {
 	if !ok {
 		return
 	}
-	pkg, _, path, _ := pathEnclosingInterval(fromPkg, from.Pos(), from.Pos())
+	pkg, _, path, _ := pathEnclosingInterval(r.ctx, r.snapshot, fromPkg, from.Pos(), from.Pos())
 	if pkg == nil || path == nil {
 		return
 	}
@@ -440,7 +441,7 @@ func (r *renamer) checkStructField(from *types.Var) {
 	r.checkSelections(from)
 }
 
-// checkSelection checks that all uses and selections that resolve to
+// checkSelections checks that all uses and selections that resolve to
 // the specified object would continue to do so after the renaming.
 func (r *renamer) checkSelections(from types.Object) {
 	for typ, pkg := range r.packages {
@@ -552,7 +553,7 @@ func (r *renamer) checkMethod(from *types.Func) {
 	// Check for conflict at point of declaration.
 	// Check to ensure preservation of assignability requirements.
 	R := recv(from).Type()
-	if IsInterface(R) {
+	if types.IsInterface(R) {
 		// Abstract method
 
 		// declaration
@@ -569,7 +570,7 @@ func (r *renamer) checkMethod(from *types.Func) {
 		for _, pkg := range r.packages {
 			// Start with named interface types (better errors)
 			for _, obj := range pkg.GetTypesInfo().Defs {
-				if obj, ok := obj.(*types.TypeName); ok && IsInterface(obj.Type()) {
+				if obj, ok := obj.(*types.TypeName); ok && types.IsInterface(obj.Type()) {
 					f, _, _ := types.LookupFieldOrMethod(
 						obj.Type(), false, from.Pkg(), from.Name())
 					if f == nil {
@@ -641,7 +642,7 @@ func (r *renamer) checkMethod(from *types.Func) {
 			// yields abstract method I.f.  This can make error
 			// messages less than obvious.
 			//
-			if !IsInterface(key.RHS) {
+			if !types.IsInterface(key.RHS) {
 				// The logic below was derived from checkSelections.
 
 				rtosel := rmethods.Lookup(from.Pkg(), r.to)
@@ -716,7 +717,7 @@ func (r *renamer) checkMethod(from *types.Func) {
 		//
 		for key := range r.satisfy() {
 			// key = (lhs, rhs) where lhs is always an interface.
-			if IsInterface(key.RHS) {
+			if types.IsInterface(key.RHS) {
 				continue
 			}
 			rsel := r.msets.MethodSet(key.RHS).Lookup(from.Pkg(), from.Name())
@@ -790,10 +791,10 @@ func (r *renamer) satisfy() map[satisfy.Constraint]bool {
 			// type-checker.
 			//
 			// Only proceed if all packages have no errors.
-			if pkg.HasListOrParseErrors() || pkg.HasTypeErrors() {
+			if pkg.HasParseErrors() || pkg.HasTypeErrors() {
 				r.errorf(token.NoPos, // we don't have a position for this error.
 					"renaming %q to %q not possible because %q has errors",
-					r.from, r.to, pkg.PkgPath())
+					r.from, r.to, pkg.Metadata().PkgPath)
 				return nil
 			}
 			f.Find(pkg.GetTypesInfo(), pkg.GetSyntax())
@@ -826,7 +827,9 @@ func someUse(info *types.Info, obj types.Object) *ast.Ident {
 // exact is defined as for astutil.PathEnclosingInterval.
 //
 // The zero value is returned if not found.
-func pathEnclosingInterval(pkg Package, start, end token.Pos) (resPkg Package, tokFile *token.File, path []ast.Node, exact bool) {
+//
+// TODO(rfindley): this has some redundancy with FindPackageFromPos, etc. Refactor.
+func pathEnclosingInterval(ctx context.Context, s Snapshot, pkg Package, start, end token.Pos) (resPkg Package, tokFile *token.File, path []ast.Node, exact bool) {
 	pkgs := []Package{pkg}
 	for _, f := range pkg.GetSyntax() {
 		for _, imp := range f.Imports {
@@ -837,11 +840,15 @@ func pathEnclosingInterval(pkg Package, start, end token.Pos) (resPkg Package, t
 			if importPath == "" {
 				continue
 			}
-			imported, err := pkg.ResolveImportPath(importPath)
+			depID, ok := pkg.Metadata().DepsByImpPath[importPath]
+			if !ok {
+				return nil, nil, nil, false
+			}
+			depPkgs, err := s.TypeCheck(ctx, TypecheckWorkspace, depID)
 			if err != nil {
 				return nil, nil, nil, false
 			}
-			pkgs = append(pkgs, imported)
+			pkgs = append(pkgs, depPkgs[0])
 		}
 	}
 	for _, p := range pkgs {

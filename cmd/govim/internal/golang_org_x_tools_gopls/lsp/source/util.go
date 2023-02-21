@@ -18,91 +18,19 @@ import (
 	"strings"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tokeninternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
 
-// MappedRange provides mapped protocol.Range for a span.Range, accounting for
-// UTF-16 code points.
+// IsGenerated gets and reads the file denoted by uri and reports
+// whether it contains a "go:generated" directive as described at
+// https://golang.org/s/generatedcode.
 //
-// TOOD(adonovan): stop treating //line directives specially, and
-// eliminate this type. All callers need either m, or a protocol.Range.
-type MappedRange struct {
-	spanRange span.Range             // the range in the compiled source (package.CompiledGoFiles)
-	m         *protocol.ColumnMapper // a mapper of the edited source (package.GoFiles)
-}
-
-// NewMappedRange returns a MappedRange for the given file and valid start/end token.Pos.
-//
-// By convention, start and end are assumed to be positions in the compiled (==
-// type checked) source, whereas the column mapper m maps positions in the
-// user-edited source. Note that these may not be the same, as when using goyacc or CGo:
-// CompiledGoFiles contains generated files, whose positions (via
-// token.File.Position) point to locations in the edited file -- the file
-// containing `import "C"`.
-func NewMappedRange(file *token.File, m *protocol.ColumnMapper, start, end token.Pos) MappedRange {
-	mapped := m.TokFile.Name()
-	adjusted := file.PositionFor(start, true) // adjusted position
-	if adjusted.Filename != mapped {
-		bug.Reportf("mapped file %q does not match start position file %q", mapped, adjusted.Filename)
-	}
-	return MappedRange{
-		spanRange: span.NewRange(file, start, end),
-		m:         m,
-	}
-}
-
-// Range returns the LSP range in the edited source.
-//
-// See the documentation of NewMappedRange for information on edited vs
-// compiled source.
-func (s MappedRange) Range() (protocol.Range, error) {
-	if s.m == nil {
-		return protocol.Range{}, bug.Errorf("invalid range")
-	}
-	spn, err := s.Span()
-	if err != nil {
-		return protocol.Range{}, err
-	}
-	return s.m.Range(spn)
-}
-
-// Span returns the span corresponding to the mapped range in the edited
-// source.
-//
-// See the documentation of NewMappedRange for information on edited vs
-// compiled source.
-func (s MappedRange) Span() (span.Span, error) {
-	// In the past, some code-paths have relied on Span returning an error if s
-	// is the zero value (i.e. s.m is nil). But this should be treated as a bug:
-	// observe that s.URI() would panic in this case.
-	if s.m == nil {
-		return span.Span{}, bug.Errorf("invalid range")
-	}
-	return span.FileSpan(s.spanRange.TokFile, s.m.TokFile, s.spanRange.Start, s.spanRange.End)
-}
-
-// URI returns the URI of the edited file.
-//
-// See the documentation of NewMappedRange for information on edited vs
-// compiled source.
-func (s MappedRange) URI() span.URI {
-	return s.m.URI
-}
-
-// GetParsedFile is a convenience function that extracts the Package and
-// ParsedGoFile for a file in a Snapshot. pkgPolicy is one of NarrowestPackage/
-// WidestPackage.
-func GetParsedFile(ctx context.Context, snapshot Snapshot, fh FileHandle, pkgPolicy PackageFilter) (Package, *ParsedGoFile, error) {
-	pkg, err := snapshot.PackageForFile(ctx, fh.URI(), TypecheckWorkspace, pkgPolicy)
-	if err != nil {
-		return nil, nil, err
-	}
-	pgh, err := pkg.File(fh.URI())
-	return pkg, pgh, err
-}
-
+// TODO(adonovan): opt: this function does too much.
+// Move snapshot.GetFile into the caller (most of which have already done it).
 func IsGenerated(ctx context.Context, snapshot Snapshot, uri span.URI) bool {
 	fh, err := snapshot.GetFile(ctx, uri)
 	if err != nil {
@@ -116,7 +44,7 @@ func IsGenerated(ctx context.Context, snapshot Snapshot, uri span.URI) bool {
 		for _, comment := range commentGroup.List {
 			if matched := generatedRx.MatchString(comment.Text); matched {
 				// Check if comment is at the beginning of the line in source.
-				if pgf.Tok.Position(comment.Slash).Column == 1 {
+				if safetoken.Position(pgf.Tok, comment.Slash).Column == 1 {
 					return true
 				}
 			}
@@ -125,7 +53,12 @@ func IsGenerated(ctx context.Context, snapshot Snapshot, uri span.URI) bool {
 	return false
 }
 
-func objToMappedRange(pkg Package, obj types.Object) (MappedRange, error) {
+// adjustedObjEnd returns the end position of obj, possibly modified for
+// package names.
+//
+// TODO(rfindley): eliminate this function, by inlining it at callsites where
+// it makes sense.
+func adjustedObjEnd(obj types.Object) token.Pos {
 	nameLen := len(obj.Name())
 	if pkgName, ok := obj.(*types.PkgName); ok {
 		// An imported Go package has a package-local, unqualified name.
@@ -142,56 +75,29 @@ func objToMappedRange(pkg Package, obj types.Object) (MappedRange, error) {
 			nameLen = len(pkgName.Imported().Path()) + len(`""`)
 		}
 	}
-	return posToMappedRange(pkg, obj.Pos(), obj.Pos()+token.Pos(nameLen))
+	return obj.Pos() + token.Pos(nameLen)
 }
 
 // posToMappedRange returns the MappedRange for the given [start, end) span,
 // which must be among the transitive dependencies of pkg.
-func posToMappedRange(pkg Package, pos, end token.Pos) (MappedRange, error) {
+//
+// TODO(adonovan): many of the callers need only the ParsedGoFile so
+// that they can call pgf.PosRange(pos, end) to get a Range; they
+// don't actually need a MappedRange.
+func posToMappedRange(ctx context.Context, snapshot Snapshot, pkg Package, pos, end token.Pos) (protocol.MappedRange, error) {
 	if !pos.IsValid() {
-		return MappedRange{}, fmt.Errorf("invalid start position")
+		return protocol.MappedRange{}, fmt.Errorf("invalid start position")
 	}
 	if !end.IsValid() {
-		return MappedRange{}, fmt.Errorf("invalid end position")
+		return protocol.MappedRange{}, fmt.Errorf("invalid end position")
 	}
 
-	fset := pkg.FileSet()
-	tokFile := fset.File(pos)
-	// Subtle: it is not safe to simplify this to tokFile.Name
-	// because, due to //line directives, a Position within a
-	// token.File may have a different filename than the File itself.
-	logicalFilename := tokFile.Position(pos).Filename
-	pgf, _, err := findFileInDeps(pkg, span.URIFromPath(logicalFilename))
+	logicalFilename := pkg.FileSet().File(pos).Name() // ignore line directives
+	pgf, _, err := findFileInDeps(ctx, snapshot, pkg, span.URIFromPath(logicalFilename))
 	if err != nil {
-		return MappedRange{}, err
+		return protocol.MappedRange{}, err
 	}
-	// It is problematic that pgf.Mapper (from the parsed Go file) is
-	// accompanied here not by pgf.Tok but by tokFile from the global
-	// FileSet, which is a distinct token.File that doesn't
-	// contain [pos,end).
-	//
-	// This is done because tokFile is the *token.File for the compiled go file
-	// containing pos, whereas Mapper is the UTF16 mapper for the go file pointed
-	// to by line directives.
-	//
-	// TODO(golang/go#55043): clean this up.
-	return NewMappedRange(tokFile, pgf.Mapper, pos, end), nil
-}
-
-// FindPackageFromPos returns the Package for the given position, which must be
-// among the transitive dependencies of pkg.
-//
-// TODO(rfindley): is this the best factoring of this API? This function is
-// really a trivial wrapper around findFileInDeps, which may be a more useful
-// function to expose.
-func FindPackageFromPos(pkg Package, pos token.Pos) (Package, error) {
-	if !pos.IsValid() {
-		return nil, fmt.Errorf("invalid position")
-	}
-	fileName := pkg.FileSet().File(pos).Name()
-	uri := span.URIFromPath(fileName)
-	_, pkg, err := findFileInDeps(pkg, uri)
-	return pkg, err
+	return pgf.PosMappedRange(pos, end)
 }
 
 // Matches cgo generated comment as well as the proposed standard:
@@ -218,23 +124,6 @@ func FileKindForLang(langID string) FileKind {
 	}
 }
 
-func (k FileKind) String() string {
-	switch k {
-	case Go:
-		return "go"
-	case Mod:
-		return "go.mod"
-	case Sum:
-		return "go.sum"
-	case Tmpl:
-		return "tmpl"
-	case Work:
-		return "go.work"
-	default:
-		return fmt.Sprintf("unk%d", k)
-	}
-}
-
 // nodeAtPos returns the index and the node whose position is contained inside
 // the node list.
 func nodeAtPos(nodes []ast.Node, pos token.Pos) (ast.Node, int) {
@@ -249,11 +138,6 @@ func nodeAtPos(nodes []ast.Node, pos token.Pos) (ast.Node, int) {
 	return nil, -1
 }
 
-// IsInterface returns if a types.Type is an interface
-func IsInterface(T types.Type) bool {
-	return T != nil && types.IsInterface(T)
-}
-
 // FormatNode returns the "pretty-print" output for an ast node.
 func FormatNode(fset *token.FileSet, n ast.Node) string {
 	var buf strings.Builder
@@ -261,6 +145,24 @@ func FormatNode(fset *token.FileSet, n ast.Node) string {
 		return ""
 	}
 	return buf.String()
+}
+
+// FormatNodeFile is like FormatNode, but requires only the token.File for the
+// syntax containing the given ast node.
+func FormatNodeFile(file *token.File, n ast.Node) string {
+	fset := SingletonFileSet(file)
+	return FormatNode(fset, n)
+}
+
+// SingletonFileSet creates a new token.FileSet containing a file that is
+// identical to f (same base, size, and line), for use in APIs that require a
+// FileSet.
+func SingletonFileSet(f *token.File) *token.FileSet {
+	fset := token.NewFileSet()
+	f2 := fset.AddFile(f.Name(), f.Base(), f.Size())
+	lines := tokeninternal.GetLines(f)
+	f2.SetLines(lines)
+	return fset
 }
 
 // Deref returns a pointer's element type, traversing as many levels as needed.
@@ -313,25 +215,91 @@ func CompareDiagnostic(a, b *Diagnostic) int {
 }
 
 // findFileInDeps finds uri in pkg or its dependencies.
-func findFileInDeps(pkg Package, uri span.URI) (*ParsedGoFile, Package, error) {
-	queue := []Package{pkg}
-	seen := make(map[PackageID]bool)
-
-	for len(queue) > 0 {
-		pkg := queue[0]
-		queue = queue[1:]
-		seen[pkg.ID()] = true
-
+//
+// TODO(rfindley): eliminate this function.
+func findFileInDeps(ctx context.Context, snapshot Snapshot, pkg Package, uri span.URI) (*ParsedGoFile, Package, error) {
+	pkgs := []Package{pkg}
+	deps := recursiveDeps(snapshot, pkg.Metadata())[1:]
+	// Ignore the error from type checking, but check if the context was
+	// canceled (which would have caused TypeCheck to exit early).
+	depPkgs, _ := snapshot.TypeCheck(ctx, TypecheckWorkspace, deps...)
+	if ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
+	for _, dep := range depPkgs {
+		// Since we ignored the error from type checking, pkg may be nil.
+		if dep != nil {
+			pkgs = append(pkgs, dep)
+		}
+	}
+	for _, pkg := range pkgs {
 		if pgf, err := pkg.File(uri); err == nil {
 			return pgf, pkg, nil
 		}
-		for _, dep := range pkg.Imports() {
-			if !seen[dep.ID()] {
-				queue = append(queue, dep)
+	}
+	return nil, nil, fmt.Errorf("no file for %s in deps of package %s", uri, pkg.Metadata().ID)
+}
+
+// findFileInDepsMetadata finds package metadata containing URI in the
+// transitive dependencies of m. When using the Go command, the answer is
+// unique.
+//
+// TODO(rfindley): refactor to share logic with findPackageInDeps?
+func findFileInDepsMetadata(s MetadataSource, m *Metadata, uri span.URI) *Metadata {
+	seen := make(map[PackageID]bool)
+	var search func(*Metadata) *Metadata
+	search = func(m *Metadata) *Metadata {
+		if seen[m.ID] {
+			return nil
+		}
+		seen[m.ID] = true
+		for _, cgf := range m.CompiledGoFiles {
+			if cgf == uri {
+				return m
 			}
 		}
+		for _, dep := range m.DepsByPkgPath {
+			m := s.Metadata(dep)
+			if m == nil {
+				bug.Reportf("nil metadata for %q", dep)
+				continue
+			}
+			if found := search(m); found != nil {
+				return found
+			}
+		}
+		return nil
 	}
-	return nil, nil, fmt.Errorf("no file for %s in package %s", uri, pkg.ID())
+	return search(m)
+}
+
+// recursiveDeps finds unique transitive dependencies of m, including m itself.
+//
+// Invariant: for the resulting slice res, res[0] == m.ID.
+//
+// TODO(rfindley): consider replacing this with a snapshot.ForwardDependencies
+// method, or exposing the metadata graph itself.
+func recursiveDeps(s MetadataSource, m *Metadata) []PackageID {
+	seen := make(map[PackageID]bool)
+	var ids []PackageID
+	var add func(*Metadata)
+	add = func(m *Metadata) {
+		if seen[m.ID] {
+			return
+		}
+		seen[m.ID] = true
+		ids = append(ids, m.ID)
+		for _, dep := range m.DepsByPkgPath {
+			m := s.Metadata(dep)
+			if m == nil {
+				bug.Reportf("nil metadata for %q", dep)
+				continue
+			}
+			add(m)
+		}
+	}
+	add(m)
+	return ids
 }
 
 // UnquoteImportPath returns the unquoted import path of s,
@@ -402,6 +370,134 @@ func Qualifier(f *ast.File, pkg *types.Package, info *types.Info) types.Qualifie
 	}
 }
 
+// requalifier returns a function that re-qualifies identifiers and qualified
+// identifiers contained in targetFile using the given metadata qualifier.
+func requalifier(s MetadataSource, targetFile *ast.File, targetMeta *Metadata, mq MetadataQualifier) func(string) string {
+	qm := map[string]string{
+		"": mq(targetMeta.Name, "", targetMeta.PkgPath),
+	}
+
+	// Construct mapping of import paths to their defined or implicit names.
+	for _, imp := range targetFile.Imports {
+		name, pkgName, impPath, pkgPath := importInfo(s, imp, targetMeta)
+
+		// Re-map the target name for the source file.
+		qm[name] = mq(pkgName, impPath, pkgPath)
+	}
+
+	return func(name string) string {
+		if newName, ok := qm[name]; ok {
+			return newName
+		}
+		return name
+	}
+}
+
+// A MetadataQualifier is a function that qualifies an identifier declared in a
+// package with the given package name, import path, and package path.
+//
+// In scenarios where metadata is missing the provided PackageName and
+// PackagePath may be empty, but ImportPath must always be non-empty.
+type MetadataQualifier func(PackageName, ImportPath, PackagePath) string
+
+// MetadataQualifierForFile returns a metadata qualifier that chooses the best
+// qualification of an imported package relative to the file f in package with
+// metadata m.
+func MetadataQualifierForFile(s MetadataSource, f *ast.File, m *Metadata) MetadataQualifier {
+	// Record local names for import paths.
+	localNames := make(map[ImportPath]string) // local names for imports in f
+	for _, imp := range f.Imports {
+		name, _, impPath, _ := importInfo(s, imp, m)
+		localNames[impPath] = name
+	}
+
+	// Record a package path -> import path mapping.
+	inverseDeps := make(map[PackageID]PackagePath)
+	for path, id := range m.DepsByPkgPath {
+		inverseDeps[id] = path
+	}
+	importsByPkgPath := make(map[PackagePath]ImportPath) // best import paths by pkgPath
+	for impPath, id := range m.DepsByImpPath {
+		if id == "" {
+			continue
+		}
+		pkgPath := inverseDeps[id]
+		_, hasPath := importsByPkgPath[pkgPath]
+		_, hasImp := localNames[impPath]
+		// In rare cases, there may be multiple import paths with the same package
+		// path. In such scenarios, prefer an import path that already exists in
+		// the file.
+		if !hasPath || hasImp {
+			importsByPkgPath[pkgPath] = impPath
+		}
+	}
+
+	return func(pkgName PackageName, impPath ImportPath, pkgPath PackagePath) string {
+		// If supplied, translate the package path to an import path in the source
+		// package.
+		if pkgPath != "" {
+			if srcImp := importsByPkgPath[pkgPath]; srcImp != "" {
+				impPath = srcImp
+			}
+			if pkgPath == m.PkgPath {
+				return ""
+			}
+		}
+		if localName, ok := localNames[impPath]; ok && impPath != "" {
+			return string(localName)
+		}
+		if pkgName != "" {
+			return string(pkgName)
+		}
+		idx := strings.LastIndexByte(string(impPath), '/')
+		return string(impPath[idx+1:])
+	}
+}
+
+// importInfo collects information about the import specified by imp,
+// extracting its file-local name, package name, import path, and package path.
+//
+// If metadata is missing for the import, the resulting package name and
+// package path may be empty, and the file local name may be guessed based on
+// the import path.
+//
+// Note: previous versions of this helper used a PackageID->PackagePath map
+// extracted from m, for extracting package path even in the case where
+// metadata for a dep was missing. This should not be necessary, as we should
+// always have metadata for IDs contained in DepsByPkgPath.
+func importInfo(s MetadataSource, imp *ast.ImportSpec, m *Metadata) (string, PackageName, ImportPath, PackagePath) {
+	var (
+		name    string // local name
+		pkgName PackageName
+		impPath = UnquoteImportPath(imp)
+		pkgPath PackagePath
+	)
+
+	// If the import has a local name, use it.
+	if imp.Name != nil {
+		name = imp.Name.Name
+	}
+
+	// Try to find metadata for the import. If successful and there is no local
+	// name, the package name is the local name.
+	if depID := m.DepsByImpPath[impPath]; depID != "" {
+		if depm := s.Metadata(depID); depm != nil {
+			if name == "" {
+				name = string(depm.Name)
+			}
+			pkgName = depm.Name
+			pkgPath = depm.PkgPath
+		}
+	}
+
+	// If the local name is still unknown, guess it based on the import path.
+	if name == "" {
+		idx := strings.LastIndexByte(string(impPath), '/')
+		name = string(impPath[idx+1:])
+	}
+	return name, pkgName, impPath, pkgPath
+}
+
 // isDirective reports whether c is a comment directive.
 //
 // Copied and adapted from go/src/go/ast/ast.go.
@@ -442,62 +538,12 @@ func isDirective(c string) bool {
 	return true
 }
 
-// honorSymlinks toggles whether or not we consider symlinks when comparing
-// file or directory URIs.
-const honorSymlinks = false
-
-func CompareURI(left, right span.URI) int {
-	if honorSymlinks {
-		return span.CompareURI(left, right)
-	}
-	if left == right {
-		return 0
-	}
-	if left < right {
-		return -1
-	}
-	return 1
-}
-
 // InDir checks whether path is in the file tree rooted at dir.
-// InDir makes some effort to succeed even in the presence of symbolic links.
-//
-// Copied and slightly adjusted from go/src/cmd/go/internal/search/search.go.
-func InDir(dir, path string) bool {
-	if InDirLex(dir, path) {
-		return true
-	}
-	if !honorSymlinks {
-		return false
-	}
-	xpath, err := filepath.EvalSymlinks(path)
-	if err != nil || xpath == path {
-		xpath = ""
-	} else {
-		if InDirLex(dir, xpath) {
-			return true
-		}
-	}
-
-	xdir, err := filepath.EvalSymlinks(dir)
-	if err == nil && xdir != dir {
-		if InDirLex(xdir, path) {
-			return true
-		}
-		if xpath != "" {
-			if InDirLex(xdir, xpath) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// InDirLex is like inDir but only checks the lexical form of the file names.
+// It checks only the lexical form of the file names.
 // It does not consider symbolic links.
 //
 // Copied from go/src/cmd/go/internal/search/search.go.
-func InDirLex(dir, path string) bool {
+func InDir(dir, path string) bool {
 	pv := strings.ToUpper(filepath.VolumeName(path))
 	dv := strings.ToUpper(filepath.VolumeName(dir))
 	path = path[len(pv):]

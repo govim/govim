@@ -24,6 +24,7 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
@@ -79,15 +80,11 @@ func Hover(ctx context.Context, snapshot Snapshot, fh FileHandle, position proto
 		}
 		return nil, nil
 	}
-	h, err := HoverIdentifier(ctx, ident)
+	h, err := hoverIdentifier(ctx, ident)
 	if err != nil {
 		return nil, err
 	}
-	rng, err := ident.Range()
-	if err != nil {
-		return nil, err
-	}
-	hover, err := FormatHover(h, snapshot.View().Options())
+	hover, err := formatHover(h, snapshot.View().Options())
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +93,7 @@ func Hover(ctx context.Context, snapshot Snapshot, fh FileHandle, position proto
 			Kind:  snapshot.View().Options().PreferredContentFormat,
 			Value: hover,
 		},
-		Range: rng,
+		Range: ident.MappedRange.Range(),
 	}, nil
 }
 
@@ -104,11 +101,7 @@ func hoverRune(ctx context.Context, snapshot Snapshot, fh FileHandle, position p
 	ctx, done := event.Start(ctx, "source.hoverRune")
 	defer done()
 
-	r, mrng, err := findRune(ctx, snapshot, fh, position)
-	if err != nil {
-		return nil, err
-	}
-	rng, err := mrng.Range()
+	r, rng, err := findRune(ctx, snapshot, fh, position)
 	if err != nil {
 		return nil, err
 	}
@@ -138,31 +131,35 @@ func hoverRune(ctx context.Context, snapshot Snapshot, fh FileHandle, position p
 var ErrNoRuneFound = errors.New("no rune found")
 
 // findRune returns rune information for a position in a file.
-func findRune(ctx context.Context, snapshot Snapshot, fh FileHandle, position protocol.Position) (rune, MappedRange, error) {
-	pkg, pgf, err := GetParsedFile(ctx, snapshot, fh, NarrowestPackage)
+func findRune(ctx context.Context, snapshot Snapshot, fh FileHandle, position protocol.Position) (rune, protocol.Range, error) {
+	fh, err := snapshot.GetFile(ctx, fh.URI())
 	if err != nil {
-		return 0, MappedRange{}, err
+		return 0, protocol.Range{}, err
 	}
-	pos, err := pgf.Mapper.Pos(position)
+	pgf, err := snapshot.ParseGo(ctx, fh, ParseFull)
 	if err != nil {
-		return 0, MappedRange{}, err
+		return 0, protocol.Range{}, err
+	}
+	pos, err := pgf.PositionPos(position)
+	if err != nil {
+		return 0, protocol.Range{}, err
 	}
 
 	// Find the basic literal enclosing the given position, if there is one.
 	var lit *ast.BasicLit
-	var found bool
 	ast.Inspect(pgf.File, func(n ast.Node) bool {
-		if found {
+		if n == nil || // pop
+			lit != nil || // found: terminate the search
+			!(n.Pos() <= pos && pos < n.End()) { // subtree does not contain pos: skip
 			return false
 		}
-		if n, ok := n.(*ast.BasicLit); ok && pos >= n.Pos() && pos <= n.End() {
-			lit = n
-			found = true
+		if n, ok := n.(*ast.BasicLit); ok {
+			lit = n // found!
 		}
-		return !found
+		return lit == nil // descend unless target is found
 	})
-	if !found {
-		return 0, MappedRange{}, ErrNoRuneFound
+	if lit == nil {
+		return 0, protocol.Range{}, ErrNoRuneFound
 	}
 
 	var r rune
@@ -173,26 +170,26 @@ func findRune(ctx context.Context, snapshot Snapshot, fh FileHandle, position pr
 		if err != nil {
 			// If the conversion fails, it's because of an invalid syntax, therefore
 			// there is no rune to be found.
-			return 0, MappedRange{}, ErrNoRuneFound
+			return 0, protocol.Range{}, ErrNoRuneFound
 		}
 		r, _ = utf8.DecodeRuneInString(s)
 		if r == utf8.RuneError {
-			return 0, MappedRange{}, fmt.Errorf("rune error")
+			return 0, protocol.Range{}, fmt.Errorf("rune error")
 		}
 		start, end = lit.Pos(), lit.End()
 	case token.INT:
 		// It's an integer, scan only if it is a hex litteral whose bitsize in
 		// ranging from 8 to 32.
 		if !(strings.HasPrefix(lit.Value, "0x") && len(lit.Value[2:]) >= 2 && len(lit.Value[2:]) <= 8) {
-			return 0, MappedRange{}, ErrNoRuneFound
+			return 0, protocol.Range{}, ErrNoRuneFound
 		}
 		v, err := strconv.ParseUint(lit.Value[2:], 16, 32)
 		if err != nil {
-			return 0, MappedRange{}, err
+			return 0, protocol.Range{}, err
 		}
 		r = rune(v)
 		if r == utf8.RuneError {
-			return 0, MappedRange{}, fmt.Errorf("rune error")
+			return 0, protocol.Range{}, fmt.Errorf("rune error")
 		}
 		start, end = lit.Pos(), lit.End()
 	case token.STRING:
@@ -201,17 +198,17 @@ func findRune(ctx context.Context, snapshot Snapshot, fh FileHandle, position pr
 		var found bool
 		litOffset, err := safetoken.Offset(pgf.Tok, lit.Pos())
 		if err != nil {
-			return 0, MappedRange{}, err
+			return 0, protocol.Range{}, err
 		}
 		offset, err := safetoken.Offset(pgf.Tok, pos)
 		if err != nil {
-			return 0, MappedRange{}, err
+			return 0, protocol.Range{}, err
 		}
 		for i := offset - litOffset; i > 0; i-- {
 			// Start at the cursor position and search backward for the beginning of a rune escape sequence.
 			rr, _ := utf8.DecodeRuneInString(lit.Value[i:])
 			if rr == utf8.RuneError {
-				return 0, MappedRange{}, fmt.Errorf("rune error")
+				return 0, protocol.Range{}, fmt.Errorf("rune error")
 			}
 			if rr == '\\' {
 				// Got the beginning, decode it.
@@ -219,7 +216,7 @@ func findRune(ctx context.Context, snapshot Snapshot, fh FileHandle, position pr
 				r, _, tail, err = strconv.UnquoteChar(lit.Value[i:], '"')
 				if err != nil {
 					// If the conversion fails, it's because of an invalid syntax, therefore is no rune to be found.
-					return 0, MappedRange{}, ErrNoRuneFound
+					return 0, protocol.Range{}, ErrNoRuneFound
 				}
 				// Only the rune escape sequence part of the string has to be highlighted, recompute the range.
 				runeLen := len(lit.Value) - (int(i) + len(tail))
@@ -231,20 +228,19 @@ func findRune(ctx context.Context, snapshot Snapshot, fh FileHandle, position pr
 		}
 		if !found {
 			// No escape sequence found
-			return 0, MappedRange{}, ErrNoRuneFound
+			return 0, protocol.Range{}, ErrNoRuneFound
 		}
 	default:
-		return 0, MappedRange{}, ErrNoRuneFound
+		return 0, protocol.Range{}, ErrNoRuneFound
 	}
-
-	mappedRange, err := posToMappedRange(pkg, start, end)
+	rng, err := pgf.PosRange(start, end)
 	if err != nil {
-		return 0, MappedRange{}, err
+		return 0, protocol.Range{}, err
 	}
-	return r, mappedRange, nil
+	return r, rng, nil
 }
 
-func HoverIdentifier(ctx context.Context, i *IdentifierInfo) (*HoverJSON, error) {
+func hoverIdentifier(ctx context.Context, i *IdentifierInfo) (*HoverJSON, error) {
 	ctx, done := event.Start(ctx, "source.Hover")
 	defer done()
 
@@ -332,7 +328,7 @@ func HoverIdentifier(ctx context.Context, i *IdentifierInfo) (*HoverJSON, error)
 	// Check if the identifier is test-only (and is therefore not part of a
 	// package's API). This is true if the request originated in a test package,
 	// and if the declaration is also found in the same test package.
-	if i.pkg != nil && obj.Pkg() != nil && i.pkg.ForTest() != "" {
+	if i.pkg != nil && obj.Pkg() != nil && i.pkg.Metadata().ForTest != "" {
 		if _, err := i.pkg.File(i.Declaration.MappedRange[0].URI()); err == nil {
 			return h, nil
 		}
@@ -448,18 +444,22 @@ func moduleAtVersion(path string, i *IdentifierInfo) (string, string, bool) {
 	if strings.ToLower(i.Snapshot.View().Options().LinkTarget) != "pkg.go.dev" {
 		return "", "", false
 	}
-	impPkg, err := i.pkg.DirectDep(PackagePath(path))
-	if err != nil {
+	impID, ok := i.pkg.Metadata().DepsByPkgPath[PackagePath(path)]
+	if !ok {
 		return "", "", false
 	}
-	if impPkg.Version() == nil {
+	impMeta := i.Snapshot.Metadata(impID)
+	if impMeta == nil {
 		return "", "", false
 	}
-	version, modpath := impPkg.Version().Version, impPkg.Version().Path
-	if modpath == "" || version == "" {
+	module := impMeta.Module
+	if module == nil {
 		return "", "", false
 	}
-	return modpath, version, true
+	if module.Path == "" || module.Version == "" {
+		return "", "", false
+	}
+	return module.Path, module.Version, true
 }
 
 // objectString is a wrapper around the types.ObjectString function.
@@ -499,6 +499,86 @@ func objectString(obj types.Object, qf types.Qualifier, inferred *types.Signatur
 	return str
 }
 
+// HoverDocForObject returns the best doc comment for obj, referenced by srcpkg.
+//
+// TODO(rfindley): there appears to be zero(!) tests for this functionality.
+func HoverDocForObject(ctx context.Context, snapshot Snapshot, srcpkg Package, obj types.Object) (*ast.CommentGroup, error) {
+	if _, isTypeName := obj.(*types.TypeName); isTypeName {
+		if _, isTypeParam := obj.Type().(*typeparams.TypeParam); isTypeParam {
+			return nil, nil
+		}
+	}
+
+	pgf, pos, err := parseFull(ctx, snapshot, srcpkg, obj.Pos())
+	if err != nil {
+		return nil, fmt.Errorf("re-parsing: %v", err)
+	}
+
+	decl, spec, field := FindDeclInfo([]*ast.File{pgf.File}, pos)
+	if field != nil && field.Doc != nil {
+		return field.Doc, nil
+	}
+	switch decl := decl.(type) {
+	case *ast.FuncDecl:
+		return decl.Doc, nil
+	case *ast.GenDecl:
+		switch spec := spec.(type) {
+		case *ast.ValueSpec:
+			if spec.Doc != nil {
+				return spec.Doc, nil
+			}
+			if decl.Doc != nil {
+				return decl.Doc, nil
+			}
+			return spec.Comment, nil
+		case *ast.TypeSpec:
+			if spec.Doc != nil {
+				return spec.Doc, nil
+			}
+			if decl.Doc != nil {
+				return decl.Doc, nil
+			}
+			return spec.Comment, nil
+		}
+	}
+	return nil, nil
+}
+
+// parseFull fully parses the file corresponding to position pos, referenced
+// from the given srcpkg.
+//
+// It returns the resulting ParsedGoFile as well as new pos contained in the
+// parsed file.
+func parseFull(ctx context.Context, snapshot Snapshot, srcpkg Package, pos token.Pos) (*ParsedGoFile, token.Pos, error) {
+	f := srcpkg.FileSet().File(pos)
+	if f == nil {
+		return nil, 0, bug.Errorf("internal error: no file for position %d in %s", pos, srcpkg.Metadata().ID)
+	}
+
+	uri := span.URIFromPath(f.Name())
+	fh, err := snapshot.GetFile(ctx, uri)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	pgf, err := snapshot.ParseGo(ctx, fh, ParseFull)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	offset, err := safetoken.Offset(f, pos)
+	if err != nil {
+		return nil, 0, bug.Errorf("offset out of bounds in %q", uri)
+	}
+
+	fullPos, err := safetoken.Pos(pgf.Tok, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return pgf, fullPos, nil
+}
+
 // FindHoverContext returns a HoverContext struct for an AST node and its
 // declaration object. node should be the actual node used in type checking,
 // while fullNode could be a separate node with more complete syntactic
@@ -535,25 +615,38 @@ func FindHoverContext(ctx context.Context, s Snapshot, pkg Package, obj types.Ob
 		}
 	case *ast.ImportSpec:
 		// Try to find the package documentation for an imported package.
-		importPath, err := strconv.Unquote(node.Path.Value)
-		if err != nil {
-			return nil, err
+		importPath := UnquoteImportPath(node)
+		impID := pkg.Metadata().DepsByImpPath[importPath]
+		if impID == "" {
+			return nil, fmt.Errorf("failed to resolve import %q", importPath)
 		}
-		imp, err := pkg.ResolveImportPath(ImportPath(importPath))
-		if err != nil {
-			return nil, err
+		impMetadata := s.Metadata(impID)
+		if impMetadata == nil {
+			return nil, fmt.Errorf("failed to resolve import ID %q", impID)
 		}
-		// Assume that only one file will contain package documentation,
-		// so pick the first file that has a doc comment.
-		for _, file := range imp.GetSyntax() {
-			if file.Doc != nil {
-				info = &HoverContext{Comment: file.Doc}
-				if file.Name != nil {
-					info.signatureSource = "package " + file.Name.Name
+		for _, f := range impMetadata.CompiledGoFiles {
+			fh, err := s.GetFile(ctx, f)
+			if err != nil {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
 				}
-				break
+				continue
+			}
+			pgf, err := s.ParseGo(ctx, fh, ParseHeader)
+			if err != nil {
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				continue
+			}
+			if pgf.File.Doc != nil {
+				return &HoverContext{
+					Comment:         pgf.File.Doc,
+					signatureSource: "package " + impMetadata.Name,
+				}, nil
 			}
 		}
+
 	case *ast.GenDecl:
 		switch obj := obj.(type) {
 		case *types.TypeName, *types.Var, *types.Const, *types.Func:
@@ -581,11 +674,7 @@ func FindHoverContext(ctx context.Context, s Snapshot, pkg Package, obj types.Ob
 			var spec ast.Spec
 			for _, s := range node.Specs {
 				// Avoid panics by guarding the calls to token.Offset (golang/go#48249).
-				start, err := safetoken.Offset(fullTok, s.Pos())
-				if err != nil {
-					return nil, err
-				}
-				end, err := safetoken.Offset(fullTok, s.End())
+				start, end, err := safetoken.Offsets(fullTok, s.Pos(), s.End())
 				if err != nil {
 					return nil, err
 				}
@@ -629,7 +718,7 @@ func FindHoverContext(ctx context.Context, s Snapshot, pkg Package, obj types.Ob
 				break
 			}
 
-			_, field := FindDeclAndField(pkg.GetSyntax(), obj.Pos())
+			_, _, field := FindDeclInfo(pkg.GetSyntax(), obj.Pos())
 			if field != nil {
 				comment := field.Doc
 				if comment.Text() == "" {
@@ -791,7 +880,7 @@ func findFieldComment(pos token.Pos, fieldList *ast.FieldList) *ast.CommentGroup
 	return nil
 }
 
-func FormatHover(h *HoverJSON, options *Options) (string, error) {
+func formatHover(h *HoverJSON, options *Options) (string, error) {
 	signature := formatSignature(h, options)
 
 	switch options.HoverKind {
@@ -853,7 +942,7 @@ func formatLink(h *HoverJSON, options *Options) string {
 	}
 }
 
-// BuildLink constructs a link with the given target, path, and anchor.
+// BuildLink constructs a URL with the given target, path, and anchor.
 func BuildLink(target, path, anchor string) string {
 	link := fmt.Sprintf("https://%s/%s", target, path)
 	if anchor == "" {
@@ -885,20 +974,27 @@ func anyNonEmpty(x []string) bool {
 	return false
 }
 
-// FindDeclAndField returns the var/func/type/const Decl that declares
-// the identifier at pos, searching the given list of file syntax
-// trees. If pos is the position of an ast.Field or one of its Names
-// or Ellipsis.Elt, the field is returned, along with the innermost
-// enclosing Decl, which could be only loosely related---consider:
+// FindDeclInfo returns the syntax nodes involved in the declaration of the
+// types.Object with position pos, searching the given list of file syntax
+// trees.
 //
-//	var decl = f(  func(field int) {}  )
+// Pos may be the position of the name-defining identifier in a FuncDecl,
+// ValueSpec, TypeSpec, Field, or as a special case the position of
+// Ellipsis.Elt in an ellipsis field.
 //
-// It returns (nil, nil) if no Field or Decl is found at pos.
-func FindDeclAndField(files []*ast.File, pos token.Pos) (decl ast.Decl, field *ast.Field) {
-	// panic(nil) breaks off the traversal and
+// If found, the resulting decl, spec, and field will be the inner-most
+// instance of each node type surrounding pos.
+//
+// It returns a nil decl if no object-defining node is found at pos.
+func FindDeclInfo(files []*ast.File, pos token.Pos) (decl ast.Decl, spec ast.Spec, field *ast.Field) {
+	// panic(found{}) breaks off the traversal and
 	// causes the function to return normally.
+	type found struct{}
 	defer func() {
-		if x := recover(); x != nil {
+		switch x := recover().(type) {
+		case nil:
+		case found:
+		default:
 			panic(x)
 		}
 	}()
@@ -921,54 +1017,68 @@ func FindDeclAndField(files []*ast.File, pos token.Pos) (decl ast.Decl, field *a
 
 		switch n := n.(type) {
 		case *ast.Field:
-			checkField := func(f ast.Node) {
-				if f.Pos() == pos {
-					field = n
-					for i := len(stack) - 1; i >= 0; i-- {
-						if d, ok := stack[i].(ast.Decl); ok {
-							decl = d // innermost enclosing decl
-							break
-						}
+			findEnclosingDeclAndSpec := func() {
+				for i := len(stack) - 1; i >= 0; i-- {
+					switch n := stack[i].(type) {
+					case ast.Spec:
+						spec = n
+					case ast.Decl:
+						decl = n
+						return
 					}
-					panic(nil) // found
+				}
+			}
+
+			// Check each field name since you can have
+			// multiple names for the same type expression.
+			for _, id := range n.Names {
+				if id.Pos() == pos {
+					field = n
+					findEnclosingDeclAndSpec()
+					panic(found{})
 				}
 			}
 
 			// Check *ast.Field itself. This handles embedded
 			// fields which have no associated *ast.Ident name.
-			checkField(n)
-
-			// Check each field name since you can have
-			// multiple names for the same type expression.
-			for _, name := range n.Names {
-				checkField(name)
+			if n.Pos() == pos {
+				field = n
+				findEnclosingDeclAndSpec()
+				panic(found{})
 			}
 
-			// Also check "X" in "...X". This makes it easy
-			// to format variadic signature params properly.
-			if ell, ok := n.Type.(*ast.Ellipsis); ok && ell.Elt != nil {
-				checkField(ell.Elt)
+			// Also check "X" in "...X". This makes it easy to format variadic
+			// signature params properly.
+			//
+			// TODO(rfindley): I don't understand this comment. How does finding the
+			// field in this case make it easier to format variadic signature params?
+			if ell, ok := n.Type.(*ast.Ellipsis); ok && ell.Elt != nil && ell.Elt.Pos() == pos {
+				field = n
+				findEnclosingDeclAndSpec()
+				panic(found{})
 			}
 
 		case *ast.FuncDecl:
 			if n.Name.Pos() == pos {
 				decl = n
-				panic(nil) // found
+				panic(found{})
 			}
 
 		case *ast.GenDecl:
-			for _, spec := range n.Specs {
-				switch spec := spec.(type) {
+			for _, s := range n.Specs {
+				switch s := s.(type) {
 				case *ast.TypeSpec:
-					if spec.Name.Pos() == pos {
+					if s.Name.Pos() == pos {
 						decl = n
-						panic(nil) // found
+						spec = s
+						panic(found{})
 					}
 				case *ast.ValueSpec:
-					for _, id := range spec.Names {
+					for _, id := range s.Names {
 						if id.Pos() == pos {
 							decl = n
-							panic(nil) // found
+							spec = s
+							panic(found{})
 						}
 					}
 				}
@@ -980,5 +1090,5 @@ func FindDeclAndField(files []*ast.File, pos token.Pos) (decl ast.Decl, field *a
 		ast.Inspect(file, f)
 	}
 
-	return nil, nil
+	return nil, nil, nil
 }

@@ -10,6 +10,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strings"
 
 	"golang.org/x/tools/go/ast/astutil"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
@@ -20,11 +21,13 @@ func SignatureHelp(ctx context.Context, snapshot Snapshot, fh FileHandle, positi
 	ctx, done := event.Start(ctx, "source.SignatureHelp")
 	defer done()
 
-	pkg, pgf, err := GetParsedFile(ctx, snapshot, fh, NarrowestPackage)
+	// We need full type-checking here, as we must type-check function bodies in
+	// order to provide signature help at the requested position.
+	pkg, pgf, err := PackageForFile(ctx, snapshot, fh.URI(), TypecheckFull, NarrowestPackage)
 	if err != nil {
 		return nil, 0, fmt.Errorf("getting file for SignatureHelp: %w", err)
 	}
-	pos, err := pgf.Mapper.Pos(position)
+	pos, err := pgf.PositionPos(position)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -94,28 +97,27 @@ FindCall:
 		comment *ast.CommentGroup
 	)
 	if obj != nil {
-		declPkg, err := FindPackageFromPos(pkg, obj.Pos())
-		if err != nil {
-			return nil, 0, err
-		}
-		node, _ := FindDeclAndField(declPkg.GetSyntax(), obj.Pos()) // may be nil
-		d, err := FindHoverContext(ctx, snapshot, pkg, obj, node, nil)
+		d, err := HoverDocForObject(ctx, snapshot, pkg, obj)
 		if err != nil {
 			return nil, 0, err
 		}
 		name = obj.Name()
-		comment = d.Comment
+		comment = d
 	} else {
 		name = "func"
 	}
-	s := NewSignature(ctx, snapshot, pkg, sig, comment, qf)
+	mq := MetadataQualifierForFile(snapshot, pgf.File, pkg.Metadata())
+	s, err := NewSignature(ctx, snapshot, pkg, pgf.File, sig, comment, qf, mq)
+	if err != nil {
+		return nil, 0, err
+	}
 	paramInfo := make([]protocol.ParameterInformation, 0, len(s.params))
 	for _, p := range s.params {
 		paramInfo = append(paramInfo, protocol.ParameterInformation{Label: p})
 	}
 	return &protocol.SignatureInformation{
 		Label:         name + s.Format(),
-		Documentation: s.doc,
+		Documentation: stringToSigInfoDocumentation(s.doc, snapshot.View().Options()),
 		Parameters:    paramInfo,
 	}, activeParam, nil
 }
@@ -132,7 +134,7 @@ func builtinSignature(ctx context.Context, snapshot Snapshot, callExpr *ast.Call
 	activeParam := activeParameter(callExpr, len(sig.params), sig.variadic, pos)
 	return &protocol.SignatureInformation{
 		Label:         sig.name + sig.Format(),
-		Documentation: sig.doc,
+		Documentation: stringToSigInfoDocumentation(sig.doc, snapshot.View().Options()),
 		Parameters:    paramInfo,
 	}, activeParam, nil
 
@@ -162,4 +164,22 @@ func activeParameter(callExpr *ast.CallExpr, numParams int, variadic bool, pos t
 		start = expr.Pos() + 1 // to account for commas
 	}
 	return activeParam
+}
+
+func stringToSigInfoDocumentation(s string, options *Options) *protocol.Or_SignatureInformation_documentation {
+	v := s
+	k := protocol.PlainText
+	if options.PreferredContentFormat == protocol.Markdown {
+		v = CommentToMarkdown(s)
+		// whether or not content is newline terminated may not matter for LSP clients,
+		// but our tests expect trailing newlines to be stripped.
+		v = strings.TrimSuffix(v, "\n") // TODO(pjw): change the golden files
+		k = protocol.Markdown
+	}
+	return &protocol.Or_SignatureInformation_documentation{
+		Value: protocol.MarkupContent{
+			Kind:  k,
+			Value: v,
+		},
+	}
 }

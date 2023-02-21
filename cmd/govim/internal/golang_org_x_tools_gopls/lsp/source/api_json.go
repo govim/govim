@@ -57,22 +57,6 @@ var GeneratedAPIJSON = &APIJSON{
 				Hierarchy: "build",
 			},
 			{
-				Name:      "experimentalWorkspaceModule",
-				Type:      "bool",
-				Doc:       "experimentalWorkspaceModule opts a user into the experimental support\nfor multi-module workspaces.\n\nDeprecated: this feature is deprecated and will be removed in a future\nversion of gopls (https://go.dev/issue/55331).\n",
-				Default:   "false",
-				Status:    "experimental",
-				Hierarchy: "build",
-			},
-			{
-				Name:      "experimentalPackageCacheKey",
-				Type:      "bool",
-				Doc:       "experimentalPackageCacheKey controls whether to use a coarser cache key\nfor package type information to increase cache hits. This setting removes\nthe user's environment, build flags, and working directory from the cache\nkey, which should be a safe change as all relevant inputs into the type\nchecking pass are already hashed into the key. This is temporarily guarded\nby an experiment because caching behavior is subtle and difficult to\ncomprehensively test.\n",
-				Default:   "true",
-				Status:    "experimental",
-				Hierarchy: "build",
-			},
-			{
 				Name:      "allowModfileModifications",
 				Type:      "bool",
 				Doc:       "allowModfileModifications disables -mod=readonly, allowing imports from\nout-of-scope modules. This option will eventually be removed.\n",
@@ -84,14 +68,6 @@ var GeneratedAPIJSON = &APIJSON{
 				Name:      "allowImplicitNetworkAccess",
 				Type:      "bool",
 				Doc:       "allowImplicitNetworkAccess disables GOPROXY=off, allowing implicit module\ndownloads rather than requiring user action. This option will eventually\nbe removed.\n",
-				Default:   "false",
-				Status:    "experimental",
-				Hierarchy: "build",
-			},
-			{
-				Name:      "experimentalUseInvalidMetadata",
-				Type:      "bool",
-				Doc:       "experimentalUseInvalidMetadata enables gopls to fall back on outdated\npackage metadata to provide editor features if the go command fails to\nload packages for some reason (like an invalid go.mod file).\n\nDeprecated: this setting is deprecated and will be removed in a future\nversion of gopls (https://go.dev/issue/55333).\n",
 				Default:   "false",
 				Status:    "experimental",
 				Hierarchy: "build",
@@ -252,7 +228,7 @@ var GeneratedAPIJSON = &APIJSON{
 						},
 						{
 							Name:    "\"buildtag\"",
-							Doc:     "check that +build tags are well-formed and correctly located",
+							Doc:     "check //go:build and // +build directives",
 							Default: "true",
 						},
 						{
@@ -273,6 +249,11 @@ var GeneratedAPIJSON = &APIJSON{
 						{
 							Name:    "\"deepequalerrors\"",
 							Doc:     "check for calls of reflect.DeepEqual on error values\n\nThe deepequalerrors checker looks for calls of the form:\n\n    reflect.DeepEqual(err1, err2)\n\nwhere err1 and err2 are errors. Using reflect.DeepEqual to compare\nerrors is discouraged.",
+							Default: "true",
+						},
+						{
+							Name:    "\"directive\"",
+							Doc:     "check Go toolchain directives such as //go:debug\n\nThis analyzer checks for problems with known Go toolchain directives\nin all Go source files in a package directory, even those excluded by\n//go:build constraints, and all non-Go source files too.\n\nFor //go:debug (see https://go.dev/doc/godebug), the analyzer checks\nthat the directives are placed only in Go source files, only above the\npackage comment, and only in package main or *_test.go files.\n\nSupport for other known directives may be added in the future.\n\nThis analyzer does not check //go:build, which is handled by the\nbuildtag analyzer.\n",
 							Default: "true",
 						},
 						{
@@ -307,7 +288,7 @@ var GeneratedAPIJSON = &APIJSON{
 						},
 						{
 							Name:    "\"loopclosure\"",
-							Doc:     "check references to loop variables from within nested functions\n\nThis analyzer checks for references to loop variables from within a function\nliteral inside the loop body. It checks for patterns where access to a loop\nvariable is known to escape the current loop iteration:\n 1. a call to go or defer at the end of the loop body\n 2. a call to golang.org/x/sync/errgroup.Group.Go at the end of the loop body\n 3. a call testing.T.Run where the subtest body invokes t.Parallel()\n\nIn the case of (1) and (2), the analyzer only considers references in the last\nstatement of the loop body as it is not deep enough to understand the effects\nof subsequent statements which might render the reference benign.\n\nFor example:\n\n\tfor i, v := range s {\n\t\tgo func() {\n\t\t\tprintln(i, v) // not what you might expect\n\t\t}()\n\t}\n\nSee: https://golang.org/doc/go_faq.html#closures_and_goroutines",
+							Doc:     "check references to loop variables from within nested functions\n\nThis analyzer reports places where a function literal references the\niteration variable of an enclosing loop, and the loop calls the function\nin such a way (e.g. with go or defer) that it may outlive the loop\niteration and possibly observe the wrong value of the variable.\n\nIn this example, all the deferred functions run after the loop has\ncompleted, so all observe the final value of v.\n\n    for _, v := range list {\n        defer func() {\n            use(v) // incorrect\n        }()\n    }\n\nOne fix is to create a new variable for each iteration of the loop:\n\n    for _, v := range list {\n        v := v // new var per iteration\n        defer func() {\n            use(v) // ok\n        }()\n    }\n\nThe next example uses a go statement and has a similar problem.\nIn addition, it has a data race because the loop updates v\nconcurrent with the goroutines accessing it.\n\n    for _, v := range elem {\n        go func() {\n            use(v)  // incorrect, and a data race\n        }()\n    }\n\nA fix is the same as before. The checker also reports problems\nin goroutines started by golang.org/x/sync/errgroup.Group.\nA hard-to-spot variant of this form is common in parallel tests:\n\n    func Test(t *testing.T) {\n        for _, test := range tests {\n            t.Run(test.name, func(t *testing.T) {\n                t.Parallel()\n                use(test) // incorrect, and a data race\n            })\n        }\n    }\n\nThe t.Parallel() call causes the rest of the function to execute\nconcurrent with the loop.\n\nThe analyzer reports references only in the last statement,\nas it is not deep enough to understand the effects of subsequent\nstatements that might render the reference benign.\n(\"Last statement\" is defined recursively in compound\nstatements such as if, switch, and select.)\n\nSee: https://golang.org/doc/go_faq.html#closures_and_goroutines",
 							Default: "true",
 						},
 						{
@@ -507,19 +488,29 @@ var GeneratedAPIJSON = &APIJSON{
 				Hierarchy: "ui.diagnostic",
 			},
 			{
+				Name: "vulncheck",
+				Type: "enum",
+				Doc:  "vulncheck enables vulnerability scanning.\n",
+				EnumValues: []EnumValue{
+					{
+						Value: "\"Imports\"",
+						Doc:   "`\"Imports\"`: In Imports mode, `gopls` will report vulnerabilities that affect packages\ndirectly and indirectly used by the analyzed main module.\n",
+					},
+					{
+						Value: "\"Off\"",
+						Doc:   "`\"Off\"`: Disable vulnerability analysis.\n",
+					},
+				},
+				Default:   "\"Off\"",
+				Status:    "experimental",
+				Hierarchy: "ui.diagnostic",
+			},
+			{
 				Name:      "diagnosticsDelay",
 				Type:      "time.Duration",
 				Doc:       "diagnosticsDelay controls the amount of time that gopls waits\nafter the most recent file modification before computing deep diagnostics.\nSimple diagnostics (parsing and type-checking) are always run immediately\non recently modified packages.\n\nThis option must be set to a valid duration string, for example `\"250ms\"`.\n",
 				Default:   "\"250ms\"",
 				Status:    "advanced",
-				Hierarchy: "ui.diagnostic",
-			},
-			{
-				Name:      "experimentalWatchedFileDelay",
-				Type:      "time.Duration",
-				Doc:       "experimentalWatchedFileDelay controls the amount of time that gopls waits\nfor additional workspace/didChangeWatchedFiles notifications to arrive,\nbefore processing all such notifications in a single batch. This is\nintended for use by LSP clients that don't support their own batching of\nfile system notifications.\n\nThis option must be set to a valid duration string, for example `\"100ms\"`.\n\nDeprecated: this setting is deprecated and will be removed in a future\nversion of gopls (https://go.dev/issue/55332)\n",
-				Default:   "\"0s\"",
-				Status:    "experimental",
 				Hierarchy: "ui.diagnostic",
 			},
 			{
@@ -590,7 +581,7 @@ var GeneratedAPIJSON = &APIJSON{
 							Default: "true",
 						},
 						{
-							Name:    "\"run_vulncheck_exp\"",
+							Name:    "\"run_govulncheck\"",
 							Doc:     "Run vulnerability check (`govulncheck`).",
 							Default: "false",
 						},
@@ -698,6 +689,13 @@ var GeneratedAPIJSON = &APIJSON{
 			ArgDoc:  "{\n\t// Any document URI within the relevant module.\n\t\"URI\": string,\n\t// The version to pass to `go mod edit -go`.\n\t\"Version\": string,\n}",
 		},
 		{
+			Command:   "gopls.fetch_vulncheck_result",
+			Title:     "Get known vulncheck result",
+			Doc:       "Fetch the result of latest vulnerability check (`govulncheck`).",
+			ArgDoc:    "{\n\t// The file URI.\n\t\"URI\": string,\n}",
+			ResultDoc: "map[github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol.DocumentURI]*github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/govulncheck.Result",
+		},
+		{
 			Command: "gopls.gc_details",
 			Title:   "Toggle gc_details",
 			Doc:     "Toggle the calculation of gc annotations.",
@@ -708,12 +706,6 @@ var GeneratedAPIJSON = &APIJSON{
 			Title:   "Run go generate",
 			Doc:     "Runs `go generate` for a given directory.",
 			ArgDoc:  "{\n\t// URI for the directory to generate.\n\t\"Dir\": string,\n\t// Whether to generate recursively (go generate ./...)\n\t\"Recursive\": bool,\n}",
-		},
-		{
-			Command: "gopls.generate_gopls_mod",
-			Title:   "Generate gopls.mod",
-			Doc:     "(Re)generate the gopls.mod file for a workspace.",
-			ArgDoc:  "{\n\t// The file URI.\n\t\"URI\": string,\n}",
 		},
 		{
 			Command: "gopls.go_get_package",
@@ -751,19 +743,20 @@ var GeneratedAPIJSON = &APIJSON{
 			Command: "gopls.reset_go_mod_diagnostics",
 			Title:   "Reset go.mod diagnostics",
 			Doc:     "Reset diagnostics in the go.mod file of a module.",
-			ArgDoc:  "{\n\t// The file URI.\n\t\"URI\": string,\n}",
+			ArgDoc:  "{\n\t\"URIArg\": {\n\t\t\"URI\": string,\n\t},\n\t// Optional: source of the diagnostics to reset.\n\t// If not set, all resettable go.mod diagnostics will be cleared.\n\t\"DiagnosticSource\": string,\n}",
+		},
+		{
+			Command:   "gopls.run_govulncheck",
+			Title:     "Run govulncheck.",
+			Doc:       "Run vulnerability check (`govulncheck`).",
+			ArgDoc:    "{\n\t// Any document in the directory from which govulncheck will run.\n\t\"URI\": string,\n\t// Package pattern. E.g. \"\", \".\", \"./...\".\n\t\"Pattern\": string,\n}",
+			ResultDoc: "{\n\t// Token holds the progress token for LSP workDone reporting of the vulncheck\n\t// invocation.\n\t\"Token\": interface{},\n}",
 		},
 		{
 			Command: "gopls.run_tests",
 			Title:   "Run test(s)",
 			Doc:     "Runs `go test` for a specific set of test or benchmark functions.",
 			ArgDoc:  "{\n\t// The test file containing the tests to run.\n\t\"URI\": string,\n\t// Specific test names to run, e.g. TestFoo.\n\t\"Tests\": []string,\n\t// Specific benchmarks to run, e.g. BenchmarkFoo.\n\t\"Benchmarks\": []string,\n}",
-		},
-		{
-			Command: "gopls.run_vulncheck_exp",
-			Title:   "Run vulncheck (experimental)",
-			Doc:     "Run vulnerability check (`govulncheck`).",
-			ArgDoc:  "{\n\t// Any document in the directory from which govulncheck will run.\n\t\"URI\": string,\n\t// Package pattern. E.g. \"\", \".\", \"./...\".\n\t\"Pattern\": string,\n}",
 		},
 		{
 			Command:   "gopls.start_debugging",
@@ -826,8 +819,8 @@ var GeneratedAPIJSON = &APIJSON{
 			Doc:   "Regenerates cgo definitions.",
 		},
 		{
-			Lens:  "run_vulncheck_exp",
-			Title: "Run vulncheck (experimental)",
+			Lens:  "run_govulncheck",
+			Title: "Run govulncheck.",
 			Doc:   "Run vulnerability check (`govulncheck`).",
 		},
 		{
@@ -879,7 +872,7 @@ var GeneratedAPIJSON = &APIJSON{
 		},
 		{
 			Name:    "buildtag",
-			Doc:     "check that +build tags are well-formed and correctly located",
+			Doc:     "check //go:build and // +build directives",
 			Default: true,
 		},
 		{
@@ -900,6 +893,11 @@ var GeneratedAPIJSON = &APIJSON{
 		{
 			Name:    "deepequalerrors",
 			Doc:     "check for calls of reflect.DeepEqual on error values\n\nThe deepequalerrors checker looks for calls of the form:\n\n    reflect.DeepEqual(err1, err2)\n\nwhere err1 and err2 are errors. Using reflect.DeepEqual to compare\nerrors is discouraged.",
+			Default: true,
+		},
+		{
+			Name:    "directive",
+			Doc:     "check Go toolchain directives such as //go:debug\n\nThis analyzer checks for problems with known Go toolchain directives\nin all Go source files in a package directory, even those excluded by\n//go:build constraints, and all non-Go source files too.\n\nFor //go:debug (see https://go.dev/doc/godebug), the analyzer checks\nthat the directives are placed only in Go source files, only above the\npackage comment, and only in package main or *_test.go files.\n\nSupport for other known directives may be added in the future.\n\nThis analyzer does not check //go:build, which is handled by the\nbuildtag analyzer.\n",
 			Default: true,
 		},
 		{
@@ -933,7 +931,7 @@ var GeneratedAPIJSON = &APIJSON{
 		},
 		{
 			Name:    "loopclosure",
-			Doc:     "check references to loop variables from within nested functions\n\nThis analyzer checks for references to loop variables from within a function\nliteral inside the loop body. It checks for patterns where access to a loop\nvariable is known to escape the current loop iteration:\n 1. a call to go or defer at the end of the loop body\n 2. a call to golang.org/x/sync/errgroup.Group.Go at the end of the loop body\n 3. a call testing.T.Run where the subtest body invokes t.Parallel()\n\nIn the case of (1) and (2), the analyzer only considers references in the last\nstatement of the loop body as it is not deep enough to understand the effects\nof subsequent statements which might render the reference benign.\n\nFor example:\n\n\tfor i, v := range s {\n\t\tgo func() {\n\t\t\tprintln(i, v) // not what you might expect\n\t\t}()\n\t}\n\nSee: https://golang.org/doc/go_faq.html#closures_and_goroutines",
+			Doc:     "check references to loop variables from within nested functions\n\nThis analyzer reports places where a function literal references the\niteration variable of an enclosing loop, and the loop calls the function\nin such a way (e.g. with go or defer) that it may outlive the loop\niteration and possibly observe the wrong value of the variable.\n\nIn this example, all the deferred functions run after the loop has\ncompleted, so all observe the final value of v.\n\n    for _, v := range list {\n        defer func() {\n            use(v) // incorrect\n        }()\n    }\n\nOne fix is to create a new variable for each iteration of the loop:\n\n    for _, v := range list {\n        v := v // new var per iteration\n        defer func() {\n            use(v) // ok\n        }()\n    }\n\nThe next example uses a go statement and has a similar problem.\nIn addition, it has a data race because the loop updates v\nconcurrent with the goroutines accessing it.\n\n    for _, v := range elem {\n        go func() {\n            use(v)  // incorrect, and a data race\n        }()\n    }\n\nA fix is the same as before. The checker also reports problems\nin goroutines started by golang.org/x/sync/errgroup.Group.\nA hard-to-spot variant of this form is common in parallel tests:\n\n    func Test(t *testing.T) {\n        for _, test := range tests {\n            t.Run(test.name, func(t *testing.T) {\n                t.Parallel()\n                use(test) // incorrect, and a data race\n            })\n        }\n    }\n\nThe t.Parallel() call causes the rest of the function to execute\nconcurrent with the loop.\n\nThe analyzer reports references only in the last statement,\nas it is not deep enough to understand the effects of subsequent\nstatements that might render the reference benign.\n(\"Last statement\" is defined recursively in compound\nstatements such as if, switch, and select.)\n\nSee: https://golang.org/doc/go_faq.html#closures_and_goroutines",
 			Default: true,
 		},
 		{

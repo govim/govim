@@ -341,6 +341,26 @@ func (g *govimplugin) LogTrace(context.Context, *protocol.LogTraceParams) error 
 	panic("LogTrace not implemented yet")
 }
 
+func (g *govimplugin) DiagnosticRefresh(context.Context) error {
+	defer absorbShutdownErr()
+	panic("DiagnosticRefresh not implemented yet")
+}
+
+func (g *govimplugin) InlayHintRefresh(context.Context) error {
+	defer absorbShutdownErr()
+	panic("InlayHintRefresh not implemented yet")
+}
+
+func (g *govimplugin) InlineValueRefresh(context.Context) error {
+	defer absorbShutdownErr()
+	panic("InlineValueRefresh not implemented yet")
+}
+
+func (g *govimplugin) SemanticTokensRefresh(context.Context) error {
+	defer absorbShutdownErr()
+	panic("SemanticTokensRefresh not implemented yet")
+}
+
 func absorbShutdownErr() {
 	if r := recover(); r != nil && r != govim.ErrShuttingDown {
 		panic(r)

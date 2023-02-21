@@ -26,7 +26,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/ast/inspector"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/analysisinternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/fuzzy"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
@@ -135,12 +135,12 @@ func run(pass *analysis.Pass) (interface{}, error) {
 
 // SuggestedFix computes the suggested fix for the kinds of
 // diagnostics produced by the Analyzer above.
-func SuggestedFix(fset *token.FileSet, rng span.Range, content []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
+func SuggestedFix(fset *token.FileSet, start, end token.Pos, content []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error) {
 	if info == nil {
 		return nil, fmt.Errorf("nil types.Info")
 	}
 
-	pos := rng.Start // don't use the end
+	pos := start // don't use the end
 
 	// TODO(rstambler): Using ast.Inspect would probably be more efficient than
 	// calling PathEnclosingInterval. Switch this approach.
@@ -205,7 +205,7 @@ func SuggestedFix(fset *token.FileSet, rng span.Range, content []byte, file *ast
 		}
 		fieldTyps = append(fieldTyps, field.Type())
 	}
-	matches := analysisinternal.MatchingIdents(fieldTyps, file, rng.Start, info, pkg)
+	matches := analysisinternal.MatchingIdents(fieldTyps, file, start, info, pkg)
 	var elts []ast.Expr
 	for i, fieldTyp := range fieldTyps {
 		if fieldTyp == nil {
@@ -271,7 +271,7 @@ func SuggestedFix(fset *token.FileSet, rng span.Range, content []byte, file *ast
 
 	// Find the line on which the composite literal is declared.
 	split := bytes.Split(content, []byte("\n"))
-	lineNumber := fset.Position(expr.Lbrace).Line
+	lineNumber := safetoken.StartPosition(fset, expr.Lbrace).Line
 	firstLine := split[lineNumber-1] // lines are 1-indexed
 
 	// Trim the whitespace from the left of the line, and use the index

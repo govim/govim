@@ -26,6 +26,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/composite"
 	"golang.org/x/tools/go/analysis/passes/copylock"
 	"golang.org/x/tools/go/analysis/passes/deepequalerrors"
+	"golang.org/x/tools/go/analysis/passes/directive"
 	"golang.org/x/tools/go/analysis/passes/errorsas"
 	"golang.org/x/tools/go/analysis/passes/fieldalignment"
 	"golang.org/x/tools/go/analysis/passes/httpresponse"
@@ -115,12 +116,11 @@ func DefaultOptions() *Options {
 			},
 			UserOptions: UserOptions{
 				BuildOptions: BuildOptions{
-					ExpandWorkspaceToModule:     true,
-					ExperimentalPackageCacheKey: true,
-					MemoryMode:                  ModeNormal,
-					DirectoryFilters:            []string{"-**/node_modules"},
-					TemplateExtensions:          []string{},
-					StandaloneTags:              []string{"ignore"},
+					ExpandWorkspaceToModule: true,
+					MemoryMode:              ModeNormal,
+					DirectoryFilters:        []string{"-**/node_modules"},
+					TemplateExtensions:      []string{},
+					StandaloneTags:          []string{"ignore"},
 				},
 				UIOptions: UIOptions{
 					DiagnosticOptions: DiagnosticOptions{
@@ -131,6 +131,7 @@ func DefaultOptions() *Options {
 							Inline: true,
 							Nil:    true,
 						},
+						Vulncheck: ModeVulncheckOff,
 					},
 					InlayHintOptions: InlayHintOptions{},
 					DocumentationOptions: DocumentationOptions{
@@ -139,7 +140,7 @@ func DefaultOptions() *Options {
 						LinksInHover: true,
 					},
 					NavigationOptions: NavigationOptions{
-						ImportShortcut: Both,
+						ImportShortcut: BothShortcuts,
 						SymbolMatcher:  SymbolFastFuzzy,
 						SymbolStyle:    DynamicSymbols,
 					},
@@ -155,7 +156,7 @@ func DefaultOptions() *Options {
 						string(command.GCDetails):         false,
 						string(command.UpgradeDependency): true,
 						string(command.Vendor):            true,
-						// TODO(hyangah): enable command.RunVulncheckExp.
+						// TODO(hyangah): enable command.RunGovulncheck.
 					},
 				},
 			},
@@ -267,22 +268,6 @@ type BuildOptions struct {
 	// a go.mod file, narrowing the scope to that directory if it exists.
 	ExpandWorkspaceToModule bool `status:"experimental"`
 
-	// ExperimentalWorkspaceModule opts a user into the experimental support
-	// for multi-module workspaces.
-	//
-	// Deprecated: this feature is deprecated and will be removed in a future
-	// version of gopls (https://go.dev/issue/55331).
-	ExperimentalWorkspaceModule bool `status:"experimental"`
-
-	// ExperimentalPackageCacheKey controls whether to use a coarser cache key
-	// for package type information to increase cache hits. This setting removes
-	// the user's environment, build flags, and working directory from the cache
-	// key, which should be a safe change as all relevant inputs into the type
-	// checking pass are already hashed into the key. This is temporarily guarded
-	// by an experiment because caching behavior is subtle and difficult to
-	// comprehensively test.
-	ExperimentalPackageCacheKey bool `status:"experimental"`
-
 	// AllowModfileModifications disables -mod=readonly, allowing imports from
 	// out-of-scope modules. This option will eventually be removed.
 	AllowModfileModifications bool `status:"experimental"`
@@ -291,14 +276,6 @@ type BuildOptions struct {
 	// downloads rather than requiring user action. This option will eventually
 	// be removed.
 	AllowImplicitNetworkAccess bool `status:"experimental"`
-
-	// ExperimentalUseInvalidMetadata enables gopls to fall back on outdated
-	// package metadata to provide editor features if the go command fails to
-	// load packages for some reason (like an invalid go.mod file).
-	//
-	// Deprecated: this setting is deprecated and will be removed in a future
-	// version of gopls (https://go.dev/issue/55333).
-	ExperimentalUseInvalidMetadata bool `status:"experimental"`
 
 	// StandaloneTags specifies a set of build constraints that identify
 	// individual Go source files that make up the entire main package of an
@@ -438,6 +415,9 @@ type DiagnosticOptions struct {
 	// that should be reported by the gc_details command.
 	Annotations map[Annotation]bool `status:"experimental"`
 
+	// Vulncheck enables vulnerability scanning.
+	Vulncheck VulncheckMode `status:"experimental"`
+
 	// DiagnosticsDelay controls the amount of time that gopls waits
 	// after the most recent file modification before computing deep diagnostics.
 	// Simple diagnostics (parsing and type-checking) are always run immediately
@@ -445,18 +425,6 @@ type DiagnosticOptions struct {
 	//
 	// This option must be set to a valid duration string, for example `"250ms"`.
 	DiagnosticsDelay time.Duration `status:"advanced"`
-
-	// ExperimentalWatchedFileDelay controls the amount of time that gopls waits
-	// for additional workspace/didChangeWatchedFiles notifications to arrive,
-	// before processing all such notifications in a single batch. This is
-	// intended for use by LSP clients that don't support their own batching of
-	// file system notifications.
-	//
-	// This option must be set to a valid duration string, for example `"100ms"`.
-	//
-	// Deprecated: this setting is deprecated and will be removed in a future
-	// version of gopls (https://go.dev/issue/55332)
-	ExperimentalWatchedFileDelay time.Duration `status:"experimental"`
 }
 
 type InlayHintOptions struct {
@@ -628,17 +596,17 @@ type InternalOptions struct {
 type ImportShortcut string
 
 const (
-	Both       ImportShortcut = "Both"
-	Link       ImportShortcut = "Link"
-	Definition ImportShortcut = "Definition"
+	BothShortcuts      ImportShortcut = "Both"
+	LinkShortcut       ImportShortcut = "Link"
+	DefinitionShortcut ImportShortcut = "Definition"
 )
 
 func (s ImportShortcut) ShowLinks() bool {
-	return s == Both || s == Link
+	return s == BothShortcuts || s == LinkShortcut
 }
 
 func (s ImportShortcut) ShowDefinition() bool {
-	return s == Both || s == Definition
+	return s == BothShortcuts || s == DefinitionShortcut
 }
 
 type Matcher string
@@ -698,6 +666,18 @@ const (
 	// packages without open files. As a result, features like Find
 	// References and Rename will miss results in such packages.
 	ModeDegradeClosed MemoryMode = "DegradeClosed"
+)
+
+type VulncheckMode string
+
+const (
+	// Disable vulnerability analysis.
+	ModeVulncheckOff VulncheckMode = "Off"
+	// In Imports mode, `gopls` will report vulnerabilities that affect packages
+	// directly and indirectly used by the analyzed main module.
+	ModeVulncheckImports VulncheckMode = "Imports"
+
+	// TODO: VulncheckRequire, VulncheckCallgraph
 )
 
 type OptionResults []OptionResult
@@ -763,7 +743,8 @@ func (o *Options) ForClientCapabilities(caps protocol.ClientCapabilities) {
 	o.LineFoldingOnly = fr.LineFoldingOnly
 	// Check if the client supports hierarchical document symbols.
 	o.HierarchicalDocumentSymbolSupport = caps.TextDocument.DocumentSymbol.HierarchicalDocumentSymbolSupport
-	// Check if the client supports semantic tokens
+
+	// Client's semantic tokens
 	o.SemanticTypes = caps.TextDocument.SemanticTokens.TokenTypes
 	o.SemanticMods = caps.TextDocument.SemanticTokens.TokenModifiers
 	// we don't need Requests, as we support full functionality
@@ -849,6 +830,9 @@ func (o *Options) EnableAllExperiments() {
 func (o *Options) enableAllExperimentMaps() {
 	if _, ok := o.Codelenses[string(command.GCDetails)]; !ok {
 		o.Codelenses[string(command.GCDetails)] = true
+	}
+	if _, ok := o.Codelenses[string(command.RunGovulncheck)]; !ok {
+		o.Codelenses[string(command.RunGovulncheck)] = true
 	}
 	if _, ok := o.Analyses[unusedparams.Analyzer.Name]; !ok {
 		o.Analyses[unusedparams.Analyzer.Name] = true
@@ -1001,7 +985,7 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 		result.setBool(&o.LinksInHover)
 
 	case "importShortcut":
-		if s, ok := result.asOneOf(string(Both), string(Link), string(Definition)); ok {
+		if s, ok := result.asOneOf(string(BothShortcuts), string(LinkShortcut), string(DefinitionShortcut)); ok {
 			o.ImportShortcut = ImportShortcut(s)
 		}
 
@@ -1013,6 +997,14 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 
 	case "annotations":
 		result.setAnnotationMap(&o.Annotations)
+
+	case "vulncheck":
+		if s, ok := result.asOneOf(
+			string(ModeVulncheckOff),
+			string(ModeVulncheckImports),
+		); ok {
+			o.Vulncheck = VulncheckMode(s)
+		}
 
 	case "codelenses", "codelens":
 		var lensOverrides map[string]bool
@@ -1081,12 +1073,7 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 		result.setBool(&o.ExperimentalPostfixCompletions)
 
 	case "experimentalWorkspaceModule":
-		const msg = "experimentalWorkspaceModule has been replaced by go workspaces, " +
-			"and will be removed in a future version of gopls (https://go.dev/issue/55331) -- " +
-			"see https://github.com/golang/tools/blob/master/gopls/doc/workspace.md " +
-			"for information on setting up multi-module workspaces using go.work files"
-		result.softErrorf(msg)
-		result.setBool(&o.ExperimentalWorkspaceModule)
+		result.deprecated("")
 
 	case "experimentalTemplateSupport": // TODO(pjw): remove after June 2022
 		result.deprecated("")
@@ -1113,13 +1100,10 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 		result.setDuration(&o.DiagnosticsDelay)
 
 	case "experimentalWatchedFileDelay":
-		const msg = "experimentalWatchedFileDelay is deprecated, and will " +
-			"be removed in a future version of gopls (https://go.dev/issue/55332)"
-		result.softErrorf(msg)
-		result.setDuration(&o.ExperimentalWatchedFileDelay)
+		result.deprecated("")
 
 	case "experimentalPackageCacheKey":
-		result.setBool(&o.ExperimentalPackageCacheKey)
+		result.deprecated("")
 
 	case "allowModfileModifications":
 		result.setBool(&o.AllowModfileModifications)
@@ -1128,10 +1112,7 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 		result.setBool(&o.AllowImplicitNetworkAccess)
 
 	case "experimentalUseInvalidMetadata":
-		const msg = "experimentalUseInvalidMetadata is deprecated, and will be removed " +
-			"in a future version of gopls (https://go.dev/issue/55333)"
-		result.softErrorf(msg)
-		result.setBool(&o.ExperimentalUseInvalidMetadata)
+		result.deprecated("")
 
 	case "standaloneTags":
 		result.setStringSlice(&o.StandaloneTags)
@@ -1378,32 +1359,6 @@ func (r *OptionResult) setStringSlice(s *[]string) {
 	}
 }
 
-// EnabledAnalyzers returns all of the analyzers enabled for the given
-// snapshot.
-func EnabledAnalyzers(snapshot Snapshot) (analyzers []*Analyzer) {
-	for _, a := range snapshot.View().Options().DefaultAnalyzers {
-		if a.IsEnabled(snapshot.View()) {
-			analyzers = append(analyzers, a)
-		}
-	}
-	for _, a := range snapshot.View().Options().TypeErrorAnalyzers {
-		if a.IsEnabled(snapshot.View()) {
-			analyzers = append(analyzers, a)
-		}
-	}
-	for _, a := range snapshot.View().Options().ConvenienceAnalyzers {
-		if a.IsEnabled(snapshot.View()) {
-			analyzers = append(analyzers, a)
-		}
-	}
-	for _, a := range snapshot.View().Options().StaticcheckAnalyzers {
-		if a.IsEnabled(snapshot.View()) {
-			analyzers = append(analyzers, a)
-		}
-	}
-	return analyzers
-}
-
 func typeErrorAnalyzers() map[string]*Analyzer {
 	return map[string]*Analyzer{
 		fillreturns.Analyzer.Name: {
@@ -1459,6 +1414,7 @@ func defaultAnalyzers() map[string]*Analyzer {
 		cgocall.Analyzer.Name:       {Analyzer: cgocall.Analyzer, Enabled: true},
 		composite.Analyzer.Name:     {Analyzer: composite.Analyzer, Enabled: true},
 		copylock.Analyzer.Name:      {Analyzer: copylock.Analyzer, Enabled: true},
+		directive.Analyzer.Name:     {Analyzer: directive.Analyzer, Enabled: true},
 		errorsas.Analyzer.Name:      {Analyzer: errorsas.Analyzer, Enabled: true},
 		httpresponse.Analyzer.Name:  {Analyzer: httpresponse.Analyzer, Enabled: true},
 		ifaceassert.Analyzer.Name:   {Analyzer: ifaceassert.Analyzer, Enabled: true},
