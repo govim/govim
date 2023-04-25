@@ -26,6 +26,9 @@ type (
 	// suggested fixes with their diagnostics, so we have to compute them
 	// separately. Such analyzers should provide a function with a signature of
 	// SuggestedFixFunc.
+	//
+	// The returned FileSet must map all token.Pos found in the suggested text
+	// edits.
 	SuggestedFixFunc  func(ctx context.Context, snapshot Snapshot, fh FileHandle, pRng protocol.Range) (*token.FileSet, *analysis.SuggestedFix, error)
 	singleFileFixFunc func(fset *token.FileSet, start, end token.Pos, src []byte, file *ast.File, pkg *types.Package, info *types.Info) (*analysis.SuggestedFix, error)
 )
@@ -52,7 +55,7 @@ var suggestedFixes = map[string]SuggestedFixFunc{
 // singleFile calls analyzers that expect inputs for a single file
 func singleFile(sf singleFileFixFunc) SuggestedFixFunc {
 	return func(ctx context.Context, snapshot Snapshot, fh FileHandle, pRng protocol.Range) (*token.FileSet, *analysis.SuggestedFix, error) {
-		pkg, pgf, err := PackageForFile(ctx, snapshot, fh.URI(), TypecheckFull, NarrowestPackage)
+		pkg, pgf, err := NarrowestPackageForFile(ctx, snapshot, fh.URI())
 		if err != nil {
 			return nil, nil, err
 		}
@@ -97,7 +100,7 @@ func ApplyFix(ctx context.Context, fix string, snapshot Snapshot, fh FileHandle,
 		if !end.IsValid() {
 			end = edit.Pos
 		}
-		fh, err := snapshot.GetFile(ctx, span.URIFromPath(tokFile.Name()))
+		fh, err := snapshot.ReadFile(ctx, span.URIFromPath(tokFile.Name()))
 		if err != nil {
 			return nil, err
 		}
@@ -113,7 +116,7 @@ func ApplyFix(ctx context.Context, fix string, snapshot Snapshot, fh FileHandle,
 			}
 			editsPerFile[fh.URI()] = te
 		}
-		content, err := fh.Read()
+		content, err := fh.Content()
 		if err != nil {
 			return nil, err
 		}

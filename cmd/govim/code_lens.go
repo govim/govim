@@ -33,7 +33,7 @@ func (v *vimstate) toggleGCDetails(flags govim.CommandFlags, args ...string) err
 		if cmd != nil {
 			return fmt.Errorf("got multiple gc_detail commands from gopls, can't handle")
 		}
-		cmd = &cl.Command
+		cmd = cl.Command
 	}
 	if cmd == nil {
 		return nil

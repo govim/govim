@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//go:generate go run -tags=generate generate.go
+
 // Package command defines the interface provided by gopls for the
 // workspace/executeCommand LSP request.
 //
@@ -11,8 +13,6 @@
 // Bindings for server-side command dispatch and client-side serialization are
 // also provided by this package, via code generation.
 package command
-
-//go:generate go run -tags=generate generate.go
 
 import (
 	"context"
@@ -154,6 +154,22 @@ type Interface interface {
 	//
 	// Fetch the result of latest vulnerability check (`govulncheck`).
 	FetchVulncheckResult(context.Context, URIArg) (map[protocol.DocumentURI]*govulncheck.Result, error)
+
+	// MemStats: fetch memory statistics
+	//
+	// Call runtime.GC multiple times and return memory statistics as reported by
+	// runtime.MemStats.
+	//
+	// This command is used for benchmarking, and may change in the future.
+	MemStats(context.Context) (MemStatsResult, error)
+
+	// WorkspaceStats: fetch workspace statistics
+	//
+	// Query statistics about workspace builds, modules, packages, and files.
+	//
+	// This command is intended for internal use only, by the gopls stats
+	// command.
+	WorkspaceStats(context.Context) (WorkspaceStatsResult, error)
 }
 
 type RunTestsArgs struct {
@@ -393,4 +409,41 @@ type Vuln struct {
 	CallStackSummaries []string `json:",omitempty"`
 
 	// TODO: import graph & module graph.
+}
+
+// MemStatsResult holds selected fields from runtime.MemStats.
+type MemStatsResult struct {
+	HeapAlloc  uint64
+	HeapInUse  uint64
+	TotalAlloc uint64
+}
+
+// WorkspaceStatsResult returns information about the size and shape of the
+// workspace.
+type WorkspaceStatsResult struct {
+	Files FileStats   // file stats for the cache
+	Views []ViewStats // stats for each view in the session
+}
+
+// FileStats holds information about a set of files.
+type FileStats struct {
+	Total   int // total number of files
+	Largest int // number of bytes in the largest file
+	Errs    int // number of files that could not be read
+}
+
+// ViewStats holds information about a single View in the session.
+type ViewStats struct {
+	GoCommandVersion  string       // version of the Go command resolved for this view
+	AllPackages       PackageStats // package info for all packages (incl. dependencies)
+	WorkspacePackages PackageStats // package info for workspace packages
+	Diagnostics       int          // total number of diagnostics in the workspace
+}
+
+// PackageStats holds information about a collection of packages.
+type PackageStats struct {
+	Packages        int // total number of packages
+	LargestPackage  int // number of files in the largest package
+	CompiledGoFiles int // total number of compiled Go files across all packages
+	Modules         int // total number of unique modules
 }

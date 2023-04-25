@@ -37,30 +37,30 @@ func LinknameDefinition(ctx context.Context, snapshot Snapshot, fh FileHandle, p
 //
 // If the position is not in the second argument of a go:linkname directive, or parsing fails, it returns "", "".
 func parseLinkname(ctx context.Context, snapshot Snapshot, fh FileHandle, pos protocol.Position) (pkgPath, name string) {
+	// TODO(adonovan): opt: parsing isn't necessary here.
+	// We're only looking for a line comment.
 	pgf, err := snapshot.ParseGo(ctx, fh, ParseFull)
 	if err != nil {
 		return "", ""
 	}
 
-	span, err := pgf.Mapper.PositionPoint(pos)
+	offset, err := pgf.Mapper.PositionOffset(pos)
 	if err != nil {
 		return "", ""
 	}
-	atLine := span.Line()
-	atColumn := span.Column()
 
 	// Looking for pkgpath in '//go:linkname f pkgpath.g'.
 	// (We ignore 1-arg linkname directives.)
-	directive, column := findLinknameOnLine(pgf, atLine)
+	directive, end := findLinknameAtOffset(pgf, offset)
 	parts := strings.Fields(directive)
 	if len(parts) != 3 {
 		return "", ""
 	}
 
 	// Inside 2nd arg [start, end]?
-	end := column + len(directive)
+	// (Assumes no trailing spaces.)
 	start := end - len(parts[2])
-	if !(start <= atColumn && atColumn <= end) {
+	if !(start <= offset && offset <= end) {
 		return "", ""
 	}
 	linkname := parts[2]
@@ -73,15 +73,16 @@ func parseLinkname(ctx context.Context, snapshot Snapshot, fh FileHandle, pos pr
 	return linkname[:dot], linkname[dot+1:]
 }
 
-// findLinknameOnLine returns the first linkname directive on line and the column it starts at.
-// Returns "", 0 if no linkname directive is found on the line.
-func findLinknameOnLine(pgf *ParsedGoFile, line int) (string, int) {
+// findLinknameAtOffset returns the first linkname directive on line and its end offset.
+// Returns "", 0 if the offset is not in a linkname directive.
+func findLinknameAtOffset(pgf *ParsedGoFile, offset int) (string, int) {
 	for _, grp := range pgf.File.Comments {
 		for _, com := range grp.List {
 			if strings.HasPrefix(com.Text, "//go:linkname") {
 				p := safetoken.Position(pgf.Tok, com.Pos())
-				if p.Line == line {
-					return com.Text, p.Column
+				end := p.Offset + len(com.Text)
+				if p.Offset <= offset && offset < end {
+					return com.Text, end
 				}
 			}
 		}
@@ -92,35 +93,27 @@ func findLinknameOnLine(pgf *ParsedGoFile, line int) (string, int) {
 // findLinkname searches dependencies of packages containing fh for an object
 // with linker name matching the given package path and name.
 func findLinkname(ctx context.Context, snapshot Snapshot, fh FileHandle, pos protocol.Position, pkgPath PackagePath, name string) ([]protocol.Location, error) {
-	metas, err := snapshot.MetadataForFile(ctx, fh.URI())
+	// Typically the linkname refers to a forward dependency
+	// or a reverse dependency, but in general it may refer
+	// to any package in the workspace.
+	var pkgMeta *Metadata
+	metas, err := snapshot.AllMetadata(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(metas) == 0 {
-		return nil, fmt.Errorf("no package found for file %q", fh.URI())
+	RemoveIntermediateTestVariants(&metas)
+	for _, meta := range metas {
+		if meta.PkgPath == pkgPath {
+			pkgMeta = meta
+			break
+		}
 	}
-
-	// Find package starting from narrowest package metadata.
-	pkgMeta := findPackageInDeps(snapshot, metas[0], pkgPath)
 	if pkgMeta == nil {
-		// Fall back to searching reverse dependencies.
-		reverse, err := snapshot.ReverseDependencies(ctx, metas[0].ID, true /* transitive */)
-		if err != nil {
-			return nil, err
-		}
-		for _, dep := range reverse {
-			if dep.PkgPath == pkgPath {
-				pkgMeta = dep
-				break
-			}
-		}
-		if pkgMeta == nil {
-			return nil, fmt.Errorf("cannot find package %q", pkgPath)
-		}
+		return nil, fmt.Errorf("cannot find package %q", pkgPath)
 	}
 
 	// When found, type check the desired package (snapshot.TypeCheck in TypecheckFull mode),
-	pkgs, err := snapshot.TypeCheck(ctx, TypecheckFull, pkgMeta.ID)
+	pkgs, err := snapshot.TypeCheck(ctx, pkgMeta.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -141,25 +134,4 @@ func findLinkname(ctx context.Context, snapshot Snapshot, fh FileHandle, pos pro
 		return nil, err
 	}
 	return []protocol.Location{loc}, nil
-}
-
-// findPackageInDeps returns the dependency of meta of the specified package path, if any.
-func findPackageInDeps(snapshot Snapshot, meta *Metadata, pkgPath PackagePath) *Metadata {
-	seen := make(map[*Metadata]bool)
-	var visit func(*Metadata) *Metadata
-	visit = func(meta *Metadata) *Metadata {
-		if !seen[meta] {
-			seen[meta] = true
-			if meta.PkgPath == pkgPath {
-				return meta
-			}
-			for _, id := range meta.DepsByPkgPath {
-				if m := visit(snapshot.Metadata(id)); m != nil {
-					return m
-				}
-			}
-		}
-		return nil
-	}
-	return visit(meta)
 }

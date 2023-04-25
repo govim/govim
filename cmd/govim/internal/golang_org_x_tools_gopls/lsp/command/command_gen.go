@@ -30,6 +30,7 @@ const (
 	GoGetPackage          Command = "go_get_package"
 	ListImports           Command = "list_imports"
 	ListKnownPackages     Command = "list_known_packages"
+	MemStats              Command = "mem_stats"
 	RegenerateCgo         Command = "regenerate_cgo"
 	RemoveDependency      Command = "remove_dependency"
 	ResetGoModDiagnostics Command = "reset_go_mod_diagnostics"
@@ -42,6 +43,7 @@ const (
 	UpdateGoSum           Command = "update_go_sum"
 	UpgradeDependency     Command = "upgrade_dependency"
 	Vendor                Command = "vendor"
+	WorkspaceStats        Command = "workspace_stats"
 )
 
 var Commands = []Command{
@@ -56,6 +58,7 @@ var Commands = []Command{
 	GoGetPackage,
 	ListImports,
 	ListKnownPackages,
+	MemStats,
 	RegenerateCgo,
 	RemoveDependency,
 	ResetGoModDiagnostics,
@@ -68,6 +71,7 @@ var Commands = []Command{
 	UpdateGoSum,
 	UpgradeDependency,
 	Vendor,
+	WorkspaceStats,
 }
 
 func Dispatch(ctx context.Context, params *protocol.ExecuteCommandParams, s Interface) (interface{}, error) {
@@ -138,6 +142,8 @@ func Dispatch(ctx context.Context, params *protocol.ExecuteCommandParams, s Inte
 			return nil, err
 		}
 		return s.ListKnownPackages(ctx, a0)
+	case "gopls.mem_stats":
+		return s.MemStats(ctx)
 	case "gopls.regenerate_cgo":
 		var a0 URIArg
 		if err := UnmarshalArgs(params.Arguments, &a0); err != nil {
@@ -212,6 +218,8 @@ func Dispatch(ctx context.Context, params *protocol.ExecuteCommandParams, s Inte
 			return nil, err
 		}
 		return nil, s.Vendor(ctx, a0)
+	case "gopls.workspace_stats":
+		return s.WorkspaceStats(ctx)
 	}
 	return nil, fmt.Errorf("unsupported command %q", params.Command)
 }
@@ -344,6 +352,18 @@ func NewListKnownPackagesCommand(title string, a0 URIArg) (protocol.Command, err
 	return protocol.Command{
 		Title:     title,
 		Command:   "gopls.list_known_packages",
+		Arguments: args,
+	}, nil
+}
+
+func NewMemStatsCommand(title string) (protocol.Command, error) {
+	args, err := MarshalArgs()
+	if err != nil {
+		return protocol.Command{}, err
+	}
+	return protocol.Command{
+		Title:     title,
+		Command:   "gopls.mem_stats",
 		Arguments: args,
 	}, nil
 }
@@ -488,6 +508,18 @@ func NewVendorCommand(title string, a0 URIArg) (protocol.Command, error) {
 	return protocol.Command{
 		Title:     title,
 		Command:   "gopls.vendor",
+		Arguments: args,
+	}, nil
+}
+
+func NewWorkspaceStatsCommand(title string) (protocol.Command, error) {
+	args, err := MarshalArgs()
+	if err != nil {
+		return protocol.Command{}, err
+	}
+	return protocol.Command{
+		Title:     title,
+		Command:   "gopls.workspace_stats",
 		Arguments: args,
 	}, nil
 }

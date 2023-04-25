@@ -23,7 +23,7 @@ func SignatureHelp(ctx context.Context, snapshot Snapshot, fh FileHandle, positi
 
 	// We need full type-checking here, as we must type-check function bodies in
 	// order to provide signature help at the requested position.
-	pkg, pgf, err := PackageForFile(ctx, snapshot, fh.URI(), TypecheckFull, NarrowestPackage)
+	pkg, pgf, err := NarrowestPackageForFile(ctx, snapshot, fh.URI())
 	if err != nil {
 		return nil, 0, fmt.Errorf("getting file for SignatureHelp: %w", err)
 	}
@@ -97,7 +97,7 @@ FindCall:
 		comment *ast.CommentGroup
 	)
 	if obj != nil {
-		d, err := HoverDocForObject(ctx, snapshot, pkg, obj)
+		d, err := HoverDocForObject(ctx, snapshot, pkg.FileSet(), obj)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -107,7 +107,7 @@ FindCall:
 		name = "func"
 	}
 	mq := MetadataQualifierForFile(snapshot, pgf.File, pkg.Metadata())
-	s, err := NewSignature(ctx, snapshot, pkg, pgf.File, sig, comment, qf, mq)
+	s, err := NewSignature(ctx, snapshot, pkg, sig, comment, qf, mq)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -170,7 +170,7 @@ func stringToSigInfoDocumentation(s string, options *Options) *protocol.Or_Signa
 	v := s
 	k := protocol.PlainText
 	if options.PreferredContentFormat == protocol.Markdown {
-		v = CommentToMarkdown(s)
+		v = CommentToMarkdown(s, options)
 		// whether or not content is newline terminated may not matter for LSP clients,
 		// but our tests expect trailing newlines to be stripped.
 		v = strings.TrimSuffix(v, "\n") // TODO(pjw): change the golden files

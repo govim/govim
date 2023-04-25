@@ -9,7 +9,7 @@
 // This package provides only the "global" (all workspace) search; the
 // "local" search within a given package uses a different
 // implementation based on type-checker data structures for a single
-// package plus variants; see ../implementation2.go.
+// package plus variants; see ../implementation.go.
 // The local algorithm is more precise as it tests function-local types too.
 //
 // A global index of function-local types is challenging since they
@@ -44,10 +44,13 @@ package methodsets
 // single 64-bit mask is quite effective. See CL 452060 for details.
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"go/token"
 	"go/types"
 	"hash/crc32"
+	"log"
 	"strconv"
 	"strings"
 
@@ -61,6 +64,32 @@ import (
 // without the type checker.
 type Index struct {
 	pkg gobPackage
+}
+
+// Decode decodes the given gob-encoded data as an Index.
+func Decode(data []byte) *Index {
+	var pkg gobPackage
+	mustDecode(data, &pkg)
+	return &Index{pkg}
+}
+
+// Encode encodes the receiver as gob-encoded data.
+func (index *Index) Encode() []byte {
+	return mustEncode(index.pkg)
+}
+
+func mustEncode(x interface{}) []byte {
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(x); err != nil {
+		log.Fatalf("internal error encoding %T: %v", x, err)
+	}
+	return buf.Bytes()
+}
+
+func mustDecode(data []byte, ptr interface{}) {
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(ptr); err != nil {
+		log.Fatalf("internal error decoding %T: %v", ptr, err)
+	}
 }
 
 // NewIndex returns a new index of method-set information for all
@@ -202,6 +231,8 @@ func (b *indexBuilder) build(fset *token.FileSet, pkg *types.Package) *Index {
 		return gobPosition{b.string(posn.Filename), posn.Offset, len(obj.Name())}
 	}
 
+	objectpathFor := new(objectpath.Encoder).For
+
 	// setindexInfo sets the (Posn, PkgPath, ObjectPath) fields for each method declaration.
 	setIndexInfo := func(m *gobMethod, method *types.Func) {
 		// error.Error has empty Position, PkgPath, and ObjectPath.
@@ -214,7 +245,7 @@ func (b *indexBuilder) build(fset *token.FileSet, pkg *types.Package) *Index {
 
 		// Instantiations of generic methods don't have an
 		// object path, so we use the generic.
-		if p, err := objectpath.For(typeparams.OriginMethod(method)); err != nil {
+		if p, err := objectpathFor(typeparams.OriginMethod(method)); err != nil {
 			panic(err) // can't happen for a method of a package-level type
 		} else {
 			m.ObjectPath = b.string(string(p))
@@ -471,6 +502,6 @@ type gobMethod struct {
 
 // A gobPosition records the file, offset, and length of an identifier.
 type gobPosition struct {
-	File        int // index into gopPackage.Strings
+	File        int // index into gobPackage.Strings
 	Offset, Len int // in bytes
 }

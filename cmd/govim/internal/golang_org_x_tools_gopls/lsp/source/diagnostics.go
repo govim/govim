@@ -18,13 +18,6 @@ type SuggestedFix struct {
 	ActionKind protocol.CodeActionKind
 }
 
-type RelatedInformation struct {
-	// TOOD(adonovan): replace these two fields by a protocol.Location.
-	URI     span.URI
-	Range   protocol.Range
-	Message string
-}
-
 // Analyze reports go/analysis-framework diagnostics in the specified package.
 func Analyze(ctx context.Context, snapshot Snapshot, pkgid PackageID, includeConvenience bool) (map[span.URI][]*Diagnostic, error) {
 	// Exit early if the context has been canceled. This also protects us
@@ -67,18 +60,18 @@ func Analyze(ctx context.Context, snapshot Snapshot, pkgid PackageID, includeCon
 // as used by the "gopls check" command.
 //
 // TODO(adonovan): factor in common with (*Server).codeAction, which
-// executes { PackageForFile; Analyze } too?
+// executes { NarrowestPackageForFile; Analyze } too?
 //
 // TODO(adonovan): opt: this function is called in a loop from the
 // "gopls/diagnoseFiles" nonstandard request handler. It would be more
 // efficient to compute the set of packages and TypeCheck and
 // Analyze them all at once.
 func FileDiagnostics(ctx context.Context, snapshot Snapshot, uri span.URI) (FileHandle, []*Diagnostic, error) {
-	fh, err := snapshot.GetFile(ctx, uri)
+	fh, err := snapshot.ReadFile(ctx, uri)
 	if err != nil {
 		return nil, nil, err
 	}
-	pkg, _, err := PackageForFile(ctx, snapshot, uri, TypecheckFull, NarrowestPackage)
+	pkg, _, err := NarrowestPackageForFile(ctx, snapshot, uri)
 	if err != nil {
 		return nil, nil, err
 	}
