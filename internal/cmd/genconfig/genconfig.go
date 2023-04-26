@@ -193,7 +193,7 @@ func writeDockerWorkflow() {
 			vimVersions = append(vimVersions, b.vimversion)
 		}
 	}
-	var entries = struct {
+	entries := struct {
 		GoVersions  string
 		VimFlavors  string
 		VimVersions string
@@ -312,7 +312,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-18.04]
+        os: [ubuntu-20.04]
         go_version: {{{ .GoVersions }}}
         vim_flavor: {{{ .VimFlavors }}}
         vim_version: {{{ .VimVersions }}}
@@ -351,7 +351,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-18.04]
+        os: [ubuntu-20.04]
         go-version: ["{{{.MaxRealGoVersion}}}"]
     runs-on: ${{ matrix.os }}
     env:
