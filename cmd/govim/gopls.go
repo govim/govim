@@ -155,7 +155,7 @@ func (g *govimplugin) startGopls() error {
 	initParams.WorkspaceFolders = []protocol.WorkspaceFolder{
 		{URI: string(span.URIFromPath(filepath.Dir(gomodspec)))},
 	}
-	initParams.Capabilities.TextDocument.Hover = protocol.HoverClientCapabilities{
+	initParams.Capabilities.TextDocument.Hover = &protocol.HoverClientCapabilities{
 		ContentFormat: []protocol.MarkupKind{protocol.PlainText},
 	}
 	initParams.Capabilities.Workspace.Configuration = true

@@ -21,6 +21,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/imports"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tokeninternal"
 )
 
 // Format formats a file with a given range.
@@ -33,7 +34,6 @@ func Format(ctx context.Context, snapshot Snapshot, fh FileHandle) ([]protocol.T
 		return nil, fmt.Errorf("can't format %q: file is generated", fh.URI().Filename())
 	}
 
-	fset := snapshot.FileSet()
 	pgf, err := snapshot.ParseGo(ctx, fh, ParseFull)
 	if err != nil {
 		return nil, err
@@ -54,6 +54,7 @@ func Format(ctx context.Context, snapshot Snapshot, fh FileHandle) ([]protocol.T
 	// This should be acceptable for all users, who likely be prompted to rebuild
 	// the LSP server on each Go release.
 	buf := &bytes.Buffer{}
+	fset := tokeninternal.FileSetFor(pgf.Tok)
 	if err := format.Node(buf, fset, pgf.File); err != nil {
 		return nil, err
 	}
@@ -71,9 +72,9 @@ func Format(ctx context.Context, snapshot Snapshot, fh FileHandle) ([]protocol.T
 		// Can this, for example, result in inconsistent formatting across saves,
 		// due to pending calls to packages.Load?
 		var langVersion, modulePath string
-		mds, err := snapshot.MetadataForFile(ctx, fh.URI())
-		if err == nil && len(mds) > 0 {
-			if mi := mds[0].Module; mi != nil {
+		meta, err := NarrowestMetadataForFile(ctx, snapshot, fh.URI())
+		if err == nil {
+			if mi := meta.Module; mi != nil {
 				langVersion = mi.GoVersion
 				modulePath = mi.Path
 			}
@@ -91,7 +92,7 @@ func formatSource(ctx context.Context, fh FileHandle) ([]byte, error) {
 	_, done := event.Start(ctx, "source.formatSource")
 	defer done()
 
-	data, err := fh.Read()
+	data, err := fh.Content()
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +238,7 @@ func importPrefix(src []byte) (string, error) {
 		// specifically, in the text of a comment, it will strip out \r\n line
 		// endings in favor of \n. To account for these differences, we try to
 		// return a position on the next line whenever possible.
-		switch line := tok.Line(tok.Pos(offset)); {
+		switch line := safetoken.Line(tok, tok.Pos(offset)); {
 		case line < tok.LineCount():
 			nextLineOffset, err := safetoken.Offset(tok, tok.LineStart(line+1))
 			if err != nil {
@@ -335,7 +336,7 @@ func protocolEditsFromSource(src []byte, edits []diff.Edit) ([]protocol.TextEdit
 	return result, nil
 }
 
-// ToProtocolEdits converts diff.Edits to LSP TextEdits.
+// ToProtocolEdits converts diff.Edits to a non-nil slice of LSP TextEdits.
 // See https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textEditArray
 func ToProtocolEdits(m *protocol.Mapper, edits []diff.Edit) ([]protocol.TextEdit, error) {
 	// LSP doesn't require TextEditArray to be sorted:
@@ -381,11 +382,11 @@ func FromProtocolEdits(m *protocol.Mapper, edits []protocol.TextEdit) ([]diff.Ed
 
 // ApplyProtocolEdits applies the patch (edits) to m.Content and returns the result.
 // It also returns the edits converted to diff-package form.
-func ApplyProtocolEdits(m *protocol.Mapper, edits []protocol.TextEdit) (string, []diff.Edit, error) {
+func ApplyProtocolEdits(m *protocol.Mapper, edits []protocol.TextEdit) ([]byte, []diff.Edit, error) {
 	diffEdits, err := FromProtocolEdits(m, edits)
 	if err != nil {
-		return "", nil, err
+		return nil, nil, err
 	}
-	out, err := diff.Apply(string(m.Content), diffEdits)
+	out, err := diff.ApplyBytes(m.Content, diffEdits)
 	return out, diffEdits, err
 }

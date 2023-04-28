@@ -18,7 +18,7 @@ func TypeDefinition(ctx context.Context, snapshot Snapshot, fh FileHandle, posit
 	ctx, done := event.Start(ctx, "source.TypeDefinition")
 	defer done()
 
-	pkg, pgf, err := PackageForFile(ctx, snapshot, fh.URI(), TypecheckFull, NarrowestPackage)
+	pkg, pgf, err := NarrowestPackageForFile(ctx, snapshot, fh.URI())
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +27,10 @@ func TypeDefinition(ctx context.Context, snapshot Snapshot, fh FileHandle, posit
 		return nil, err
 	}
 
-	obj := referencedObject(pkg, pgf, pos)
+	// TODO(rfindley): handle type switch implicits correctly here: if the user
+	// jumps to the type definition of x in x := y.(type), it makes sense to jump
+	// to the type of y.
+	_, obj, _ := referencedObject(pkg, pgf, pos)
 	if obj == nil {
 		return nil, nil
 	}

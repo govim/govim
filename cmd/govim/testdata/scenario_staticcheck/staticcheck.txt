@@ -1,5 +1,7 @@
 # Verify that staticcheck is enabled by default and works
 
+[!go1.19] skip 'gopls disables staticcheck for unsupported versions of Go'
+
 # Note: errors.golden effectively contains a duplicate diagnostic below. This is
 # being tracked in https://github.com/golang/go/issues/34494 but we "allow" it
 # for now in this test to give exposure to the staticcheck work

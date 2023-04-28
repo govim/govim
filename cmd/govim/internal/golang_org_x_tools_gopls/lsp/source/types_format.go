@@ -19,6 +19,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/tag"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tokeninternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
 
@@ -87,7 +88,6 @@ func (s *signature) Params() []string {
 // NewBuiltinSignature returns signature for the builtin object with a given
 // name, if a builtin object with the name exists.
 func NewBuiltinSignature(ctx context.Context, s Snapshot, name string) (*signature, error) {
-	fset := s.FileSet()
 	builtin, err := s.BuiltinFile(ctx)
 	if err != nil {
 		return nil, err
@@ -111,6 +111,7 @@ func NewBuiltinSignature(ctx context.Context, s Snapshot, name string) (*signatu
 			variadic = true
 		}
 	}
+	fset := tokeninternal.FileSetFor(builtin.Tok)
 	params, _ := formatFieldList(ctx, fset, decl.Type.Params, variadic)
 	results, needResultParens := formatFieldList(ctx, fset, decl.Type.Results, false)
 	d := decl.Doc.Text()
@@ -130,6 +131,8 @@ func NewBuiltinSignature(ctx context.Context, s Snapshot, name string) (*signatu
 	}, nil
 }
 
+// replacer replaces some synthetic "type classes" used in the builtin file
+// with their most common constituent type.
 var replacer = strings.NewReplacer(
 	`ComplexType`, `complex128`,
 	`FloatType`, `float64`,
@@ -194,7 +197,7 @@ func FormatTypeParams(tparams *typeparams.TypeParamList) string {
 }
 
 // NewSignature returns formatted signature for a types.Signature struct.
-func NewSignature(ctx context.Context, s Snapshot, pkg Package, srcFile *ast.File, sig *types.Signature, comment *ast.CommentGroup, qf types.Qualifier, mq MetadataQualifier) (*signature, error) {
+func NewSignature(ctx context.Context, s Snapshot, pkg Package, sig *types.Signature, comment *ast.CommentGroup, qf types.Qualifier, mq MetadataQualifier) (*signature, error) {
 	var tparams []string
 	tpList := typeparams.ForSignature(sig)
 	for i := 0; i < tpList.Len(); i++ {
@@ -207,7 +210,7 @@ func NewSignature(ctx context.Context, s Snapshot, pkg Package, srcFile *ast.Fil
 	params := make([]string, 0, sig.Params().Len())
 	for i := 0; i < sig.Params().Len(); i++ {
 		el := sig.Params().At(i)
-		typ, err := FormatVarType(ctx, s, pkg, srcFile, el, qf, mq)
+		typ, err := FormatVarType(ctx, s, pkg, el, qf, mq)
 		if err != nil {
 			return nil, err
 		}
@@ -225,7 +228,7 @@ func NewSignature(ctx context.Context, s Snapshot, pkg Package, srcFile *ast.Fil
 			needResultParens = true
 		}
 		el := sig.Results().At(i)
-		typ, err := FormatVarType(ctx, s, pkg, srcFile, el, qf, mq)
+		typ, err := FormatVarType(ctx, s, pkg, el, qf, mq)
 		if err != nil {
 			return nil, err
 		}
@@ -264,7 +267,7 @@ func NewSignature(ctx context.Context, s Snapshot, pkg Package, srcFile *ast.Fil
 //
 // TODO(rfindley): this function could return the actual name used in syntax,
 // for better parameter names.
-func FormatVarType(ctx context.Context, snapshot Snapshot, srcpkg Package, srcFile *ast.File, obj *types.Var, qf types.Qualifier, mq MetadataQualifier) (string, error) {
+func FormatVarType(ctx context.Context, snapshot Snapshot, srcpkg Package, obj *types.Var, qf types.Qualifier, mq MetadataQualifier) (string, error) {
 	// TODO(rfindley): This looks wrong. The previous comment said:
 	// "If the given expr refers to a type parameter, then use the
 	// object's Type instead of the type parameter declaration. This helps
@@ -286,19 +289,19 @@ func FormatVarType(ctx context.Context, snapshot Snapshot, srcpkg Package, srcFi
 		return types.TypeString(obj.Type(), qf), nil
 	}
 
-	targetpgf, pos, err := parseFull(ctx, snapshot, srcpkg, obj.Pos())
+	targetpgf, pos, err := parseFull(ctx, snapshot, srcpkg.FileSet(), obj.Pos())
 	if err != nil {
 		return "", err // e.g. ctx cancelled
 	}
 
-	targetMeta := findFileInDepsMetadata(snapshot, srcpkg.Metadata(), targetpgf.URI)
+	targetMeta := findFileInDeps(snapshot, srcpkg.Metadata(), targetpgf.URI)
 	if targetMeta == nil {
 		// If we have an object from type-checking, it should exist in a file in
 		// the forward transitive closure.
 		return "", bug.Errorf("failed to find file %q in deps of %q", targetpgf.URI, srcpkg.Metadata().ID)
 	}
 
-	decl, spec, field := FindDeclInfo([]*ast.File{targetpgf.File}, pos)
+	decl, spec, field := findDeclInfo([]*ast.File{targetpgf.File}, pos)
 
 	// We can't handle type parameters correctly, so we fall back on TypeString
 	// for parameterized decls.

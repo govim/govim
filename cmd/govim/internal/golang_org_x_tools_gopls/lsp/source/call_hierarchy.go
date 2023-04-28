@@ -27,7 +27,7 @@ func PrepareCallHierarchy(ctx context.Context, snapshot Snapshot, fh FileHandle,
 	ctx, done := event.Start(ctx, "source.PrepareCallHierarchy")
 	defer done()
 
-	pkg, pgf, err := PackageForFile(ctx, snapshot, fh.URI(), TypecheckFull, NarrowestPackage)
+	pkg, pgf, err := NarrowestPackageForFile(ctx, snapshot, fh.URI())
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func PrepareCallHierarchy(ctx context.Context, snapshot Snapshot, fh FileHandle,
 		return nil, err
 	}
 
-	obj := referencedObject(pkg, pgf, pos)
+	_, obj, _ := referencedObject(pkg, pgf, pos)
 	if obj == nil {
 		return nil, nil
 	}
@@ -68,7 +68,7 @@ func IncomingCalls(ctx context.Context, snapshot Snapshot, fh FileHandle, pos pr
 	ctx, done := event.Start(ctx, "source.IncomingCalls")
 	defer done()
 
-	refs, err := referencesV2(ctx, snapshot, fh, pos, false)
+	refs, err := references(ctx, snapshot, fh, pos, false)
 	if err != nil {
 		if errors.Is(err, ErrNoIdentFound) || errors.Is(err, errNoObjectFound) {
 			return nil, nil
@@ -79,9 +79,9 @@ func IncomingCalls(ctx context.Context, snapshot Snapshot, fh FileHandle, pos pr
 	// Group references by their enclosing function declaration.
 	incomingCalls := make(map[protocol.Location]*protocol.CallHierarchyIncomingCall)
 	for _, ref := range refs {
-		callItem, err := enclosingNodeCallItem(ctx, snapshot, ref.PkgPath, ref.Location)
+		callItem, err := enclosingNodeCallItem(ctx, snapshot, ref.pkgPath, ref.location)
 		if err != nil {
-			event.Error(ctx, "error getting enclosing node", err, tag.Method.Of(ref.Name))
+			event.Error(ctx, "error getting enclosing node", err, tag.Method.Of(string(ref.pkgPath)))
 			continue
 		}
 		loc := protocol.Location{
@@ -93,7 +93,7 @@ func IncomingCalls(ctx context.Context, snapshot Snapshot, fh FileHandle, pos pr
 			call = &protocol.CallHierarchyIncomingCall{From: callItem}
 			incomingCalls[loc] = call
 		}
-		call.FromRanges = append(call.FromRanges, ref.Location.Range)
+		call.FromRanges = append(call.FromRanges, ref.location.Range)
 	}
 
 	// Flatten the map of pointers into a slice of values.
@@ -107,7 +107,7 @@ func IncomingCalls(ctx context.Context, snapshot Snapshot, fh FileHandle, pos pr
 // enclosingNodeCallItem creates a CallHierarchyItem representing the function call at loc.
 func enclosingNodeCallItem(ctx context.Context, snapshot Snapshot, pkgPath PackagePath, loc protocol.Location) (protocol.CallHierarchyItem, error) {
 	// Parse the file containing the reference.
-	fh, err := snapshot.GetFile(ctx, loc.URI.SpanURI())
+	fh, err := snapshot.ReadFile(ctx, loc.URI.SpanURI())
 	if err != nil {
 		return protocol.CallHierarchyItem{}, err
 	}
@@ -182,7 +182,7 @@ func OutgoingCalls(ctx context.Context, snapshot Snapshot, fh FileHandle, pp pro
 	ctx, done := event.Start(ctx, "source.OutgoingCalls")
 	defer done()
 
-	pkg, pgf, err := PackageForFile(ctx, snapshot, fh.URI(), TypecheckFull, NarrowestPackage)
+	pkg, pgf, err := NarrowestPackageForFile(ctx, snapshot, fh.URI())
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +191,7 @@ func OutgoingCalls(ctx context.Context, snapshot Snapshot, fh FileHandle, pp pro
 		return nil, err
 	}
 
-	obj := referencedObject(pkg, pgf, pos)
+	_, obj, _ := referencedObject(pkg, pgf, pos)
 	if obj == nil {
 		return nil, nil
 	}
@@ -221,7 +221,7 @@ func OutgoingCalls(ctx context.Context, snapshot Snapshot, fh FileHandle, pp pro
 	}
 
 	// Use TypecheckFull as we want to inspect the body of the function declaration.
-	declPkg, declPGF, err := PackageForFile(ctx, snapshot, uri, TypecheckFull, NarrowestPackage)
+	declPkg, declPGF, err := NarrowestPackageForFile(ctx, snapshot, uri)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,7 @@ func OutgoingCalls(ctx context.Context, snapshot Snapshot, fh FileHandle, pp pro
 		return nil, err
 	}
 
-	declNode, _, _ := FindDeclInfo([]*ast.File{declPGF.File}, declPos)
+	declNode, _, _ := findDeclInfo([]*ast.File{declPGF.File}, declPos)
 	if declNode == nil {
 		// TODO(rfindley): why don't we return an error here, or even bug.Errorf?
 		return nil, nil
@@ -266,7 +266,7 @@ func OutgoingCalls(ctx context.Context, snapshot Snapshot, fh FileHandle, pp pro
 
 	outgoingCalls := map[token.Pos]*protocol.CallHierarchyOutgoingCall{}
 	for _, callRange := range callRanges {
-		obj := referencedObject(declPkg, declPGF, callRange.start)
+		_, obj, _ := referencedObject(declPkg, declPGF, callRange.start)
 		if obj == nil {
 			continue
 		}

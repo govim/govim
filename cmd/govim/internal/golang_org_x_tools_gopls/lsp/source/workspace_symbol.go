@@ -298,7 +298,6 @@ func (c comboMatcher) match(chunks []string) (int, float64) {
 //   - A symbolizer determines how we extract the symbol for an object. This
 //     enables the 'symbolStyle' configuration option.
 func collectSymbols(ctx context.Context, views []View, matcherType SymbolMatcher, symbolizer symbolizer, query string) ([]protocol.SymbolInformation, error) {
-
 	// Extract symbols from all files.
 	var work []symbolFile
 	var roots []string
@@ -318,7 +317,11 @@ func collectSymbols(ctx context.Context, views []View, matcherType SymbolMatcher
 		filters := v.Options().DirectoryFilters
 		filterer := NewFilterer(filters)
 		folder := filepath.ToSlash(v.Folder().Filename())
-		for uri, syms := range snapshot.Symbols(ctx) {
+		symbols, err := snapshot.Symbols(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for uri, syms := range symbols {
 			norm := filepath.ToSlash(uri.Filename())
 			nm := strings.TrimPrefix(norm, folder)
 			if filterer.Disallow(nm) {
@@ -328,17 +331,13 @@ func collectSymbols(ctx context.Context, views []View, matcherType SymbolMatcher
 			if seen[uri] {
 				continue
 			}
-			mds, err := snapshot.MetadataForFile(ctx, uri)
+			meta, err := NarrowestMetadataForFile(ctx, snapshot, uri)
 			if err != nil {
 				event.Error(ctx, fmt.Sprintf("missing metadata for %q", uri), err)
 				continue
 			}
-			if len(mds) == 0 {
-				// TODO: should use the bug reporting API
-				continue
-			}
 			seen[uri] = true
-			work = append(work, symbolFile{uri, mds[0], syms})
+			work = append(work, symbolFile{uri, meta, syms})
 		}
 	}
 
@@ -468,12 +467,12 @@ func matchFile(store *symbolStore, symbolizer symbolizer, matcher matcherFunc, r
 		// All factors are multiplicative, meaning if more than one applies they are
 		// multiplied together.
 		const (
-			// nonWorkspaceFactor is applied to symbols outside of any active
-			// workspace. Developers are less likely to want to jump to code that they
+			// nonWorkspaceFactor is applied to symbols outside the workspace.
+			// Developers are less likely to want to jump to code that they
 			// are not actively working on.
 			nonWorkspaceFactor = 0.5
-			// nonWorkspaceUnexportedFactor is applied to unexported symbols outside of
-			// any active workspace. Since one wouldn't usually jump to unexported
+			// nonWorkspaceUnexportedFactor is applied to unexported symbols outside
+			// the workspace. Since one wouldn't usually jump to unexported
 			// symbols to understand a package API, they are particularly irrelevant.
 			nonWorkspaceUnexportedFactor = 0.5
 			// every field or method nesting level to access the field decreases

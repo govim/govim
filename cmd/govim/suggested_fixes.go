@@ -161,7 +161,7 @@ func diagSuggestions(codeActions []protocol.CodeAction) []resolvableDiag {
 			if _, exist := resolvableDiags[k]; !exist {
 				resolvableDiags[k] = make([]suggestedFix, 0)
 			}
-			resolvableDiags[k] = append(resolvableDiags[k], suggestedFix{ca.Title, ca.Command, ca.Edit})
+			resolvableDiags[k] = append(resolvableDiags[k], suggestedFix{ca.Title, ca.Command, *ca.Edit})
 		}
 	}
 
