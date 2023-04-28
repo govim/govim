@@ -4,8 +4,10 @@
 
 # Open main.go that lacks import statement for "fmt"
 vim ex 'e main.go'
-[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.20] vimexprwait errors.go120.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.20] vimexprwait errors.go120.golden GOVIMTest_getqflist()
 
 # Save the file so the import statment is added (and cursor is moved)
 vim ex 'call cursor(4,15)'
@@ -29,7 +31,7 @@ package main
 func main() {
 	fmt.Println("")
 }
--- errors.golden --
+-- errors.go119.golden --
 [
   {
     "bufname": "main.go",
@@ -44,7 +46,7 @@ func main() {
     "vcol": 0
   }
 ]
--- errors.v8.2.3019.golden --
+-- errors.go119.v8.2.3019.golden --
 [
   {
     "bufname": "main.go",
@@ -56,6 +58,38 @@ func main() {
     "nr": 0,
     "pattern": "",
     "text": "undeclared name: fmt",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: fmt",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: fmt",
     "type": "",
     "valid": 1,
     "vcol": 0

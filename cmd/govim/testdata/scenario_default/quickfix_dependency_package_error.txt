@@ -2,8 +2,10 @@
 # where the error is in a dependency of the current file's package.
 
 vim ex 'e main.go'
-[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.20] vimexprwait errors.go120.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.20] vimexprwait errors.go120.golden GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -24,7 +26,7 @@ func main() {
 package p
 
 var x Type
--- errors.golden --
+-- errors.go119.golden --
 [
   {
     "bufname": "p/p.go",
@@ -39,7 +41,7 @@ var x Type
     "vcol": 0
   }
 ]
--- errors.v8.2.3019.golden --
+-- errors.go119.v8.2.3019.golden --
 [
   {
     "bufname": "p/p.go",
@@ -51,6 +53,38 @@ var x Type
     "nr": 0,
     "pattern": "",
     "text": "undeclared name: Type",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.golden --
+[
+  {
+    "bufname": "p/p.go",
+    "col": 7,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: Type",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.v8.2.3019.golden --
+[
+  {
+    "bufname": "p/p.go",
+    "col": 7,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 3,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: Type",
     "type": "",
     "valid": 1,
     "vcol": 0
