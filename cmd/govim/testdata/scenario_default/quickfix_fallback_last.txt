@@ -2,8 +2,10 @@
 # selected entry file, if this one isn't found and if there's no next entry.
 
 vim ex 'e main.go'
-[v8.2.3019] vimexprwait errors.v8.2.3019.golden.orig GOVIMTest_getqflist()
-[!v8.2.3019] vimexprwait errors.golden.orig GOVIMTest_getqflist()
+[v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.v8.2.3019.golden.orig GOVIMTest_getqflist()
+[!v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.golden.orig GOVIMTest_getqflist()
+[v8.2.3019] [go1.20] vimexprwait errors.go120.v8.2.3019.golden.orig GOVIMTest_getqflist()
+[!v8.2.3019] [go1.20] vimexprwait errors.go120.golden.orig GOVIMTest_getqflist()
 
 # Verify we have the first entry selected
 vim expr 'getqflist({\"idx\": 0})'
@@ -19,8 +21,10 @@ stdout '{"idx":4}'
 # Now fix selected error and assert the index points to the last entry of the file
 vim ex 'call cursor(7,1)'
 vim normal dd
-[v8.2.3019] vimexprwait errors.v8.2.3019.golden.updated GOVIMTest_getqflist()
-[!v8.2.3019] vimexprwait errors.golden.updated GOVIMTest_getqflist()
+[v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.v8.2.3019.golden.updated GOVIMTest_getqflist()
+[!v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.golden.updated GOVIMTest_getqflist()
+[v8.2.3019] [go1.20] vimexprwait errors.go120.v8.2.3019.golden.updated GOVIMTest_getqflist()
+[!v8.2.3019] [go1.20] vimexprwait errors.go120.golden.updated GOVIMTest_getqflist()
 vim expr 'getqflist({\"idx\": 0})'
 stdout '{"idx":3}'
 ! stderr .+
@@ -42,7 +46,7 @@ func main() {
 	err3
 	err4
 }
--- errors.golden.orig --
+-- errors.go119.golden.orig --
 [
   {
     "bufname": "main.go",
@@ -93,7 +97,7 @@ func main() {
     "vcol": 0
   }
 ]
--- errors.v8.2.3019.golden.orig --
+-- errors.go119.v8.2.3019.golden.orig --
 [
   {
     "bufname": "main.go",
@@ -152,7 +156,117 @@ func main() {
     "vcol": 0
   }
 ]
--- errors.golden.updated --
+-- errors.go120.golden.orig --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err2",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err3",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err4",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.v8.2.3019.golden.orig --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err2",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err3",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err4",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go119.golden.updated --
 [
   {
     "bufname": "main.go",
@@ -191,7 +305,7 @@ func main() {
     "vcol": 0
   }
 ]
--- errors.v8.2.3019.golden.updated --
+-- errors.go119.v8.2.3019.golden.updated --
 [
   {
     "bufname": "main.go",
@@ -231,6 +345,90 @@ func main() {
     "nr": 0,
     "pattern": "",
     "text": "undeclared name: err3",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.golden.updated --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err2",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err3",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.v8.2.3019.golden.updated --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 5,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err2",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: err3",
     "type": "",
     "valid": 1,
     "vcol": 0

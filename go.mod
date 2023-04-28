@@ -20,7 +20,7 @@ require (
 	golang.org/x/vuln v0.0.0-20230110180137-6ad3e3d07815
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
-	honnef.co/go/tools v0.3.3
+	honnef.co/go/tools v0.4.3
 )
 
 require (

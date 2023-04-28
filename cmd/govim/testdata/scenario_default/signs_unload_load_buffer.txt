@@ -7,8 +7,10 @@ vimexprwait placed_main.golden 'GOVIMTest_sign_getplaced(\"main.go\", {\"group\"
 # open other.go and add a broken statement to get an error that masks the warnings
 vim ex 'e other.go'
 vim call append '[6,"asd"]'
-[v8.2.3019] vimexprwait tmp_error.v8.2.3019.golden GOVIMTest_getqflist()
-[!v8.2.3019] vimexprwait tmp_error.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.19] [!go1.20] vimexprwait tmp_error.go119.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.19] [!go1.20] vimexprwait tmp_error.go119.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.20] vimexprwait tmp_error.go120.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.20] vimexprwait tmp_error.go120.golden GOVIMTest_getqflist()
 
 # remove the broken statement
 vim ex 'call cursor(7,1)'
@@ -103,7 +105,7 @@ func foo() {
     "vcol": 0
   }
 ]
--- tmp_error.golden --
+-- tmp_error.go119.golden --
 [
   {
     "bufname": "other.go",
@@ -118,7 +120,7 @@ func foo() {
     "vcol": 0
   }
 ]
--- tmp_error.v8.2.3019.golden --
+-- tmp_error.go119.v8.2.3019.golden --
 [
   {
     "bufname": "other.go",
@@ -130,6 +132,38 @@ func foo() {
     "nr": 0,
     "pattern": "",
     "text": "undeclared name: asd",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- tmp_error.go120.golden --
+[
+  {
+    "bufname": "other.go",
+    "col": 1,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: asd",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- tmp_error.go120.v8.2.3019.golden --
+[
+  {
+    "bufname": "other.go",
+    "col": 1,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 7,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: asd",
     "type": "",
     "valid": 1,
     "vcol": 0

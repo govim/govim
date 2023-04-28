@@ -7,8 +7,10 @@
 
 # Expect the initial state
 vim ex 'e main.go'
-[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.20] vimexprwait errors.go120.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.20] vimexprwait errors.go120.golden GOVIMTest_getqflist()
 
 # Make a change that removes diagnostics
 vim call append '[4,"\tprintln(x)"]'
@@ -16,8 +18,10 @@ vimexprwait empty.golden GOVIMTest_getqflist()
 
 # Undo that change and ensure we have the original diagnostics
 vim ex 5delete
-[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.20] vimexprwait errors.go120.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.20] vimexprwait errors.go120.golden GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -33,7 +37,7 @@ package main
 func main() {
 	x := 123
 }
--- errors.golden --
+-- errors.go119.golden --
 [
   {
     "bufname": "main.go",
@@ -48,7 +52,7 @@ func main() {
     "vcol": 0
   }
 ]
--- errors.v8.2.3019.golden --
+-- errors.go119.v8.2.3019.golden --
 [
   {
     "bufname": "main.go",
@@ -60,6 +64,38 @@ func main() {
     "nr": 0,
     "pattern": "",
     "text": "x declared but not used",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "x declared and not used",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 2,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 4,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "x declared and not used",
     "type": "",
     "valid": 1,
     "vcol": 0

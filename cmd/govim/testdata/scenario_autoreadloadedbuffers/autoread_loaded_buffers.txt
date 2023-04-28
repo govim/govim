@@ -13,8 +13,10 @@ vim ex 'e main.go'
 # "edit" the loaded file from outside of vim
 cp const.go.commented const.go
 
-[v8.2.3019] vimexprwait errors.v8.2.3019.undeclared GOVIMTest_getqflist()
-[!v8.2.3019] vimexprwait errors.undeclared GOVIMTest_getqflist()
+[v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.v8.2.3019.undeclared GOVIMTest_getqflist()
+[!v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.undeclared GOVIMTest_getqflist()
+[v8.2.3019] [go1.20] vimexprwait errors.go120.v8.2.3019.undeclared GOVIMTest_getqflist()
+[!v8.2.3019] [go1.20] vimexprwait errors.go120.undeclared GOVIMTest_getqflist()
 
 # No warnings or errors during the test
 
@@ -48,7 +50,7 @@ const (
 	// Const1 = 1
 	Const2 = 2
 )
--- errors.undeclared --
+-- errors.go119.undeclared --
 [
   {
     "bufname": "main.go",
@@ -63,7 +65,7 @@ const (
     "vcol": 0
   }
 ]
--- errors.v8.2.3019.undeclared --
+-- errors.go119.v8.2.3019.undeclared --
 [
   {
     "bufname": "main.go",
@@ -75,6 +77,38 @@ const (
     "nr": 0,
     "pattern": "",
     "text": "undeclared name: Const1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.undeclared --
+[
+  {
+    "bufname": "main.go",
+    "col": 14,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: Const1",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.v8.2.3019.undeclared --
+[
+  {
+    "bufname": "main.go",
+    "col": 14,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: Const1",
     "type": "",
     "valid": 1,
     "vcol": 0

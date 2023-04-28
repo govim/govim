@@ -1,8 +1,10 @@
 # Test that the quickfix window gets populated with error messages from gopls
 
 vim ex 'e main.go'
-[v8.2.3019] vimexprwait errors.v8.2.3019.golden GOVIMTest_getqflist()
-[!v8.2.3019] vimexprwait errors.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.19] [!go1.20] vimexprwait errors.go119.golden GOVIMTest_getqflist()
+[v8.2.3019] [go1.20] vimexprwait errors.go120.v8.2.3019.golden GOVIMTest_getqflist()
+[!v8.2.3019] [go1.20] vimexprwait errors.go120.golden GOVIMTest_getqflist()
 
 # Assert that we have received no error (Type: 1) or warning (Type: 2) log messages
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
@@ -23,7 +25,7 @@ func main() {
 
 func f1() string {}
 func f2() string {}
--- errors.golden --
+-- errors.go119.golden --
 [
   {
     "bufname": "main.go",
@@ -74,7 +76,7 @@ func f2() string {}
     "vcol": 0
   }
 ]
--- errors.v8.2.3019.golden --
+-- errors.go119.v8.2.3019.golden --
 [
   {
     "bufname": "main.go",
@@ -100,6 +102,116 @@ func f2() string {}
     "nr": 0,
     "pattern": "",
     "text": "undeclared name: v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 19,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 9,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 19,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 10,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 36,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: i",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 39,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: v",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 19,
+    "lnum": 9,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 19,
+    "lnum": 10,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "missing return",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  }
+]
+-- errors.go120.v8.2.3019.golden --
+[
+  {
+    "bufname": "main.go",
+    "col": 36,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: i",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
+  {
+    "bufname": "main.go",
+    "col": 39,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 6,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "undefined: v",
     "type": "",
     "valid": 1,
     "vcol": 0
