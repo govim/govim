@@ -18,10 +18,10 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/ast/astutil"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/analysis/stubmethods"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tokeninternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )

@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 )
 
 // FoldingRangeInfo holds range and kind info of folding for an ast.Node

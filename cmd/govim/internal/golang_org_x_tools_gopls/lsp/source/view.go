@@ -159,7 +159,10 @@ type Snapshot interface {
 	CriticalError(ctx context.Context) *CriticalError
 
 	// Symbols returns all symbols in the snapshot.
-	Symbols(ctx context.Context) (map[span.URI][]Symbol, error)
+	//
+	// If workspaceOnly is set, this only includes symbols from files in a
+	// workspace package. Otherwise, it returns symbols from all loaded packages.
+	Symbols(ctx context.Context, workspaceOnly bool) (map[span.URI][]Symbol, error)
 
 	// -- package metadata --
 
@@ -172,9 +175,23 @@ type Snapshot interface {
 	// WorkspaceMetadata returns a new, unordered slice containing
 	// metadata for all ordinary and test packages (but not
 	// intermediate test variants) in the workspace.
+	//
+	// The workspace is the set of modules typically defined by a
+	// go.work file. It is not transitively closed: for example,
+	// the standard library is not usually part of the workspace
+	// even though every module in the workspace depends on it.
+	//
+	// Operations that must inspect all the dependencies of the
+	// workspace packages should instead use AllMetadata.
 	WorkspaceMetadata(ctx context.Context) ([]*Metadata, error)
 
-	// AllMetadata returns a new unordered array of metadata for all packages in the workspace.
+	// AllMetadata returns a new unordered array of metadata for
+	// all packages known to this snapshot, which includes the
+	// packages of all workspace modules plus their transitive
+	// import dependencies.
+	//
+	// It may also contain ad-hoc packages for standalone files.
+	// It includes all test variants.
 	AllMetadata(ctx context.Context) ([]*Metadata, error)
 
 	// Metadata returns the metadata for the specified package,
@@ -513,6 +530,9 @@ type TidiedModule struct {
 
 // Metadata represents package metadata retrieved from go/packages.
 // The Deps* maps do not contain self-import edges.
+//
+// An ad-hoc package (without go.mod or GOPATH) has its ID, PkgPath,
+// and LoadDir equal to the absolute path of its directory.
 type Metadata struct {
 	ID              PackageID
 	PkgPath         PackagePath
@@ -539,7 +559,7 @@ func (m *Metadata) String() string { return string(m.ID) }
 // import metadata (DepsBy{Imp,Pkg}Path).
 //
 // Such test variants arise when an x_test package (in this case net/url_test)
-// imports a package (in this case net/http) that itself imports the the
+// imports a package (in this case net/http) that itself imports the
 // non-x_test package (in this case net/url).
 //
 // This is done so that the forward transitive closure of net/url_test has
