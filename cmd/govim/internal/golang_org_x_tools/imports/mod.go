@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"golang.org/x/mod/module"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gopathwalk"
 )
@@ -424,6 +425,9 @@ func (r *ModuleResolver) loadPackageNames(importPaths []string, srcDir string) (
 }
 
 func (r *ModuleResolver) scan(ctx context.Context, callback *scanCallback) error {
+	ctx, done := event.Start(ctx, "imports.ModuleResolver.scan")
+	defer done()
+
 	if err := r.init(); err != nil {
 		return err
 	}

@@ -15,8 +15,8 @@ import (
 	"go/types"
 	"strings"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tokeninternal"

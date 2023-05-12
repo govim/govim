@@ -22,10 +22,10 @@ import (
 	"golang.org/x/text/unicode/runenames"
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/types/typeutil"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tokeninternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
@@ -121,6 +121,22 @@ func hover(ctx context.Context, snapshot Snapshot, fh FileHandle, pp protocol.Po
 		}
 	}
 
+	// Handle linkname directive by overriding what to look for.
+	var linkedRange *protocol.Range // range referenced by linkname directive, or nil
+	if pkgPath, name, offset := parseLinkname(ctx, snapshot, fh, pp); pkgPath != "" && name != "" {
+		// rng covering 2nd linkname argument: pkgPath.name.
+		rng, err := pgf.PosRange(pgf.Tok.Pos(offset), pgf.Tok.Pos(offset+len(pkgPath)+len(".")+len(name)))
+		if err != nil {
+			return protocol.Range{}, nil, fmt.Errorf("range over linkname arg: %w", err)
+		}
+		linkedRange = &rng
+
+		pkg, pgf, pos, err = findLinkname(ctx, snapshot, PackagePath(pkgPath), name)
+		if err != nil {
+			return protocol.Range{}, nil, fmt.Errorf("find linkname: %w", err)
+		}
+	}
+
 	// The general case: compute hover information for the object referenced by
 	// the identifier at pos.
 	ident, obj, selectedType := referencedObject(pkg, pgf, pos)
@@ -128,9 +144,15 @@ func hover(ctx context.Context, snapshot Snapshot, fh FileHandle, pp protocol.Po
 		return protocol.Range{}, nil, nil // no object to hover
 	}
 
-	rng, err := pgf.NodeRange(ident)
-	if err != nil {
-		return protocol.Range{}, nil, err
+	// Unless otherwise specified, rng covers the ident being hovered.
+	var rng protocol.Range
+	if linkedRange != nil {
+		rng = *linkedRange
+	} else {
+		rng, err = pgf.NodeRange(ident)
+		if err != nil {
+			return protocol.Range{}, nil, err
+		}
 	}
 
 	// By convention, we qualify hover information relative to the package
@@ -342,8 +364,6 @@ func hoverBuiltin(ctx context.Context, snapshot Snapshot, obj types.Object) (*Ho
 		return nil, err
 	}
 
-	// TODO(rfindley): add a test for jump to definition of error.Error (which is
-	// probably failing, considering it lacks special handling).
 	if obj.Name() == "Error" {
 		signature := obj.String()
 		return &HoverJSON{

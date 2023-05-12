@@ -72,9 +72,9 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/bug"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/bug"
 )
 
 // A Mapper wraps the content of a file and provides mapping

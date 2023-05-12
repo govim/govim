@@ -84,14 +84,14 @@ Println formats using the default formats for its operands and writes to standar
 Spaces are always added between operands and a newline is appended.
 It returns the number of bytes written and any write error encountered.
 -- warnings_popup.golden --
-fmt.Println call has possible formatting directive %v printf
+fmt.Println call has possible Printf formatting directive %v printf
 unreachable code unreachable
 func fmt.Println(a ...any) (n int, err error)
 Println formats using the default formats for its operands and writes to standard output.
 Spaces are always added between operands and a newline is appended.
 It returns the number of bytes written and any write error encountered.
 -- warnings_nodoc_popup.golden --
-fmt.Println call has possible formatting directive %v printf
+fmt.Println call has possible Printf formatting directive %v printf
 unreachable code unreachable
 -- error_popup.go119.golden --
 Pintln not declared by package fmt compiler
@@ -138,7 +138,7 @@ undefined: fmt.Pintln compiler
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "fmt.Println call has possible formatting directive %v",
+    "text": "fmt.Println call has possible Printf formatting directive %v",
     "type": "",
     "valid": 1,
     "vcol": 0
@@ -167,7 +167,7 @@ undefined: fmt.Pintln compiler
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "fmt.Println call has possible formatting directive %v",
+    "text": "fmt.Println call has possible Printf formatting directive %v",
     "type": "",
     "valid": 1,
     "vcol": 0
