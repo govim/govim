@@ -170,6 +170,10 @@ type Interface interface {
 	// This command is intended for internal use only, by the gopls stats
 	// command.
 	WorkspaceStats(context.Context) (WorkspaceStatsResult, error)
+
+	// RunGoWorkCommand: run `go work [args...]`, and apply the resulting go.work
+	// edits to the current go.work file.
+	RunGoWorkCommand(context.Context, RunGoWorkArgs) error
 }
 
 type RunTestsArgs struct {
@@ -232,7 +236,10 @@ type RemoveDependencyArgs struct {
 	// The go.mod file URI.
 	URI protocol.DocumentURI
 	// The module path to remove.
-	ModulePath     string
+	ModulePath string
+	// If the module is tidied apart from the one unused diagnostic, we can
+	// run `go get module@none`, and then run `go mod tidy`. Otherwise, we
+	// must make textual edits.
 	OnlyDiagnostic bool
 }
 
@@ -446,4 +453,10 @@ type PackageStats struct {
 	LargestPackage  int // number of files in the largest package
 	CompiledGoFiles int // total number of compiled Go files across all packages
 	Modules         int // total number of unique modules
+}
+
+type RunGoWorkArgs struct {
+	ViewID    string   // ID of the view to run the command from
+	InitFirst bool     // Whether to run `go work init` first
+	Args      []string // Args to pass to `go work`
 }
