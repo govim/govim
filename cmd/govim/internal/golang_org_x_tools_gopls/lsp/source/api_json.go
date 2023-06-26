@@ -760,13 +760,19 @@ var GeneratedAPIJSON = &APIJSON{
 			Command: "gopls.remove_dependency",
 			Title:   "Remove a dependency",
 			Doc:     "Removes a dependency from the go.mod file of a module.",
-			ArgDoc:  "{\n\t// The go.mod file URI.\n\t\"URI\": string,\n\t// The module path to remove.\n\t\"ModulePath\": string,\n\t\"OnlyDiagnostic\": bool,\n}",
+			ArgDoc:  "{\n\t// The go.mod file URI.\n\t\"URI\": string,\n\t// The module path to remove.\n\t\"ModulePath\": string,\n\t// If the module is tidied apart from the one unused diagnostic, we can\n\t// run `go get module@none`, and then run `go mod tidy`. Otherwise, we\n\t// must make textual edits.\n\t\"OnlyDiagnostic\": bool,\n}",
 		},
 		{
 			Command: "gopls.reset_go_mod_diagnostics",
 			Title:   "Reset go.mod diagnostics",
 			Doc:     "Reset diagnostics in the go.mod file of a module.",
 			ArgDoc:  "{\n\t\"URIArg\": {\n\t\t\"URI\": string,\n\t},\n\t// Optional: source of the diagnostics to reset.\n\t// If not set, all resettable go.mod diagnostics will be cleared.\n\t\"DiagnosticSource\": string,\n}",
+		},
+		{
+			Command: "gopls.run_go_work_command",
+			Title:   "run `go work [args...]`, and apply the resulting go.work",
+			Doc:     "edits to the current go.work file.",
+			ArgDoc:  "{\n\t\"ViewID\": string,\n\t\"InitFirst\": bool,\n\t\"Args\": []string,\n}",
 		},
 		{
 			Command:   "gopls.run_govulncheck",
