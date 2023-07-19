@@ -133,6 +133,13 @@ func (l loggingGoplsServer) Completion(ctxt context.Context, params *protocol.Co
 	return res, err
 }
 
+func (l loggingGoplsServer) InlineCompletion(ctxt context.Context, params *protocol.InlineCompletionParams) (*protocol.Or_Result_textDocument_inlineCompletion, error) {
+	l.Logf("gopls.Completion() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.InlineCompletion(ctxt, params)
+	l.Logf("gopls.Completion() return; err: %v; res:\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
 func (l loggingGoplsServer) Resolve(ctxt context.Context, params *protocol.InlayHint) (*protocol.InlayHint, error) {
 	l.Logf("gopls.Resolve() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Resolve(ctxt, params)
@@ -255,6 +262,13 @@ func (l loggingGoplsServer) Formatting(ctxt context.Context, params *protocol.Do
 func (l loggingGoplsServer) RangeFormatting(ctxt context.Context, params *protocol.DocumentRangeFormattingParams) ([]protocol.TextEdit, error) {
 	l.Logf("gopls.RangeFormatting() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.RangeFormatting(ctxt, params)
+	l.Logf("gopls.RangeFormatting() return; err: %v; res\n%v", err, pretty.Sprint(res))
+	return res, err
+}
+
+func (l loggingGoplsServer) RangesFormatting(ctxt context.Context, params *protocol.DocumentRangesFormattingParams) ([]protocol.TextEdit, error) {
+	l.Logf("gopls.RangeFormatting() call; params:\n%v", pretty.Sprint(params))
+	res, err := l.u.RangesFormatting(ctxt, params)
 	l.Logf("gopls.RangeFormatting() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }

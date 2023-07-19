@@ -357,10 +357,25 @@ func renameOrdinary(ctx context.Context, snapshot Snapshot, f FileHandle, pp pro
 			obj = funcOrigin(obj.(*types.Func))
 		case *types.Var:
 			// TODO(adonovan): do vars need the origin treatment too? (issue #58462)
+
+			// Function parameter and result vars that are (unusually)
+			// capitalized are technically exported, even though they
+			// cannot be referenced, because they may affect downstream
+			// error messages. But we can safely treat them as local.
+			//
+			// This is not merely an optimization: the renameExported
+			// operation gets confused by such vars. It finds them from
+			// objectpath, the classifies them as local vars, but as
+			// they came from export data they lack syntax and the
+			// correct scope tree (issue #61294).
+			if !obj.(*types.Var).IsField() && !isPackageLevel(obj) {
+				goto skipObjectPath
+			}
 		}
 		if path, err := objectpath.For(obj); err == nil {
 			declObjPath = path
 		}
+	skipObjectPath:
 	}
 
 	// Nonexported? Search locally.
@@ -569,12 +584,15 @@ func renameExported(ctx context.Context, snapshot Snapshot, pkgs []Package, decl
 			}
 			obj, err := objectpath.Object(p, t.obj)
 			if err != nil {
-				// Though this can happen with regular export data
-				// due to trimming of inconsequential objects,
-				// it can't happen if we load dependencies from full
-				// syntax (as today) or shallow export data (soon),
-				// as both are complete.
-				bug.Reportf("objectpath.Object(%v, %v) failed: %v", p, t.obj, err)
+				// Possibly a method or an unexported type
+				// that is not reachable through export data?
+				// See https://github.com/golang/go/issues/60789.
+				//
+				// TODO(adonovan): it seems unsatisfactory that Object
+				// should return an error for a "valid" path. Perhaps
+				// we should define such paths as invalid and make
+				// objectpath.For compute reachability?
+				// Would that be a compatible change?
 				continue
 			}
 			objects = append(objects, obj)
