@@ -23,6 +23,7 @@ import (
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/types/objectpath"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/govulncheck"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/progress"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/source/methodsets"
@@ -93,7 +94,10 @@ type Snapshot interface {
 	ParseGo(ctx context.Context, fh FileHandle, mode parser.Mode) (*ParsedGoFile, error)
 
 	// Analyze runs the specified analyzers on the given packages at this snapshot.
-	Analyze(ctx context.Context, pkgIDs map[PackageID]unit, analyzers []*Analyzer) ([]*Diagnostic, error)
+	//
+	// If the provided tracker is non-nil, it may be used to report progress of
+	// the analysis pass.
+	Analyze(ctx context.Context, pkgIDs map[PackageID]unit, analyzers []*Analyzer, tracker *progress.Tracker) ([]*Diagnostic, error)
 
 	// RunGoCommandPiped runs the given `go` command, writing its output
 	// to stdout and stderr. Verb, Args, and WorkingDir must be specified.
@@ -882,6 +886,10 @@ type Analyzer struct {
 	// Severity is the severity set for diagnostics reported by this
 	// analyzer. If left unset it defaults to Warning.
 	Severity protocol.DiagnosticSeverity
+
+	// Tag is extra tags (unnecessary, deprecated, etc) for diagnostics
+	// reported by this analyzer.
+	Tag []protocol.DiagnosticTag
 }
 
 func (a *Analyzer) String() string { return a.Analyzer.String() }
@@ -929,13 +937,13 @@ type Package interface {
 	CompiledGoFiles() []*ParsedGoFile // (borrowed)
 	File(uri span.URI) (*ParsedGoFile, error)
 	GetSyntax() []*ast.File // (borrowed)
-	HasParseErrors() bool
+	GetParseErrors() []scanner.ErrorList
 
 	// Results of type checking:
 	GetTypes() *types.Package
+	GetTypeErrors() []types.Error
 	GetTypesInfo() *types.Info
 	DependencyTypes(PackagePath) *types.Package // nil for indirect dependency of no consequence
-	HasTypeErrors() bool
 	DiagnosticsForFile(ctx context.Context, s Snapshot, uri span.URI) ([]*Diagnostic, error)
 }
 

@@ -269,6 +269,11 @@ var GeneratedAPIJSON = &APIJSON{
 							Default: "true",
 						},
 						{
+							Name:    "\"deprecated\"",
+							Doc:     "check for use of deprecated identifiers\n\nThe deprecated analyzer looks for deprecated symbols and package imports.\n\nSee https://go.dev/wiki/Deprecated to learn about Go's convention\nfor documenting and signaling deprecated identifiers.",
+							Default: "true",
+						},
+						{
 							Name:    "\"directive\"",
 							Doc:     "check Go toolchain directives such as //go:debug\n\nThis analyzer checks for problems with known Go toolchain directives\nin all Go source files in a package directory, even those excluded by\n//go:build constraints, and all non-Go source files too.\n\nFor //go:debug (see https://go.dev/doc/godebug), the analyzer checks\nthat the directives are placed only in Go source files, only above the\npackage comment, and only in package main or *_test.go files.\n\nSupport for other known directives may be added in the future.\n\nThis analyzer does not check //go:build, which is handled by the\nbuildtag analyzer.\n",
 							Default: "true",
@@ -528,6 +533,13 @@ var GeneratedAPIJSON = &APIJSON{
 				Doc:       "diagnosticsDelay controls the amount of time that gopls waits\nafter the most recent file modification before computing deep diagnostics.\nSimple diagnostics (parsing and type-checking) are always run immediately\non recently modified packages.\n\nThis option must be set to a valid duration string, for example `\"250ms\"`.\n",
 				Default:   "\"1s\"",
 				Status:    "advanced",
+				Hierarchy: "ui.diagnostic",
+			},
+			{
+				Name:      "analysisProgressReporting",
+				Type:      "bool",
+				Doc:       "analysisProgressReporting controls whether gopls sends progress\nnotifications when construction of its index of analysis facts is taking a\nlong time. Cancelling these notifications will cancel the indexing task,\nthough it will restart after the next change in the workspace.\n\nWhen a package is opened for the first time and heavyweight analyses such as\nstaticcheck are enabled, it can take a while to construct the index of\nanalysis facts for all its dependencies. The index is cached in the\nfilesystem, so subsequent analysis should be faster.\n",
+				Default:   "true",
 				Hierarchy: "ui.diagnostic",
 			},
 			{
@@ -939,7 +951,7 @@ var GeneratedAPIJSON = &APIJSON{
 		{
 			Name:    "composites",
 			Doc:     "check for unkeyed composite literals\n\nThis analyzer reports a diagnostic for composite literals of struct\ntypes imported from another package that do not use the field-keyed\nsyntax. Such literals are fragile because the addition of a new field\n(even if unexported) to the struct will cause compilation to fail.\n\nAs an example,\n\n\terr = &net.DNSConfigError{err}\n\nshould be replaced by:\n\n\terr = &net.DNSConfigError{Err: err}\n",
-			URL:     "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/composites",
+			URL:     "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/composite",
 			Default: true,
 		},
 		{
@@ -952,6 +964,11 @@ var GeneratedAPIJSON = &APIJSON{
 			Name:    "deepequalerrors",
 			Doc:     "check for calls of reflect.DeepEqual on error values\n\nThe deepequalerrors checker looks for calls of the form:\n\n    reflect.DeepEqual(err1, err2)\n\nwhere err1 and err2 are errors. Using reflect.DeepEqual to compare\nerrors is discouraged.",
 			URL:     "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/deepequalerrors",
+			Default: true,
+		},
+		{
+			Name:    "deprecated",
+			Doc:     "check for use of deprecated identifiers\n\nThe deprecated analyzer looks for deprecated symbols and package imports.\n\nSee https://go.dev/wiki/Deprecated to learn about Go's convention\nfor documenting and signaling deprecated identifiers.",
 			Default: true,
 		},
 		{
