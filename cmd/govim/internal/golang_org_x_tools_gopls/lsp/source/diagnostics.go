@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/bug"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/progress"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
 )
@@ -21,7 +22,10 @@ type SuggestedFix struct {
 }
 
 // Analyze reports go/analysis-framework diagnostics in the specified package.
-func Analyze(ctx context.Context, snapshot Snapshot, pkgIDs map[PackageID]unit, includeConvenience bool) (map[span.URI][]*Diagnostic, error) {
+//
+// If the provided tracker is non-nil, it may be used to provide notifications
+// of the ongoing analysis pass.
+func Analyze(ctx context.Context, snapshot Snapshot, pkgIDs map[PackageID]unit, tracker *progress.Tracker) (map[span.URI][]*Diagnostic, error) {
 	// Exit early if the context has been canceled. This also protects us
 	// from a race on Options, see golang/go#36699.
 	if ctx.Err() != nil {
@@ -34,9 +38,6 @@ func Analyze(ctx context.Context, snapshot Snapshot, pkgIDs map[PackageID]unit, 
 		options.StaticcheckAnalyzers,
 		options.TypeErrorAnalyzers,
 	}
-	if includeConvenience { // e.g. for codeAction
-		categories = append(categories, options.ConvenienceAnalyzers) // e.g. fillstruct
-	}
 
 	var analyzers []*Analyzer
 	for _, cat := range categories {
@@ -45,7 +46,7 @@ func Analyze(ctx context.Context, snapshot Snapshot, pkgIDs map[PackageID]unit, 
 		}
 	}
 
-	analysisDiagnostics, err := snapshot.Analyze(ctx, pkgIDs, analyzers)
+	analysisDiagnostics, err := snapshot.Analyze(ctx, pkgIDs, analyzers, tracker)
 	if err != nil {
 		return nil, err
 	}
@@ -56,38 +57,6 @@ func Analyze(ctx context.Context, snapshot Snapshot, pkgIDs map[PackageID]unit, 
 		reports[diag.URI] = append(reports[diag.URI], diag)
 	}
 	return reports, nil
-}
-
-// FileDiagnostics reports diagnostics in the specified file,
-// as used by the "gopls check" command.
-//
-// TODO(adonovan): factor in common with (*Server).codeAction, which
-// executes { NarrowestPackageForFile; Analyze } too?
-//
-// TODO(adonovan): opt: this function is called in a loop from the
-// "gopls/diagnoseFiles" nonstandard request handler. It would be more
-// efficient to compute the set of packages and TypeCheck and
-// Analyze them all at once.
-func FileDiagnostics(ctx context.Context, snapshot Snapshot, uri span.URI) (FileHandle, []*Diagnostic, error) {
-	fh, err := snapshot.ReadFile(ctx, uri)
-	if err != nil {
-		return nil, nil, err
-	}
-	pkg, _, err := NarrowestPackageForFile(ctx, snapshot, uri)
-	if err != nil {
-		return nil, nil, err
-	}
-	pkgDiags, err := pkg.DiagnosticsForFile(ctx, snapshot, uri)
-	if err != nil {
-		return nil, nil, err
-	}
-	adiags, err := Analyze(ctx, snapshot, map[PackageID]unit{pkg.Metadata().ID: {}}, false)
-	if err != nil {
-		return nil, nil, err
-	}
-	var fileDiags []*Diagnostic // combine load/parse/type + analysis diagnostics
-	CombineDiagnostics(pkgDiags, adiags[uri], &fileDiags, &fileDiags)
-	return fh, fileDiags, nil
 }
 
 // CombineDiagnostics combines and filters list/parse/type diagnostics from
