@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -165,6 +166,13 @@ func (g *govimplugin) startGopls() error {
 	initParams.Capabilities.Workspace.DidChangeWatchedFiles.DynamicRegistration = true
 
 	initParams.Capabilities.Window.WorkDoneProgress = true
+
+	initParams.ClientInfo = &protocol.Msg_XInitializeParams_clientInfo{
+		Name: "govim",
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		initParams.ClientInfo.Version = bi.Main.Version
+	}
 
 	// Session-level config should be able to be set post initialize, but that
 	// is not currently supported by gopls. So for now a restart is required
