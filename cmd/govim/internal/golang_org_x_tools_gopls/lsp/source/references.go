@@ -580,9 +580,10 @@ func localReferences(pkg Package, targets map[types.Object]bool, correspond bool
 	// matches reports whether obj either is or corresponds to a target.
 	// (Correspondence is defined as usual for interface methods.)
 	matches := func(obj types.Object) bool {
-		if targets[obj] {
+		if containsOrigin(targets, obj) {
 			return true
-		} else if methodRecvs != nil && obj.Name() == methodName {
+		}
+		if methodRecvs != nil && obj.Name() == methodName {
 			if orecv := effectiveReceiver(obj); orecv != nil {
 				for _, mrecv := range methodRecvs {
 					if concreteImplementsIntf(orecv, mrecv) {
