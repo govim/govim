@@ -1,23 +1,25 @@
 # Test that completing of unimported std library packages works.
 
+sleep $GOVIM_ERRLOGMATCH_WAIT
+
 vim ex 'e main.go'
 
 # Unimported completion
-vim ex 'call cursor(4,1)'
-vim normal Sfmt.Pr
-vim ex 'execute \"normal A\\<C-X>\\<C-O>\\<C-N>\\<C-N>(\\\"Hello\\\")\"'
+vim ex 'call cursor(5,1)'
+vim normal 'Sx = blah.Na'
+vim ex 'execute \"normal A\\<C-X>\\<C-O>\\<C-N>\\<C-N>\"'
 
 # Check import has been added
 vim ex 'noau w'
 cmp main.go main.go1.golden
 
 # Regular completion
-vim ex 'call cursor(7,1)'
+vim ex 'call cursor(8,1)'
 vim normal Sfmt.Pr
 vim ex 'execute \"normal A\\<C-X>\\<C-O>\\<C-N>(\\\"Hello\\\")\"'
 
 # Keyword complete
-vim ex 'call cursor(8,1)'
+vim ex 'call cursor(9,1)'
 vim normal Sfmt.Pr
 vim ex 'execute \"normal A\\<C-X>\\<C-N>(\\\"Hello\\\")\"'
 
@@ -29,6 +31,9 @@ cmp main.go main.go2.golden
 # Disabled pending resolution to https://github.com/golang/go/issues/34103
 # errlogmatch -start -count=0 'LogMessage callback: &protocol\.LogMessageParams\{Type:(1|2), Message:".*'
 
+-- .warm_module_cache --
+# For this test we need to pre-warm the module (download) cache
+example.com/blah
 -- go.mod --
 module mod.com
 
@@ -37,6 +42,7 @@ go 1.12
 package main
 
 func main() {
+	var x string
 
 
 
