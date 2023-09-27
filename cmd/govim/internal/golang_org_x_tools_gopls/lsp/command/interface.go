@@ -17,8 +17,8 @@ package command
 import (
 	"context"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/govulncheck"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/vulncheck"
 )
 
 // Interface defines the interface gopls exposes for the
@@ -160,7 +160,7 @@ type Interface interface {
 	// runner.
 	StopProfile(context.Context, StopProfileArgs) (StopProfileResult, error)
 
-	// RunGovulncheck: Run govulncheck.
+	// RunGovulncheck: Run vulncheck.
 	//
 	// Run vulnerability check (`govulncheck`).
 	RunGovulncheck(context.Context, VulncheckArgs) (RunVulncheckResult, error)
@@ -168,7 +168,7 @@ type Interface interface {
 	// FetchVulncheckResult: Get known vulncheck result
 	//
 	// Fetch the result of latest vulnerability check (`govulncheck`).
-	FetchVulncheckResult(context.Context, URIArg) (map[protocol.DocumentURI]*govulncheck.Result, error)
+	FetchVulncheckResult(context.Context, URIArg) (map[protocol.DocumentURI]*vulncheck.Result, error)
 
 	// MemStats: fetch memory statistics
 	//
@@ -189,6 +189,17 @@ type Interface interface {
 	// RunGoWorkCommand: run `go work [args...]`, and apply the resulting go.work
 	// edits to the current go.work file.
 	RunGoWorkCommand(context.Context, RunGoWorkArgs) error
+
+	// AddTelemetryCounters: update the given telemetry counters.
+	//
+	// Gopls will prepend "fwd/" to all the counters updated using this command
+	// to avoid conflicts with other counters gopls collects.
+	AddTelemetryCounters(context.Context, AddTelemetryCountersArgs) error
+
+	// MaybePromptForTelemetry: checks for the right conditions, and then prompts
+	// the user to ask if they want to enable Go telemetry uploading. If the user
+	// responds 'Yes', the telemetry mode is set to "on".
+	MaybePromptForTelemetry(context.Context) error
 }
 
 type RunTestsArgs struct {
@@ -498,4 +509,12 @@ type RunGoWorkArgs struct {
 	ViewID    string   // ID of the view to run the command from
 	InitFirst bool     // Whether to run `go work init` first
 	Args      []string // Args to pass to `go work`
+}
+
+// AddTelemetryCountersArgs holds the arguments to the AddCounters command
+// that updates the telemetry counters.
+type AddTelemetryCountersArgs struct {
+	// Names and Values must have the same length.
+	Names  []string // Name of counters.
+	Values []int64  // Values added to the corresponding counters. Must be non-negative.
 }

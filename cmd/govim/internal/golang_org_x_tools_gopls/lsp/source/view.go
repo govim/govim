@@ -22,12 +22,12 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/types/objectpath"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/govulncheck"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/progress"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/source/methodsets"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/vulncheck"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/label"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/event/tag"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/gocommand"
@@ -57,6 +57,18 @@ type Snapshot interface {
 	// monotonic: subsequent snapshots will have higher global ID, though
 	// subsequent snapshots in a view may not have adjacent global IDs.
 	GlobalID() GlobalSnapshotID
+
+	// FileKind returns the type of a file.
+	//
+	// We can't reliably deduce the kind from the file name alone,
+	// as some editors can be told to interpret a buffer as
+	// language different from the file name heuristic, e.g. that
+	// an .html file actually contains Go "html/template" syntax,
+	// or even that a .go file contains Python.
+	FileKind(FileHandle) FileKind
+
+	// Options returns the options associated with this snapshot.
+	Options() *Options
 
 	// View returns the View associated with this snapshot.
 	View() View
@@ -136,7 +148,7 @@ type Snapshot interface {
 
 	// ModVuln returns import vulnerability analysis for the given go.mod URI.
 	// Concurrent requests are combined into a single command.
-	ModVuln(ctx context.Context, modURI span.URI) (*govulncheck.Result, error)
+	ModVuln(ctx context.Context, modURI span.URI) (*vulncheck.Result, error)
 
 	// GoModForFile returns the URI of the go.mod file for the given URI.
 	GoModForFile(uri span.URI) span.URI
@@ -353,9 +365,6 @@ type View interface {
 	// Folder returns the folder with which this view was created.
 	Folder() span.URI
 
-	// Options returns a copy of the Options for this view.
-	Options() *Options
-
 	// Snapshot returns the current snapshot for the view, and a
 	// release function that must be called when the Snapshot is
 	// no longer needed.
@@ -382,20 +391,11 @@ type View interface {
 	// Vulnerabilities returns known vulnerabilities for the given modfile.
 	// TODO(suzmue): replace command.Vuln with a different type, maybe
 	// https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck/govulnchecklib#Summary?
-	Vulnerabilities(modfile ...span.URI) map[span.URI]*govulncheck.Result
+	Vulnerabilities(modfile ...span.URI) map[span.URI]*vulncheck.Result
 
 	// SetVulnerabilities resets the list of vulnerabilities that exists for the given modules
 	// required by modfile.
-	SetVulnerabilities(modfile span.URI, vulncheckResult *govulncheck.Result)
-
-	// FileKind returns the type of a file.
-	//
-	// We can't reliably deduce the kind from the file name alone,
-	// as some editors can be told to interpret a buffer as
-	// language different from the file name heuristic, e.g. that
-	// an .html file actually contains Go "html/template" syntax,
-	// or even that a .go file contains Python.
-	FileKind(FileHandle) FileKind
+	SetVulnerabilities(modfile span.URI, vulncheckResult *vulncheck.Result)
 
 	// GoVersion returns the configured Go version for this view.
 	GoVersion() int
@@ -409,6 +409,9 @@ type View interface {
 type FileSource interface {
 	// ReadFile returns the FileHandle for a given URI, either by
 	// reading the content of the file or by obtaining it from a cache.
+	//
+	// Invariant: ReadFile must only return an error in the case of context
+	// cancellation. If ctx.Err() is nil, the resulting error must also be nil.
 	ReadFile(ctx context.Context, uri span.URI) (FileHandle, error)
 }
 
@@ -768,9 +771,9 @@ type FileHandle interface {
 	// FileIdentity returns a FileIdentity for the file, even if there was an
 	// error reading it.
 	FileIdentity() FileIdentity
-	// Saved reports whether the file has the same content on disk:
+	// SameContentsOnDisk reports whether the file has the same content on disk:
 	// it is false for files open on an editor with unsaved edits.
-	Saved() bool
+	SameContentsOnDisk() bool
 	// Version returns the file version, as defined by the LSP client.
 	// For on-disk file handles, Version returns 0.
 	Version() int32

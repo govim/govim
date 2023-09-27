@@ -22,6 +22,7 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/analysis/stubmethods"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/safetoken"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/diff"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/tokeninternal"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
 )
@@ -230,16 +231,20 @@ func (%s%s%s) %s%s {
 	}
 
 	// Report the diff.
-	diffs := snapshot.View().Options().ComputeEdits(string(input), output.String())
-	var edits []analysis.TextEdit
+	diffs := snapshot.Options().ComputeEdits(string(input), output.String())
+	return tokeninternal.FileSetFor(declPGF.Tok), // edits use declPGF.Tok
+		&analysis.SuggestedFix{TextEdits: diffToTextEdits(declPGF.Tok, diffs)},
+		nil
+}
+
+func diffToTextEdits(tok *token.File, diffs []diff.Edit) []analysis.TextEdit {
+	edits := make([]analysis.TextEdit, 0, len(diffs))
 	for _, edit := range diffs {
 		edits = append(edits, analysis.TextEdit{
-			Pos:     declPGF.Tok.Pos(edit.Start),
-			End:     declPGF.Tok.Pos(edit.End),
+			Pos:     tok.Pos(edit.Start),
+			End:     tok.Pos(edit.End),
 			NewText: []byte(edit.New),
 		})
 	}
-	return tokeninternal.FileSetFor(declPGF.Tok), // edits use declPGF.Tok
-		&analysis.SuggestedFix{TextEdits: edits},
-		nil
+	return edits
 }

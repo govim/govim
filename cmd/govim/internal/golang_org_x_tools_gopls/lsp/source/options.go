@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/analysis/passes/appends"
 	"golang.org/x/tools/go/analysis/passes/asmdecl"
 	"golang.org/x/tools/go/analysis/passes/assign"
 	"golang.org/x/tools/go/analysis/passes/atomic"
@@ -39,6 +40,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/printf"
 	"golang.org/x/tools/go/analysis/passes/shadow"
 	"golang.org/x/tools/go/analysis/passes/shift"
+	"golang.org/x/tools/go/analysis/passes/slog"
 	"golang.org/x/tools/go/analysis/passes/sortslice"
 	"golang.org/x/tools/go/analysis/passes/stdmethods"
 	"golang.org/x/tools/go/analysis/passes/stringintconv"
@@ -80,7 +82,7 @@ var (
 // DefaultOptions is the options that are used for Gopls execution independent
 // of any externally provided configuration (LSP initialization, command
 // invocation, etc.).
-func DefaultOptions() *Options {
+func DefaultOptions(overrides ...func(*Options)) *Options {
 	optionsOnce.Do(func() {
 		var commands []string
 		for _, c := range command.Commands {
@@ -104,6 +106,7 @@ func DefaultOptions() *Options {
 						protocol.SourceOrganizeImports: true,
 						protocol.QuickFix:              true,
 						protocol.RefactorRewrite:       true,
+						protocol.RefactorInline:        true,
 						protocol.RefactorExtract:       true,
 					},
 					Mod: {
@@ -152,6 +155,7 @@ func DefaultOptions() *Options {
 						Matcher:                        Fuzzy,
 						CompletionBudget:               100 * time.Millisecond,
 						ExperimentalPostfixCompletions: true,
+						CompleteFunctionCalls:          true,
 					},
 					Codelenses: map[string]bool{
 						string(command.Generate):          true,
@@ -174,6 +178,8 @@ func DefaultOptions() *Options {
 				NewDiff:                     "new",
 				SubdirWatchPatterns:         SubdirWatchPatternsAuto,
 				ReportAnalysisProgressAfter: 5 * time.Second,
+				TelemetryPrompt:             false,
+				LinkifyShowMessage:          false,
 			},
 			Hooks: Hooks{
 				// TODO(adonovan): switch to new diff.Strings implementation.
@@ -187,7 +193,13 @@ func DefaultOptions() *Options {
 			},
 		}
 	})
-	return defaultOptions
+	options := defaultOptions.Clone()
+	for _, override := range overrides {
+		if override != nil {
+			override(options)
+		}
+	}
+	return options
 }
 
 // Options holds various configuration that affects Gopls execution, organized
@@ -377,6 +389,13 @@ type CompletionOptions struct {
 	// ExperimentalPostfixCompletions enables artificial method snippets
 	// such as "someSlice.sort!".
 	ExperimentalPostfixCompletions bool `status:"experimental"`
+
+	// CompleteFunctionCalls enables function call completion.
+	//
+	// When completing a statement, or when a function return type matches the
+	// expected of the expression being completed, completion may suggest call
+	// expressions (i.e. may include parentheses).
+	CompleteFunctionCalls bool
 }
 
 type DocumentationOptions struct {
@@ -667,6 +686,16 @@ type InternalOptions struct {
 	//
 	// It is intended to be used for testing only.
 	ReportAnalysisProgressAfter time.Duration
+
+	// TelemetryPrompt controls whether gopls prompts about enabling Go telemetry.
+	//
+	// Once the prompt is answered, gopls doesn't ask again, but TelemetryPrompt
+	// can prevent the question from ever being asked in the first place.
+	TelemetryPrompt bool
+
+	// LinkifyShowMessage controls whether the client wants gopls
+	// to linkify links in showMessage. e.g. [go.dev](https://go.dev).
+	LinkifyShowMessage bool
 }
 
 type SubdirWatchPatterns string
@@ -1165,6 +1194,8 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 					" rebuild gopls with a more recent version of Go", result.Name, runtime.Version())
 			}
 		}
+	case "completeFunctionCalls":
+		result.setBool(&o.CompleteFunctionCalls)
 
 	case "semanticTokens":
 		result.setBool(&o.SemanticTokens)
@@ -1251,6 +1282,11 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 	case "reportAnalysisProgressAfter":
 		result.setDuration(&o.ReportAnalysisProgressAfter)
 
+	case "telemetryPrompt":
+		result.setBool(&o.TelemetryPrompt)
+	case "linkifyShowMessage":
+		result.setBool(&o.LinkifyShowMessage)
+
 	// Replaced settings.
 	case "experimentalDisabledAnalyses":
 		result.deprecated("analyses")
@@ -1308,14 +1344,6 @@ type SoftError struct {
 
 func (e *SoftError) Error() string {
 	return e.msg
-}
-
-// softErrorf reports an error that does not affect the functionality of gopls
-// (a warning in the UI).
-// The formatted message will be shown to the user unmodified.
-func (r *OptionResult) softErrorf(format string, values ...interface{}) {
-	msg := fmt.Sprintf(format, values...)
-	r.Error = &SoftError{msg}
 }
 
 // deprecated reports the current setting as deprecated. If 'replacement' is
@@ -1537,6 +1565,7 @@ func convenienceAnalyzers() map[string]*Analyzer {
 func defaultAnalyzers() map[string]*Analyzer {
 	return map[string]*Analyzer{
 		// The traditional vet suite:
+		appends.Analyzer.Name:       {Analyzer: appends.Analyzer, Enabled: true},
 		asmdecl.Analyzer.Name:       {Analyzer: asmdecl.Analyzer, Enabled: true},
 		assign.Analyzer.Name:        {Analyzer: assign.Analyzer, Enabled: true},
 		atomic.Analyzer.Name:        {Analyzer: atomic.Analyzer, Enabled: true},
@@ -1556,6 +1585,7 @@ func defaultAnalyzers() map[string]*Analyzer {
 		nilfunc.Analyzer.Name:       {Analyzer: nilfunc.Analyzer, Enabled: true},
 		printf.Analyzer.Name:        {Analyzer: printf.Analyzer, Enabled: true},
 		shift.Analyzer.Name:         {Analyzer: shift.Analyzer, Enabled: true},
+		slog.Analyzer.Name:          {Analyzer: slog.Analyzer, Enabled: true},
 		stdmethods.Analyzer.Name:    {Analyzer: stdmethods.Analyzer, Enabled: true},
 		stringintconv.Analyzer.Name: {Analyzer: stringintconv.Analyzer, Enabled: true},
 		structtag.Analyzer.Name:     {Analyzer: structtag.Analyzer, Enabled: true},
