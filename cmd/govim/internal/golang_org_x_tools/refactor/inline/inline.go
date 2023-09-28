@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/constant"
 	"go/format"
 	"go/parser"
 	"go/token"
@@ -291,14 +292,17 @@ func inline(logf func(string, ...any), caller *Caller, callee *gobCallee) (*resu
 
 	// localImportName returns the local name for a given imported package path.
 	var newImports []*ast.ImportSpec
-	localImportName := func(path string) string {
+	localImportName := func(path string, shadows map[string]bool) string {
 		// Does an import exist?
 		for _, name := range importMap[path] {
 			// Check that either the import preexisted,
-			// or that it was newly added (no PkgName) but is not shadowed.
-			found := caller.lookup(name)
-			if is[*types.PkgName](found) || found == nil {
-				return name
+			// or that it was newly added (no PkgName) but is not shadowed,
+			// either in the callee (shadows) or caller (caller.lookup).
+			if !shadows[name] {
+				found := caller.lookup(name)
+				if is[*types.PkgName](found) || found == nil {
+					return name
+				}
 			}
 		}
 
@@ -313,7 +317,7 @@ func inline(logf func(string, ...any), caller *Caller, callee *gobCallee) (*resu
 		// use the package's declared name.
 		base := pathpkg.Base(path)
 		name := base
-		for n := 0; caller.lookup(name) != nil; n++ {
+		for n := 0; shadows[name] || caller.lookup(name) != nil; n++ {
 			name = fmt.Sprintf("%s%d", base, n)
 		}
 
@@ -344,7 +348,7 @@ func inline(logf func(string, ...any), caller *Caller, callee *gobCallee) (*resu
 		//   => check not shadowed in caller.
 		// - package-level var/func/const/types
 		//   => same package: check not shadowed in caller.
-		//   => otherwise: import other package form a qualified identifier.
+		//   => otherwise: import other package, form a qualified identifier.
 		//      (Unexported cross-package references were rejected already.)
 		// - type parameter
 		//   => not yet supported
@@ -353,10 +357,14 @@ func inline(logf func(string, ...any), caller *Caller, callee *gobCallee) (*resu
 		//
 		// There can be no free references to labels, fields, or methods.
 
+		// Note that we must consider potential shadowing both
+		// at the caller side (caller.lookup) and, when
+		// choosing new PkgNames, within the callee (obj.shadow).
+
 		var newName ast.Expr
 		if obj.Kind == "pkgname" {
 			// Use locally appropriate import, creating as needed.
-			newName = makeIdent(localImportName(obj.PkgPath)) // imported package
+			newName = makeIdent(localImportName(obj.PkgPath, obj.Shadow)) // imported package
 
 		} else if !obj.ValidPos {
 			// Built-in function, type, or value (e.g. nil, zero):
@@ -396,7 +404,7 @@ func inline(logf func(string, ...any), caller *Caller, callee *gobCallee) (*resu
 
 			// Form a qualified identifier, pkg.Name.
 			if qualify {
-				pkgName := localImportName(obj.PkgPath)
+				pkgName := localImportName(obj.PkgPath, obj.Shadow)
 				newName = &ast.SelectorExpr{
 					X:   makeIdent(pkgName),
 					Sel: makeIdent(obj.Name),
@@ -859,7 +867,7 @@ func inline(logf func(string, ...any), caller *Caller, callee *gobCallee) (*resu
 		return res, nil
 	}
 
-	// TODO(adonovan): parameterless call to { stmt; return expr }
+	// TODO(adonovan): parameterless call to { stmts; return expr }
 	// from one of these contexts:
 	//    x, y     = f()
 	//    x, y    := f()
@@ -1809,17 +1817,30 @@ func duplicable(info *types.Info, e ast.Expr) bool {
 	switch e := e.(type) {
 	case *ast.ParenExpr:
 		return duplicable(info, e.X)
+
 	case *ast.Ident:
 		return true
+
 	case *ast.BasicLit:
-		return e.Kind == token.INT
+		v := info.Types[e].Value
+		switch e.Kind {
+		case token.INT:
+			return true // any int
+		case token.STRING:
+			return consteq(v, kZeroString) // only ""
+		case token.FLOAT:
+			return consteq(v, kZeroFloat) || consteq(v, kOneFloat) // only 0.0 or 1.0
+		}
+
 	case *ast.UnaryExpr: // e.g. +1, -1
 		return (e.Op == token.ADD || e.Op == token.SUB) && duplicable(info, e.X)
+
 	case *ast.CallExpr:
 		// Don't treat a conversion T(x) as duplicable even
 		// if x is duplicable because it could duplicate
 		// allocations. There may be cases to tease apart here.
 		return false
+
 	case *ast.SelectorExpr:
 		if sel, ok := info.Selections[e]; ok {
 			// A field or method selection x.f is referentially
@@ -1828,10 +1849,20 @@ func duplicable(info *types.Info, e ast.Expr) bool {
 		}
 		// A qualified identifier pkg.Name is referentially transparent.
 		return true
-	default:
-		return false
 	}
+	return false
 }
+
+func consteq(x, y constant.Value) bool {
+	return constant.Compare(x, token.EQL, y)
+}
+
+var (
+	kZeroInt    = constant.MakeInt64(0)
+	kZeroString = constant.MakeString("")
+	kZeroFloat  = constant.MakeFloat64(0.0)
+	kOneFloat   = constant.MakeFloat64(1.0)
+)
 
 // -- inline helpers --
 

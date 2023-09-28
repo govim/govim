@@ -16,8 +16,8 @@ require (
 	golang.org/x/sys v0.12.0
 	golang.org/x/telemetry v0.0.0-20230923135512-f45a5404d02c
 	golang.org/x/text v0.13.0
-	golang.org/x/tools v0.13.1-0.20230927183407-4b34fbf5f10d
-	golang.org/x/tools/gopls v0.0.0-20230927183407-4b34fbf5f10d
+	golang.org/x/tools v0.13.1-0.20230928202826-451716b51585
+	golang.org/x/tools/gopls v0.0.0-20230928202826-451716b51585
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 	honnef.co/go/tools v0.4.5
