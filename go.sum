@@ -60,10 +60,10 @@ golang.org/x/telemetry v0.0.0-20230923135512-f45a5404d02c h1:az7Rs3XV7P68bKMPT50
 golang.org/x/telemetry v0.0.0-20230923135512-f45a5404d02c/go.mod h1:ppZ76JTkRgJC2GQEgtVY3fiuJR+N8FU2MAlp+gfN1E4=
 golang.org/x/text v0.13.0 h1:ablQoSUd0tRdKxZewP80B+BaqeKJuVhuRxj/dkrun3k=
 golang.org/x/text v0.13.0/go.mod h1:TvPlkZtksWOMsz7fbANvkp4WM8x/WCo/om8BMLbz+aE=
-golang.org/x/tools v0.13.1-0.20230927183407-4b34fbf5f10d h1:JaK3Pn9CTFohB4ezrPVjXpIC/CQG5jYABRNak6/uqcg=
-golang.org/x/tools v0.13.1-0.20230927183407-4b34fbf5f10d/go.mod h1:UT0HyK+PbVxjduiWXEYi1mODDynTaoTRHJox7q8FIKk=
-golang.org/x/tools/gopls v0.0.0-20230927183407-4b34fbf5f10d h1:2L6E7oEAAVdEl15gRFjvW1Tg5ZbELcU9p5j08JZBBEs=
-golang.org/x/tools/gopls v0.0.0-20230927183407-4b34fbf5f10d/go.mod h1:+xH+uLBax8h08SNozHdU1pRefSJoZ1gSikWPiTbvf98=
+golang.org/x/tools v0.13.1-0.20230928202826-451716b51585 h1:jKlR23yvYALOUw32Hr07MdNOxnKzfde4uY1k28ETH54=
+golang.org/x/tools v0.13.1-0.20230928202826-451716b51585/go.mod h1:UT0HyK+PbVxjduiWXEYi1mODDynTaoTRHJox7q8FIKk=
+golang.org/x/tools/gopls v0.0.0-20230928202826-451716b51585 h1:f2aqdxFT1AhbRTY6HAyeHzi0scBCJU6ncAfSQ3oRVLg=
+golang.org/x/tools/gopls v0.0.0-20230928202826-451716b51585/go.mod h1:+xH+uLBax8h08SNozHdU1pRefSJoZ1gSikWPiTbvf98=
 golang.org/x/vuln v1.0.1 h1:KUas02EjQK5LTuIx1OylBQdKKZ9jeugs+HiqO5HormU=
 golang.org/x/vuln v1.0.1/go.mod h1:bb2hMwln/tqxg32BNY4CcxHWtHXuYa3SbIBmtsyjxtM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
