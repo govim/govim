@@ -595,6 +595,9 @@ type InternalOptions struct {
 	// LiteralCompletions controls whether literal candidates such as
 	// "&someStruct{}" are offered. Tests disable this flag to simplify
 	// their expected values.
+	//
+	// TODO(rfindley): this is almost unnecessary now. Remove it along with the
+	// old marker tests.
 	LiteralCompletions bool
 
 	// VerboseWorkDoneProgress controls whether the LSP server should send
@@ -1181,6 +1184,7 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 		result.setBool(&o.VerboseWorkDoneProgress)
 
 	case "tempModfile":
+		result.softErrorf("gopls setting \"tempModfile\" is deprecated.\nPlease comment on https://go.dev/issue/63537 if this impacts your workflow.")
 		result.setBool(&o.TempModfile)
 
 	case "showBugReports":
@@ -1207,6 +1211,7 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 		result.setBool(&o.NoSemanticNumber)
 
 	case "expandWorkspaceToModule":
+		result.softErrorf("gopls setting \"expandWorkspaceToModule\" is deprecated.\nPlease comment on https://go.dev/issue/63536 if this impacts your workflow.")
 		result.setBool(&o.ExpandWorkspaceToModule)
 
 	case "experimentalPostfixCompletions":
@@ -1354,6 +1359,11 @@ func (r *OptionResult) deprecated(replacement string) {
 		msg = fmt.Sprintf("%s, use %q instead", msg, replacement)
 	}
 	r.Error = &SoftError{msg}
+}
+
+// softErrorf reports a soft error related to the current option.
+func (r *OptionResult) softErrorf(format string, args ...any) {
+	r.Error = &SoftError{fmt.Sprintf(format, args...)}
 }
 
 // unexpected reports that the current setting is not known to gopls.
@@ -1688,7 +1698,7 @@ var parBreakRE = regexp.MustCompile("\n{2,}")
 
 func collectEnums(opt *OptionJSON) string {
 	var b strings.Builder
-	write := func(name, doc string, index, len int) {
+	write := func(name, doc string) {
 		if doc != "" {
 			unbroken := parBreakRE.ReplaceAllString(doc, "\\\n")
 			fmt.Fprintf(&b, "* %s\n", strings.TrimSpace(unbroken))
@@ -1698,13 +1708,13 @@ func collectEnums(opt *OptionJSON) string {
 	}
 	if len(opt.EnumValues) > 0 && opt.Type == "enum" {
 		b.WriteString("\nMust be one of:\n\n")
-		for i, val := range opt.EnumValues {
-			write(val.Value, val.Doc, i, len(opt.EnumValues))
+		for _, val := range opt.EnumValues {
+			write(val.Value, val.Doc)
 		}
 	} else if len(opt.EnumKeys.Keys) > 0 && shouldShowEnumKeysInSettings(opt.Name) {
 		b.WriteString("\nCan contain any of:\n\n")
-		for i, val := range opt.EnumKeys.Keys {
-			write(val.Name, val.Doc, i, len(opt.EnumKeys.Keys))
+		for _, val := range opt.EnumKeys.Keys {
+			write(val.Name, val.Doc)
 		}
 	}
 	return b.String()

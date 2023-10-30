@@ -246,7 +246,6 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 			HighlightDiagnostics:              vimconfig.BoolVal(true),
 			HighlightReferences:               vimconfig.BoolVal(true),
 			HoverDiagnostics:                  vimconfig.BoolVal(true),
-			TempModfile:                       vimconfig.BoolVal(false),
 			ExperimentalAutoreadLoadedBuffers: vimconfig.BoolVal(false),
 			SymbolMatcher:                     vimconfig.SymbolMatcherVal(config.SymbolMatcherFuzzy),
 			SymbolStyle:                       vimconfig.SymbolStyleVal(config.SymbolStyleFull),

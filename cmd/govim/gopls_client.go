@@ -26,7 +26,6 @@ const (
 	goplsCompleteUnimported   = "completeUnimported"
 	goplsGoImportsLocalPrefix = "local"
 	goplsCompletionBudget     = "completionBudget"
-	goplsTempModfile          = "tempModfile"
 	goplsVerboseOutput        = "verboseOutput"
 	goplsEnv                  = "env"
 	goplsAnalyses             = "analyses"
@@ -171,9 +170,6 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 	}
 	if conf.CompletionBudget != nil {
 		goplsConfig[goplsCompletionBudget] = *conf.CompletionBudget
-	}
-	if conf.TempModfile != nil {
-		goplsConfig[goplsTempModfile] = *conf.TempModfile
 	}
 	if conf.Gofumpt != nil {
 		goplsConfig[goplsGofumpt] = *conf.Gofumpt
