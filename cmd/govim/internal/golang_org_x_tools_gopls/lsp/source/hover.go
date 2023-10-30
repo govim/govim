@@ -131,7 +131,7 @@ func hover(ctx context.Context, snapshot Snapshot, fh FileHandle, pp protocol.Po
 
 	// Handle linkname directive by overriding what to look for.
 	var linkedRange *protocol.Range // range referenced by linkname directive, or nil
-	if pkgPath, name, offset := parseLinkname(ctx, snapshot, fh, pp); pkgPath != "" && name != "" {
+	if pkgPath, name, offset := parseLinkname(pgf.Mapper, pp); pkgPath != "" && name != "" {
 		// rng covering 2nd linkname argument: pkgPath.name.
 		rng, err := pgf.PosRange(pgf.Tok.Pos(offset), pgf.Tok.Pos(offset+len(pkgPath)+len(".")+len(name)))
 		if err != nil {
@@ -640,7 +640,7 @@ func hoverEmbed(fh FileHandle, rng protocol.Range, pattern string) (protocol.Ran
 
 	dir := filepath.Dir(fh.URI().Filename())
 	var matches []string
-	err := filepath.WalkDir(dir, func(abs string, _ fs.DirEntry, e error) error {
+	err := filepath.WalkDir(dir, func(abs string, d fs.DirEntry, e error) error {
 		if e != nil {
 			return e
 		}
@@ -652,7 +652,7 @@ func hoverEmbed(fh FileHandle, rng protocol.Range, pattern string) (protocol.Ran
 		if err != nil {
 			return err
 		}
-		if ok {
+		if ok && !d.IsDir() {
 			matches = append(matches, rel)
 		}
 		return nil

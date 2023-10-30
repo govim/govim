@@ -21,7 +21,6 @@ type VimConfig struct {
 	CompleteUnimported                           *int
 	GoImportsLocalPrefix                         *string
 	CompletionBudget                             *string
-	TempModfile                                  *int
 	GoplsEnv                                     *map[string]string
 	GoplsDirectoryFilters                        *[]string
 	Analyses                                     *map[string]int
@@ -51,7 +50,6 @@ func (c *VimConfig) ToConfig(d config.Config) config.Config {
 		CompleteUnimported:                boolVal(c.CompleteUnimported, d.CompleteUnimported),
 		GoImportsLocalPrefix:              stringVal(c.GoImportsLocalPrefix, d.GoImportsLocalPrefix),
 		CompletionBudget:                  stringVal(c.CompletionBudget, d.CompletionBudget),
-		TempModfile:                       boolVal(c.TempModfile, d.TempModfile),
 		GoplsEnv:                          copyStringValMap(c.GoplsEnv, d.GoplsEnv),
 		GoplsDirectoryFilters:             copyStringValSlice(c.GoplsDirectoryFilters, d.GoplsDirectoryFilters),
 		Analyses:                          mergeBoolValMap(c.Analyses, d.Analyses),

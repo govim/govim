@@ -120,10 +120,6 @@ function! s:validCompletionBudget(v)
   return s:validString(a:v)
 endfunction
 
-function! s:validTempModfile(v)
-  return s:validBool(a:v)
-endfunction
-
 function! s:validGoplsEnv(v)
   if type(a:v) != 4
     return [v:false, "value must be a dict"]
@@ -225,7 +221,6 @@ let s:validators = {
       \ "CompleteUnimported": function("s:validCompleteUnimported"),
       \ "GoImportsLocalPrefix": function("s:validGoImportsLocalPrefix"),
       \ "CompletionBudget": function("s:validCompletionBudget"),
-      \ "TempModfile": function("s:validTempModfile"),
       \ "GoplsEnv": function("s:validGoplsEnv"),
       \ "GoplsDirectoryFilters": function("s:validGoplsDirectoryFilters"),
       \ "Analyses": function("s:validAnalyses"),
