@@ -50,15 +50,7 @@ const (
 
 // vim versions
 const (
-	// MinVimGovim represents the bare minimum version of Vim required to
-	// use govim
-	MinVimGovim = "v8.1.1711"
-
-	// MinVimSafeState is the minimum version required to use Vim's state()
-	// and SafeState* functionality.
-	MinVimSafeState = "v8.1.2056"
-
-	LatestVim = "v8.2.4698"
+	LatestVim = "v9.0.2112"
 )
 
 var (
@@ -79,14 +71,10 @@ func (c Command) BuildCommand(args ...string) *exec.Cmd {
 }
 
 var (
-	GoVersions = []string{"go1.19.8", "go1.20.3"}
+	GoVersions = []string{"go1.20.11", "go1.21.4"}
 
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{
-		VimVersion(MinVimGovim),
-		GvimVersion(MinVimGovim),
-		VimVersion(MinVimSafeState),
-		GvimVersion(MinVimSafeState),
 		VimVersion(LatestVim),
 		GvimVersion(LatestVim),
 	}

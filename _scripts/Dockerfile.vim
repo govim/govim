@@ -14,9 +14,8 @@ RUN --mount=type=secret,id=GH_USER --mount=type=secret,id=GH_TOKEN \
 
 ARG VIM_VERSION
 RUN cd /tmp && \
-  git clone https://github.com/vim/vim && \
+  git clone --depth 1 --branch $VIM_VERSION https://github.com/vim/vim && \
   cd vim && \
-  git checkout $VIM_VERSION && \
   ./configure --prefix=/vim --enable-gui=gtk2 --disable-darwin --disable-selinux --disable-netbeans && \
   make -j$(nproc --all) install
 
