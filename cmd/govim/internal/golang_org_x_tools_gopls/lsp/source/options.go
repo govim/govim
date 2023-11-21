@@ -137,6 +137,7 @@ func DefaultOptions(overrides ...func(*Options)) *Options {
 						},
 						Vulncheck:                 ModeVulncheckOff,
 						DiagnosticsDelay:          1 * time.Second,
+						DiagnosticsTrigger:        DiagnosticsOnEdit,
 						AnalysisProgressReporting: true,
 					},
 					InlayHintOptions: InlayHintOptions{},
@@ -467,6 +468,9 @@ type DiagnosticOptions struct {
 	//
 	// This option must be set to a valid duration string, for example `"250ms"`.
 	DiagnosticsDelay time.Duration `status:"advanced"`
+
+	// DiagnosticsTrigger controls when to run diagnostics.
+	DiagnosticsTrigger DiagnosticsTrigger `status:"experimental"`
 
 	// AnalysisProgressReporting controls whether gopls sends progress
 	// notifications when construction of its index of analysis facts is taking a
@@ -808,6 +812,17 @@ const (
 	ModeVulncheckImports VulncheckMode = "Imports"
 
 	// TODO: VulncheckRequire, VulncheckCallgraph
+)
+
+type DiagnosticsTrigger string
+
+const (
+	// Trigger diagnostics on file edit and save. (default)
+	DiagnosticsOnEdit DiagnosticsTrigger = "Edit"
+	// Trigger diagnostics only on file save. Events like initial workspace load
+	// or configuration change will still trigger diagnostics.
+	DiagnosticsOnSave DiagnosticsTrigger = "Save"
+	// TODO: support "Manual"?
 )
 
 type OptionResults []OptionResult
@@ -1244,6 +1259,14 @@ func (o *Options) set(name string, value interface{}, seen map[string]struct{}) 
 	case "diagnosticsDelay":
 		result.setDuration(&o.DiagnosticsDelay)
 
+	case "diagnosticsTrigger":
+		if s, ok := result.asOneOf(
+			string(DiagnosticsOnEdit),
+			string(DiagnosticsOnSave),
+		); ok {
+			o.DiagnosticsTrigger = DiagnosticsTrigger(s)
+		}
+
 	case "analysisProgressReporting":
 		result.setBool(&o.AnalysisProgressReporting)
 
@@ -1609,7 +1632,7 @@ func defaultAnalyzers() map[string]*Analyzer {
 		atomicalign.Analyzer.Name:      {Analyzer: atomicalign.Analyzer, Enabled: true},
 		deepequalerrors.Analyzer.Name:  {Analyzer: deepequalerrors.Analyzer, Enabled: true},
 		fieldalignment.Analyzer.Name:   {Analyzer: fieldalignment.Analyzer, Enabled: false},
-		nilness.Analyzer.Name:          {Analyzer: nilness.Analyzer, Enabled: false},
+		nilness.Analyzer.Name:          {Analyzer: nilness.Analyzer, Enabled: true},
 		shadow.Analyzer.Name:           {Analyzer: shadow.Analyzer, Enabled: false},
 		sortslice.Analyzer.Name:        {Analyzer: sortslice.Analyzer, Enabled: true},
 		testinggoroutine.Analyzer.Name: {Analyzer: testinggoroutine.Analyzer, Enabled: true},

@@ -11,13 +11,12 @@ require (
 	github.com/myitcv/vbash v0.0.4
 	github.com/rogpeppe/go-internal v1.9.0
 	golang.org/x/exp/typeparams v0.0.0-20221212164502-fae10dda9338
-	golang.org/x/mod v0.13.0
-	golang.org/x/sync v0.4.0
-	golang.org/x/sys v0.13.0
+	golang.org/x/mod v0.14.0
+	golang.org/x/sync v0.5.0
 	golang.org/x/telemetry v0.0.0-20231011160506-788d5629a052
-	golang.org/x/text v0.13.0
-	golang.org/x/tools v0.14.1-0.20231028170112-ccc652ac3e5a
-	golang.org/x/tools/gopls v0.0.0-20231028170112-ccc652ac3e5a
+	golang.org/x/text v0.14.0
+	golang.org/x/tools v0.15.1-0.20231110221557-aafa2e00a0d7
+	golang.org/x/tools/gopls v0.0.0-20231110221557-aafa2e00a0d7
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 	honnef.co/go/tools v0.4.5
@@ -29,7 +28,8 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/pkg/diff v0.0.0-20210226163009-20ebb0f2a09e // indirect
 	github.com/sergi/go-diff v1.1.0 // indirect
-	golang.org/x/net v0.16.0 // indirect
+	golang.org/x/net v0.18.0 // indirect
+	golang.org/x/sys v0.14.0 // indirect
 	golang.org/x/vuln v1.0.1 // indirect
 	gopkg.in/yaml.v2 v2.2.8 // indirect
 	mvdan.cc/gofumpt v0.4.0 // indirect

@@ -338,7 +338,7 @@ var GeneratedAPIJSON = &APIJSON{
 						{
 							Name:    "\"nilness\"",
 							Doc:     "check for redundant or impossible nil comparisons\n\nThe nilness checker inspects the control-flow graph of each function in\na package and reports nil pointer dereferences, degenerate nil\npointers, and panics with nil values. A degenerate comparison is of the form\nx==nil or x!=nil where x is statically known to be nil or non-nil. These are\noften a mistake, especially in control flow related to errors. Panics with nil\nvalues are checked because they are not detectable by\n\n\tif r := recover(); r != nil {\n\nThis check reports conditions such as:\n\n\tif f == nil { // impossible condition (f is a function)\n\t}\n\nand:\n\n\tp := &v\n\t...\n\tif p != nil { // tautological condition\n\t}\n\nand:\n\n\tif p == nil {\n\t\tprint(*p) // nil dereference\n\t}\n\nand:\n\n\tif p == nil {\n\t\tpanic(p)\n\t}",
-							Default: "false",
+							Default: "true",
 						},
 						{
 							Name:    "\"printf\"",
@@ -555,6 +555,24 @@ var GeneratedAPIJSON = &APIJSON{
 				Doc:       "diagnosticsDelay controls the amount of time that gopls waits\nafter the most recent file modification before computing deep diagnostics.\nSimple diagnostics (parsing and type-checking) are always run immediately\non recently modified packages.\n\nThis option must be set to a valid duration string, for example `\"250ms\"`.\n",
 				Default:   "\"1s\"",
 				Status:    "advanced",
+				Hierarchy: "ui.diagnostic",
+			},
+			{
+				Name: "diagnosticsTrigger",
+				Type: "enum",
+				Doc:  "diagnosticsTrigger controls when to run diagnostics.\n",
+				EnumValues: []EnumValue{
+					{
+						Value: "\"Edit\"",
+						Doc:   "`\"Edit\"`: Trigger diagnostics on file edit and save. (default)\n",
+					},
+					{
+						Value: "\"Save\"",
+						Doc:   "`\"Save\"`: Trigger diagnostics only on file save. Events like initial workspace load\nor configuration change will still trigger diagnostics.\n",
+					},
+				},
+				Default:   "\"Edit\"",
+				Status:    "experimental",
 				Hierarchy: "ui.diagnostic",
 			},
 			{
@@ -1075,9 +1093,10 @@ var GeneratedAPIJSON = &APIJSON{
 			Default: true,
 		},
 		{
-			Name: "nilness",
-			Doc:  "check for redundant or impossible nil comparisons\n\nThe nilness checker inspects the control-flow graph of each function in\na package and reports nil pointer dereferences, degenerate nil\npointers, and panics with nil values. A degenerate comparison is of the form\nx==nil or x!=nil where x is statically known to be nil or non-nil. These are\noften a mistake, especially in control flow related to errors. Panics with nil\nvalues are checked because they are not detectable by\n\n\tif r := recover(); r != nil {\n\nThis check reports conditions such as:\n\n\tif f == nil { // impossible condition (f is a function)\n\t}\n\nand:\n\n\tp := &v\n\t...\n\tif p != nil { // tautological condition\n\t}\n\nand:\n\n\tif p == nil {\n\t\tprint(*p) // nil dereference\n\t}\n\nand:\n\n\tif p == nil {\n\t\tpanic(p)\n\t}",
-			URL:  "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/nilness",
+			Name:    "nilness",
+			Doc:     "check for redundant or impossible nil comparisons\n\nThe nilness checker inspects the control-flow graph of each function in\na package and reports nil pointer dereferences, degenerate nil\npointers, and panics with nil values. A degenerate comparison is of the form\nx==nil or x!=nil where x is statically known to be nil or non-nil. These are\noften a mistake, especially in control flow related to errors. Panics with nil\nvalues are checked because they are not detectable by\n\n\tif r := recover(); r != nil {\n\nThis check reports conditions such as:\n\n\tif f == nil { // impossible condition (f is a function)\n\t}\n\nand:\n\n\tp := &v\n\t...\n\tif p != nil { // tautological condition\n\t}\n\nand:\n\n\tif p == nil {\n\t\tprint(*p) // nil dereference\n\t}\n\nand:\n\n\tif p == nil {\n\t\tpanic(p)\n\t}",
+			URL:     "https://pkg.go.dev/golang.org/x/tools/go/analysis/passes/nilness",
+			Default: true,
 		},
 		{
 			Name:    "printf",
