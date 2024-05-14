@@ -12,8 +12,7 @@ import (
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
@@ -100,11 +99,11 @@ func (v *vimstate) parseCursorPos(r json.RawMessage) (types.CursorPosition, erro
 func (v *vimstate) locationToQuickfix(loc protocol.Location, rel bool) (qf quickfixEntry, err error) {
 	var buf *types.Buffer
 	for _, b := range v.buffers {
-		if b.Loaded && b.URI() == span.URI(loc.URI) {
+		if b.Loaded && b.URI() == loc.URI {
 			buf = b
 		}
 	}
-	fn := span.URI(loc.URI).Filename()
+	fn := loc.URI.Path()
 	if buf == nil {
 		byts, err := os.ReadFile(fn)
 		if err != nil {

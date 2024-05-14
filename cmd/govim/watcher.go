@@ -9,8 +9,7 @@ import (
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/internal/fswatcher"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 )
 
 type modWatcher struct {
@@ -161,7 +160,7 @@ func (v *vimstate) handleEvent(event fswatcher.Event) error {
 		panic(fmt.Errorf("unknown fswatcher event type: %v", event))
 	}
 
-	uri := span.URIFromPath(event.Path)
+	uri := protocol.URIFromPath(event.Path)
 	v.autoreadBuffer(uri)
 
 	params := &protocol.DidChangeWatchedFilesParams{
@@ -177,13 +176,13 @@ func (v *vimstate) handleEvent(event fswatcher.Event) error {
 	return nil
 }
 
-func (v *vimstate) autoreadBuffer(uri span.URI) {
+func (v *vimstate) autoreadBuffer(uri protocol.DocumentURI) {
 	if v.config.ExperimentalAutoreadLoadedBuffers == nil || !*v.config.ExperimentalAutoreadLoadedBuffers {
 		return
 	}
 
 	for _, b := range v.buffers {
-		if b.URI().Filename() == uri.Filename() {
+		if b.URI() == uri {
 			v.ChannelEx(fmt.Sprintf("checktime %d", b.Num))
 		}
 	}

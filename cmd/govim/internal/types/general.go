@@ -2,8 +2,7 @@ package types
 
 import (
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 )
 
 // CursorPosition represents a cursor position within a window
@@ -27,8 +26,8 @@ type WatchedFile struct {
 	Contents []byte
 }
 
-func (w *WatchedFile) URI() span.URI {
-	return span.URIFromPath(w.Path)
+func (w *WatchedFile) URI() protocol.DocumentURI {
+	return protocol.URIFromPath(w.Path)
 }
 
 // Range represents a range within a Buffer. Create ranges using NewRange

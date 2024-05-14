@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/govim/govim"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 	"github.com/kr/pretty"
 )
@@ -123,7 +123,7 @@ func (v *vimstate) loadLocation(mods govim.CommModList, loc protocol.Location, a
 	v.ChannelEx("normal! m'")
 
 	vp := v.Viewport()
-	tf := loc.URI.SpanURI().Filename()
+	tf := loc.URI.Path()
 
 	bn := v.ParseInt(v.ChannelCall("bufnr", tf))
 	if bn != -1 {

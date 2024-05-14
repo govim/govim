@@ -10,9 +10,8 @@ import (
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/command"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol/command"
 	"github.com/govim/govim/cmd/govim/internal/types"
 	"github.com/kr/pretty"
 )
@@ -84,6 +83,11 @@ func (g *govimplugin) LogMessage(ctxt context.Context, params *protocol.LogMessa
 	defer absorbShutdownErr()
 	g.logGoplsClientf("LogMessage callback: %v", pretty.Sprint(params))
 	return nil
+}
+
+func (g *govimplugin) FoldingRangeRefresh(context.Context) error {
+	defer absorbShutdownErr()
+	panic("FoldingRangeRefresh not implemented yet")
 }
 
 func (g *govimplugin) Telemetry(context.Context, interface{}) error {
@@ -239,7 +243,7 @@ func (g *govimplugin) PublishDiagnostics(ctxt context.Context, params *protocol.
 	defer absorbShutdownErr()
 	g.logGoplsClientf("PublishDiagnostics callback: %v", pretty.Sprint(params))
 	g.diagnosticsChangedLock.Lock()
-	uri := span.URI(params.URI)
+	uri := params.URI
 	curr, ok := g.rawDiagnostics[uri]
 	g.rawDiagnostics[uri] = params
 	g.diagnosticsChanged = true

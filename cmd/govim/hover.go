@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 

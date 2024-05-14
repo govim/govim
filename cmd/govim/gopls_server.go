@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/kr/pretty"
 )
 
@@ -301,7 +301,7 @@ func (l loggingGoplsServer) Declaration(ctxt context.Context, params *protocol.D
 	return res, err
 }
 
-func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.PrepareRenameParams) (*protocol.PrepareRename2Gn, error) {
+func (l loggingGoplsServer) PrepareRename(ctxt context.Context, params *protocol.PrepareRenameParams) (*protocol.PrepareRenameResult, error) {
 	l.Logf("gopls.PrepareRename() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.PrepareRename(ctxt, params)
 	l.Logf("gopls.PrepareRename() return; err: %v; res\n%v", err, pretty.Sprint(res))
@@ -319,13 +319,6 @@ func (l loggingGoplsServer) SelectionRange(ctxt context.Context, params *protoco
 	l.Logf("gopls.SelectionRange() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.SelectionRange(ctxt, params)
 	l.Logf("gopls.SelectionRange() return; err: %v; res\n%v", err, pretty.Sprint(res))
-	return res, err
-}
-
-func (l loggingGoplsServer) NonstandardRequest(ctxt context.Context, method string, params interface{}) (interface{}, error) {
-	l.Logf("gopls.NonstandardRequest() call; method: %v, params:\n%v", method, pretty.Sprint(params))
-	res, err := l.u.NonstandardRequest(ctxt, method, params)
-	l.Logf("gopls.NonstandardRequest() return; err: %v; res\n%v", err, pretty.Sprint(res))
 	return res, err
 }
 

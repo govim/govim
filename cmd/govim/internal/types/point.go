@@ -3,8 +3,7 @@ package types
 import (
 	"fmt"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 )
 
 // Point represents a position within a Buffer
@@ -27,18 +26,15 @@ type Point struct {
 
 func PointFromOffset(b *Buffer, offset int) (Point, error) {
 	m := b.mapper()
-	p, err := m.OffsetPoint(offset)
-	if err != nil {
-		return Point{}, fmt.Errorf("failed to calculate point within buffer %v: %v", b.Num, err)
-	}
-	pos, err := m.PointPosition(p)
+	line, col := m.OffsetLineCol8(offset)
+	pos, err := m.OffsetPosition(offset)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate UTF16 char value within buffer %v: %v", b.Num, err)
 	}
 	res := Point{
 		buffer:   b,
-		line:     p.Line(),
-		col:      p.Column(),
+		line:     line,
+		col:      col,
 		offset:   offset,
 		utf16Col: int(pos.Character),
 	}
@@ -47,7 +43,7 @@ func PointFromOffset(b *Buffer, offset int) (Point, error) {
 
 func PointFromVim(b *Buffer, line, col int) (Point, error) {
 	m := b.mapper()
-	pos, err := m.PointPosition(span.NewPoint(line, col, 0))
+	pos, err := m.LineCol8Position(line, col)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate UTF16 pos within buffer %v: %v", b.Num, err)
 	}
@@ -67,15 +63,16 @@ func PointFromVim(b *Buffer, line, col int) (Point, error) {
 
 func PointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 	m := b.mapper()
-	p, err := m.PositionPoint(pos)
+	offset, err := m.PositionOffset(pos)
 	if err != nil {
 		return Point{}, fmt.Errorf("failed to calculate point within buffer %v: %v", b.Num, err)
 	}
+	line, col := m.OffsetLineCol8(offset)
 	res := Point{
 		buffer:   b,
-		line:     p.Line(),
-		col:      p.Column(),
-		offset:   p.Offset(),
+		line:     line,
+		col:      col,
+		offset:   offset,
 		utf16Col: int(pos.Character),
 	}
 	return res, nil
@@ -90,11 +87,8 @@ func VisualPointFromPosition(b *Buffer, pos protocol.Position) (Point, error) {
 	l := len(c)
 	if p.Offset() == l && l > 0 && c[l-1] == '\n' {
 		m := b.mapper()
-		np, err := m.OffsetPoint(l - 1)
-		if err != nil {
-			return Point{}, err
-		}
-		p, err = PointFromVim(b, np.Line(), np.Column())
+		line, col := m.OffsetLineCol8(l - 1)
+		p, err = PointFromVim(b, line, col)
 		if err != nil {
 			return p, err
 		}
