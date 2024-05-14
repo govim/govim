@@ -50,7 +50,7 @@ const (
 
 // vim versions
 const (
-	LatestVim = "v9.0.2112"
+	LatestVim = "v9.1.0412"
 )
 
 var (
@@ -71,7 +71,7 @@ func (c Command) BuildCommand(args ...string) *exec.Cmd {
 }
 
 var (
-	GoVersions = []string{"go1.20.11", "go1.21.4"}
+	GoVersions = []string{"go1.22.3"}
 
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{

@@ -16,8 +16,7 @@ import (
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/fakenet"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/govim/govim/cmd/govim/internal/util"
 )
 
@@ -154,7 +153,7 @@ func (g *govimplugin) startGopls() error {
 
 	initParams := &protocol.ParamInitialize{}
 	initParams.WorkspaceFolders = []protocol.WorkspaceFolder{
-		{URI: string(span.URIFromPath(filepath.Dir(gomodspec)))},
+		{URI: string(protocol.URIFromPath(filepath.Dir(gomodspec)))},
 	}
 	initParams.Capabilities.TextDocument.Hover = &protocol.HoverClientCapabilities{
 		ContentFormat: []protocol.MarkupKind{protocol.PlainText},
@@ -167,7 +166,7 @@ func (g *govimplugin) startGopls() error {
 
 	initParams.Capabilities.Window.WorkDoneProgress = true
 
-	initParams.ClientInfo = &protocol.Msg_XInitializeParams_clientInfo{
+	initParams.ClientInfo = &protocol.ClientInfo{
 		Name: "govim",
 	}
 	if bi, ok := debug.ReadBuildInfo(); ok {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 )
 
 // This file contains config that would otherwise be in the

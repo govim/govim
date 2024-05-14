@@ -12,7 +12,7 @@ import (
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/testsetup"
-	"github.com/rogpeppe/go-internal/semver"
+	"golang.org/x/mod/semver"
 )
 
 var thematrix []build
@@ -323,7 +323,7 @@ jobs:
       VIM_VERSION: ${{ matrix.vim_version }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@722adc63f1aa60a57ec37892e133b1d319cae598
+      uses: actions/checkout@v4
     - name: Build docker image
       run: ./_scripts/buildGovimImage.sh
     - name: Run Docker, run!
@@ -334,7 +334,7 @@ jobs:
       run: ./_scripts/postRun.sh
     - name: Upload artefacts
       if: (success() || failure()) && env.CI_UPLOAD_ARTIFACTS == 'true'
-      uses: actions/upload-artifact@3446296876d12d4e3a0f3145a3c87e67bf0a16b5
+      uses: actions/upload-artifact@v4
       with:
         path: /home/runner/.artefacts
         name: ${{ matrix.os }}_${{ matrix.go_version }}_${{ matrix.vim_flavor }}_${{ matrix.vim_version }}
@@ -358,8 +358,8 @@ jobs:
       VIM_FLAVOR: vim
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
-    - uses: actions/setup-go@v2
+      uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
       with:
         stable: 'false'
         go-version: ${{ matrix.go-version }}

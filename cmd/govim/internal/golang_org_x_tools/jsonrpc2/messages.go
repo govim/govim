@@ -27,7 +27,7 @@ type Request interface {
 	Message
 	// Method is a string containing the method name to invoke.
 	Method() string
-	// Params is either a struct or an array with the parameters of the method.
+	// Params is an JSON value (object, array, null, or "") with the parameters of the method.
 	Params() json.RawMessage
 	// isJSONRPC2Request is used to make the set of request implementations closed.
 	isJSONRPC2Request()
@@ -46,7 +46,7 @@ type Notification struct {
 type Call struct {
 	// Method is a string containing the method name to invoke.
 	method string
-	// Params is either a struct or an array with the parameters of the method.
+	// Params is a JSON value (object, array, null, or "") with the parameters of the method.
 	params json.RawMessage
 	// id of this request, used to tie the Response back to the request.
 	id ID
@@ -157,17 +157,17 @@ func (r *Response) MarshalJSON() ([]byte, error) {
 	return data, nil
 }
 
-func toWireError(err error) *wireError {
+func toWireError(err error) *WireError {
 	if err == nil {
 		// no error, the response is complete
 		return nil
 	}
-	if err, ok := err.(*wireError); ok {
+	if err, ok := err.(*WireError); ok {
 		// already a wire error, just use it
 		return err
 	}
-	result := &wireError{Message: err.Error()}
-	var wrapped *wireError
+	result := &WireError{Message: err.Error()}
+	var wrapped *WireError
 	if errors.As(err, &wrapped) {
 		// if we wrapped a wire error, keep the code from the wrapped error
 		// but the message from the outer error

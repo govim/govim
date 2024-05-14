@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/govim/govim/testsetup"
-	"github.com/rogpeppe/go-internal/semver"
+	"golang.org/x/mod/semver"
 )
 
 func TestCondition(t *testing.T) {

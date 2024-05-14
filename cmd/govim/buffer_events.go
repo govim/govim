@@ -12,10 +12,14 @@ import (
 	"sync"
 
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/source"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/file"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
+
+func filename(d protocol.DocumentURI) string {
+	return filepath.Base(d.Path())
+}
 
 func (v *vimstate) bufReadPost(args ...json.RawMessage) error {
 	nb := v.currentBufferInfo(args[0])
@@ -36,7 +40,7 @@ func (v *vimstate) addBuffer(nb *types.Buffer) error {
 	// updated to ensure that sign placement etc. works.
 	diags := *v.diagnosticsCache
 	for i, d := range diags {
-		if d.Buf == -1 && d.Filename == nb.URI().Filename() {
+		if d.Buf == -1 && d.Filename == filename(nb.URI()) {
 			diags[i].Buf = nb.Num
 		}
 	}
@@ -182,18 +186,18 @@ func (v *vimstate) bufUnload(args ...json.RawMessage) error {
 	return nil
 }
 
-func detectLanguage(filename string) source.FileKind {
+func detectLanguage(filename string) file.Kind {
 	// Detect the language based on the file extension.
 	switch ext := filepath.Ext(filename); ext {
 	case ".mod":
-		return source.Mod
+		return file.Mod
 	case ".sum":
-		return source.Sum
+		return file.Sum
 	case ".go":
-		return source.Go
+		return file.Go
 	default:
 		// (for instance, before go1.15 cgo files had no extension)
-		return source.Go
+		return file.Go
 	}
 }
 
@@ -202,7 +206,7 @@ func (v *vimstate) handleBufferEvent(b *types.Buffer) error {
 	if b.Version == 1 {
 		params := &protocol.DidOpenTextDocumentParams{
 			TextDocument: protocol.TextDocumentItem{
-				LanguageID: detectLanguage(b.URI().Filename()).String(),
+				LanguageID: protocol.LanguageKind(detectLanguage(filename(b.URI())).String()),
 				URI:        protocol.DocumentURI(b.URI()),
 				Version:    b.Version,
 				Text:       string(b.Contents()),

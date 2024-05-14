@@ -24,8 +24,8 @@ import (
 	"github.com/govim/govim"
 	"github.com/govim/govim/internal/textutil"
 	"github.com/govim/govim/testsetup"
-	"github.com/rogpeppe/go-internal/semver"
 	"github.com/rogpeppe/go-internal/testscript"
+	"golang.org/x/mod/semver"
 	"gopkg.in/retry.v1"
 	"gopkg.in/tomb.v2"
 )

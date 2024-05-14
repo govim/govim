@@ -7,8 +7,7 @@ import (
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
@@ -106,7 +105,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 				}
 
 				// verify that the URI and version of the edits match the buffer
-				euri := span.URI(dc.TextDocumentEdit.TextDocument.URI)
+				euri := dc.TextDocumentEdit.TextDocument.URI
 				buri := b.URI()
 				if euri != buri {
 					return fmt.Errorf("got edits for file %v, but buffer is %v", euri, buri)
@@ -116,7 +115,7 @@ func (v *vimstate) formatBufferRange(b *types.Buffer, mode config.FormatOnSave, 
 				}
 				edits := dc.TextDocumentEdit.Edits
 				if len(edits) != 0 {
-					if err := v.applyProtocolTextEdits(b, edits); err != nil {
+					if err := v.applyProtocolTextEdits(b, protocol.AsTextEdits(edits)); err != nil {
 						return err
 					}
 				}

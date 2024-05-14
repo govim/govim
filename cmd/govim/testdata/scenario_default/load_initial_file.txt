@@ -1,6 +1,8 @@
 # Test to ensure that we can load an initial file where there is a
 # vim_config.json file in the archive
 
+envsubst errors.v8.2.3019.golden
+
 vim expr 'bufname(\"\")'
 stdout '^"main.go"$'
 ! stderr .+
@@ -32,6 +34,20 @@ asdf
 ]
 -- errors.v8.2.3019.golden --
 [
+  {
+    "bufname": "main.go",
+    "col": 9,
+    "end_col": 0,
+    "end_lnum": 0,
+    "lnum": 1,
+    "module": "",
+    "nr": 0,
+    "pattern": "",
+    "text": "No packages found for open file $WORK/main.go.",
+    "type": "",
+    "valid": 1,
+    "vcol": 0
+  },
   {
     "bufname": "main.go",
     "col": 1,

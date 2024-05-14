@@ -5,8 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
@@ -20,7 +19,7 @@ func (v *vimstate) diagnostics() *[]types.Diagnostic {
 		return v.diagnosticsCache
 	}
 
-	filediags := make(map[span.URI][]protocol.Diagnostic)
+	filediags := make(map[protocol.DocumentURI][]protocol.Diagnostic)
 	for k, v := range v.rawDiagnostics {
 		filediags[k] = v.Diagnostics
 	}
@@ -31,7 +30,7 @@ func (v *vimstate) diagnostics() *[]types.Diagnostic {
 	diags := []types.Diagnostic{}
 
 	for uri, lspDiags := range filediags {
-		fn := uri.Filename()
+		fn := uri.Path()
 		var buf *types.Buffer
 		for _, b := range v.buffers {
 			if b.Loaded && b.URI() == uri {

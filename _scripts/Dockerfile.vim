@@ -1,4 +1,4 @@
-FROM buildpack-deps:18.04
+FROM buildpack-deps:22.04
 
 RUN apt-get update && \
   apt-get -y install sudo apt-utils git jq curl libncurses5-dev gcc rsync libgtk2.0-dev xvfb && \

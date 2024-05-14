@@ -28,10 +28,9 @@ cat <<EOD > deps.go
 package deps
 
 import (
-	_ "golang.org/x/tools/gopls/internal/lsp/protocol"
-	_ "golang.org/x/tools/gopls/internal/lsp/source"
-	_ "golang.org/x/tools/gopls/internal/lsp/command"
-	_ "golang.org/x/tools/gopls/internal/span"
+	_ "golang.org/x/tools/gopls/internal/file"
+	_ "golang.org/x/tools/gopls/internal/protocol"
+	_ "golang.org/x/tools/gopls/internal/protocol/command"
 	_ "golang.org/x/tools/internal/fakenet"
 	_ "golang.org/x/tools/internal/jsonrpc2"
 )

@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	"github.com/govim/govim"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/kr/pretty"
 )
 

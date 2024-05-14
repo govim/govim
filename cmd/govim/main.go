@@ -19,8 +19,7 @@ import (
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/jsonrpc2"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 	"github.com/govim/govim/cmd/govim/internal/vimconfig"
 	"github.com/govim/govim/internal/plugin"
@@ -176,7 +175,7 @@ type govimplugin struct {
 	diagnosticsChangedLock sync.Mutex
 
 	// rawDiagnostics holds the current raw (LSP) diagnostics by URI
-	rawDiagnostics map[span.URI]*protocol.PublishDiagnosticsParams
+	rawDiagnostics map[protocol.DocumentURI]*protocol.PublishDiagnosticsParams
 
 	// diagnosticsChanged indicates that the new diagnostics are available
 	diagnosticsChanged bool
@@ -261,7 +260,7 @@ func newplugin(goplspath string, goplsEnv []string, defaults, user *config.Confi
 	res := &govimplugin{
 		logging:          logging,
 		tmpDir:           tmpDir,
-		rawDiagnostics:   make(map[span.URI]*protocol.PublishDiagnosticsParams),
+		rawDiagnostics:   make(map[protocol.DocumentURI]*protocol.PublishDiagnosticsParams),
 		goplsEnv:         goplsEnv,
 		goplspath:        goplspath,
 		Driver:           d,

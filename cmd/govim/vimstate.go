@@ -8,8 +8,7 @@ import (
 	"sync"
 
 	"github.com/govim/govim/cmd/govim/config"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 	"github.com/govim/govim/cmd/govim/internal/types"
 	"github.com/govim/govim/cmd/govim/internal/vimconfig"
 	"github.com/govim/govim/internal/plugin"
@@ -317,7 +316,7 @@ func (v *vimstate) applyWorkspaceEdit(params *protocol.ApplyWorkspaceEditParams)
 		// verify that the version of the edits matches a buffer
 		var buf *types.Buffer
 		for _, b := range v.buffers {
-			if b.URI() != span.URI(textDoc.URI) {
+			if b.URI() != textDoc.URI {
 				continue
 			}
 
@@ -335,7 +334,7 @@ func (v *vimstate) applyWorkspaceEdit(params *protocol.ApplyWorkspaceEditParams)
 			res.Applied = false
 			return res, nil
 		}
-		edits[buf] = append(edits[buf], dc.TextDocumentEdit.Edits...)
+		edits[buf] = append(edits[buf], protocol.AsTextEdits(dc.TextDocumentEdit.Edits)...)
 	}
 
 	for b, e := range edits {

@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	"github.com/govim/govim"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 )
 
 func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
@@ -66,7 +66,7 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 	sort.Strings(fps)
 
 	for _, filepath := range fps {
-		tf := protocol.DocumentURI(filepath).SpanURI().Filename()
+		tf := protocol.DocumentURI(filepath).Path()
 		var bufinfo []struct {
 			BufNr   int   `json:"bufnr"`
 			Windows []int `json:"windows"`
@@ -90,7 +90,7 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 
 	for _, filepath := range fps {
 		uri := protocol.DocumentURI(filepath)
-		tf := uri.SpanURI().Filename()
+		tf := uri.Path()
 		changes := uriMap[uri]
 		if len(changes.Edits) == 0 {
 			continue
@@ -106,7 +106,7 @@ func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes [
 		if ev > 0 && ev != b.Version {
 			return fmt.Errorf("edit for buffer %v (%v) was for version %v, current version is %v", tf, bufnr, ev, b.Version)
 		}
-		if err := v.applyProtocolTextEdits(b, changes.Edits); err != nil {
+		if err := v.applyProtocolTextEdits(b, protocol.AsTextEdits(changes.Edits)); err != nil {
 			return fmt.Errorf("failed to apply edits for %v: %v", tf, err)
 		}
 	}

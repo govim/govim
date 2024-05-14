@@ -35,9 +35,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-20.04]
-        go_version: ["go1.20.11", "go1.21.4"]
+        go_version: ["go1.22.3"]
         vim_flavor: ["vim", "gvim"]
-        vim_version: ["v9.0.2112"]
+        vim_version: ["v9.1.0412"]
     runs-on: ${{ matrix.os }}
     env:
       GO_VERSION: ${{ matrix.go_version }}
@@ -45,7 +45,7 @@ jobs:
       VIM_VERSION: ${{ matrix.vim_version }}
     steps:
     - name: Checkout code
-      uses: actions/checkout@722adc63f1aa60a57ec37892e133b1d319cae598
+      uses: actions/checkout@v4
     - name: Build docker image
       run: ./_scripts/buildGovimImage.sh
     - name: Run Docker, run!
@@ -56,7 +56,7 @@ jobs:
       run: ./_scripts/postRun.sh
     - name: Upload artefacts
       if: (success() || failure()) && env.CI_UPLOAD_ARTIFACTS == 'true'
-      uses: actions/upload-artifact@3446296876d12d4e3a0f3145a3c87e67bf0a16b5
+      uses: actions/upload-artifact@v4
       with:
         path: /home/runner/.artefacts
         name: ${{ matrix.os }}_${{ matrix.go_version }}_${{ matrix.vim_flavor }}_${{ matrix.vim_version }}

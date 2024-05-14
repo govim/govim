@@ -6,8 +6,7 @@ import (
 	"go/ast"
 	"go/token"
 
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/lsp/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/span"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
 )
 
 // A Buffer is govim's representation of the current state of a buffer in Vim
@@ -73,11 +72,11 @@ func (b *Buffer) SetContents(byts []byte) {
 	b.pm = nil
 }
 
-// URI returns the b's Name as a span.URI, assuming it is a file.
+// URI returns the b's Name as a protocol.DocumentURI, assuming it is a file.
 //
 // TODO: we should panic here is this is not a file-based buffer
-func (b *Buffer) URI() span.URI {
-	return span.URIFromPath(b.Name)
+func (b *Buffer) URI() protocol.DocumentURI {
+	return protocol.URIFromPath(b.Name)
 }
 
 // ToTextDocumentIdentifier converts b to a protocol.TextDocumentIdentifier
