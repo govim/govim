@@ -1,4 +1,9 @@
 # Test that the vim sidecar ex command works
 
+vim ex 'r input | 0d_'
 vim ex 'w test'
 exists test
+
+-- input --
+Hello
+Gophers
