@@ -17,7 +17,6 @@ require (
 	golang.org/x/tools/gopls v0.0.0-20240514024235-59d9797072e7
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
-	honnef.co/go/tools v0.4.7
 )
 
 require (
@@ -29,6 +28,7 @@ require (
 	golang.org/x/sys v0.20.0 // indirect
 	golang.org/x/text v0.15.0 // indirect
 	golang.org/x/vuln v1.0.4 // indirect
+	honnef.co/go/tools v0.4.7 // indirect
 	mvdan.cc/gofumpt v0.6.0 // indirect
 	mvdan.cc/sh/v3 v3.0.0-alpha1 // indirect
 	mvdan.cc/xurls/v2 v2.5.0 // indirect

@@ -22,7 +22,7 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-//go:generate go run golang.org/x/tools/cmd/stringer -type=GenAttr,Complete,Range,Event,NArgs,Flavor -linecomment -output gen_stringers_stringer.go
+//go:generate go run golang.org/x/tools/cmd/stringer@v0.21.1-0.20240514182804-e8808ed57e2b -type=GenAttr,Complete,Range,Event,NArgs,Flavor -linecomment -output gen_stringers_stringer.go
 //go:generate go run github.com/govim/govim/internal/cmd/genconfig
 
 const (
