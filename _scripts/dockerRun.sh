@@ -84,7 +84,7 @@ then
 fi
 
 go vet $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
-go run honnef.co/go/tools/cmd/staticcheck $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
+go run honnef.co/go/tools/cmd/staticcheck@v0.4.7 $(go list ./... | grep -v 'govim/internal/golang_org_x_tools')
 
 if [ "${CI:-}" == "true" ] && [ "${GITHUB_EVENT_NAME:-}" != "schedule" ]
 then
