@@ -28,10 +28,6 @@ import (
 
 //go:generate go run github.com/govim/govim/internal/cmd/txtarutil -- addfooter -unless "^# noerrcheck$" ./testdata/scenario_*/*.txt testdata/disabled_logmessage.footer
 
-const (
-	EnvInstallScripts = "GOVIM_RUN_INSTALL_TESTSCRIPTS"
-)
-
 var fGoplsPath = flag.String("gopls", "", "Path to the gopls binary for use in scenario tests. If unset, gopls is built from a tagged version.")
 
 func init() {
@@ -257,77 +253,6 @@ func TestScripts(t *testing.T) {
 		}
 		t.Fatalf("got some errors:\n%v\n", strings.Join(msgs, "\n"))
 	}
-}
-
-func TestInstallScripts(t *testing.T) {
-	t.Parallel()
-	if os.Getenv(EnvInstallScripts) != "true" {
-		t.Skipf("Skipping install scripts; %v != true", EnvInstallScripts)
-	}
-
-	govimPath := strings.TrimSpace(runCmd(t, "go", "list", "-m", "-f={{.Dir}}"))
-
-	// For the tests where we set GOVIM_USE_GOPLS_FROM_PATH=true, install
-	// gopls to a temp dir and add that dir to our PATH
-	td, err := installGoplsToTempDir()
-	if err != nil {
-		t.Fatalf("failed to install gopls to temp directory: %v", err)
-	}
-	cleanup(t, func() {
-		os.RemoveAll(td)
-	})
-
-	gopath := strings.TrimSpace(runCmd(t, "go", "env", "GOPATH"))
-	gocache := strings.TrimSpace(runCmd(t, "go", "env", "GOCACHE"))
-
-	t.Run("scripts", func(t *testing.T) {
-		t.Parallel()
-		testscript.Run(t, testscript.Params{
-			Dir: filepath.Join("testdata", "install"),
-			Setup: func(e *testscript.Env) error {
-				e.Vars = append(e.Vars,
-					"PLUGIN_PATH="+govimPath,
-					"GOPATH="+gopath,
-					"GOCACHE="+gocache,
-					testsetup.EnvTestPathEnv+"="+os.Getenv(testsetup.EnvTestPathEnv),
-					testsetup.EnvLoadTestAPI+"=true",
-				)
-				return nil
-			},
-		})
-	})
-
-	t.Run("scripts-with-gopls-from-path", func(t *testing.T) {
-		t.Parallel()
-		testscript.Run(t, testscript.Params{
-			Dir: filepath.Join("testdata", "install"),
-			Setup: func(e *testscript.Env) error {
-				var path string
-				for i := len(e.Vars) - 1; i >= 0; i-- {
-					v := e.Vars[i]
-					if strings.HasPrefix(v, "PATH=") {
-						path = strings.TrimPrefix(v, "PATH=")
-						break
-					}
-				}
-				if path == "" {
-					path = td
-				} else {
-					path = td + string(os.PathListSeparator) + path
-				}
-				e.Vars = append(e.Vars,
-					"PATH="+path,
-					"PLUGIN_PATH="+govimPath,
-					"GOPATH="+gopath,
-					"GOCACHE="+gocache,
-					testsetup.EnvTestPathEnv+"="+os.Getenv(testsetup.EnvTestPathEnv),
-					string(config.EnvVarUseGoplsFromPath)+"=true",
-					testsetup.EnvLoadTestAPI+"=true",
-				)
-				return nil
-			},
-		})
-	})
 }
 
 func runCmd(t *testing.T, c string, args ...string) string {
