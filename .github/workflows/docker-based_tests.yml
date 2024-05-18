@@ -36,7 +36,7 @@ jobs:
       matrix:
         os: [ubuntu-20.04]
         go_version: ["go1.22.3"]
-        vim_flavor: ["vim", "gvim"]
+        vim_flavor: ["vim"]
         vim_version: ["v9.1.0412"]
     runs-on: ${{ matrix.os }}
     env:

@@ -37,7 +37,7 @@ func (v *vimstate) rename(flags govim.CommandFlags, args ...string) error {
 	return v.applyMultiBufTextedits(flags.Mods, res.DocumentChanges)
 }
 
-func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes []protocol.DocumentChanges) error {
+func (v *vimstate) applyMultiBufTextedits(splitMods govim.CommModList, changes []protocol.DocumentChange) error {
 	allChanges := changes
 	if len(allChanges) == 0 {
 		v.Logf("No changes to apply for rename")

@@ -141,10 +141,8 @@ func writeMaxVersionsScripts() {
 		panic(fmt.Errorf("found no vim versions"))
 	}
 	vs.MaxVimVersion = vimVersions[len(vimVersions)-1]
-	vs.MaxGvimVersion = gvimVersions[len(gvimVersions)-1]
 	vs.GoVersions = strings.Join(goVersions, " ")
 	vs.VimVersions = strings.Join(vimVersions, " ")
-	vs.GvimVersions = strings.Join(gvimVersions, " ")
 
 	var flavStrings []string
 	for _, f := range govim.Flavors {
