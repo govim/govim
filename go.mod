@@ -12,9 +12,9 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0
 	golang.org/x/exp/typeparams v0.0.0-20221212164502-fae10dda9338
 	golang.org/x/mod v0.17.0
-	golang.org/x/telemetry v0.0.0-20240228155512-f48c80bd79b2
-	golang.org/x/tools v0.21.1-0.20240514024235-59d9797072e7
-	golang.org/x/tools/gopls v0.0.0-20240514024235-59d9797072e7
+	golang.org/x/telemetry v0.0.0-20240516185856-98772af85899
+	golang.org/x/tools v0.21.1-0.20240517211434-0b4dca13e95d
+	golang.org/x/tools/gopls v0.0.0-20240517211434-0b4dca13e95d
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 )

@@ -76,7 +76,6 @@ var (
 	// VimVersions contains the versions of all flavors of Vim/Gvim/X to be tested
 	VimVersions = []Version{
 		VimVersion(LatestVim),
-		GvimVersion(LatestVim),
 	}
 )
 
