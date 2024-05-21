@@ -358,7 +358,7 @@ func (g *goplsSymbolCmd) Run() {
 	<-done
 
 	if qferr != nil {
-		g.Errorf("failed to convert locations to quickfix entires: %v", err)
+		g.Errorf("failed to convert locations to quickfix entires: %v", qferr)
 	}
 
 	if *g.fQuickfix {
