@@ -39,7 +39,7 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 
 		start := pos.Col()
 		if len(res.Items) > 0 {
-			pos, err := types.PointFromPosition(b, res.Items[0].TextEdit.Range.Start)
+			pos, err := types.PointFromPosition(b, res.Items[0].TextEdit.Value.(protocol.TextEdit).Range.Start)
 			if err != nil {
 				return nil, fmt.Errorf("failed to derive completion start: %v", err)
 			}
@@ -70,7 +70,7 @@ func (v *vimstate) complete(args ...json.RawMessage) (interface{}, error) {
 			matches = append(matches, govim.CompleteItem{
 				Abbr:     i.Label,
 				Menu:     i.Detail,
-				Word:     i.TextEdit.NewText,
+				Word:     i.TextEdit.Value.(protocol.TextEdit).NewText,
 				Info:     info,
 				Dup:      1,
 				UserData: "govim",
