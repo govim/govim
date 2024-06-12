@@ -29,9 +29,8 @@ import (
 //  1. All method arguments must be JSON serializable.
 //  2. Methods must return either error or (T, error), where T is a
 //     JSON serializable type.
-//  3. The first line of the doc string is special. Everything after the colon
-//     is considered the command 'Title'.
-//     TODO(rFindley): reconsider this -- Title may be unnecessary.
+//  3. The first line of the doc string is special.
+//     Everything after the colon is considered the command 'Title'.
 //
 // The doc comment on each method is eventually published at
 // https://github.com/golang/tools/blob/master/gopls/doc/commands.md,
@@ -49,13 +48,20 @@ type Interface interface {
 	// Test: Run test(s) (legacy)
 	//
 	// Runs `go test` for a specific set of test or benchmark functions.
+	//
+	// This command is asynchronous; wait for the 'end' progress notification.
+	//
+	// This command is an alias for RunTests; the only difference
+	// is the form of the parameters.
+	//
+	// TODO(adonovan): eliminate it.
 	Test(context.Context, protocol.DocumentURI, []string, []string) error
-
-	// TODO: deprecate Test in favor of RunTests below.
 
 	// Test: Run test(s)
 	//
 	// Runs `go test` for a specific set of test or benchmark functions.
+	//
+	// This command is asynchronous; clients must wait for the 'end' progress notification.
 	RunTests(context.Context, RunTestsArgs) error
 
 	// Generate: Run go generate
@@ -178,6 +184,8 @@ type Interface interface {
 	// RunGovulncheck: Run vulncheck
 	//
 	// Run vulnerability check (`govulncheck`).
+	//
+	// This command is asynchronous; clients must wait for the 'end' progress notification.
 	RunGovulncheck(context.Context, VulncheckArgs) (RunVulncheckResult, error)
 
 	// FetchVulncheckResult: Get known vulncheck result
@@ -234,7 +242,7 @@ type Interface interface {
 	// This command is intended for use by gopls tests only.
 	Views(context.Context) ([]View, error)
 
-	// FreeSymbols: report free symbols referenced by the selection.
+	// FreeSymbols: View free symbols referenced by the selection in a browser.
 	//
 	// This command is a query over a selected range of Go source
 	// code. It reports the set of "free" symbols of the
@@ -243,7 +251,19 @@ type Interface interface {
 	// information is useful for understanding at a glance what a
 	// block of code depends on, perhaps as a precursor to
 	// extracting it into a separate function.
-	FreeSymbols(context.Context, protocol.DocumentURI, protocol.Range) error
+	FreeSymbols(ctx context.Context, viewID string, loc protocol.Location) error
+
+	// Assembly: View assembly listing of current function in a browser.
+	//
+	// This command opens a web-based disassembly listing of the
+	// specified function symbol (plus any nested lambdas and defers).
+	// The machine architecture is determined by the view.
+	Assembly(_ context.Context, viewID, packageID, symbol string) error
+
+	// ScanImports: force a sychronous scan of the imports cache.
+	//
+	// This command is intended for use by gopls tests only.
+	ScanImports(context.Context) error
 }
 
 type RunTestsArgs struct {

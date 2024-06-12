@@ -11,7 +11,6 @@ import (
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/config"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol/command"
 	"github.com/govim/govim/cmd/govim/internal/types"
 	"github.com/kr/pretty"
 )
@@ -185,7 +184,7 @@ func (g *govimplugin) Configuration(ctxt context.Context, params *protocol.Param
 		goplsConfig[goplsAnalyses] = *conf.Analyses
 	}
 	goplsConfig[goplsCodeLenses] = map[string]bool{
-		string(command.GCDetails): true, // gc_details
+		string(protocol.CodeLensGCDetails): true, // gc_details
 	}
 	if conf.GoplsEnv != nil {
 		// It is safe not to copy the map here because a new config setting from
