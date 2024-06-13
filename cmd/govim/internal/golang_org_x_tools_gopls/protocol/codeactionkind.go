@@ -74,10 +74,16 @@ package protocol
 // instead of == for CodeActionKinds throughout gopls.
 // See golang/go#40438 for related discussion.
 const (
-	GoTest        CodeActionKind = "goTest"
+	GoAssembly    CodeActionKind = "source.assembly"
 	GoDoc         CodeActionKind = "source.doc"
 	GoFreeSymbols CodeActionKind = "source.freesymbols"
+	GoTest        CodeActionKind = "goTest" // TODO(adonovan): rename "source.test"
 )
+
+// CodeActionUnknownTrigger indicates that the trigger for a
+// CodeAction request is unknown. A missing
+// CodeActionContext.TriggerKind should be treated as equivalent.
+const CodeActionUnknownTrigger CodeActionTriggerKind = 0
 
 // A CodeLensSource identifies an (algorithmic) source of code lenses.
 type CodeLensSource string
