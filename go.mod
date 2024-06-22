@@ -13,10 +13,12 @@ require (
 	golang.org/x/exp/typeparams v0.0.0-20221212164502-fae10dda9338
 	golang.org/x/mod v0.18.0
 	golang.org/x/telemetry v0.0.0-20240607193123-221703e18637
-	golang.org/x/tools v0.22.1-0.20240611190541-f45db9b4bbd0
-	golang.org/x/tools/gopls v0.0.0-20240611190541-f45db9b4bbd0
+	golang.org/x/tools v0.22.1-0.20240621205732-df4e86209a63
+	golang.org/x/tools/gopls v0.0.0-20240621205732-df4e86209a63
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
+	honnef.co/go/tools v0.4.7
+	mvdan.cc/gofumpt v0.6.0
 )
 
 require (
@@ -28,8 +30,6 @@ require (
 	golang.org/x/sys v0.21.0 // indirect
 	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/vuln v1.0.4 // indirect
-	honnef.co/go/tools v0.4.7 // indirect
-	mvdan.cc/gofumpt v0.6.0 // indirect
 	mvdan.cc/sh/v3 v3.0.0-alpha1 // indirect
 	mvdan.cc/xurls/v2 v2.5.0 // indirect
 )
