@@ -28,6 +28,7 @@ cat <<EOD > deps.go
 package deps
 
 import (
+	_ "golang.org/x/tools/gopls/internal/settings"
 	_ "golang.org/x/tools/gopls/internal/file"
 	_ "golang.org/x/tools/gopls/internal/protocol"
 	_ "golang.org/x/tools/gopls/internal/protocol/command"
