@@ -49,10 +49,10 @@ golang.org/x/telemetry v0.0.0-20240607193123-221703e18637 h1:3Wt8mZlbFwG8llny+t1
 golang.org/x/telemetry v0.0.0-20240607193123-221703e18637/go.mod h1:n38mvGdgc4dA684EC4NwQwoPKSw4jyKw8/DgZHDA1Dk=
 golang.org/x/text v0.16.0 h1:a94ExnEXNtEwYLGJSIUxnWoxoRz/ZcCsV63ROupILh4=
 golang.org/x/text v0.16.0/go.mod h1:GhwF1Be+LQoKShO3cGOHzqOgRrGaYc9AvblQOmPVHnI=
-golang.org/x/tools v0.22.1-0.20240621205732-df4e86209a63 h1:ch7yGao3lcdgXIsLxkDEEJvXE1L0iAokgxEH7BKrAiE=
-golang.org/x/tools v0.22.1-0.20240621205732-df4e86209a63/go.mod h1:aCwcsjqvq7Yqt6TNyX7QMU2enbQ/Gt0bo6krSeEri+c=
-golang.org/x/tools/gopls v0.0.0-20240621205732-df4e86209a63 h1:X84Tnp15uiU5oE96Vq447OQo5D56r/WgmsbR7m5Srp8=
-golang.org/x/tools/gopls v0.0.0-20240621205732-df4e86209a63/go.mod h1:n/a3DGccp+5CqVk94e3wuqSFNStOqQ1HoCUA99okJBY=
+golang.org/x/tools v0.22.1-0.20240625180128-850c7c3070cd h1:VBnCiDP7sxBXl7fISGHqlp0fVvHjazALQYNIvtroQFc=
+golang.org/x/tools v0.22.1-0.20240625180128-850c7c3070cd/go.mod h1:aCwcsjqvq7Yqt6TNyX7QMU2enbQ/Gt0bo6krSeEri+c=
+golang.org/x/tools/gopls v0.0.0-20240625180128-850c7c3070cd h1:o+0z3EDNeSk+GK2bhEu1vC+JSY99YnsUasmc/Q9FGhA=
+golang.org/x/tools/gopls v0.0.0-20240625180128-850c7c3070cd/go.mod h1:n/a3DGccp+5CqVk94e3wuqSFNStOqQ1HoCUA99okJBY=
 golang.org/x/vuln v1.0.4 h1:SP0mPeg2PmGCu03V+61EcQiOjmpri2XijexKdzv8Z1I=
 golang.org/x/vuln v1.0.4/go.mod h1:NbJdUQhX8jY++FtuhrXs2Eyx0yePo9pF7nPlIjo9aaQ=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
