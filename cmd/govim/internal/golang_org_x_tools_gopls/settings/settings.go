@@ -439,8 +439,68 @@ type InlayHintOptions struct {
 	// Hints specify inlay hints that users want to see. A full list of hints
 	// that gopls uses can be found in
 	// [inlayHints.md](https://github.com/golang/tools/blob/master/gopls/doc/inlayHints.md).
-	Hints map[string]bool `status:"experimental"`
+	Hints map[InlayHint]bool `status:"experimental"`
 }
+
+// An InlayHint identifies a category of hint that may be
+// independently requested through the "hints" setting.
+type InlayHint string
+
+// This is the source from which gopls/doc/inlayHints.md is generated.
+const (
+	// ParameterNames controls inlay hints for parameter names:
+	// ```go
+	// 	parseInt(/* str: */ "123", /* radix: */ 8)
+	// ```
+	ParameterNames InlayHint = "parameterNames"
+
+	// AssignVariableTypes controls inlay hints for variable types in assign statements:
+	// ```go
+	// 	i/* int*/, j/* int*/ := 0, len(r)-1
+	// ```
+	AssignVariableTypes InlayHint = "assignVariableTypes"
+
+	// ConstantValues controls inlay hints for constant values:
+	// ```go
+	// 	const (
+	// 		KindNone   Kind = iota/* = 0*/
+	// 		KindPrint/*  = 1*/
+	// 		KindPrintf/* = 2*/
+	// 		KindErrorf/* = 3*/
+	// 	)
+	// ```
+	ConstantValues InlayHint = "constantValues"
+
+	// RangeVariableTypes controls inlay hints for variable types in range statements:
+	// ```go
+	// 	for k/* int*/, v/* string*/ := range []string{} {
+	// 		fmt.Println(k, v)
+	// 	}
+	// ```
+	RangeVariableTypes InlayHint = "rangeVariableTypes"
+
+	// CompositeLiteralTypes controls inlay hints for composite literal types:
+	// ```go
+	// 	for _, c := range []struct {
+	// 		in, want string
+	// 	}{
+	// 		/*struct{ in string; want string }*/{"Hello, world", "dlrow ,olleH"},
+	// 	}
+	// ```
+	CompositeLiteralTypes InlayHint = "compositeLiteralTypes"
+
+	// CompositeLiteralFieldNames inlay hints for composite literal field names:
+	// ```go
+	// 	{/*in: */"Hello, world", /*want: */"dlrow ,olleH"}
+	// ```
+	CompositeLiteralFieldNames InlayHint = "compositeLiteralFields"
+
+	// FunctionTypeParameters inlay hints for implicit type parameters on generic functions:
+	// ```go
+	// 	myFoo/*[int, string]*/(1, "hello")
+	// ```
+	FunctionTypeParameters InlayHint = "functionTypeParameters"
+)
 
 type NavigationOptions struct {
 	// ImportShortcut specifies whether import statements should link to
@@ -950,7 +1010,12 @@ func (o *Options) set(name string, value any, seen map[string]struct{}) error {
 			DefinitionShortcut)
 
 	case "analyses":
-		return setBoolMap(&o.Analyses, value)
+		if err := setBoolMap(&o.Analyses, value); err != nil {
+			return err
+		}
+		if o.Analyses["fieldalignment"] {
+			return deprecatedError("the 'fieldalignment' analyzer was removed in gopls/v0.17.0; instead, hover over struct fields to see size/offset information (https://go.dev/issue/66861)")
+		}
 
 	case "hints":
 		return setBoolMap(&o.Hints, value)

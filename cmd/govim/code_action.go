@@ -7,6 +7,7 @@ import (
 
 	"github.com/govim/govim"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/settings"
 	"github.com/govim/govim/cmd/govim/internal/types"
 )
 
@@ -41,7 +42,7 @@ func (v *vimstate) runGoTest(flags govim.CommandFlags, args ...string) error {
 			End:   end.ToPosition(),
 		},
 		Context: protocol.CodeActionContext{
-			Only: []protocol.CodeActionKind{protocol.GoTest},
+			Only: []protocol.CodeActionKind{settings.GoTest},
 		},
 		WorkDoneProgressParams: protocol.WorkDoneProgressParams{},
 	})

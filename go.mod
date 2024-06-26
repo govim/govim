@@ -13,8 +13,8 @@ require (
 	golang.org/x/exp/typeparams v0.0.0-20221212164502-fae10dda9338
 	golang.org/x/mod v0.18.0
 	golang.org/x/telemetry v0.0.0-20240607193123-221703e18637
-	golang.org/x/tools v0.22.1-0.20240621205732-df4e86209a63
-	golang.org/x/tools/gopls v0.0.0-20240621205732-df4e86209a63
+	golang.org/x/tools v0.22.1-0.20240625180128-850c7c3070cd
+	golang.org/x/tools/gopls v0.0.0-20240625180128-850c7c3070cd
 	gopkg.in/retry.v1 v1.0.3
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 	honnef.co/go/tools v0.4.7
