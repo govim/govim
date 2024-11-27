@@ -15,18 +15,6 @@ type Command string
 
 func (c Command) String() string { return string(c) }
 
-// IsAsync reports whether the command is asynchronous:
-// clients must wait for the "end" progress notification.
-func (c Command) IsAsync() bool {
-	switch string(c) {
-	// TODO(adonovan): derive this list from interface.go somewhow.
-	// Unfortunately we can't even reference the enum from here...
-	case "gopls.run_tests", "gopls.run_govulncheck", "gopls.test":
-		return true
-	}
-	return false
-}
-
 // MarshalArgs encodes the given arguments to json.RawMessages. This function
 // is used to construct arguments to a protocol.Command.
 //
@@ -43,6 +31,15 @@ func MarshalArgs(args ...interface{}) ([]json.RawMessage, error) {
 		out = append(out, argJSON)
 	}
 	return out, nil
+}
+
+// MustMarshalArgs is like MarshalArgs, but panics on error.
+func MustMarshalArgs(args ...interface{}) []json.RawMessage {
+	msg, err := MarshalArgs(args...)
+	if err != nil {
+		panic(err)
+	}
+	return msg
 }
 
 // UnmarshalArgs decodes the given json.RawMessages to the variables provided

@@ -50,18 +50,15 @@ import (
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/fillreturns"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/infertypeargs"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/nonewvars"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/norangeoverfunc"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/noresultvalues"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/simplifycompositelit"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/simplifyrange"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/simplifyslice"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/stubmethods"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/undeclaredname"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/unusedparams"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/unusedvariable"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/useany"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/analysis/yield"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
-	"honnef.co/go/tools/staticcheck"
 )
 
 // Analyzer augments a [analysis.Analyzer] with additional LSP configuration.
@@ -109,32 +106,7 @@ func (a *Analyzer) String() string { return a.analyzer.String() }
 var DefaultAnalyzers = make(map[string]*Analyzer) // initialized below
 
 func init() {
-	// Emergency workaround for #67237 to allow standard library
-	// to use range over func: disable SSA-based analyses of
-	// go1.23 packages that use range-over-func.
-	suppressOnRangeOverFunc := func(a *analysis.Analyzer) {
-		a.Requires = append(a.Requires, norangeoverfunc.Analyzer)
-	}
-	// buildir is non-exported so we have to scan the Analysis.Requires graph to find it.
-	var buildir *analysis.Analyzer
-	for _, a := range staticcheck.Analyzers {
-		for _, req := range a.Analyzer.Requires {
-			if req.Name == "buildir" {
-				buildir = req
-			}
-		}
-
-		// Temporarily disable SA4004 CheckIneffectiveLoop as
-		// it crashes when encountering go1.23 range-over-func
-		// (#67237, dominikh/go-tools#1494).
-		if a.Analyzer.Name == "SA4004" {
-			suppressOnRangeOverFunc(a.Analyzer)
-		}
-	}
-	if buildir != nil {
-		suppressOnRangeOverFunc(buildir)
-	}
-
+	// The traditional vet suite:
 	analyzers := []*Analyzer{
 		// The traditional vet suite:
 		{analyzer: appends.Analyzer, enabled: true},
@@ -173,12 +145,13 @@ func init() {
 		{analyzer: unusedresult.Analyzer, enabled: true},
 
 		// not suitable for vet:
-		// - some (nilness) use go/ssa; see #59714.
+		// - some (nilness, yield) use go/ssa; see #59714.
 		// - others don't meet the "frequency" criterion;
 		//   see GOROOT/src/cmd/vet/README.
 		{analyzer: atomicalign.Analyzer, enabled: true},
 		{analyzer: deepequalerrors.Analyzer, enabled: true},
 		{analyzer: nilness.Analyzer, enabled: true}, // uses go/ssa
+		{analyzer: yield.Analyzer, enabled: true},   // uses go/ssa
 		{analyzer: sortslice.Analyzer, enabled: true},
 		{analyzer: embeddirective.Analyzer, enabled: true},
 
@@ -202,8 +175,6 @@ func init() {
 		{analyzer: fillreturns.Analyzer, enabled: true},
 		{analyzer: nonewvars.Analyzer, enabled: true},
 		{analyzer: noresultvalues.Analyzer, enabled: true},
-		{analyzer: stubmethods.Analyzer, enabled: true},
-		{analyzer: undeclaredname.Analyzer, enabled: true},
 		// TODO(rfindley): why isn't the 'unusedvariable' analyzer enabled, if it
 		// is only enhancing type errors with suggested fixes?
 		//
@@ -216,7 +187,3 @@ func init() {
 		DefaultAnalyzers[analyzer.analyzer.Name] = analyzer
 	}
 }
-
-// StaticcheckAnalzyers describes available Staticcheck analyzers, keyed by
-// analyzer name.
-var StaticcheckAnalyzers = make(map[string]*Analyzer) // written by analysis_<ver>.go

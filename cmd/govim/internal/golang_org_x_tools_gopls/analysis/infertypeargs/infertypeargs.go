@@ -13,7 +13,6 @@ import (
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/typeparams"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/versions"
 )
 
 const Doc = `check for unnecessary type arguments in call expressions
@@ -91,9 +90,9 @@ func diagnose(fset *token.FileSet, inspect *inspector.Inspector, start, end toke
 				Rparen:   call.Rparen,
 			}
 			info := &types.Info{
-				Instances: make(map[*ast.Ident]types.Instance),
+				Instances:    make(map[*ast.Ident]types.Instance),
+				FileVersions: make(map[*ast.File]string),
 			}
-			versions.InitFileVersions(info)
 			if err := types.CheckExpr(fset, pkg, call.Pos(), newCall, info); err != nil {
 				// Most likely inference failed.
 				break

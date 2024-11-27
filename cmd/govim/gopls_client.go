@@ -361,6 +361,11 @@ func (g *govimplugin) SemanticTokensRefresh(context.Context) error {
 	panic("SemanticTokensRefresh not implemented yet")
 }
 
+func (g *govimplugin) TextDocumentContentRefresh(context.Context, *protocol.TextDocumentContentRefreshParams) error {
+	defer absorbShutdownErr()
+	panic("TextDocumentContentRefresh not implemented yet")
+}
+
 func absorbShutdownErr() {
 	if r := recover(); r != nil && r != govim.ErrShuttingDown {
 		panic(r)
