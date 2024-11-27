@@ -10,208 +10,59 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/scanner"
 	"go/token"
 	"go/types"
 	"os"
 	pathpkg "path"
-	"strconv"
 
 	"golang.org/x/tools/go/analysis"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools/aliases"
 )
 
 func TypeErrorEndPos(fset *token.FileSet, src []byte, start token.Pos) token.Pos {
 	// Get the end position for the type error.
-	offset, end := fset.PositionFor(start, false).Offset, start
-	if offset >= len(src) {
-		return end
+	file := fset.File(start)
+	if file == nil {
+		return start
 	}
-	if width := bytes.IndexAny(src[offset:], " \n,():;[]+-*"); width > 0 {
-		end = start + token.Pos(width)
+	if offset := file.PositionFor(start, false).Offset; offset > len(src) {
+		return start
+	} else {
+		src = src[offset:]
+	}
+
+	// Attempt to find a reasonable end position for the type error.
+	//
+	// TODO(rfindley): the heuristic implemented here is unclear. It looks like
+	// it seeks the end of the primary operand starting at start, but that is not
+	// quite implemented (for example, given a func literal this heuristic will
+	// return the range of the func keyword).
+	//
+	// We should formalize this heuristic, or deprecate it by finally proposing
+	// to add end position to all type checker errors.
+	//
+	// Nevertheless, ensure that the end position at least spans the current
+	// token at the cursor (this was golang/go#69505).
+	end := start
+	{
+		var s scanner.Scanner
+		fset := token.NewFileSet()
+		f := fset.AddFile("", fset.Base(), len(src))
+		s.Init(f, src, nil /* no error handler */, scanner.ScanComments)
+		pos, tok, lit := s.Scan()
+		if tok != token.SEMICOLON && token.Pos(f.Base()) <= pos && pos <= token.Pos(f.Base()+f.Size()) {
+			off := file.Offset(pos) + len(lit)
+			src = src[off:]
+			end += token.Pos(off)
+		}
+	}
+
+	// Look for bytes that might terminate the current operand. See note above:
+	// this is imprecise.
+	if width := bytes.IndexAny(src, " \n,():;[]+-*/"); width > 0 {
+		end += token.Pos(width)
 	}
 	return end
-}
-
-func ZeroValue(f *ast.File, pkg *types.Package, typ types.Type) ast.Expr {
-	// TODO(adonovan): think about generics, and also generic aliases.
-	under := aliases.Unalias(typ)
-	// Don't call Underlying unconditionally: although it removes
-	// Named and Alias, it also removes TypeParam.
-	if n, ok := under.(*types.Named); ok {
-		under = n.Underlying()
-	}
-	switch under := under.(type) {
-	case *types.Basic:
-		switch {
-		case under.Info()&types.IsNumeric != 0:
-			return &ast.BasicLit{Kind: token.INT, Value: "0"}
-		case under.Info()&types.IsBoolean != 0:
-			return &ast.Ident{Name: "false"}
-		case under.Info()&types.IsString != 0:
-			return &ast.BasicLit{Kind: token.STRING, Value: `""`}
-		default:
-			panic(fmt.Sprintf("unknown basic type %v", under))
-		}
-	case *types.Chan, *types.Interface, *types.Map, *types.Pointer, *types.Signature, *types.Slice, *types.Array:
-		return ast.NewIdent("nil")
-	case *types.Struct:
-		texpr := TypeExpr(f, pkg, typ) // typ because we want the name here.
-		if texpr == nil {
-			return nil
-		}
-		return &ast.CompositeLit{
-			Type: texpr,
-		}
-	}
-	return nil
-}
-
-// IsZeroValue checks whether the given expression is a 'zero value' (as determined by output of
-// analysisinternal.ZeroValue)
-func IsZeroValue(expr ast.Expr) bool {
-	switch e := expr.(type) {
-	case *ast.BasicLit:
-		return e.Value == "0" || e.Value == `""`
-	case *ast.Ident:
-		return e.Name == "nil" || e.Name == "false"
-	default:
-		return false
-	}
-}
-
-// TypeExpr returns syntax for the specified type. References to
-// named types from packages other than pkg are qualified by an appropriate
-// package name, as defined by the import environment of file.
-func TypeExpr(f *ast.File, pkg *types.Package, typ types.Type) ast.Expr {
-	switch t := typ.(type) {
-	case *types.Basic:
-		switch t.Kind() {
-		case types.UnsafePointer:
-			return &ast.SelectorExpr{X: ast.NewIdent("unsafe"), Sel: ast.NewIdent("Pointer")}
-		default:
-			return ast.NewIdent(t.Name())
-		}
-	case *types.Pointer:
-		x := TypeExpr(f, pkg, t.Elem())
-		if x == nil {
-			return nil
-		}
-		return &ast.UnaryExpr{
-			Op: token.MUL,
-			X:  x,
-		}
-	case *types.Array:
-		elt := TypeExpr(f, pkg, t.Elem())
-		if elt == nil {
-			return nil
-		}
-		return &ast.ArrayType{
-			Len: &ast.BasicLit{
-				Kind:  token.INT,
-				Value: fmt.Sprintf("%d", t.Len()),
-			},
-			Elt: elt,
-		}
-	case *types.Slice:
-		elt := TypeExpr(f, pkg, t.Elem())
-		if elt == nil {
-			return nil
-		}
-		return &ast.ArrayType{
-			Elt: elt,
-		}
-	case *types.Map:
-		key := TypeExpr(f, pkg, t.Key())
-		value := TypeExpr(f, pkg, t.Elem())
-		if key == nil || value == nil {
-			return nil
-		}
-		return &ast.MapType{
-			Key:   key,
-			Value: value,
-		}
-	case *types.Chan:
-		dir := ast.ChanDir(t.Dir())
-		if t.Dir() == types.SendRecv {
-			dir = ast.SEND | ast.RECV
-		}
-		value := TypeExpr(f, pkg, t.Elem())
-		if value == nil {
-			return nil
-		}
-		return &ast.ChanType{
-			Dir:   dir,
-			Value: value,
-		}
-	case *types.Signature:
-		var params []*ast.Field
-		for i := 0; i < t.Params().Len(); i++ {
-			p := TypeExpr(f, pkg, t.Params().At(i).Type())
-			if p == nil {
-				return nil
-			}
-			params = append(params, &ast.Field{
-				Type: p,
-				Names: []*ast.Ident{
-					{
-						Name: t.Params().At(i).Name(),
-					},
-				},
-			})
-		}
-		if t.Variadic() {
-			last := params[len(params)-1]
-			last.Type = &ast.Ellipsis{Elt: last.Type.(*ast.ArrayType).Elt}
-		}
-		var returns []*ast.Field
-		for i := 0; i < t.Results().Len(); i++ {
-			r := TypeExpr(f, pkg, t.Results().At(i).Type())
-			if r == nil {
-				return nil
-			}
-			returns = append(returns, &ast.Field{
-				Type: r,
-			})
-		}
-		return &ast.FuncType{
-			Params: &ast.FieldList{
-				List: params,
-			},
-			Results: &ast.FieldList{
-				List: returns,
-			},
-		}
-	case interface{ Obj() *types.TypeName }: // *types.{Alias,Named,TypeParam}
-		if t.Obj().Pkg() == nil {
-			return ast.NewIdent(t.Obj().Name())
-		}
-		if t.Obj().Pkg() == pkg {
-			return ast.NewIdent(t.Obj().Name())
-		}
-		pkgName := t.Obj().Pkg().Name()
-
-		// If the file already imports the package under another name, use that.
-		for _, cand := range f.Imports {
-			if path, _ := strconv.Unquote(cand.Path.Value); path == t.Obj().Pkg().Path() {
-				if cand.Name != nil && cand.Name.Name != "" {
-					pkgName = cand.Name.Name
-				}
-			}
-		}
-		if pkgName == "." {
-			return ast.NewIdent(t.Obj().Name())
-		}
-		return &ast.SelectorExpr{
-			X:   ast.NewIdent(pkgName),
-			Sel: ast.NewIdent(t.Obj().Name()),
-		}
-	case *types.Struct:
-		return ast.NewIdent(t.String())
-	case *types.Interface:
-		return ast.NewIdent(t.String())
-	default:
-		return nil
-	}
 }
 
 // StmtToInsertVarBefore returns the ast.Stmt before which we can safely insert a new variable.
@@ -416,8 +267,7 @@ func CheckReadable(pass *analysis.Pass, filename string) error {
 		return nil
 	}
 	for _, f := range pass.Files {
-		// TODO(adonovan): use go1.20 f.FileStart
-		if pass.Fset.File(f.Pos()).Name() == filename {
+		if pass.Fset.File(f.FileStart).Name() == filename {
 			return nil
 		}
 	}

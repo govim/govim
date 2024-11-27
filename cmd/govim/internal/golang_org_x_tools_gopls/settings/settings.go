@@ -6,15 +6,14 @@ package settings
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/file"
 	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/protocol"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/util/maps"
-	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/util/slices"
+	"github.com/govim/govim/cmd/govim/internal/golang_org_x_tools_gopls/util/frob"
 )
 
 type Annotation string
@@ -36,7 +35,8 @@ const (
 // Options holds various configuration that affects Gopls execution, organized
 // by the nature or origin of the settings.
 //
-// Options must be comparable with reflect.DeepEqual.
+// Options must be comparable with reflect.DeepEqual, and serializable with
+// [frob.Codec].
 //
 // This type defines both the logic of LSP-supplied option parsing
 // (see [SetOptions]), and the public documentation of options in
@@ -58,7 +58,7 @@ type Options struct {
 //
 // ClientOptions must be comparable with reflect.DeepEqual.
 type ClientOptions struct {
-	ClientInfo                                 *protocol.ClientInfo
+	ClientInfo                                 protocol.ClientInfo
 	InsertTextFormat                           protocol.InsertTextFormat
 	InsertReplaceSupported                     bool
 	ConfigurationSupported                     bool
@@ -76,6 +76,7 @@ type ClientOptions struct {
 	CompletionDeprecated                       bool
 	SupportedResourceOperations                []protocol.ResourceOperationKind
 	CodeActionResolveOptions                   []string
+	ShowDocumentSupported                      bool
 }
 
 // ServerOptions holds LSP-specific configuration that is provided by the
@@ -117,7 +118,7 @@ type BuildOptions struct {
 	// Include only project_a, but not node_modules inside it: `-`, `+project_a`, `-project_a/node_modules`
 	DirectoryFilters []string
 
-	// TemplateExtensions gives the extensions of file names that are treateed
+	// TemplateExtensions gives the extensions of file names that are treated
 	// as template files. (The extension
 	// is the part of the file name after the final dot.)
 	TemplateExtensions []string
@@ -134,11 +135,6 @@ type BuildOptions struct {
 	// opening a nested workspace directory, you can reduce the amount of work
 	// gopls has to do to keep your workspace up to date.
 	ExpandWorkspaceToModule bool `status:"experimental"`
-
-	// AllowImplicitNetworkAccess disables GOPROXY=off, allowing implicit module
-	// downloads rather than requiring user action. This option will eventually
-	// be removed.
-	AllowImplicitNetworkAccess bool `status:"experimental"`
 
 	// StandaloneTags specifies a set of build constraints that identify
 	// individual Go source files that make up the entire main package of an
@@ -255,13 +251,23 @@ const (
 
 	// Run govulncheck
 	//
-	// This codelens source annotates the `module` directive in a
-	// go.mod file with a command to run Govulncheck.
+	// This codelens source annotates the `module` directive in a go.mod file
+	// with a command to run govulncheck synchronously.
 	//
-	// [Govulncheck](https://go.dev/blog/vuln) is a static
-	// analysis tool that computes the set of functions reachable
-	// within your application, including dependencies;
-	// queries a database of known security vulnerabilities; and
+	// [Govulncheck](https://go.dev/blog/vuln) is a static analysis tool that
+	// computes the set of functions reachable within your application, including
+	// dependencies; queries a database of known security vulnerabilities; and
+	// reports any potential problems it finds.
+	CodeLensVulncheck CodeLensSource = "vulncheck"
+
+	// Run govulncheck (legacy)
+	//
+	// This codelens source annotates the `module` directive in a go.mod file
+	// with a command to run Govulncheck asynchronously.
+	//
+	// [Govulncheck](https://go.dev/blog/vuln) is a static analysis tool that
+	// computes the set of functions reachable within your application, including
+	// dependencies; queries a database of known security vulnerabilities; and
 	// reports any potential problems it finds.
 	CodeLensRunGovulncheck CodeLensSource = "run_govulncheck"
 
@@ -343,7 +349,11 @@ type DocumentationOptions struct {
 	// SingleLine and Structured are intended for use only by authors of editor plugins.
 	HoverKind HoverKind
 
-	// LinkTarget controls where documentation links go.
+	// LinkTarget is the base URL for links to Go package
+	// documentation returned by LSP operations such as Hover and
+	// DocumentLinks and in the CodeDescription field of each
+	// Diagnostic.
+	//
 	// It might be one of:
 	//
 	// * `"godoc.org"`
@@ -367,7 +377,29 @@ type DocumentationOptions struct {
 //
 // Note: this type has special logic in loadEnums in generate.go.
 // Be sure to reflect enum and doc changes there!
-type LinksInHoverEnum any
+type LinksInHoverEnum int
+
+const (
+	LinksInHover_None LinksInHoverEnum = iota
+	LinksInHover_LinkTarget
+	LinksInHover_Gopls
+)
+
+// MarshalJSON implements the json.Marshaler interface, so that the default
+// values are formatted correctly in documentation. (See [Options.setOne] for
+// the flexible custom unmarshalling behavior).
+func (l LinksInHoverEnum) MarshalJSON() ([]byte, error) {
+	switch l {
+	case LinksInHover_None:
+		return []byte("false"), nil
+	case LinksInHover_LinkTarget:
+		return []byte("true"), nil
+	case LinksInHover_Gopls:
+		return []byte(`"gopls"`), nil
+	default:
+		return nil, fmt.Errorf("invalid LinksInHover value %d", l)
+	}
+}
 
 // Note: FormattingOptions must be comparable with reflect.DeepEqual.
 type FormattingOptions struct {
@@ -375,6 +407,11 @@ type FormattingOptions struct {
 	// imports beginning with this string after third-party packages. It should
 	// be the prefix of the import path whose imports should be grouped
 	// separately.
+	//
+	// It is used when tidying imports (during an LSP Organize
+	// Imports request) or when inserting new ones (for example,
+	// during completion); an LSP Formatting request merely sorts the
+	// existing imports.
 	Local string
 
 	// Gofumpt indicates if we should run gofumpt formatting.
@@ -668,6 +705,12 @@ type InternalOptions struct {
 	// dynamically creating build configurations for different modules,
 	// directories, and GOOS/GOARCH combinations to cover open files.
 	ZeroConfig bool
+
+	// PullDiagnostics enables support for pull diagnostics.
+	//
+	// TODO(rfindley): make pull diagnostics robust, and remove this option,
+	// allowing pull diagnostics by default.
+	PullDiagnostics bool
 }
 
 type SubdirWatchPatterns string
@@ -789,8 +832,21 @@ func (o *Options) Set(value any) (errors []error) {
 	case map[string]any:
 		seen := make(map[string]struct{})
 		for name, value := range value {
-			if err := o.set(name, value, seen); err != nil {
-				err := fmt.Errorf("setting option %v: %w", name, err)
+			// Use only the last segment of a dotted name such as
+			// ui.navigation.symbolMatcher. The other segments
+			// are discarded, even without validation (!).
+			// (They are supported to enable hierarchical names
+			// in the VS Code graphical configuration UI.)
+			split := strings.Split(name, ".")
+			name = split[len(split)-1]
+
+			if _, ok := seen[name]; ok {
+				errors = append(errors, fmt.Errorf("duplicate value for %s", name))
+			}
+			seen[name] = struct{}{}
+
+			if err := o.setOne(name, value); err != nil {
+				err := fmt.Errorf("setting option %q: %w", name, err)
 				errors = append(errors, err)
 			}
 		}
@@ -800,8 +856,10 @@ func (o *Options) Set(value any) (errors []error) {
 	return errors
 }
 
-func (o *Options) ForClientCapabilities(clientName *protocol.ClientInfo, caps protocol.ClientCapabilities) {
-	o.ClientInfo = clientName
+func (o *Options) ForClientCapabilities(clientInfo *protocol.ClientInfo, caps protocol.ClientCapabilities) {
+	if clientInfo != nil {
+		o.ClientInfo = *clientInfo
+	}
 	if caps.Workspace.WorkspaceEdit != nil {
 		o.SupportedResourceOperations = caps.Workspace.WorkspaceEdit.ResourceOperations
 	}
@@ -810,6 +868,9 @@ func (o *Options) ForClientCapabilities(clientName *protocol.ClientInfo, caps pr
 		o.InsertTextFormat = protocol.SnippetTextFormat
 	}
 	o.InsertReplaceSupported = caps.TextDocument.Completion.CompletionItem.InsertReplaceSupport
+	if caps.Window.ShowDocument != nil {
+		o.ShowDocumentSupported = caps.Window.ShowDocument.Support
+	}
 	// Check if the client supports configuration messages.
 	o.ConfigurationSupported = caps.Workspace.Configuration
 	o.DynamicConfigurationSupported = caps.Workspace.DidChangeConfiguration.DynamicRegistration
@@ -851,24 +912,13 @@ func (o *Options) ForClientCapabilities(clientName *protocol.ClientInfo, caps pr
 	}
 }
 
-func (o *Options) Clone() *Options {
-	// TODO(rfindley): has this function gone stale? It appears that there are
-	// settings that are incorrectly cloned here (such as TemplateExtensions).
-	result := &Options{
-		ClientOptions:   o.ClientOptions,
-		InternalOptions: o.InternalOptions,
-		ServerOptions:   o.ServerOptions,
-		UserOptions:     o.UserOptions,
-	}
-	// Fully clone any slice or map fields. Only UserOptions can be modified.
-	result.Analyses = maps.Clone(o.Analyses)
-	result.Codelenses = maps.Clone(o.Codelenses)
-	result.SetEnvSlice(o.EnvSlice())
-	result.BuildFlags = slices.Clone(o.BuildFlags)
-	result.DirectoryFilters = slices.Clone(o.DirectoryFilters)
-	result.StandaloneTags = slices.Clone(o.StandaloneTags)
+var codec = frob.CodecFor[*Options]()
 
-	return result
+func (o *Options) Clone() *Options {
+	data := codec.Encode(o)
+	var clone *Options
+	codec.Decode(data, &clone)
+	return clone
 }
 
 // validateDirectoryFilter validates if the filter string
@@ -895,23 +945,10 @@ func validateDirectoryFilter(ifilter string) (string, error) {
 	return strings.TrimRight(filepath.FromSlash(filter), "/"), nil
 }
 
-// set updates a field of o based on the name and value.
+// setOne updates a field of o based on the name and value.
 // It returns an error if the value was invalid or duplicate.
 // It is the caller's responsibility to augment the error with 'name'.
-func (o *Options) set(name string, value any, seen map[string]struct{}) error {
-	// Use only the last segment of a dotted name such as
-	// ui.navigation.symbolMatcher. The other segments
-	// are discarded, even without validation (!).
-	// (They are supported to enable hierarchical names
-	// in the VS Code graphical configuration UI.)
-	split := strings.Split(name, ".")
-	name = split[len(split)-1]
-
-	if _, ok := seen[name]; ok {
-		return fmt.Errorf("duplicate value")
-	}
-	seen[name] = struct{}{}
-
+func (o *Options) setOne(name string, value any) error {
 	switch name {
 	case "env":
 		env, ok := value.(map[string]any)
@@ -996,8 +1033,12 @@ func (o *Options) set(name string, value any, seen map[string]struct{}) error {
 
 	case "linksInHover":
 		switch value {
-		case false, true, "gopls":
-			o.LinksInHover = value
+		case false:
+			o.LinksInHover = LinksInHover_None
+		case true:
+			o.LinksInHover = LinksInHover_LinkTarget
+		case "gopls":
+			o.LinksInHover = LinksInHover_Gopls
 		default:
 			return fmt.Errorf(`invalid value %s; expect false, true, or "gopls"`,
 				value)
@@ -1033,6 +1074,9 @@ func (o *Options) set(name string, value any, seen map[string]struct{}) error {
 		if err != nil {
 			return err
 		}
+		if o.Codelenses == nil {
+			o.Codelenses = make(map[CodeLensSource]bool)
+		}
 		o.Codelenses = maps.Clone(o.Codelenses)
 		for source, enabled := range lensOverrides {
 			o.Codelenses[source] = enabled
@@ -1043,15 +1087,7 @@ func (o *Options) set(name string, value any, seen map[string]struct{}) error {
 		}
 
 	case "staticcheck":
-		v, err := asBool(value)
-		if err != nil {
-			return err
-		}
-		if v && !StaticcheckSupported {
-			return fmt.Errorf("staticcheck is not supported at %s;"+
-				" rebuild gopls with a more recent version of Go", runtime.Version())
-		}
-		o.Staticcheck = v
+		return setBool(&o.Staticcheck, value)
 
 	case "local":
 		return setString(&o.Local, value)
@@ -1066,15 +1102,7 @@ func (o *Options) set(name string, value any, seen map[string]struct{}) error {
 		return setBool(&o.ShowBugReports, value)
 
 	case "gofumpt":
-		v, err := asBool(value)
-		if err != nil {
-			return err
-		}
-		if v && !GofumptSupported {
-			return fmt.Errorf("gofumpt is not supported at %s;"+
-				" rebuild gopls with a more recent version of Go", runtime.Version())
-		}
-		o.Gofumpt = v
+		return setBool(&o.Gofumpt, value)
 
 	case "completeFunctionCalls":
 		return setBool(&o.CompleteFunctionCalls, value)
@@ -1119,10 +1147,7 @@ func (o *Options) set(name string, value any, seen map[string]struct{}) error {
 		return setBool(&o.AnalysisProgressReporting, value)
 
 	case "allowImplicitNetworkAccess":
-		if err := setBool(&o.AllowImplicitNetworkAccess, value); err != nil {
-			return err
-		}
-		return softErrorf("gopls setting \"allowImplicitNetworkAccess\" is deprecated.\nPlease comment on https://go.dev/issue/66861 if this impacts your workflow.")
+		return deprecatedError("")
 
 	case "standaloneTags":
 		return setStringSlice(&o.StandaloneTags, value)
@@ -1147,6 +1172,9 @@ func (o *Options) set(name string, value any, seen map[string]struct{}) error {
 
 	case "zeroConfig":
 		return setBool(&o.ZeroConfig, value)
+
+	case "pullDiagnostics":
+		return setBool(&o.PullDiagnostics, value)
 
 	// deprecated and renamed settings
 	//
@@ -1325,7 +1353,6 @@ func setAnnotationMap(dest *map[Annotation]bool, value any) error {
 			default:
 				return err
 			}
-			continue
 		}
 		m[a] = enabled
 	}

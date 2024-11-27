@@ -34,9 +34,21 @@ var Analyzer = &analysis.Analyzer{
 }
 
 func run(pass *analysis.Pass) (interface{}, error) {
+	// Gather information whether file is generated or not
+	generated := make(map[*token.File]bool)
+	for _, file := range pass.Files {
+		if ast.IsGenerated(file) {
+			generated[pass.Fset.File(file.FileStart)] = true
+		}
+	}
+
 	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	nodeFilter := []ast.Node{(*ast.CompositeLit)(nil)}
 	inspect.Preorder(nodeFilter, func(n ast.Node) {
+		if _, ok := generated[pass.Fset.File(n.Pos())]; ok {
+			return // skip checking if it's generated code
+		}
+
 		expr := n.(*ast.CompositeLit)
 
 		outer := expr

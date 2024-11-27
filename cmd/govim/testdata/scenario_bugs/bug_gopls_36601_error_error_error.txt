@@ -53,7 +53,7 @@ func main() {
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "x declared but not used",
+    "text": "declared and not used: x",
     "type": "",
     "valid": 1,
     "vcol": 0
@@ -70,7 +70,7 @@ func main() {
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "x declared but not used",
+    "text": "declared and not used: x",
     "type": "",
     "valid": 1,
     "vcol": 0
@@ -85,7 +85,7 @@ func main() {
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "x declared and not used",
+    "text": "declared and not used: x",
     "type": "",
     "valid": 1,
     "vcol": 0
@@ -102,7 +102,7 @@ func main() {
     "module": "",
     "nr": 0,
     "pattern": "",
-    "text": "x declared and not used",
+    "text": "declared and not used: x",
     "type": "",
     "valid": 1,
     "vcol": 0

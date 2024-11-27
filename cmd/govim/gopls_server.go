@@ -434,7 +434,7 @@ func (l loggingGoplsServer) WillRenameFiles(ctxt context.Context, params *protoc
 	return res, err
 }
 
-func (l loggingGoplsServer) Diagnostic(ctxt context.Context, params *string) (*string, error) {
+func (l loggingGoplsServer) Diagnostic(ctxt context.Context, params *protocol.DocumentDiagnosticParams) (*protocol.Or_DocumentDiagnosticReport, error) {
 	l.Logf("gopls.Diagnostic() call; params:\n%v", pretty.Sprint(params))
 	res, err := l.u.Diagnostic(ctxt, params)
 	l.Logf("gopls.Diagnostic() return; err: %v; res\n%v", err, pretty.Sprint(res))
@@ -530,4 +530,11 @@ func (l loggingGoplsServer) Progress(ctxt context.Context, params *protocol.Prog
 	err := l.u.Progress(ctxt, params)
 	l.Logf("gopls.Progress() return; err: %v", err)
 	return err
+}
+
+func (l loggingGoplsServer) TextDocumentContent(ctxt context.Context, params *protocol.TextDocumentContentParams) (*string, error) {
+	l.Logf("gopls.TextDocumentContentParams() call; params:\n", pretty.Sprint(params))
+	res, err := l.u.TextDocumentContent(ctxt, params)
+	l.Logf("gopls.Progress() return; err: %v", err)
+	return res, err
 }
