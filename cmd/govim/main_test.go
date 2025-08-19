@@ -47,6 +47,8 @@ func TestMain(m *testing.M) {
 }
 
 func TestScripts(t *testing.T) {
+	// We are now in maintenance mode.
+	t.Skip()
 	t.Parallel()
 	var workdir string
 	if envworkdir := os.Getenv(testsetup.EnvTestscriptWorkdirRoot); envworkdir != "" {

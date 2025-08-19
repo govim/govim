@@ -109,13 +109,13 @@ func (p *parentReq) Logf(format string, args ...interface{}) {
 // PrintfStdout encodes the formatted string to be returned for raw
 // output to os.Stdout
 func (p *parentReq) PrintfStdout(format string, args ...interface{}) {
-	p.printf(encodeCodeRawStdout, fmt.Sprintf(format, args...))
+	p.printf(encodeCodeRawStdout, format, args...)
 }
 
 // PrintfStderr encodes the formatted string to be returned for raw
 // output to os.Stderr
 func (p *parentReq) PrintfStderr(format string, args ...interface{}) {
-	p.printf(encodeCodeRawStderr, fmt.Sprintf(format, args...))
+	p.printf(encodeCodeRawStderr, format, args...)
 }
 
 func (p *parentReq) printf(dest encodeCode, format string, args ...interface{}) {
