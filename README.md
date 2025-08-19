@@ -1,3 +1,10 @@
+## ⚠️ Project Status: No Longer Actively Maintained
+
+As of August 2025, govim is no longer being actively maintained.
+The repository remains available for anyone who finds it useful, but no new features or bug fixes are planned.
+
+If you are interested in taking over maintenance, please open an issue or reach out via GitHub discussions.
+
 ## `govim` - Go development plugin for Vim8
 
 Command `github.com/govim/govim/cmd/govim` (referred to simply as `govim`) is a Go development plugin for Vim8, much

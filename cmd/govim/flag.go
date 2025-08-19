@@ -15,12 +15,11 @@ var (
 func init() { flagSet.Usage = usage }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `
-Usage of govim:
+	fmt.Fprintf(os.Stderr, `Usage of govim:
 
 	govim [-tail] [-parent /path/to/uds] gopls ...
 
-`[1:])
+`)
 	flagSet.PrintDefaults()
 }
 

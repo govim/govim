@@ -45,8 +45,7 @@ var (
 func init() { flagSet.Usage = usage }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `
-Usage:
+	fmt.Fprintf(os.Stderr, `Usage:
 
    txtarutil (add|drop)footer [-unless PATTERN] GLOB [FILE]
 
@@ -70,7 +69,7 @@ Or using a heredoc:
 
 	EOD
 
-`[1:])
+`)
 	flagSet.PrintDefaults()
 }
 

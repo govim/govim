@@ -400,12 +400,8 @@ func (g *govimImpl) Run() error {
 		return nil
 	})
 	g.tomb.Kill(err)
-	var shutdownErr error
 	if g.pluginErrCh != nil {
 		close(g.pluginErrCh)
-	}
-	if shutdownErr != nil {
-		return shutdownErr
 	}
 	return nil
 }
@@ -534,7 +530,7 @@ func (g *govimImpl) run() error {
 				}()
 				if err != nil {
 					errStr := fmt.Sprintf("got error whilst handling %v: %v", fname, err)
-					g.Logf(errStr)
+					g.Log(errStr)
 					resp[0] = errStr
 				} else {
 					resp[1] = res
@@ -569,7 +565,7 @@ func (g *govimImpl) run() error {
 				}()
 				if err != nil {
 					errStr := fmt.Sprintf("got error whilst handling scheduled callback %v: %v", schedId, err)
-					g.Logf(errStr)
+					g.Log(errStr)
 					resp[0] = errStr
 				}
 				g.sendJSONMsg(id, resp)
@@ -589,7 +585,7 @@ func (g *govimImpl) run() error {
 				err := g.plugin.Shutdown()
 				if err != nil {
 					errStr := fmt.Sprintf("got error whilst handling shutdown: %v", err)
-					g.Logf(errStr)
+					g.Log(errStr)
 					resp[0] = errStr
 				}
 				g.sendJSONMsg(id, resp)
@@ -943,15 +939,18 @@ func (g *govimImpl) Errorf(format string, args ...interface{}) {
 func (g *govimImpl) logVimEventf(format string, args ...interface{}) {
 	g.Logf("vim start =======================\n"+format+"vim end =======================\n", args...)
 }
-
-func (g *govimImpl) Logf(format string, args ...interface{}) {
-	s := fmt.Sprintf(format, args...)
+func (g *govimImpl) Log(s string) {
 	if s[len(s)-1] == '\n' {
 		s = s[:len(s)-1]
 	}
 	t := time.Now().Format("2006-01-02T15:04:05.000000")
 	s = strings.Replace(s, "\n", "\n"+t+"_"+g.instanceID+": ", -1)
 	fmt.Fprint(g.log, t+"_"+g.instanceID+": "+s+"\n")
+}
+
+func (g *govimImpl) Logf(format string, args ...interface{}) {
+	g.Log(fmt.Sprintf(format, args...))
+
 }
 
 func (g *govimImpl) Version() string {
